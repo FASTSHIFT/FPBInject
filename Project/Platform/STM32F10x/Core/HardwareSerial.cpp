@@ -93,7 +93,7 @@ void HardwareSerial::begin(uint32_t BaudRate, SERIAL_Config Config, uint8_t Pree
 
     USART_InitTypeDef USART_InitStructure;
     NVIC_InitTypeDef NVIC_InitStructure;
-    uint8_t USARTx_IRQn;
+    uint8_t USARTx_IRQn = 0;
 
     if (USARTx == USART1) {
         RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1 | RCC_APB2Periph_GPIOA, ENABLE);
@@ -115,6 +115,8 @@ void HardwareSerial::begin(uint32_t BaudRate, SERIAL_Config Config, uint8_t Pree
         Rx_Pin = GPIO_Pin_11;
         GPIOx = GPIOB;
         USARTx_IRQn = USART3_IRQn;
+    } else {
+        return;
     }
 
     // USART_TX

@@ -1,0 +1,21 @@
+{
+    "cortex-debug.armToolchainPath": "",
+    "cortex-debug.gdbPath": "gdb-multiarch",
+    "cortex-debug.openocdPath": "openocd",
+    "cortex-debug.stutilPath": "st-util",
+    "cortex-debug.JLinkGDBServerPath": "JLinkGDBServer",
+    
+    "cmake.configureOnOpen": false,
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.compilerPath": "/usr/bin/arm-none-eabi-gcc",
+    "C_Cpp.default.intelliSenseMode": "gcc-arm",
+    
+    "files.associations": {
+        "*.h": "c",
+        "*.hpp": "cpp",
+        "*.c": "c",
+        "*.cpp": "cpp"
+    }
+}

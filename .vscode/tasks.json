@@ -1,0 +1,83 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "cmake --build build --parallel",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Clean Build",
+            "type": "shell",
+            "command": "rm -rf build && mkdir build && cd build && cmake -DAPP_SELECT=${input:appSelect} -DCMAKE_BUILD_TYPE=Debug .. && ninja",
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Configure (Blink)",
+            "type": "shell",
+            "command": "cd build && cmake -DAPP_SELECT=1 -DCMAKE_BUILD_TYPE=Debug ..",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Configure (Test)",
+            "type": "shell",
+            "command": "cd build && cmake -DAPP_SELECT=2 -DCMAKE_BUILD_TYPE=Debug ..",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Configure (FuncLoader)",
+            "type": "shell",
+            "command": "cd build && cmake -DAPP_SELECT=3 -DCMAKE_BUILD_TYPE=Debug ..",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Flash (ST-Link)",
+            "type": "shell",
+            "command": "./Tools/flash.sh -p stlink -r build/FPBInject.bin",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "Build"
+        },
+        {
+            "label": "Flash (DAPLink)",
+            "type": "shell",
+            "command": "./Tools/flash.sh -p daplink -r build/FPBInject.bin",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "Build"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "appSelect",
+            "type": "pickString",
+            "description": "Select application",
+            "options": ["1", "2", "3"],
+            "default": "3"
+        }
+    ]
+}

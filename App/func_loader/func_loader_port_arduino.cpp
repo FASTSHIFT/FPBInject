@@ -7,6 +7,8 @@
 #include "func_loader_stream.h"
 #include <Arduino.h>
 
+#define LED_PIN PC13
+
 /* Static code buffer */
 static uint8_t s_code_buf[4096] __attribute__((aligned(4), section(".ram_code")));
 static char s_line_buf[2048];
@@ -56,12 +58,20 @@ static void banner_output(void* user, const char* str) {
     Serial.print(str);
 }
 
+static void blink_led() {
+    static uint32_t last_time = 0;
+
+    if (millis() - last_time < 500) {
+        return;
+    }
+
+    togglePin(LED_PIN);
+    last_time = millis();
+}
+
 void func_loader_run(void) {
     Serial.begin(115200);
-    while (!Serial) {
-        ;
-    }
-    delay(100);
+    pinMode(LED_PIN, OUTPUT);
 
     fl_init(&s_ctx);
     fl_stream_init(&s_stream, &s_ctx, &s_serial, s_line_buf, sizeof(s_line_buf));
@@ -82,5 +92,6 @@ void func_loader_run(void) {
 
     for (;;) {
         fl_stream_process(&s_stream);
+        blink_led();
     }
 }

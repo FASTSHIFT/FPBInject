@@ -1,0 +1,81 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug (ST-Link)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "stlink",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/FPBInject.elf",
+            "device": "STM32F103C8",
+            "interface": "swd",
+            "runToEntryPoint": "main",
+            "svdFile": "${workspaceFolder}/.vscode/STM32F103.svd",
+            "preLaunchTask": "Build",
+            "showDevDebugOutput": "raw"
+        },
+        {
+            "name": "Debug (OpenOCD ST-Link)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/FPBInject.elf",
+            "device": "STM32F103C8",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f1x.cfg"
+            ],
+            "runToEntryPoint": "main",
+            "svdFile": "${workspaceFolder}/.vscode/STM32F103.svd",
+            "preLaunchTask": "Build",
+            "showDevDebugOutput": "raw"
+        },
+        {
+            "name": "Debug (OpenOCD DAPLink)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/FPBInject.elf",
+            "device": "STM32F103C8",
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/stm32f1x.cfg"
+            ],
+            "runToEntryPoint": "main",
+            "svdFile": "${workspaceFolder}/.vscode/STM32F103.svd",
+            "preLaunchTask": "Build",
+            "showDevDebugOutput": "raw"
+        },
+        {
+            "name": "Debug (J-Link)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "jlink",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/FPBInject.elf",
+            "device": "STM32F103C8",
+            "interface": "swd",
+            "runToEntryPoint": "main",
+            "svdFile": "${workspaceFolder}/.vscode/STM32F103.svd",
+            "preLaunchTask": "Build",
+            "showDevDebugOutput": "raw"
+        },
+        {
+            "name": "Attach (OpenOCD)",
+            "type": "cortex-debug",
+            "request": "attach",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/FPBInject.elf",
+            "device": "STM32F103C8",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f1x.cfg"
+            ],
+            "svdFile": "${workspaceFolder}/.vscode/STM32F103.svd"
+        }
+    ]
+}

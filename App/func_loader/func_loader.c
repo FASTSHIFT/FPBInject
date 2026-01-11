@@ -416,7 +416,10 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     static const char* const usage[] = {"fl --cmd <cmd> [opts]", NULL};
 
     argparse_init(&ap, opts, usage, ARGPARSE_IGNORE_UNKNOWN_ARGS);
-    argparse_parse(&ap, argc, argv);
+    if (!argparse_parse(&ap, argc, argv)) {
+        fl_response(ctx, false, "Invalid arguments");
+        return -1;
+    }
 
     if (!cmd) {
         fl_response(ctx, false, "Missing --cmd");

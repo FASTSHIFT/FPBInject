@@ -72,12 +72,10 @@ int main(void)
 
 #elif APP_SELECT == APP_TEST
     /* FPB functionality test */
-    Serial.begin(115200);
     test_run();
 
 #elif APP_SELECT == APP_FUNC_LOADER
     /* Function loader mode */
-    Serial.begin(115200);
     func_loader_run();
 
 #else

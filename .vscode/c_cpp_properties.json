@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "name": "STM32F103C8",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/Project/Platform/STM32F10x/Core",
+                "${workspaceFolder}/Project/Platform/STM32F10x/CMSIS/Include",
+                "${workspaceFolder}/Project/Platform/STM32F10x/CMSIS/Device",
+                "${workspaceFolder}/Project/Platform/STM32F10x/STM32F10x_StdPeriph_Driver/Inc",
+                "${workspaceFolder}/Project/ArduinoAPI",
+                "${workspaceFolder}/Source",
+                "${workspaceFolder}/App/**"
+            ],
+            "defines": [
+                "STM32F10X_MD",
+                "USE_STDPERIPH_DRIVER",
+                "HSE_VALUE=8000000",
+                "APP_SELECT=3"
+            ],
+            "compilerPath": "/usr/bin/arm-none-eabi-gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-arm"
+        }
+    ],
+    "version": 4
+}
