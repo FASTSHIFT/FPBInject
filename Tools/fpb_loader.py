@@ -497,7 +497,7 @@ SECTIONS
                 symbols[name] = addr
 
         print(f"Compiled {len(data)} bytes @ 0x{base_addr:08X}")
-        if symbols:
+        if verbose and symbols:
             print("Symbols:")
             for name, addr in symbols.items():
                 print(f"  0x{addr:08X}  {name}")
