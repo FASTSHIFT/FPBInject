@@ -1,21 +1,19 @@
 /**
  * @file   fpb_inject.h
- * @brief  Cortex-M3/M4 Flash Patch and Breakpoint (FPB) 单元驱动
- * 
- * FPB是ARM Cortex-M处理器中的调试组件，可以用于:
- * 1. 设置硬件断点
- * 2. 重映射Flash中的指令到SRAM (代码注入)
- * 
- * 本模块实现了运行时代码注入功能，可以在不修改Flash的情况下
- * 替换指定地址的指令，实现热补丁功能。
- * 
- * 硬件特性 (STM32F103 - Cortex-M3):
- * - 6个指令比较器 (FP_COMP0 - FP_COMP5) 可用于代码重映射
- * - 2个字面量比较器 (FP_COMP6 - FP_COMP7) 用于数据重映射
- * - 支持Thumb指令重映射
- * 
- * @author  FPBInject Project
- * @version 1.0
+ * @brief  Cortex-M3/M4 Flash Patch and Breakpoint (FPB) Unit Driver
+ *
+ * FPB is a debug component in ARM Cortex-M processors that can:
+ * 1. Set hardware breakpoints
+ * 2. Remap Flash instructions to SRAM (code injection)
+ *
+ * This module implements runtime code injection functionality,
+ * allowing instruction replacement at specified addresses without
+ * modifying Flash memory - enabling hot-patching capabilities.
+ *
+ * Hardware Features (STM32F103 - Cortex-M3):
+ * - 6 instruction comparators (FP_COMP0 - FP_COMP5) for code remapping
+ * - 2 literal comparators (FP_COMP6 - FP_COMP7) for data remapping
+ * - Supports Thumb instruction remapping
  */
 
 #ifndef __FPB_INJECT_H
@@ -25,203 +23,113 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
-/*===========================================================================
- * FPB 寄存器定义
- *===========================================================================*/
+/* Maximum code comparator count (STM32F103 Cortex-M3) */
+#define FPB_MAX_CODE_COMP 6
 
-/* FPB 基地址 (Cortex-M3/M4) */
-#define FPB_BASE            0xE0002000UL
+/* Maximum literal comparator count */
+#define FPB_MAX_LIT_COMP 2
 
-/* FPB 控制寄存器 */
-#define FPB_CTRL            (*(volatile uint32_t *)(FPB_BASE + 0x000))
-
-/* FPB 重映射寄存器 */
-#define FPB_REMAP           (*(volatile uint32_t *)(FPB_BASE + 0x004))
-
-/* FPB 比较器寄存器 (0-7) */
-#define FPB_COMP(n)         (*(volatile uint32_t *)(FPB_BASE + 0x008 + ((n) * 4)))
-
-/* FPB 比较器数组 */
-#define FPB_COMP0           (*(volatile uint32_t *)(FPB_BASE + 0x008))
-#define FPB_COMP1           (*(volatile uint32_t *)(FPB_BASE + 0x00C))
-#define FPB_COMP2           (*(volatile uint32_t *)(FPB_BASE + 0x010))
-#define FPB_COMP3           (*(volatile uint32_t *)(FPB_BASE + 0x014))
-#define FPB_COMP4           (*(volatile uint32_t *)(FPB_BASE + 0x018))
-#define FPB_COMP5           (*(volatile uint32_t *)(FPB_BASE + 0x01C))
-#define FPB_COMP6           (*(volatile uint32_t *)(FPB_BASE + 0x020))
-#define FPB_COMP7           (*(volatile uint32_t *)(FPB_BASE + 0x024))
-
-/*===========================================================================
- * FPB 控制寄存器位定义
- *===========================================================================*/
-
-/* CTRL 寄存器位 */
-#define FPB_CTRL_ENABLE     (1UL << 0)   /* FPB 使能位 */
-#define FPB_CTRL_KEY        (1UL << 1)   /* 写使能密钥 */
-
-/* CTRL 寄存器中的比较器数量字段 */
-#define FPB_CTRL_NUM_CODE_MASK  (0xFUL << 4)   /* 代码比较器数量 */
-#define FPB_CTRL_NUM_LIT_MASK   (0xFUL << 8)   /* 字面量比较器数量 */
-#define FPB_CTRL_NUM_CODE_SHIFT 4
-#define FPB_CTRL_NUM_LIT_SHIFT  8
-
-/*===========================================================================
- * FPB 比较器寄存器位定义
- *===========================================================================*/
-
-/* COMP 寄存器位 */
-#define FPB_COMP_ENABLE     (1UL << 0)   /* 比较器使能位 */
-#define FPB_COMP_ADDR_MASK  0x1FFFFFFCUL /* 地址掩码 (bit[28:2]) */
-#define FPB_COMP_REPLACE_MASK (3UL << 30)/* 替换字段掩码 */
-
-/* 替换模式 */
-#define FPB_REPLACE_REMAP   (0UL << 30)  /* 重映射到remap地址 */
-#define FPB_REPLACE_LOWER   (1UL << 30)  /* 替换低半字 */
-#define FPB_REPLACE_UPPER   (2UL << 30)  /* 替换高半字 */
-#define FPB_REPLACE_BOTH    (3UL << 30)  /* 替换整个字 */
-
-/*===========================================================================
- * FPB 配置常量
- *===========================================================================*/
-
-/* 最大代码比较器数量 (STM32F103 Cortex-M3) */
-#define FPB_MAX_CODE_COMP   6
-
-/* 最大字面量比较器数量 */
-#define FPB_MAX_LIT_COMP    2
-
-/* 总比较器数量 */
-#define FPB_MAX_COMP        (FPB_MAX_CODE_COMP + FPB_MAX_LIT_COMP)
-
-/* 重映射表大小 (每个比较器需要一个重映射条目) */
-#define FPB_REMAP_TABLE_SIZE    FPB_MAX_CODE_COMP
-
-/*===========================================================================
- * FPB 状态结构
- *===========================================================================*/
+/* Total comparator count */
+#define FPB_MAX_COMP (FPB_MAX_CODE_COMP + FPB_MAX_LIT_COMP)
 
 /**
- * @brief FPB比较器状态
+ * @brief FPB Comparator State
  */
 typedef struct {
-    uint32_t original_addr;     /* 原始指令地址 */
-    uint32_t patch_addr;        /* 补丁函数地址 */
-    bool     enabled;           /* 是否启用 */
-} FPB_CompState_t;
+    uint32_t original_addr;
+    uint32_t patch_addr;
+    bool enabled;
+} fpb_comp_state_t;
 
 /**
- * @brief FPB全局状态
+ * @brief FPB Global State
  */
 typedef struct {
-    bool initialized;                           /* 是否已初始化 */
-    uint8_t num_code_comp;                      /* 可用代码比较器数量 */
-    uint8_t num_lit_comp;                       /* 可用字面量比较器数量 */
-    FPB_CompState_t comp[FPB_MAX_CODE_COMP];   /* 比较器状态 */
-} FPB_State_t;
-
-/*===========================================================================
- * FPB API 函数
- *===========================================================================*/
+    bool initialized;
+    uint8_t num_code_comp;
+    uint8_t num_lit_comp;
+    fpb_comp_state_t comp[FPB_MAX_CODE_COMP];
+} fpb_state_t;
 
 /**
- * @brief  初始化FPB单元
- * @retval 0: 成功, -1: 失败
- * @note   必须在使用其他FPB函数之前调用
+ * @brief  Initialize FPB unit
+ * @retval 0: Success, -1: Failure
  */
-int FPB_Init(void);
+int fpb_init(void);
 
 /**
- * @brief  反初始化FPB单元
- * @note   禁用所有比较器和FPB功能
+ * @brief  Deinitialize FPB unit
  */
-void FPB_DeInit(void);
+void fpb_deinit(void);
 
 /**
- * @brief  设置代码补丁
- * @param  comp_id: 比较器ID (0 ~ FPB_MAX_CODE_COMP-1)
- * @param  original_addr: 原始函数地址 (必须在Code区域: 0x00000000 - 0x1FFFFFFF)
- * @param  patch_addr: 补丁函数地址
- * @retval 0: 成功, -1: 参数错误, -2: 比较器不可用
- * 
- * @note   补丁原理:
- *         当CPU尝试从original_addr取指时，FPB硬件会拦截该请求，
- *         并返回一条跳转指令，跳转到patch_addr执行新代码。
+ * @brief  Set code patch
+ * @param  comp_id: Comparator ID (0 ~ FPB_MAX_CODE_COMP-1)
+ * @param  original_addr: Original function address (must be in Code region: 0x00000000 - 0x1FFFFFFF)
+ * @param  patch_addr: Patch function address
+ * @retval 0: Success, -1: Invalid parameter, -2: Comparator unavailable
  */
-int FPB_SetPatch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr);
+int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr);
 
 /**
- * @brief  清除代码补丁
- * @param  comp_id: 比较器ID
- * @retval 0: 成功, -1: 参数错误
+ * @brief  Clear code patch
+ * @param  comp_id: Comparator ID
+ * @retval 0: Success, -1: Invalid parameter
  */
-int FPB_ClearPatch(uint8_t comp_id);
+int fpb_clear_patch(uint8_t comp_id);
 
 /**
- * @brief  使能/禁用指定比较器
- * @param  comp_id: 比较器ID
- * @param  enable: true-使能, false-禁用
- * @retval 0: 成功, -1: 参数错误
+ * @brief  Enable/disable specified comparator
+ * @param  comp_id: Comparator ID
+ * @param  enable: true-enable, false-disable
+ * @retval 0: Success, -1: Invalid parameter
  */
-int FPB_EnableComp(uint8_t comp_id, bool enable);
+int fpb_enable_comp(uint8_t comp_id, bool enable);
 
 /**
- * @brief  获取FPB状态信息
- * @return 指向FPB状态结构的指针
+ * @brief  Get FPB state information
+ * @return Pointer to FPB state structure
  */
-const FPB_State_t* FPB_GetState(void);
+const fpb_state_t* fpb_get_state(void);
 
 /**
- * @brief  检查FPB是否支持
- * @retval true: 支持, false: 不支持
+ * @brief  Check if FPB is supported
+ * @retval true: Supported, false: Not supported
  */
-bool FPB_IsSupported(void);
+bool fpb_is_supported(void);
 
 /**
- * @brief  获取可用的代码比较器数量
- * @return 可用比较器数量
+ * @brief  Get available code comparator count
+ * @return Available comparator count
  */
-uint8_t FPB_GetNumCodeComp(void);
+uint8_t fpb_get_num_code_comp(void);
 
 /**
- * @brief  打印FPB调试信息
- * @note   通过串口输出当前FPB配置信息
+ * @brief  Print FPB debug information
  */
-void FPB_PrintInfo(void);
-
-/*===========================================================================
- * 高级FPB功能 - 指令级补丁
- *===========================================================================*/
+void fpb_print_info(void);
 
 /**
- * @brief  设置指令级补丁 (替换单条Thumb指令)
- * @param  comp_id: 比较器ID
- * @param  addr: 指令地址 (2字节对齐)
- * @param  new_instruction: 新的Thumb指令 (16位)
- * @param  is_upper: true-替换高半字, false-替换低半字
- * @retval 0: 成功, -1: 失败
- * 
- * @note   此功能使用FPB的指令替换模式，可以直接替换Flash中的单条指令
- *         而不需要跳转到新函数。适用于简单的指令修改场景。
+ * @brief  Set instruction-level patch (replace single Thumb instruction)
+ * @param  comp_id: Comparator ID
+ * @param  addr: Instruction address (2-byte aligned)
+ * @param  new_instruction: New Thumb instruction (16-bit)
+ * @param  is_upper: true-replace upper halfword, false-replace lower halfword
+ * @retval 0: Success, -1: Failure
  */
-int FPB_SetInstructionPatch(uint8_t comp_id, uint32_t addr, 
-                            uint16_t new_instruction, bool is_upper);
+int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper);
 
 /**
- * @brief  生成Thumb跳转指令
- * @param  from_addr: 跳转源地址
- * @param  to_addr: 跳转目标地址
- * @param  instruction: 输出的指令缓冲区 (至少4字节)
- * @return 指令长度 (2或4字节)
- * 
- * @note   根据跳转距离自动选择合适的跳转指令:
- *         - 短距离: B.N (16位)
- *         - 长距离: B.W (32位)
+ * @brief  Generate Thumb branch instruction
+ * @param  from_addr: Branch source address
+ * @param  to_addr: Branch target address
+ * @param  instruction: Output instruction buffer (at least 4 bytes)
+ * @return Instruction length (2 or 4 bytes)
  */
-uint8_t FPB_GenerateThumbJump(uint32_t from_addr, uint32_t to_addr, 
-                              uint8_t* instruction);
+uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* instruction);
 
 #ifdef __cplusplus
 }

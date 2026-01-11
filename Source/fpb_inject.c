@@ -1,457 +1,300 @@
 /**
  * @file   fpb_inject.c
- * @brief  Cortex-M3/M4 Flash Patch and Breakpoint (FPB) 单元驱动实现
- * 
- * 本文件实现了FPB运行时代码注入功能。
- * 
- * FPB工作原理:
- * 1. FPB硬件监控CPU的指令取指地址
- * 2. 当地址匹配比较器设置的地址时，FPB进行拦截
- * 3. FPB可以返回替换指令或从重映射区域获取指令
- * 
- * 代码注入实现方式:
- * - 方式1: 使用REMAP功能，将原始指令重映射到SRAM中的跳转指令
- * - 方式2: 直接替换指令为跳转指令
- * 
- * 本实现采用方式2，因为:
- * - 不需要额外的SRAM空间
- * - 配置更简单直接
- * - 适合Cortex-M3的FPB_REV1版本
- * 
- * @author  FPBInject Project
- * @version 1.0
+ * @brief  Cortex-M3/M4 Flash Patch and Breakpoint (FPB) Unit Driver Implementation
+ *
+ * FPB Operating Principle:
+ * 1. FPB hardware monitors CPU instruction fetch addresses
+ * 2. When address matches comparator-configured address, FPB intercepts
+ * 3. FPB can return replacement instruction or fetch from remap region
+ *
+ * This implementation uses REMAP method because:
+ * - More flexible for various patch scenarios
+ * - Works well with Cortex-M3 FPB_REV1
+ * - Allows 32-bit instruction replacement
  */
 
 #include "fpb_inject.h"
 #include <string.h>
 
-/*===========================================================================
- * 私有变量
- *===========================================================================*/
+/* FPB Base Address (Cortex-M3/M4) */
+#define FPB_BASE 0xE0002000UL
 
-/* FPB全局状态 */
-static FPB_State_t fpb_state = {0};
+/* FPB Control Register */
+#define FPB_CTRL (*(volatile uint32_t*)(FPB_BASE + 0x000))
 
-/* 
- * 重映射表 - 存放跳转指令
- * 必须放在SRAM中，且地址必须是32字节对齐
- * 每个条目存放一条BL/B指令用于跳转到补丁函数
- */
-__attribute__((aligned(32), section(".data")))
-static uint32_t fpb_remap_table[FPB_REMAP_TABLE_SIZE * 2];
+/* FPB Remap Register */
+#define FPB_REMAP (*(volatile uint32_t*)(FPB_BASE + 0x004))
 
-/*===========================================================================
- * 私有函数
- *===========================================================================*/
+/* FPB Comparator Registers (0-7) */
+#define FPB_COMP(n) (*(volatile uint32_t*)(FPB_BASE + 0x008 + ((n)*4)))
+
+/* CTRL Register Bits */
+#define FPB_CTRL_ENABLE (1UL << 0)
+#define FPB_CTRL_KEY (1UL << 1)
+#define FPB_CTRL_NUM_CODE_MASK (0xFUL << 4)
+#define FPB_CTRL_NUM_LIT_MASK (0xFUL << 8)
+#define FPB_CTRL_NUM_CODE_SHIFT 4
+#define FPB_CTRL_NUM_LIT_SHIFT 8
+
+/* COMP Register Bits */
+#define FPB_COMP_ENABLE (1UL << 0)
+#define FPB_COMP_ADDR_MASK 0x1FFFFFFCUL
+
+/* Replacement Modes */
+#define FPB_REPLACE_REMAP (0UL << 30)
+#define FPB_REPLACE_LOWER (1UL << 30)
+#define FPB_REPLACE_UPPER (2UL << 30)
+#define FPB_REPLACE_BOTH (3UL << 30)
+
+/* Remap table size */
+#define FPB_REMAP_TABLE_SIZE FPB_MAX_CODE_COMP
+
+/* FPB Global State */
+static fpb_state_t g_fpb_state;
+
+/* Remap Table - stores jump instructions, must be 32-byte aligned */
+__attribute__((aligned(32), section(".data"))) static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE * 2];
 
 /**
- * @brief 生成Thumb-2 BL指令 (长跳转)
- * @param target_addr 目标地址
- * @return 32位BL指令编码
+ * @brief Generate Thumb-2 B.W instruction (unconditional branch)
  */
-__attribute__((unused))
-static uint32_t generate_bl_instruction(uint32_t from_addr, uint32_t target_addr)
-{
+static uint32_t generate_b_w_instruction(uint32_t from_addr, uint32_t target_addr) {
     /*
-     * Thumb-2 BL指令格式:
-     * 
-     * 第一个半字 (高位): 11110 S imm10
-     * 第二个半字 (低位): 11 J1 1 J2 imm11
-     * 
-     * 偏移计算:
-     * offset = SignExtend(S:I1:I2:imm10:imm11:'0', 25)
-     * I1 = NOT(J1 XOR S)
-     * I2 = NOT(J2 XOR S)
-     * 
-     * 范围: ±16MB
+     * Thumb-2 B.W instruction format:
+     * First halfword: 11110 S imm10
+     * Second halfword: 10 J1 0 J2 imm11
      */
-    
     int32_t offset = (int32_t)(target_addr - from_addr - 4);
-    
-    /* 提取各字段 */
+
     uint32_t s = (offset < 0) ? 1 : 0;
     uint32_t imm10 = (offset >> 12) & 0x3FF;
     uint32_t imm11 = (offset >> 1) & 0x7FF;
-    
-    /* J1, J2 计算 */
+
     uint32_t i1 = ((offset >> 23) & 1) ^ s ^ 1;
     uint32_t i2 = ((offset >> 22) & 1) ^ s ^ 1;
     uint32_t j1 = i1;
     uint32_t j2 = i2;
-    
-    /* 构造指令 */
+
     uint16_t hw1 = 0xF000 | (s << 10) | imm10;
-    uint16_t hw2 = 0xD000 | (j1 << 13) | (j2 << 11) | imm11;
-    
-    /* 返回小端格式 (第一个半字在低16位) */
+    uint16_t hw2 = 0x9000 | (j1 << 13) | (j2 << 11) | imm11;
+
     return ((uint32_t)hw2 << 16) | hw1;
 }
 
-/**
- * @brief 生成Thumb B.W指令 (无条件分支)
- * @param from_addr 源地址
- * @param target_addr 目标地址
- * @return 32位B.W指令编码
- */
-static uint32_t generate_b_w_instruction(uint32_t from_addr, uint32_t target_addr)
-{
-    /*
-     * Thumb-2 B.W指令格式:
-     * 
-     * 第一个半字: 11110 S imm10
-     * 第二个半字: 10 J1 0 J2 imm11
-     * 
-     * 与BL类似，但第二个半字的bit12为0
-     */
-    
-    int32_t offset = (int32_t)(target_addr - from_addr - 4);
-    
-    uint32_t s = (offset < 0) ? 1 : 0;
-    uint32_t imm10 = (offset >> 12) & 0x3FF;
-    uint32_t imm11 = (offset >> 1) & 0x7FF;
-    
-    uint32_t i1 = ((offset >> 23) & 1) ^ s ^ 1;
-    uint32_t i2 = ((offset >> 22) & 1) ^ s ^ 1;
-    uint32_t j1 = i1;
-    uint32_t j2 = i2;
-    
-    uint16_t hw1 = 0xF000 | (s << 10) | imm10;
-    uint16_t hw2 = 0x9000 | (j1 << 13) | (j2 << 11) | imm11;  /* bit12=0 for B.W */
-    
-    return ((uint32_t)hw2 << 16) | hw1;
+static inline void dsb(void) {
+    __asm volatile("dsb" ::: "memory");
 }
 
-/**
- * @brief 数据同步屏障
- */
-static inline void dsb(void)
-{
-    __asm volatile ("dsb" ::: "memory");
+static inline void isb(void) {
+    __asm volatile("isb" ::: "memory");
 }
 
-/**
- * @brief 指令同步屏障
- */
-static inline void isb(void)
-{
-    __asm volatile ("isb" ::: "memory");
-}
+int fpb_init(void) {
+    memset(&g_fpb_state, 0, sizeof(g_fpb_state));
+    memset(g_fpb_remap_table, 0, sizeof(g_fpb_remap_table));
 
-/*===========================================================================
- * 公共函数实现
- *===========================================================================*/
-
-int FPB_Init(void)
-{
-    /* 清空状态 */
-    memset(&fpb_state, 0, sizeof(fpb_state));
-    memset(fpb_remap_table, 0, sizeof(fpb_remap_table));
-    
-    /* 读取FPB配置 */
     uint32_t ctrl = FPB_CTRL;
-    
-    /* 提取比较器数量 */
-    fpb_state.num_code_comp = (ctrl & FPB_CTRL_NUM_CODE_MASK) >> FPB_CTRL_NUM_CODE_SHIFT;
-    fpb_state.num_lit_comp = (ctrl & FPB_CTRL_NUM_LIT_MASK) >> FPB_CTRL_NUM_LIT_SHIFT;
-    
-    /* 验证FPB存在 */
-    if (fpb_state.num_code_comp == 0)
-    {
-        /* FPB不存在或不可用 */
+
+    g_fpb_state.num_code_comp = (ctrl & FPB_CTRL_NUM_CODE_MASK) >> FPB_CTRL_NUM_CODE_SHIFT;
+    g_fpb_state.num_lit_comp = (ctrl & FPB_CTRL_NUM_LIT_MASK) >> FPB_CTRL_NUM_LIT_SHIFT;
+
+    if (g_fpb_state.num_code_comp == 0) {
         return -1;
     }
-    
-    /* 限制为最大支持数量 */
-    if (fpb_state.num_code_comp > FPB_MAX_CODE_COMP)
-    {
-        fpb_state.num_code_comp = FPB_MAX_CODE_COMP;
+
+    if (g_fpb_state.num_code_comp > FPB_MAX_CODE_COMP) {
+        g_fpb_state.num_code_comp = FPB_MAX_CODE_COMP;
     }
-    
-    /* 禁用所有比较器 */
-    for (uint8_t i = 0; i < FPB_MAX_COMP; i++)
-    {
+
+    for (uint8_t i = 0; i < FPB_MAX_COMP; i++) {
         FPB_COMP(i) = 0;
     }
-    
-    /* 设置重映射表地址 (如果需要使用REMAP模式) */
-    /* FPB_REMAP = ((uint32_t)fpb_remap_table) & 0x1FFFFFE0; */
-    
-    /* 使能FPB单元 */
+
     FPB_CTRL = FPB_CTRL_KEY | FPB_CTRL_ENABLE;
-    
-    /* 内存屏障 */
+
     dsb();
     isb();
-    
-    fpb_state.initialized = true;
-    
+
+    g_fpb_state.initialized = true;
+
     return 0;
 }
 
-void FPB_DeInit(void)
-{
-    /* 禁用所有比较器 */
-    for (uint8_t i = 0; i < FPB_MAX_COMP; i++)
-    {
+void fpb_deinit(void) {
+    for (uint8_t i = 0; i < FPB_MAX_COMP; i++) {
         FPB_COMP(i) = 0;
     }
-    
-    /* 禁用FPB单元 */
+
     FPB_CTRL = FPB_CTRL_KEY;
-    
-    /* 清空状态 */
-    memset(&fpb_state, 0, sizeof(fpb_state));
-    
+
+    memset(&g_fpb_state, 0, sizeof(g_fpb_state));
+
     dsb();
     isb();
 }
 
-int FPB_SetPatch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr)
-{
-    /* 参数检查 */
-    if (!fpb_state.initialized)
-    {
+int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) {
+    if (!g_fpb_state.initialized) {
         return -1;
     }
-    
-    if (comp_id >= fpb_state.num_code_comp)
-    {
+
+    if (comp_id >= g_fpb_state.num_code_comp) {
         return -1;
     }
-    
-    /* 地址必须在Code区域 (0x00000000 - 0x1FFFFFFF) */
-    if (original_addr >= 0x20000000UL)
-    {
+
+    if (original_addr >= 0x20000000UL) {
         return -1;
     }
-    
-    /* 地址必须2字节对齐 (Thumb指令) */
-    original_addr &= ~1UL;  /* 清除Thumb位 */
+
+    original_addr &= ~1UL;
     patch_addr &= ~1UL;
-    
-    /* 
-     * 方式1: 使用指令替换模式
-     * 直接在比较器中设置跳转指令
-     * 
-     * FPB_REV1 (Cortex-M3) 的工作方式:
-     * - 当CPU取指地址匹配COMP[28:2]时
-     * - FPB返回REMAP表中对应位置的指令
-     * 
-     * 方式2: 使用REMAP + 跳转指令
-     * 将跳转指令存入REMAP表，FPB返回该指令
-     */
-    
-    /* 计算REMAP表中的位置 */
+
     uint32_t remap_index = comp_id * 2;
-    
-    /* 生成跳转指令 (B.W to patch_addr) */
-    /* 注意: 跳转指令执行时PC指向原始地址+4 */
+
     uint32_t jump_instr = generate_b_w_instruction(original_addr, patch_addr);
-    
-    /* 存入REMAP表 */
-    fpb_remap_table[remap_index] = jump_instr;
-    fpb_remap_table[remap_index + 1] = 0; /* 保留 */
-    
-    /* 设置REMAP表地址 */
-    FPB_REMAP = ((uint32_t)fpb_remap_table) & 0x1FFFFFE0UL;
-    
-    /* 配置比较器 */
-    /* 
-     * COMP寄存器格式:
-     * [31:30] REPLACE - 替换模式: 00=使用REMAP
-     * [28:2]  COMP    - 比较地址
-     * [0]     ENABLE  - 使能位
-     */
-    uint32_t comp_val = (original_addr & FPB_COMP_ADDR_MASK) | 
-                        FPB_REPLACE_REMAP |  /* 使用REMAP模式 */
-                        FPB_COMP_ENABLE;
-    
+
+    g_fpb_remap_table[remap_index] = jump_instr;
+    g_fpb_remap_table[remap_index + 1] = 0;
+
+    FPB_REMAP = ((uint32_t)g_fpb_remap_table) & 0x1FFFFFE0UL;
+
+    uint32_t comp_val = (original_addr & FPB_COMP_ADDR_MASK) | FPB_REPLACE_REMAP | FPB_COMP_ENABLE;
+
     FPB_COMP(comp_id) = comp_val;
-    
-    /* 更新状态 */
-    fpb_state.comp[comp_id].original_addr = original_addr;
-    fpb_state.comp[comp_id].patch_addr = patch_addr;
-    fpb_state.comp[comp_id].enabled = true;
-    
-    /* 内存屏障 - 确保FPB配置生效 */
+
+    g_fpb_state.comp[comp_id].original_addr = original_addr;
+    g_fpb_state.comp[comp_id].patch_addr = patch_addr;
+    g_fpb_state.comp[comp_id].enabled = true;
+
     dsb();
     isb();
-    
+
     return 0;
 }
 
-int FPB_ClearPatch(uint8_t comp_id)
-{
-    if (!fpb_state.initialized)
-    {
+int fpb_clear_patch(uint8_t comp_id) {
+    if (!g_fpb_state.initialized) {
         return -1;
     }
-    
-    if (comp_id >= fpb_state.num_code_comp)
-    {
+
+    if (comp_id >= g_fpb_state.num_code_comp) {
         return -1;
     }
-    
-    /* 禁用比较器 */
+
     FPB_COMP(comp_id) = 0;
-    
-    /* 清空REMAP表条目 */
+
     uint32_t remap_index = comp_id * 2;
-    fpb_remap_table[remap_index] = 0;
-    fpb_remap_table[remap_index + 1] = 0;
-    
-    /* 更新状态 */
-    fpb_state.comp[comp_id].original_addr = 0;
-    fpb_state.comp[comp_id].patch_addr = 0;
-    fpb_state.comp[comp_id].enabled = false;
-    
+    g_fpb_remap_table[remap_index] = 0;
+    g_fpb_remap_table[remap_index + 1] = 0;
+
+    g_fpb_state.comp[comp_id].original_addr = 0;
+    g_fpb_state.comp[comp_id].patch_addr = 0;
+    g_fpb_state.comp[comp_id].enabled = false;
+
     dsb();
     isb();
-    
+
     return 0;
 }
 
-int FPB_EnableComp(uint8_t comp_id, bool enable)
-{
-    if (!fpb_state.initialized || comp_id >= fpb_state.num_code_comp)
-    {
+int fpb_enable_comp(uint8_t comp_id, bool enable) {
+    if (!g_fpb_state.initialized || comp_id >= g_fpb_state.num_code_comp) {
         return -1;
     }
-    
+
     uint32_t comp_val = FPB_COMP(comp_id);
-    
-    if (enable)
-    {
+
+    if (enable) {
         comp_val |= FPB_COMP_ENABLE;
-    }
-    else
-    {
+    } else {
         comp_val &= ~FPB_COMP_ENABLE;
     }
-    
+
     FPB_COMP(comp_id) = comp_val;
-    fpb_state.comp[comp_id].enabled = enable;
-    
+    g_fpb_state.comp[comp_id].enabled = enable;
+
     dsb();
     isb();
-    
+
     return 0;
 }
 
-const FPB_State_t* FPB_GetState(void)
-{
-    return &fpb_state;
+const fpb_state_t* fpb_get_state(void) {
+    return &g_fpb_state;
 }
 
-bool FPB_IsSupported(void)
-{
-    /* 尝试读取FPB_CTRL */
+bool fpb_is_supported(void) {
     uint32_t ctrl = FPB_CTRL;
     uint8_t num_code = (ctrl & FPB_CTRL_NUM_CODE_MASK) >> FPB_CTRL_NUM_CODE_SHIFT;
-    
+
     return (num_code > 0);
 }
 
-uint8_t FPB_GetNumCodeComp(void)
-{
-    return fpb_state.num_code_comp;
+uint8_t fpb_get_num_code_comp(void) {
+    return g_fpb_state.num_code_comp;
 }
 
-int FPB_SetInstructionPatch(uint8_t comp_id, uint32_t addr, 
-                            uint16_t new_instruction, bool is_upper)
-{
-    if (!fpb_state.initialized || comp_id >= fpb_state.num_code_comp)
-    {
+int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper) {
+    if (!g_fpb_state.initialized || comp_id >= g_fpb_state.num_code_comp) {
         return -1;
     }
-    
-    /* 地址必须在Code区域且4字节对齐 */
+
     addr &= ~3UL;
-    
-    if (addr >= 0x20000000UL)
-    {
+
+    if (addr >= 0x20000000UL) {
         return -1;
     }
-    
-    /*
-     * 使用指令替换模式:
-     * - REPLACE = 01: 替换低半字
-     * - REPLACE = 10: 替换高半字
-     * - 新指令存入REMAP表
-     */
-    
+
     uint32_t remap_index = comp_id * 2;
     uint32_t replace_mode;
-    
-    if (is_upper)
-    {
+
+    if (is_upper) {
         replace_mode = FPB_REPLACE_UPPER;
-        fpb_remap_table[remap_index] = (uint32_t)new_instruction << 16;
-    }
-    else
-    {
+        g_fpb_remap_table[remap_index] = (uint32_t)new_instruction << 16;
+    } else {
         replace_mode = FPB_REPLACE_LOWER;
-        fpb_remap_table[remap_index] = new_instruction;
+        g_fpb_remap_table[remap_index] = new_instruction;
     }
-    
-    /* 设置REMAP表地址 */
-    FPB_REMAP = ((uint32_t)fpb_remap_table) & 0x1FFFFFE0UL;
-    
-    /* 配置比较器 */
-    uint32_t comp_val = (addr & FPB_COMP_ADDR_MASK) | 
-                        replace_mode |
-                        FPB_COMP_ENABLE;
-    
+
+    FPB_REMAP = ((uint32_t)g_fpb_remap_table) & 0x1FFFFFE0UL;
+
+    uint32_t comp_val = (addr & FPB_COMP_ADDR_MASK) | replace_mode | FPB_COMP_ENABLE;
+
     FPB_COMP(comp_id) = comp_val;
-    
-    fpb_state.comp[comp_id].original_addr = addr;
-    fpb_state.comp[comp_id].patch_addr = new_instruction;
-    fpb_state.comp[comp_id].enabled = true;
-    
+
+    g_fpb_state.comp[comp_id].original_addr = addr;
+    g_fpb_state.comp[comp_id].patch_addr = new_instruction;
+    g_fpb_state.comp[comp_id].enabled = true;
+
     dsb();
     isb();
-    
+
     return 0;
 }
 
-uint8_t FPB_GenerateThumbJump(uint32_t from_addr, uint32_t to_addr, 
-                              uint8_t* instruction)
-{
+uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* instruction) {
     int32_t offset = (int32_t)(to_addr - from_addr - 4);
-    
-    /* 检查是否可以使用短跳转 B.N (±2KB) */
-    if (offset >= -2048 && offset <= 2046)
-    {
-        /* B.N 指令: 11100 imm11 */
+
+    if (offset >= -2048 && offset <= 2046) {
         uint16_t imm11 = (offset >> 1) & 0x7FF;
         uint16_t instr = 0xE000 | imm11;
-        
+
         instruction[0] = instr & 0xFF;
         instruction[1] = (instr >> 8) & 0xFF;
-        
+
         return 2;
-    }
-    else
-    {
-        /* B.W 指令 (±16MB) */
+    } else {
         uint32_t instr = generate_b_w_instruction(from_addr, to_addr);
-        
-        /* 小端存储 */
+
         instruction[0] = instr & 0xFF;
         instruction[1] = (instr >> 8) & 0xFF;
         instruction[2] = (instr >> 16) & 0xFF;
         instruction[3] = (instr >> 24) & 0xFF;
-        
+
         return 4;
     }
 }
 
-void FPB_PrintInfo(void)
-{
-    /* 此函数可以通过串口打印FPB信息 */
-    /* 实现取决于可用的打印接口 */
-    
-#ifdef SERIAL_1_ENABLE
-    /* 需要包含HardwareSerial.h */
-#endif
+void fpb_print_info(void) {
+    /* Implementation depends on available print interface */
 }
