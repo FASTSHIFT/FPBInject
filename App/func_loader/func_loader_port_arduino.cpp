@@ -60,12 +60,14 @@ static void banner_output(void* user, const char* str) {
 
 static void blink_led() {
     static uint32_t last_time = 0;
+    static bool led_state = false;
 
     if (millis() - last_time < 500) {
         return;
     }
 
-    togglePin(LED_PIN);
+    led_state = !led_state;
+    digitalWrite(LED_PIN, led_state);
     last_time = millis();
 }
 
@@ -83,7 +85,10 @@ void func_loader_run(void) {
     Serial.println("=====================================");
     Serial.println("FPBInject Function Loader v1.0");
     Serial.println("=====================================");
-    Serial.println("Type --cmd help for commands");
+    Serial.println("Type fl --cmd help for commands");
+    Serial.println("");
+
+    Serial.printf("Toggle LED pin: %d\n", LED_PIN);
     Serial.println("");
 
     /* Restore stream output */

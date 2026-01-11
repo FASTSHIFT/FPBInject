@@ -2,30 +2,23 @@
 """
 FPB Loader - Host tool for FPBInject runtime code injection
 
-Features:
-- ELF symbol extraction
-- Patch source compilation
-- Binary upload with CRC-16 checksum
-- Retransmission for reliable transfer
-- Interactive command mode
+Works with func_loader text-based command protocol.
 
 Usage:
-    fpb_loader.py --port /dev/ttyUSB0 --upload patch.bin
-    fpb_loader.py --port /dev/ttyUSB0 --compile patch.c --upload
+    fpb_loader.py --port /dev/ttyUSB0 --ping
+    fpb_loader.py --port /dev/ttyUSB0 --inject inject.c --target digitalWrite
     fpb_loader.py --port /dev/ttyUSB0 --interactive
 """
 
 import argparse
-import struct
-import time
-import sys
 import os
+import re
 import subprocess
+import sys
 import tempfile
-from dataclasses import dataclass
-from enum import IntEnum
+import time
 from pathlib import Path
-from typing import Optional, List, Tuple, BinaryIO
+from typing import Optional, List, Dict, Tuple
 
 try:
     import serial
@@ -35,50 +28,7 @@ except ImportError:
     sys.exit(1)
 
 # =============================================================================
-# Protocol Constants
-# =============================================================================
-
-SOF = 0xAA
-EOF = 0x55
-
-MAX_PAYLOAD = 512
-CHUNK_SIZE = 256  # Upload chunk size
-TIMEOUT = 2.0     # Response timeout in seconds
-MAX_RETRIES = 3   # Maximum retransmission attempts
-
-
-class CmdType(IntEnum):
-    """Command types matching func_loader.h"""
-    PING = 0x00
-    ACK = 0x01
-    NACK = 0x02
-    INFO = 0x10
-    UPLOAD = 0x20
-    UPLOAD_END = 0x21
-    EXEC = 0x22
-    CALL = 0x23
-    READ = 0x30
-    WRITE = 0x31
-    PATCH = 0x40
-    UNPATCH = 0x41
-    LOG = 0xF0
-    ERROR = 0xFF
-
-
-class ErrorCode(IntEnum):
-    """Error codes matching func_loader.h"""
-    NONE = 0
-    CRC = 1
-    TIMEOUT = 2
-    CMD = 3
-    PARAM = 4
-    SEQ = 5
-    OVERFLOW = 6
-    EXEC = 7
-
-
-# =============================================================================
-# CRC-16-CCITT Implementation
+# CRC-16-CCITT
 # =============================================================================
 
 CRC16_TABLE = [
@@ -126,401 +76,458 @@ def crc16(data: bytes) -> int:
 
 
 # =============================================================================
-# Frame Data Structure
-# =============================================================================
-
-@dataclass
-class Frame:
-    """Protocol frame structure."""
-    seq: int
-    cmd: CmdType
-    payload: bytes
-
-    def encode(self) -> bytes:
-        """Encode frame to bytes for transmission."""
-        # Calculate CRC over seq + cmd + payload
-        crc_data = bytes([self.seq, self.cmd]) + self.payload
-        crc = crc16(crc_data)
-
-        # Build frame
-        length = len(self.payload)
-        header = bytes([
-            SOF,
-            (length >> 8) & 0xFF,
-            length & 0xFF,
-            self.seq,
-            self.cmd
-        ])
-        footer = bytes([
-            (crc >> 8) & 0xFF,
-            crc & 0xFF,
-            EOF
-        ])
-
-        return header + self.payload + footer
-
-    @classmethod
-    def decode(cls, data: bytes) -> Optional['Frame']:
-        """Decode frame from bytes. Returns None if invalid."""
-        if len(data) < 8:  # Minimum frame size
-            return None
-
-        if data[0] != SOF or data[-1] != EOF:
-            return None
-
-        length = (data[1] << 8) | data[2]
-        if len(data) != 8 + length:
-            return None
-
-        seq = data[3]
-        cmd = CmdType(data[4])
-        payload = data[5:5 + length]
-
-        # Verify CRC
-        rx_crc = (data[-3] << 8) | data[-2]
-        calc_crc = crc16(bytes([seq, cmd]) + payload)
-
-        if rx_crc != calc_crc:
-            return None
-
-        return cls(seq=seq, cmd=cmd, payload=payload)
-
-
-# =============================================================================
 # FPB Loader Class
 # =============================================================================
 
 class FPBLoader:
-    """FPB Loader host implementation."""
+    """FPB Loader - text protocol communication."""
 
-    def __init__(self, port: str, baudrate: int = 115200, verbose: bool = False):
+    def __init__(self, port: str, baudrate: int = 115200, verbose: bool = False, chunk_size: int = 128):
         self.port = port
         self.baudrate = baudrate
         self.verbose = verbose
-        self.serial: Optional[serial.Serial] = None
-        self.tx_seq = 0
+        self.chunk_size = chunk_size  # Max hex chars per upload command (128 hex = 64 bytes)
+        self.ser: Optional[serial.Serial] = None
 
     def connect(self) -> bool:
-        """Connect to the device."""
+        """Connect to device."""
         try:
-            self.serial = serial.Serial(
+            self.ser = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
-                timeout=TIMEOUT,
-                write_timeout=TIMEOUT
+                timeout=2.0,
+                write_timeout=2.0
             )
-            self.serial.reset_input_buffer()
-            self.serial.reset_output_buffer()
-            time.sleep(0.1)  # Wait for device to be ready
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
+            time.sleep(0.1)
             self._log(f"Connected to {self.port} @ {self.baudrate}")
             return True
         except serial.SerialException as e:
-            print(f"Error: Failed to connect: {e}")
+            print(f"Error: {e}")
             return False
 
     def disconnect(self):
-        """Disconnect from the device."""
-        if self.serial:
-            self.serial.close()
-            self.serial = None
-            self._log("Disconnected")
+        """Disconnect from device."""
+        if self.ser:
+            self.ser.close()
+            self.ser = None
 
     def _log(self, msg: str):
-        """Print verbose log message."""
+        """Verbose log."""
         if self.verbose:
             print(f"[FPB] {msg}")
 
-    def _send_frame(self, cmd: CmdType, payload: bytes = b'') -> Optional[Frame]:
-        """Send a frame and wait for response."""
-        if not self.serial:
-            return None
+    def _send_cmd(self, cmd: str) -> str:
+        """Send command and get response."""
+        if not self.ser:
+            return ""
 
-        frame = Frame(seq=self.tx_seq, cmd=cmd, payload=payload)
-        self.tx_seq = (self.tx_seq + 1) & 0xFF
+        # Always send as: fl --cmd ...
+        full_cmd = f"fl {cmd}" if not cmd.strip().startswith("fl ") else cmd
+        self._log(f"TX: {full_cmd}")
 
-        for attempt in range(MAX_RETRIES):
-            self._log(f"TX: cmd={cmd.name}, len={len(payload)}, seq={frame.seq}")
+        # Clear buffer
+        self.ser.reset_input_buffer()
 
-            # Send frame
-            self.serial.write(frame.encode())
-            self.serial.flush()
+        # Send command
+        self.ser.write((full_cmd + "\n").encode())
+        self.ser.flush()
 
-            # Wait for response
-            response = self._receive_frame()
-            if response:
-                return response
-
-            self._log(f"Retry {attempt + 1}/{MAX_RETRIES}")
-
-        return None
-
-    def _receive_frame(self) -> Optional[Frame]:
-        """Receive a frame with timeout."""
-        if not self.serial:
-            return None
-
-        buffer = bytearray()
-        start_time = time.time()
-
-        while time.time() - start_time < TIMEOUT:
-            if self.serial.in_waiting > 0:
-                buffer.extend(self.serial.read(self.serial.in_waiting))
-
-            # Try to find a valid frame
-            sof_idx = buffer.find(bytes([SOF]))
-            if sof_idx == -1:
-                buffer.clear()
-                continue
-
-            if sof_idx > 0:
-                buffer = buffer[sof_idx:]
-
-            # Check if we have enough data for header
-            if len(buffer) < 5:
-                continue
-
-            length = (buffer[1] << 8) | buffer[2]
-            frame_len = 8 + length
-
-            if len(buffer) < frame_len:
-                continue
-
-            # Try to decode frame
-            frame_data = bytes(buffer[:frame_len])
-            frame = Frame.decode(frame_data)
-
-            if frame:
-                self._log(f"RX: cmd={frame.cmd.name}, len={len(frame.payload)}")
-
-                # Handle log messages
-                if frame.cmd == CmdType.LOG:
-                    print(f"[MCU] {frame.payload.decode('utf-8', errors='replace')}")
-                    buffer = buffer[frame_len:]
-                    continue
-
-                # Handle error responses
-                if frame.cmd == CmdType.ERROR:
-                    err_code = frame.payload[0] if frame.payload else 0
-                    err_msg = frame.payload[1:].decode('utf-8', errors='replace')
-                    print(f"[ERROR] Code {err_code}: {err_msg}")
-                    return None
-
-                return frame
-
-            # Invalid frame, skip SOF and try again
-            buffer = buffer[1:]
-
+        # Read response (until timeout)
+        response = ""
+        start = time.time()
+        while time.time() - start < 2.0:
+            if self.ser.in_waiting:
+                chunk = self.ser.read(self.ser.in_waiting).decode('utf-8', errors='replace')
+                response += chunk
             time.sleep(0.01)
 
-        return None
+        self._log(f"RX: {response.strip()}")
+        return response.strip()
+
+    def _parse_response(self, resp: str) -> dict:
+        """Parse response - format: [OK] msg or [ERR] msg"""
+        resp = resp.strip()
+
+        # Handle multi-line response - find the last status line
+        lines = resp.split('\n')
+        for line in reversed(lines):
+            line = line.strip()
+            if line.startswith('[OK]'):
+                msg = line[4:].strip()
+                return {"ok": True, "msg": msg, "raw": resp}
+            elif line.startswith('[ERR]'):
+                msg = line[5:].strip()
+                return {"ok": False, "msg": msg, "raw": resp}
+
+        return {"ok": False, "msg": resp, "raw": resp}
 
     # -------------------------------------------------------------------------
-    # High-level Commands
+    # Commands
     # -------------------------------------------------------------------------
 
     def ping(self) -> bool:
-        """Send ping and check response."""
-        response = self._send_frame(CmdType.PING)
-        if response and response.cmd == CmdType.ACK:
-            print(f"PONG: {response.payload.decode('utf-8', errors='replace')}")
-            return True
-        print("Ping failed")
-        return False
+        """Ping device."""
+        resp = self._send_cmd("--cmd ping")
+        result = self._parse_response(resp)
+        print(f"Ping: {result}")
+        return result.get("ok", False)
 
-    def get_info(self) -> Optional[str]:
-        """Get device information."""
-        response = self._send_frame(CmdType.INFO)
-        if response and response.cmd == CmdType.INFO:
-            info = response.payload.decode('utf-8', errors='replace')
-            print(info)
-            return info
+    def info(self) -> Optional[dict]:
+        """Get device info."""
+        resp = self._send_cmd("--cmd info")
+        result = self._parse_response(resp)
+
+        # Parse additional info from response
+        if result.get("ok"):
+            raw = result.get("raw", "")
+            for line in raw.split('\n'):
+                line = line.strip()
+                if line.startswith("Base:"):
+                    try:
+                        result["base"] = int(line.split(":")[1].strip(), 0)
+                    except:
+                        pass
+                elif line.startswith("Size:"):
+                    try:
+                        result["size"] = int(line.split(":")[1].strip())
+                    except:
+                        pass
+                elif line.startswith("Used:"):
+                    try:
+                        result["used"] = int(line.split(":")[1].strip())
+                    except:
+                        pass
+
+        print(f"Info: {result}")
+        return result
+
+    def alloc(self, size: int) -> Optional[int]:
+        """Allocate memory buffer."""
+        resp = self._send_cmd(f"--cmd alloc --size {size}")
+        result = self._parse_response(resp)
+        if result.get("ok"):
+            base = result.get("base", 0)
+            print(f"Allocated {size} bytes at 0x{base:08X}")
+            return base
+        print(f"Alloc failed: {result}")
         return None
 
+    def free(self) -> bool:
+        """Free memory buffer."""
+        resp = self._send_cmd("--cmd free")
+        result = self._parse_response(resp)
+        return result.get("ok", False)
+
+    def clear(self) -> bool:
+        """Clear upload buffer."""
+        resp = self._send_cmd("--cmd clear")
+        result = self._parse_response(resp)
+        return result.get("ok", False)
+
     def upload(self, data: bytes, progress: bool = True) -> bool:
-        """Upload binary data to RAM code buffer."""
+        """Upload binary data in chunks."""
         total = len(data)
         offset = 0
+        # chunk_size is hex chars, so bytes per chunk = chunk_size / 2
+        bytes_per_chunk = self.chunk_size // 2
 
         while offset < total:
-            chunk = data[offset:offset + CHUNK_SIZE]
+            chunk = data[offset:offset + bytes_per_chunk]
+            hex_data = chunk.hex().upper()
+            checksum = crc16(chunk)
 
-            # Build payload: offset (4 bytes) + data
-            payload = struct.pack('>I', offset) + chunk
+            cmd = f"--cmd upload --addr {offset} --data {hex_data} --checksum {checksum}"
+            resp = self._send_cmd(cmd)
+            result = self._parse_response(resp)
 
-            response = self._send_frame(CmdType.UPLOAD, payload)
-            if not response or response.cmd != CmdType.ACK:
-                print(f"\nUpload failed at offset {offset}")
-                return False
-
-            # Verify received offset
-            rx_offset = struct.unpack('>I', response.payload)[0]
-            if rx_offset != offset + len(chunk):
-                print(f"\nOffset mismatch: expected {offset + len(chunk)}, got {rx_offset}")
+            if not result.get("ok"):
+                print(f"\nUpload failed at offset {offset}: {result}")
                 return False
 
             offset += len(chunk)
-
             if progress:
                 pct = offset * 100 // total
                 print(f"\rUploading: {offset}/{total} bytes ({pct}%)", end='', flush=True)
 
-        # Send upload end
-        response = self._send_frame(CmdType.UPLOAD_END)
-        if response and response.cmd == CmdType.ACK:
-            if progress:
-                print(f"\nUpload complete: {total} bytes")
-            return True
+        if progress:
+            print(f"\nUpload complete: {total} bytes")
+        return True
 
-        print("\nUpload end failed")
+    def execute(self, entry: int = 0, args: str = "") -> Optional[int]:
+        """Execute uploaded code."""
+        cmd = f"--cmd exec --entry {entry}"
+        if args:
+            cmd += f' --args "{args}"'
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        if result.get("ok"):
+            ret = result.get("ret", 0)
+            print(f"Execution result: {ret}")
+            return ret
+        print(f"Exec failed: {result}")
+        return None
+
+    def call(self, addr: int, args: str = "") -> Optional[int]:
+        """Call function at address."""
+        cmd = f"--cmd call --addr 0x{addr:X}"
+        if args:
+            cmd += f' --args "{args}"'
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        if result.get("ok"):
+            ret = result.get("ret", 0)
+            print(f"Call result: {ret}")
+            return ret
+        print(f"Call failed: {result}")
+        return None
+
+    def read(self, addr: int, length: int) -> Optional[bytes]:
+        """Read memory."""
+        cmd = f"--cmd read --addr 0x{addr:X} --len {length}"
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        if result.get("ok"):
+            hex_data = result.get("data", "")
+            return bytes.fromhex(hex_data)
+        return None
+
+    def write(self, addr: int, data: bytes) -> bool:
+        """Write memory."""
+        hex_data = data.hex().upper()
+        checksum = crc16(data)
+        cmd = f"--cmd write --addr 0x{addr:X} --data {hex_data} --checksum {checksum}"
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        return result.get("ok", False)
+
+    def patch(self, comp: int, orig: int, target: int) -> bool:
+        """Set FPB patch."""
+        cmd = f"--cmd patch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        if result.get("ok"):
+            print(f"Patch set: comp={comp}, 0x{orig:08X} -> 0x{target:08X}")
+            return True
+        print(f"Patch failed: {result}")
         return False
 
-    def execute(self, entry_offset: int = 0, args: str = "") -> Optional[int]:
-        """Execute uploaded RAM code."""
-        payload = struct.pack('>I', entry_offset)
-        if args:
-            payload += args.encode('utf-8')
+    def fpatch(self, orig: int, target: int) -> bool:
+        """Set Flash patch (directly modifies Flash)."""
+        cmd = f"--cmd fpatch --orig 0x{orig:X} --target 0x{target:X}"
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        if result.get("ok"):
+            print(f"Flash patched: 0x{orig:08X} -> 0x{target:08X}")
+            return True
+        print(f"Flash patch failed: {result}")
+        return False
 
-        response = self._send_frame(CmdType.EXEC, payload)
-        if response and response.cmd == CmdType.ACK:
-            result = struct.unpack('>i', response.payload)[0]
-            print(f"Execution result: {result}")
-            return result
-        return None
-
-    def call(self, address: int, args: str = "") -> Optional[int]:
-        """Call function at address."""
-        payload = struct.pack('>I', address)
-        if args:
-            payload += args.encode('utf-8')
-
-        response = self._send_frame(CmdType.CALL, payload)
-        if response and response.cmd == CmdType.ACK:
-            result = struct.unpack('>i', response.payload)[0]
-            print(f"Call result: {result}")
-            return result
-        return None
-
-    def read_memory(self, address: int, length: int) -> Optional[bytes]:
-        """Read memory from device."""
-        payload = struct.pack('>II', address, length)
-        response = self._send_frame(CmdType.READ, payload)
-        if response and response.cmd == CmdType.READ:
-            return response.payload
-        return None
-
-    def write_memory(self, address: int, data: bytes) -> bool:
-        """Write memory to device."""
-        payload = struct.pack('>I', address) + data
-        response = self._send_frame(CmdType.WRITE, payload)
-        return response is not None and response.cmd == CmdType.ACK
-
-    def set_patch(self, comp: int, orig_addr: int, patch_addr: int) -> bool:
-        """Set FPB patch."""
-        payload = bytes([comp]) + struct.pack('>II', orig_addr, patch_addr)
-        response = self._send_frame(CmdType.PATCH, payload)
-        return response is not None and response.cmd == CmdType.ACK
-
-    def clear_patch(self, comp: int) -> bool:
+    def unpatch(self, comp: int) -> bool:
         """Clear FPB patch."""
-        payload = bytes([comp])
-        response = self._send_frame(CmdType.UNPATCH, payload)
-        return response is not None and response.cmd == CmdType.ACK
+        cmd = f"--cmd unpatch --comp {comp}"
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        return result.get("ok", False)
 
 
 # =============================================================================
-# ELF Symbol Extraction
+# ELF Utilities
 # =============================================================================
 
-def extract_symbols(elf_path: str) -> dict:
-    """Extract symbols from ELF file using arm-none-eabi-nm."""
+def get_symbols(elf_path: str) -> Dict[str, int]:
+    """Extract symbols from ELF file."""
     symbols = {}
-
     try:
         result = subprocess.run(
             ['arm-none-eabi-nm', '-C', elf_path],
-            capture_output=True,
-            text=True,
-            check=True
+            capture_output=True, text=True, check=True
         )
-
         for line in result.stdout.splitlines():
             parts = line.split()
             if len(parts) >= 3:
                 addr = int(parts[0], 16)
-                sym_type = parts[1]
                 name = parts[2]
-                symbols[name] = {'address': addr, 'type': sym_type}
-
-    except subprocess.CalledProcessError as e:
-        print(f"Error extracting symbols: {e}")
-    except FileNotFoundError:
-        print("Error: arm-none-eabi-nm not found")
-
+                symbols[name] = addr
+    except Exception as e:
+        print(f"Error reading symbols: {e}")
     return symbols
 
 
-def compile_patch(source_path: str, output_path: str, base_addr: int = 0x20001000,
-                  includes: List[str] = None) -> bool:
-    """Compile patch source file to binary."""
-    includes = includes or []
+def load_inject_config(config_path: str = None) -> Optional[Dict]:
+    """
+    Load inject compile configuration from JSON file.
+    Search order:
+      1. Explicit config_path
+      2. build/inject_config.json (relative to script)
+      3. ../build/inject_config.json (relative to script)
+    """
+    import json
 
-    with tempfile.NamedTemporaryFile(suffix='.elf', delete=False) as elf_file:
-        elf_path = elf_file.name
+    search_paths = []
+    if config_path:
+        search_paths.append(Path(config_path))
 
-    try:
-        # Compile to ELF
-        cmd = [
-            'arm-none-eabi-gcc',
-            '-mcpu=cortex-m3',
-            '-mthumb',
-            '-Os',
-            '-ffunction-sections',
-            '-fdata-sections',
-            '-nostartfiles',
-            '-nostdlib',
-            f'-Wl,--section-start=.text={base_addr:#x}',
-            '-Wl,--gc-sections',
-        ]
+    script_dir = Path(__file__).parent.absolute()
+    search_paths.extend([
+        script_dir.parent / 'build' / 'inject_config.json',
+        script_dir / 'build' / 'inject_config.json',
+    ])
+
+    for p in search_paths:
+        if p.exists():
+            try:
+                with open(p, 'r') as f:
+                    config = json.load(f)
+                    config['_path'] = str(p)
+                    return config
+            except Exception as e:
+                print(f"Error loading config {p}: {e}")
+
+    return None
+
+
+def compile_inject(source: str, base_addr: int, elf_path: str = None,
+                   config_path: str = None, verbose: bool = False) -> Optional[Tuple[bytes, Dict[str, int]]]:
+    """
+    Compile injection code to binary.
+    Uses inject_config.json from CMake build for toolchain settings.
+    Returns (binary_data, symbols) or None on failure.
+    """
+    # Load config
+    config = load_inject_config(config_path)
+    if not config:
+        print("Error: inject_config.json not found. Run cmake to generate it.")
+        print("       cmake -B build -G Ninja && cmake --build build")
+        return None
+
+    if verbose:
+        print(f"Using config: {config.get('_path', 'unknown')}")
+
+    compiler = config.get('compiler', 'arm-none-eabi-gcc')
+    objcopy = config.get('objcopy', 'arm-none-eabi-objcopy')
+    includes = config.get('includes', [])
+    defines = config.get('defines', [])
+    cflags = config.get('cflags', [])
+    ldflags = config.get('ldflags', [])
+
+    # Use main_elf from config if not specified
+    if not elf_path:
+        elf_path = config.get('main_elf')
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        obj_file = os.path.join(tmpdir, 'inject.o')
+        elf_file = os.path.join(tmpdir, 'inject.elf')
+        bin_file = os.path.join(tmpdir, 'inject.bin')
+
+        # Compile to object
+        cmd = [compiler] + cflags + ['-c']
 
         for inc in includes:
-            cmd.extend(['-I', inc])
+            if os.path.isdir(inc):
+                cmd.extend(['-I', inc])
 
-        cmd.extend(['-o', elf_path, source_path])
+        for d in defines:
+            cmd.extend(['-D', d])
 
-        subprocess.run(cmd, check=True, capture_output=True)
+        cmd.extend(['-o', obj_file, source])
 
-        # Extract .text section to binary
-        subprocess.run([
-            'arm-none-eabi-objcopy',
-            '-O', 'binary',
-            '-j', '.text',
-            elf_path,
-            output_path
-        ], check=True, capture_output=True)
+        if verbose:
+            print(f"Compile: {' '.join(cmd)}")
 
-        print(f"Compiled: {source_path} -> {output_path}")
-        return True
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Compile error:\n{result.stderr}")
+            return None
 
-    except subprocess.CalledProcessError as e:
-        print(f"Compilation failed: {e.stderr.decode() if e.stderr else str(e)}")
-        return False
+        # Create linker script with KEEP to prevent gc-sections from removing inject functions
+        ld_content = f"""
+ENTRY(inject_entry)
+SECTIONS
+{{
+    . = 0x{base_addr:08X};
+    .text : {{
+        KEEP(*(.text.inject*))
+        *(.text .text.*)
+    }}
+    .rodata : {{ *(.rodata .rodata.*) }}
+    .data : {{ *(.data .data.*) }}
+    .bss : {{ *(.bss .bss.* COMMON) }}
+}}
+"""
+        ld_file = os.path.join(tmpdir, 'inject.ld')
+        with open(ld_file, 'w') as f:
+            f.write(ld_content)
 
-    finally:
-        if os.path.exists(elf_path):
-            os.unlink(elf_path)
+        # Link - remove --gc-sections to keep all symbols for injection
+        link_cmd = [compiler] + cflags[:2] + ['-nostartfiles', '-nostdlib', f'-T{ld_file}']
+
+        # Use symbols from main ELF
+        if elf_path and os.path.exists(elf_path):
+            link_cmd.append(f'-Wl,--just-symbols={elf_path}')
+
+        link_cmd.extend(['-o', elf_file, obj_file])
+
+        if verbose:
+            print(f"Link: {' '.join(link_cmd)}")
+
+        result = subprocess.run(link_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Link error:\n{result.stderr}")
+            return None
+
+        # Extract binary
+        subprocess.run([objcopy, '-O', 'binary', elf_file, bin_file], check=True)
+
+        # Read binary
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+
+        # Get symbols
+        nm_cmd = objcopy.replace('objcopy', 'nm')
+        result = subprocess.run([nm_cmd, '-C', elf_file], capture_output=True, text=True)
+
+        symbols = {}
+        for line in result.stdout.strip().split('\n'):
+            parts = line.split()
+            if len(parts) >= 3:
+                addr = int(parts[0], 16)
+                name = parts[2]
+                symbols[name] = addr
+
+        print(f"Compiled {len(data)} bytes @ 0x{base_addr:08X}")
+        if symbols:
+            print("Symbols:")
+            for name, addr in symbols.items():
+                print(f"  0x{addr:08X}  {name}")
+
+        return data, symbols
 
 
 # =============================================================================
 # Interactive Mode
 # =============================================================================
 
-def interactive_mode(loader: FPBLoader):
-    """Run interactive command mode."""
+def interactive_mode(loader: FPBLoader, elf_path: str = None):
+    """Interactive command mode."""
     print("\nFPB Loader Interactive Mode")
-    print("Commands: ping, info, upload <file>, exec [offset] [args], call <addr> [args],")
-    print("          read <addr> <len>, write <addr> <hex>, patch <comp> <orig> <patch>,")
-    print("          unpatch <comp>, symbols <elf>, compile <src> <out>, quit")
+    print("Commands: ping, info, upload <file>, exec, call <addr>,")
+    print("          read <addr> <len>, write <addr> <hex>,")
+    print("          patch <comp> <orig> <target>, unpatch <comp>,")
+    print("          inject <source.c> <target_func>, symbols, quit")
     print()
+
+    symbols = {}
+    if elf_path and os.path.exists(elf_path):
+        symbols = get_symbols(elf_path)
+        print(f"Loaded {len(symbols)} symbols from {elf_path}")
+
+    # Get device info for base address
+    base_addr = 0x20001000  # Default
+    info = loader.info()
+    if info and info.get("base"):
+        base_addr = info.get("base")
 
     while True:
         try:
@@ -531,14 +538,24 @@ def interactive_mode(loader: FPBLoader):
             parts = line.split()
             cmd = parts[0].lower()
 
-            if cmd == 'quit' or cmd == 'exit':
+            if cmd in ('quit', 'exit', 'q'):
                 break
 
             elif cmd == 'ping':
                 loader.ping()
 
             elif cmd == 'info':
-                loader.get_info()
+                loader.info()
+
+            elif cmd == 'alloc':
+                size = int(parts[1], 0) if len(parts) > 1 else 1024
+                loader.alloc(size)
+
+            elif cmd == 'free':
+                loader.free()
+
+            elif cmd == 'clear':
+                loader.clear()
 
             elif cmd == 'upload':
                 if len(parts) < 2:
@@ -548,15 +565,19 @@ def interactive_mode(loader: FPBLoader):
                     loader.upload(f.read())
 
             elif cmd == 'exec':
-                offset = int(parts[1], 0) if len(parts) > 1 else 0
+                entry = int(parts[1], 0) if len(parts) > 1 else 0
                 args = ' '.join(parts[2:]) if len(parts) > 2 else ''
-                loader.execute(offset, args)
+                loader.execute(entry, args)
 
             elif cmd == 'call':
                 if len(parts) < 2:
-                    print("Usage: call <addr> [args]")
+                    print("Usage: call <addr|symbol>")
                     continue
-                addr = int(parts[1], 0)
+                addr_str = parts[1]
+                if addr_str in symbols:
+                    addr = symbols[addr_str]
+                else:
+                    addr = int(addr_str, 0)
                 args = ' '.join(parts[2:]) if len(parts) > 2 else ''
                 loader.call(addr, args)
 
@@ -566,13 +587,12 @@ def interactive_mode(loader: FPBLoader):
                     continue
                 addr = int(parts[1], 0)
                 length = int(parts[2], 0)
-                data = loader.read_memory(addr, length)
+                data = loader.read(addr, length)
                 if data:
-                    # Print hex dump
                     for i in range(0, len(data), 16):
                         hex_str = ' '.join(f'{b:02X}' for b in data[i:i+16])
-                        ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in data[i:i+16])
-                        print(f'{addr+i:08X}  {hex_str:<48}  {ascii_str}')
+                        asc = ''.join(chr(b) if 32 <= b < 127 else '.' for b in data[i:i+16])
+                        print(f'{addr+i:08X}  {hex_str:<48}  {asc}')
 
             elif cmd == 'write':
                 if len(parts) < 3:
@@ -580,53 +600,94 @@ def interactive_mode(loader: FPBLoader):
                     continue
                 addr = int(parts[1], 0)
                 data = bytes.fromhex(parts[2])
-                if loader.write_memory(addr, data):
-                    print("Write OK")
+                if loader.write(addr, data):
+                    print("OK")
 
             elif cmd == 'patch':
                 if len(parts) < 4:
-                    print("Usage: patch <comp> <orig_addr> <patch_addr>")
+                    print("Usage: patch <comp> <orig_addr|symbol> <target_addr>")
                     continue
                 comp = int(parts[1], 0)
-                orig = int(parts[2], 0)
-                patch = int(parts[3], 0)
-                if loader.set_patch(comp, orig, patch):
-                    print("Patch OK")
+                orig_str = parts[2]
+                if orig_str in symbols:
+                    orig = symbols[orig_str]
+                else:
+                    orig = int(orig_str, 0)
+                target = int(parts[3], 0)
+                loader.patch(comp, orig, target)
 
             elif cmd == 'unpatch':
                 if len(parts) < 2:
                     print("Usage: unpatch <comp>")
                     continue
                 comp = int(parts[1], 0)
-                if loader.clear_patch(comp):
-                    print("Unpatch OK")
+                if loader.unpatch(comp):
+                    print("OK")
 
             elif cmd == 'symbols':
-                if len(parts) < 2:
-                    print("Usage: symbols <elf>")
-                    continue
-                symbols = extract_symbols(parts[1])
-                for name, info in sorted(symbols.items(), key=lambda x: x[1]['address']):
-                    print(f"{info['address']:08X} {info['type']} {name}")
+                pattern = parts[1].lower() if len(parts) > 1 else None
+                for name, addr in sorted(symbols.items(), key=lambda x: x[1]):
+                    if not pattern or pattern in name.lower():
+                        print(f"0x{addr:08X}  {name}")
 
-            elif cmd == 'compile':
+            elif cmd == 'inject':
                 if len(parts) < 3:
-                    print("Usage: compile <source.c> <output.bin>")
+                    print("Usage: inject <source.c> <target_func>")
                     continue
-                compile_patch(parts[1], parts[2])
+                source = parts[1]
+                target_func = parts[2]
+
+                if target_func not in symbols:
+                    print(f"Error: Symbol '{target_func}' not found")
+                    continue
+
+                target_addr = symbols[target_func]
+                print(f"Target: {target_func} @ 0x{target_addr:08X}")
+
+                # Compile injection code
+                result = compile_inject(source, base_addr, elf_path)
+                if not result:
+                    continue
+
+                data, inject_symbols = result
+
+                # Find inject function
+                inject_func = None
+                for name, addr in inject_symbols.items():
+                    if name.startswith('inject_'):
+                        inject_func = (name, addr)
+                        break
+
+                if not inject_func:
+                    print("Error: No inject_* function found")
+                    continue
+
+                print(f"Inject: {inject_func[0]} @ 0x{inject_func[1]:08X}")
+
+                # Clear and upload
+                loader.clear()
+                if not loader.upload(data):
+                    continue
+
+                # Set patch (Thumb address needs +1)
+                patch_addr = inject_func[1] | 1
+                if loader.patch(0, target_addr, patch_addr):
+                    print(f"Injection active!")
 
             else:
                 print(f"Unknown command: {cmd}")
 
         except KeyboardInterrupt:
-            print("\nInterrupted")
+            print()
             break
         except Exception as e:
             print(f"Error: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 # =============================================================================
-# Main Entry Point
+# Main
 # =============================================================================
 
 def list_ports():
@@ -635,7 +696,6 @@ def list_ports():
     if not ports:
         print("No serial ports found")
         return
-
     print("Available serial ports:")
     for p in ports:
         print(f"  {p.device}: {p.description}")
@@ -643,98 +703,134 @@ def list_ports():
 
 def main():
     parser = argparse.ArgumentParser(
-        description='FPB Loader - Runtime code injection tool for STM32',
+        description='FPB Loader - Runtime code injection tool',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  %(prog)s --list                     List serial ports
-  %(prog)s -p /dev/ttyUSB0 --ping     Test connection
-  %(prog)s -p /dev/ttyUSB0 --info     Get device info
-  %(prog)s -p /dev/ttyUSB0 -u patch.bin --exec
-                                      Upload and execute binary
-  %(prog)s -p /dev/ttyUSB0 --compile patch.c -u --exec
-                                      Compile, upload and execute
-  %(prog)s -p /dev/ttyUSB0 -i         Interactive mode
+  %(prog)s --list                      List serial ports
+  %(prog)s -p /dev/ttyUSB0 --ping      Test connection
+  %(prog)s -p /dev/ttyUSB0 --info      Get device info
+  %(prog)s -p /dev/ttyUSB0 -i          Interactive mode
+  %(prog)s -p /dev/ttyUSB0 --inject App/inject/inject.c --target digitalWrite
 '''
     )
 
     parser.add_argument('-p', '--port', help='Serial port')
-    parser.add_argument('-b', '--baudrate', type=int, default=115200, help='Baud rate')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
+    parser.add_argument('-b', '--baudrate', type=int, default=115200)
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-e', '--elf', default='build/FPBInject.elf',
+                        help='Main ELF file for symbols')
 
     parser.add_argument('--list', action='store_true', help='List serial ports')
-    parser.add_argument('--ping', action='store_true', help='Ping device')
-    parser.add_argument('--info', action='store_true', help='Get device info')
+    parser.add_argument('--ping', action='store_true')
+    parser.add_argument('--info', action='store_true')
 
-    parser.add_argument('-u', '--upload', metavar='FILE', help='Upload binary file')
+    parser.add_argument('-u', '--upload', metavar='FILE', help='Upload binary')
     parser.add_argument('--exec', action='store_true', help='Execute after upload')
-    parser.add_argument('--entry', type=lambda x: int(x, 0), default=0, help='Entry offset')
-    parser.add_argument('--args', default='', help='Arguments for execution')
+    parser.add_argument('--entry', type=lambda x: int(x, 0), default=0)
 
-    parser.add_argument('--compile', metavar='FILE', help='Compile C source')
-    parser.add_argument('-I', '--include', action='append', default=[], help='Include path')
-    parser.add_argument('--base', type=lambda x: int(x, 0), default=0x20001000,
-                        help='Base address for compilation')
+    parser.add_argument('--inject', metavar='FILE', help='Injection source file')
+    parser.add_argument('--target', help='Target function to hijack')
+    parser.add_argument('--comp', type=int, default=0, help='FPB comparator')
+    parser.add_argument('--fpatch', action='store_true',
+                        help='Use Flash patching instead of FPB (modifies Flash directly)')
+    parser.add_argument('--config', help='Path to inject_config.json (default: build/inject_config.json)')
+    parser.add_argument('--chunk-size', type=int, default=128,
+                        help='Max hex chars per upload command (default: 128, i.e. 64 bytes)')
 
-    parser.add_argument('--symbols', metavar='ELF', help='Extract symbols from ELF')
-
-    parser.add_argument('-i', '--interactive', action='store_true', help='Interactive mode')
+    parser.add_argument('-i', '--interactive', action='store_true')
 
     args = parser.parse_args()
 
-    # List ports
     if args.list:
         list_ports()
         return 0
 
-    # Extract symbols (no connection needed)
-    if args.symbols:
-        symbols = extract_symbols(args.symbols)
-        for name, info in sorted(symbols.items(), key=lambda x: x[1]['address']):
-            print(f"{info['address']:08X} {info['type']} {name}")
-        return 0
-
-    # Check port
     if not args.port:
         parser.print_help()
         return 1
 
-    # Compile if requested
-    upload_file = args.upload
-    if args.compile:
-        if not upload_file:
-            upload_file = args.compile.replace('.c', '.bin')
-        if not compile_patch(args.compile, upload_file, args.base, args.include):
-            return 1
+    # Resolve ELF path
+    elf_path = args.elf
+    if not os.path.isabs(elf_path):
+        script_dir = Path(__file__).parent.absolute()
+        elf_path = str(script_dir.parent / elf_path)
 
-    # Connect to device
-    loader = FPBLoader(args.port, args.baudrate, args.verbose)
+    loader = FPBLoader(args.port, args.baudrate, args.verbose, args.chunk_size)
     if not loader.connect():
         return 1
 
     try:
-        # Ping
         if args.ping:
             loader.ping()
 
-        # Info
         if args.info:
-            loader.get_info()
+            loader.info()
 
-        # Upload
-        if upload_file:
-            with open(upload_file, 'rb') as f:
+        if args.upload:
+            with open(args.upload, 'rb') as f:
                 data = f.read()
+            if loader.upload(data) and args.exec:
+                loader.execute(args.entry)
+
+        if args.inject and args.target:
+            if not os.path.exists(elf_path):
+                print(f"Error: ELF not found: {elf_path}")
+                return 1
+
+            symbols = get_symbols(elf_path)
+
+            if args.target not in symbols:
+                print(f"Error: Symbol '{args.target}' not found")
+                print("Available symbols matching pattern:")
+                for name in symbols:
+                    if args.target.lower() in name.lower():
+                        print(f"  {name}")
+                return 1
+
+            target_addr = symbols[args.target]
+            print(f"Target: {args.target} @ 0x{target_addr:08X}")
+
+            # Get base address
+            info = loader.info()
+            base_addr = 0x20001000
+            if info and "base" in info:
+                base_addr = info["base"]
+
+            result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
+            if not result:
+                return 1
+
+            data, inject_symbols = result
+
+            inject_func = None
+            for name, addr in inject_symbols.items():
+                if name.startswith('inject_'):
+                    inject_func = (name, addr)
+                    break
+
+            if not inject_func:
+                print("Error: No inject_* function found in source")
+                return 1
+
+            print(f"Inject: {inject_func[0]} @ 0x{inject_func[1]:08X}")
+
+            loader.clear()
             if not loader.upload(data):
                 return 1
 
-            # Execute
-            if args.exec:
-                loader.execute(args.entry, args.args)
+            patch_addr = inject_func[1] | 1
+            if args.fpatch:
+                # Use Flash patching - directly modifies Flash
+                print("Using Flash patching mode...")
+                loader.fpatch(target_addr, patch_addr)
+            else:
+                # Use FPB hardware breakpoint
+                loader.patch(args.comp, target_addr, patch_addr)
+            print("Injection active!")
 
-        # Interactive mode
         if args.interactive:
-            interactive_mode(loader)
+            interactive_mode(loader, elf_path)
 
     finally:
         loader.disconnect()

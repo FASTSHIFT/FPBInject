@@ -6,6 +6,7 @@
 #include "func_loader.h"
 #include "argparse/argparse.h"
 #include "fpb_inject.h"
+#include "flash_patch.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -370,6 +371,15 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
                 (unsigned long)target);
 }
 
+static void cmd_fpatch(fl_context_t* ctx, uintptr_t orig, uintptr_t target) {
+    int ret = flash_patch_function(orig, target);
+    if (ret != 0) {
+        fl_response(ctx, false, "flash_patch failed: %d", ret);
+        return;
+    }
+    fl_response(ctx, true, "Flash patched: 0x%08lX -> 0x%08lX", (unsigned long)orig, (unsigned long)target);
+}
+
 static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
     if (comp >= fpb_get_state()->num_code_comp) {
         fl_response(ctx, false, "Invalid comp %lu", (unsigned long)comp);
@@ -416,7 +426,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     static const char* const usage[] = {"fl --cmd <cmd> [opts]", NULL};
 
     argparse_init(&ap, opts, usage, ARGPARSE_IGNORE_UNKNOWN_ARGS);
-    if (!argparse_parse(&ap, argc, argv)) {
+    int ret = argparse_parse(&ap, argc, argv);
+    if (ret < 0) {
         fl_response(ctx, false, "Invalid arguments");
         return -1;
     }
@@ -472,6 +483,12 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             return -1;
         }
         cmd_patch(ctx, comp, orig, target);
+    } else if (strcmp(cmd, "fpatch") == 0) {
+        if (orig == 0 || target == 0) {
+            fl_response(ctx, false, "Missing --orig/--target");
+            return -1;
+        }
+        cmd_fpatch(ctx, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
         cmd_unpatch(ctx, comp);
     } else {

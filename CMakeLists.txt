@@ -155,3 +155,39 @@ message(STATUS "Linker Script: ${LINKER_SCRIPT}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "========================================")
 
+# =============================================================================
+# Generate inject compile configuration for fpb_loader.py
+# =============================================================================
+
+# Convert include dirs to JSON array
+set(INJECT_INCLUDES "")
+foreach(dir ${INCLUDE_DIRS})
+    if(INJECT_INCLUDES)
+        set(INJECT_INCLUDES "${INJECT_INCLUDES},\n    \"${dir}\"")
+    else()
+        set(INJECT_INCLUDES "\"${dir}\"")
+    endif()
+endforeach()
+
+# Generate inject_config.json
+file(WRITE ${CMAKE_BINARY_DIR}/inject_config.json
+"{
+  \"compiler\": \"${CMAKE_C_COMPILER}\",
+  \"objcopy\": \"${CMAKE_OBJCOPY}\",
+  \"cpu\": \"cortex-m3\",
+  \"fpu\": \"\",
+  \"includes\": [
+    ${INJECT_INCLUDES}
+  ],
+  \"defines\": [
+    \"${STM32_DEVICE}\",
+    \"USE_STDPERIPH_DRIVER\",
+    \"HSE_VALUE=${HSE_VALUE}\"
+  ],
+  \"cflags\": [\"-mcpu=cortex-m3\", \"-mthumb\", \"-Os\", \"-ffunction-sections\", \"-fdata-sections\", \"-fno-exceptions\"],
+  \"ldflags\": [\"-nostartfiles\", \"-nostdlib\", \"-Wl,--gc-sections\"],
+  \"main_elf\": \"${CMAKE_BINARY_DIR}/${PROJECT_NAME}.elf\"
+}
+")
+
+message(STATUS "Generated: ${CMAKE_BINARY_DIR}/inject_config.json")

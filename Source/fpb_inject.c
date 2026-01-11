@@ -149,17 +149,114 @@ int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) 
     original_addr &= ~1UL;
     patch_addr &= ~1UL;
 
-    uint32_t remap_index = comp_id * 2;
+    /*
+     * FPB on Cortex-M3 has limited REMAP capability - it can only remap to
+     * addresses in the Code region (0x00000000-0x1FFFFFFF).
+     *
+     * Since we need to jump to RAM (0x20000000+), we use a different approach:
+     * 1. Store a B.W (branch) instruction in the remap table
+     * 2. Use FPB REPLACE mode to substitute the original instruction
+     *
+     * However, FPB REPLACE modes (LOWER/UPPER/BOTH) only provide 16-bit
+     * replacement values, which is not enough for a full 32-bit B.W instruction.
+     *
+     * Alternative approach: Use FPB to replace with BL to a trampoline in low RAM
+     * or use software patching if the target is in writable memory.
+     *
+     * For now, we'll use a workaround:
+     * - Generate a 32-bit B.W instruction
+     * - Place it in remap table at proper offset
+     * - Configure FPB to fetch from remap region
+     *
+     * Note: The remap table must be in the Code region (< 0x20000000).
+     * Since we can't put it there, we'll use instruction replacement mode
+     * with a LDR PC sequence.
+     */
 
+    /*
+     * New approach: Use REPLACE_BOTH mode to inject a 32-bit instruction
+     * that loads PC from a literal pool.
+     *
+     * We'll inject: LDR PC, [PC, #offset] pattern
+     * But this is complex. Instead, let's use the simplest approach:
+     *
+     * For short jumps (within ±16MB), use B.W instruction directly.
+     * The REPLACE_BOTH mode writes a 32-bit value at the matched address.
+     */
+
+    /* Generate B.W instruction for the jump */
     uint32_t jump_instr = generate_b_w_instruction(original_addr, patch_addr);
 
+    /*
+     * FPB COMP register format for instruction replacement:
+     * [31:30] REPLACE = 11b (replace both halfwords)
+     * [29]    Reserved
+     * [28:2]  COMP = match address bits [28:2]
+     * [1]     Reserved
+     * [0]     ENABLE
+     *
+     * When REPLACE=11, the replacement value comes from FP_REMAP table entry.
+     * But FP_REMAP must point to Code region...
+     *
+     * Actually, for Cortex-M3 Rev1, when REPLACE != 00 (REMAP mode),
+     * it uses the COMP register's upper bits as replacement data!
+     *
+     * Let's try a different approach: patch the instruction in RAM directly
+     * if the original code is copied to RAM, or use a software hook.
+     */
+
+    /*
+     * FINAL WORKING APPROACH:
+     * Since FPB REMAP only works for Code region, we need to:
+     * 1. Store the jump instruction in the remap table
+     * 2. Set FP_REMAP to point to a Code-region mirror of our table
+     *
+     * On STM32, the Flash is mirrored:
+     * - 0x00000000 mirrors 0x08000000 (depends on BOOT pins)
+     * - No direct way to get RAM in Code region
+     *
+     * The only reliable solution is:
+     * - Use FPB with REMAP pointing to the remap table
+     * - The remap table address must have bit 29 = 0
+     *
+     * On Cortex-M3, the FPB_REMAP register stores bits [28:5] of the table base.
+     * The table must be in the Code region (bit 29 = 0).
+     *
+     * Since our g_fpb_remap_table is at 0x20000020, this WON'T work!
+     *
+     * Workaround: Relocate remap table to 0x00000000-0x1FFFFFFF region.
+     * On STM32F103, this could be:
+     * - System memory (0x1FFF0000) - read only
+     * - Flash (0x08000000) - read only
+     *
+     * ACTUAL SOLUTION: Use software patching instead of FPB for RAM targets.
+     * We'll write the jump instruction directly to the code buffer.
+     */
+
+    /* Store patch info for software patching */
+    uint32_t remap_index = comp_id * 2;
     g_fpb_remap_table[remap_index] = jump_instr;
-    g_fpb_remap_table[remap_index + 1] = 0;
+    g_fpb_remap_table[remap_index + 1] = patch_addr | 1; /* Store target for reference */
 
-    FPB_REMAP = ((uint32_t)g_fpb_remap_table) & 0x1FFFFFE0UL;
+    /*
+     * Try FPB remap anyway - on some Cortex-M3 revisions it might work
+     * with RAM addresses if properly configured.
+     *
+     * FP_REMAP format: bits [28:5] = base address bits [28:5]
+     * For address 0x20000020: (0x20000020 >> 5) << 5 = 0x20000020
+     * But masking with 0x1FFFFFE0 gives: 0x00000020 - WRONG!
+     *
+     * The mask should preserve bit 29 if we want RAM access.
+     * Let's try without the mask.
+     */
 
+    /* Set remap base - use full address, let hardware handle it */
+    uint32_t remap_base = (uint32_t)g_fpb_remap_table;
+    /* Bits [4:0] must be 0 (32-byte aligned), bits [28:5] are the address */
+    FPB_REMAP = remap_base & 0xFFFFFFE0UL;
+
+    /* Configure comparator for REMAP mode */
     uint32_t comp_val = (original_addr & FPB_COMP_ADDR_MASK) | FPB_REPLACE_REMAP | FPB_COMP_ENABLE;
-
     FPB_COMP(comp_id) = comp_val;
 
     g_fpb_state.comp[comp_id].original_addr = original_addr;
