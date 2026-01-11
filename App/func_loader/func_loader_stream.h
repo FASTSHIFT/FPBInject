@@ -42,8 +42,7 @@ typedef struct {
 /**
  * @brief Initialize stream processor
  */
-void fl_stream_init(fl_stream_t* s, fl_context_t* ctx, const fl_serial_t* serial,
-                    char* line_buf, size_t line_size);
+void fl_stream_init(fl_stream_t* s, fl_context_t* ctx, const fl_serial_t* serial, char* line_buf, size_t line_size);
 
 /**
  * @brief Process incoming serial data

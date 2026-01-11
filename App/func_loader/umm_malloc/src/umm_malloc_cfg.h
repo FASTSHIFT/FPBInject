@@ -144,80 +144,91 @@ struct umm_heap_config;
 /* A couple of macros to make packing structures less compiler dependent */
 
 #ifndef UMM_H_ATTPACKPRE
-    #define UMM_H_ATTPACKPRE
+#define UMM_H_ATTPACKPRE
 #endif
 #ifndef UMM_H_ATTPACKSUF
-    #define UMM_H_ATTPACKSUF __attribute__((__packed__))
+#define UMM_H_ATTPACKSUF __attribute__((__packed__))
 #endif
 
 /* -------------------------------------------------------------------------- */
 
 #ifndef UMM_INIT_IF_UNINITIALIZED
-    #define UMM_INIT_IF_UNINITIALIZED() do { if (UMM_HEAP == NULL) { umm_init(); } } while(0)
+#define UMM_INIT_IF_UNINITIALIZED() \
+    do {                            \
+        if (UMM_HEAP == NULL) {     \
+            umm_init();             \
+        }                           \
+    } while (0)
 #endif
 
 #ifndef UMM_HANG_IF_UNINITIALIZED
-    #define UMM_HANG_IF_UNINITIALIZED() do { if (UMM_HEAP == NULL) { while(1) {} } } while(0)
+#define UMM_HANG_IF_UNINITIALIZED() \
+    do {                            \
+        if (UMM_HEAP == NULL) {     \
+            while (1) {             \
+            }                       \
+        }                           \
+    } while (0)
 #endif
 
 #ifndef UMM_CHECK_INITIALIZED
-    #define UMM_CHECK_INITIALIZED()
+#define UMM_CHECK_INITIALIZED()
 #endif
 
 /* -------------------------------------------------------------------------- */
 
 #ifndef UMM_BLOCK_BODY_SIZE
-    #define UMM_BLOCK_BODY_SIZE (8)
+#define UMM_BLOCK_BODY_SIZE (8)
 #endif
 
 #define UMM_MIN_BLOCK_BODY_SIZE (8)
 
 #if (UMM_BLOCK_BODY_SIZE < UMM_MIN_BLOCK_BODY_SIZE)
-    #error UMM_BLOCK_BODY_SIZE must be at least 8!
+#error UMM_BLOCK_BODY_SIZE must be at least 8!
 #endif
 
 #if ((UMM_BLOCK_BODY_SIZE % 4) != 0)
-    #error UMM_BLOCK_BODY_SIZE must be multiple of 4!
+#error UMM_BLOCK_BODY_SIZE must be multiple of 4!
 #endif
 
 /* -------------------------------------------------------------------------- */
 
 #ifndef UMM_NUM_HEAPS
-    #define UMM_NUM_HEAPS (1)
+#define UMM_NUM_HEAPS (1)
 #endif
 
 #if (UMM_NUM_HEAPS < 1)
-    #error UMM_NUM_HEAPS must be at least 1!
+#error UMM_NUM_HEAPS must be at least 1!
 #endif
 
 /* -------------------------------------------------------------------------- */
 
 #ifdef UMM_BEST_FIT
-  #ifdef  UMM_FIRST_FIT
-    #error Both UMM_BEST_FIT and UMM_FIRST_FIT are defined - pick one!
-  #endif
+#ifdef UMM_FIRST_FIT
+#error Both UMM_BEST_FIT and UMM_FIRST_FIT are defined - pick one!
+#endif
 #else /* UMM_BEST_FIT is not defined */
-  #ifndef UMM_FIRST_FIT
-    #define UMM_BEST_FIT
-  #endif
+#ifndef UMM_FIRST_FIT
+#define UMM_BEST_FIT
+#endif
 #endif
 
 /* -------------------------------------------------------------------------- */
 
 #ifdef UMM_INLINE_METRICS
-  #define UMM_MULTI_FRAGMENTATION_METRIC_INIT(h) umm_multi_fragmentation_metric_init(h)
-  #define UMM_MULTI_FRAGMENTATION_METRIC_ADD(h,c) umm_multi_fragmentation_metric_add(h,c)
-  #define UMM_MULTI_FRAGMENTATION_METRIC_REMOVE(h,c) umm_multi_fragmentation_metric_remove(h,c)
-  #define UMM_FRAGMENTATION_METRIC_INIT() umm_fragmentation_metric_init()
-  #define UMM_FRAGMENTATION_METRIC_ADD(c) umm_fragmentation_metric_add(c)
-  #define UMM_FRAGMENTATION_METRIC_REMOVE(c) umm_fragmentation_metric_remove(c)
-  #ifndef UMM_INFO
-  #define UMM_INFO
-  #endif
+#define UMM_MULTI_FRAGMENTATION_METRIC_INIT(h) umm_multi_fragmentation_metric_init(h)
+#define UMM_MULTI_FRAGMENTATION_METRIC_ADD(h, c) umm_multi_fragmentation_metric_add(h, c)
+#define UMM_MULTI_FRAGMENTATION_METRIC_REMOVE(h, c) umm_multi_fragmentation_metric_remove(h, c)
+#define UMM_FRAGMENTATION_METRIC_INIT() umm_fragmentation_metric_init()
+#define UMM_FRAGMENTATION_METRIC_ADD(c) umm_fragmentation_metric_add(c)
+#define UMM_FRAGMENTATION_METRIC_REMOVE(c) umm_fragmentation_metric_remove(c)
+#ifndef UMM_INFO
+#define UMM_INFO
+#endif
 #else
-  #define UMM_FRAGMENTATION_METRIC_INIT()
-  #define UMM_FRAGMENTATION_METRIC_ADD(c)
-  #define UMM_FRAGMENTATION_METRIC_REMOVE(c)
+#define UMM_FRAGMENTATION_METRIC_INIT()
+#define UMM_FRAGMENTATION_METRIC_ADD(c)
+#define UMM_FRAGMENTATION_METRIC_REMOVE(c)
 #endif // UMM_INLINE_METRICS
 
 /* -------------------------------------------------------------------------- */
@@ -237,32 +248,31 @@ typedef struct UMM_HEAP_INFO_t {
 
     int usage_metric;
     int fragmentation_metric;
-}
-UMM_HEAP_INFO;
+} UMM_HEAP_INFO;
 
 extern UMM_HEAP_INFO ummHeapInfo;
 
-extern void *umm_multi_info(struct umm_heap_config *heap, void *ptr, bool force);
-extern size_t umm_multi_free_heap_size(struct umm_heap_config *heap);
-extern size_t umm_multi_max_free_block_size(struct umm_heap_config *heap);
-extern int umm_multi_usage_metric(struct umm_heap_config *heap);
-extern int umm_multi_fragmentation_metric(struct umm_heap_config *heap);
-extern void *umm_info(void *ptr, bool force);
+extern void* umm_multi_info(struct umm_heap_config* heap, void* ptr, bool force);
+extern size_t umm_multi_free_heap_size(struct umm_heap_config* heap);
+extern size_t umm_multi_max_free_block_size(struct umm_heap_config* heap);
+extern int umm_multi_usage_metric(struct umm_heap_config* heap);
+extern int umm_multi_fragmentation_metric(struct umm_heap_config* heap);
+extern void* umm_info(void* ptr, bool force);
 extern size_t umm_free_heap_size(void);
 extern size_t umm_max_free_block_size(void);
 extern int umm_usage_metric(void);
 extern int umm_fragmentation_metric(void);
 #else
-  #define umm_multi_info(h,p,b)
-  #define umm_multi_free_heap_size(h) (0)
-  #define umm_multi_max_free_block_size(h) (0)
-  #define umm_multi_usage_metric(h) (0)
-  #define umm_multi_fragmentation_metric(h) (0)
-  #define umm_info(p,b)
-  #define umm_free_heap_size() (0)
-  #define umm_max_free_block_size() (0)
-  #define umm_usage_metric() (0)
-  #define umm_fragmentation_metric() (0)
+#define umm_multi_info(h, p, b)
+#define umm_multi_free_heap_size(h) (0)
+#define umm_multi_max_free_block_size(h) (0)
+#define umm_multi_usage_metric(h) (0)
+#define umm_multi_fragmentation_metric(h) (0)
+#define umm_info(p, b)
+#define umm_free_heap_size() (0)
+#define umm_max_free_block_size() (0)
+#define umm_usage_metric() (0)
+#define umm_fragmentation_metric() (0)
 #endif
 
 /*
@@ -284,30 +294,31 @@ extern int umm_fragmentation_metric(void);
  */
 
 #ifndef UMM_CRITICAL_DECL
-    #define UMM_CRITICAL_DECL(tag)
+#define UMM_CRITICAL_DECL(tag)
 #endif
 
 #ifdef UMM_MAX_CRITICAL_DEPTH_CHECK
 extern int umm_critical_depth;
 extern int umm_max_critical_depth;
-    #ifndef UMM_CRITICAL_ENTRY
-        #define UMM_CRITICAL_ENTRY(tag) { \
-            ++umm_critical_depth; \
-            if (umm_critical_depth > umm_max_critical_depth) { \
-                umm_max_critical_depth = umm_critical_depth; \
-            } \
-        }
-    #endif
-    #ifndef UMM_CRITICAL_EXIT
-        #define UMM_CRITICAL_EXIT(tag)  (umm_critical_depth--)
-    #endif
+#ifndef UMM_CRITICAL_ENTRY
+#define UMM_CRITICAL_ENTRY(tag)                            \
+    {                                                      \
+        ++umm_critical_depth;                              \
+        if (umm_critical_depth > umm_max_critical_depth) { \
+            umm_max_critical_depth = umm_critical_depth;   \
+        }                                                  \
+    }
+#endif
+#ifndef UMM_CRITICAL_EXIT
+#define UMM_CRITICAL_EXIT(tag) (umm_critical_depth--)
+#endif
 #else
-   #ifndef UMM_CRITICAL_ENTRY
-        #define UMM_CRITICAL_ENTRY(tag)
-    #endif
-    #ifndef UMM_CRITICAL_EXIT
-        #define UMM_CRITICAL_EXIT(tag)
-    #endif
+#ifndef UMM_CRITICAL_ENTRY
+#define UMM_CRITICAL_ENTRY(tag)
+#endif
+#ifndef UMM_CRITICAL_EXIT
+#define UMM_CRITICAL_EXIT(tag)
+#endif
 #endif
 
 /*
@@ -323,7 +334,7 @@ extern int umm_max_critical_depth;
  */
 
 #ifdef UMM_INTEGRITY_CHECK
-extern bool umm_multi_integrity_check(struct umm_heap_config *heap);
+extern bool umm_multi_integrity_check(struct umm_heap_config* heap);
 extern bool umm_integrity_check(void);
 #define INTEGRITY_CHECK() umm_integrity_check()
 extern void umm_corruption(void);
@@ -360,25 +371,25 @@ extern void umm_corruption(void);
  */
 
 #ifdef UMM_POISON_CHECK
-  #define UMM_POISON_SIZE_BEFORE (4)
-  #define UMM_POISON_SIZE_AFTER (4)
-  #define UMM_POISONED_BLOCK_LEN_TYPE uint16_t
+#define UMM_POISON_SIZE_BEFORE (4)
+#define UMM_POISON_SIZE_AFTER (4)
+#define UMM_POISONED_BLOCK_LEN_TYPE uint16_t
 
-extern void *umm_multi_poison_malloc(struct umm_heap_config *heap, size_t size);
-extern void *umm_multi_poison_calloc(struct umm_heap_config *heap, size_t num, size_t size);
-extern void *umm_multi_poison_realloc(struct umm_heap_config *heap, void *ptr, size_t size);
-extern void  umm_multi_poison_free(struct umm_heap_config *heap, void *ptr);
-extern bool  umm_multi_poison_check(struct umm_heap_config *heap);
+extern void* umm_multi_poison_malloc(struct umm_heap_config* heap, size_t size);
+extern void* umm_multi_poison_calloc(struct umm_heap_config* heap, size_t num, size_t size);
+extern void* umm_multi_poison_realloc(struct umm_heap_config* heap, void* ptr, size_t size);
+extern void umm_multi_poison_free(struct umm_heap_config* heap, void* ptr);
+extern bool umm_multi_poison_check(struct umm_heap_config* heap);
 
-extern void *umm_poison_malloc(size_t size);
-extern void *umm_poison_calloc(size_t num, size_t size);
-extern void *umm_poison_realloc(void *ptr, size_t size);
-extern void  umm_poison_free(void *ptr);
-extern bool  umm_poison_check(void);
+extern void* umm_poison_malloc(size_t size);
+extern void* umm_poison_calloc(size_t num, size_t size);
+extern void* umm_poison_realloc(void* ptr, size_t size);
+extern void umm_poison_free(void* ptr);
+extern bool umm_poison_check(void);
 
-  #define POISON_CHECK() umm_poison_check()
+#define POISON_CHECK() umm_poison_check()
 #else
-  #define POISON_CHECK() (1)
+#define POISON_CHECK() (1)
 #endif
 
 /*

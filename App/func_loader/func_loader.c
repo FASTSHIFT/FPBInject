@@ -15,38 +15,25 @@
 #endif
 
 static const uint16_t s_crc16_table[256] = {
-    0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7,
-    0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD, 0xE1CE, 0xF1EF,
-    0x1231, 0x0210, 0x3273, 0x2252, 0x52B5, 0x4294, 0x72F7, 0x62D6,
-    0x9339, 0x8318, 0xB37B, 0xA35A, 0xD3BD, 0xC39C, 0xF3FF, 0xE3DE,
-    0x2462, 0x3443, 0x0420, 0x1401, 0x64E6, 0x74C7, 0x44A4, 0x5485,
-    0xA56A, 0xB54B, 0x8528, 0x9509, 0xE5EE, 0xF5CF, 0xC5AC, 0xD58D,
-    0x3653, 0x2672, 0x1611, 0x0630, 0x76D7, 0x66F6, 0x5695, 0x46B4,
-    0xB75B, 0xA77A, 0x9719, 0x8738, 0xF7DF, 0xE7FE, 0xD79D, 0xC7BC,
-    0x48C4, 0x58E5, 0x6886, 0x78A7, 0x0840, 0x1861, 0x2802, 0x3823,
-    0xC9CC, 0xD9ED, 0xE98E, 0xF9AF, 0x8948, 0x9969, 0xA90A, 0xB92B,
-    0x5AF5, 0x4AD4, 0x7AB7, 0x6A96, 0x1A71, 0x0A50, 0x3A33, 0x2A12,
-    0xDBFD, 0xCBDC, 0xFBBF, 0xEB9E, 0x9B79, 0x8B58, 0xBB3B, 0xAB1A,
-    0x6CA6, 0x7C87, 0x4CE4, 0x5CC5, 0x2C22, 0x3C03, 0x0C60, 0x1C41,
-    0xEDAE, 0xFD8F, 0xCDEC, 0xDDCD, 0xAD2A, 0xBD0B, 0x8D68, 0x9D49,
-    0x7E97, 0x6EB6, 0x5ED5, 0x4EF4, 0x3E13, 0x2E32, 0x1E51, 0x0E70,
-    0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF3A, 0x9F59, 0x8F78,
-    0x9188, 0x81A9, 0xB1CA, 0xA1EB, 0xD10C, 0xC12D, 0xF14E, 0xE16F,
-    0x1080, 0x00A1, 0x30C2, 0x20E3, 0x5004, 0x4025, 0x7046, 0x6067,
-    0x83B9, 0x9398, 0xA3FB, 0xB3DA, 0xC33D, 0xD31C, 0xE37F, 0xF35E,
-    0x02B1, 0x1290, 0x22F3, 0x32D2, 0x4235, 0x5214, 0x6277, 0x7256,
-    0xB5EA, 0xA5CB, 0x95A8, 0x8589, 0xF56E, 0xE54F, 0xD52C, 0xC50D,
-    0x34E2, 0x24C3, 0x14A0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
-    0xA7DB, 0xB7FA, 0x8799, 0x97B8, 0xE75F, 0xF77E, 0xC71D, 0xD73C,
-    0x26D3, 0x36F2, 0x0691, 0x16B0, 0x6657, 0x7676, 0x4615, 0x5634,
-    0xD94C, 0xC96D, 0xF90E, 0xE92F, 0x99C8, 0x89E9, 0xB98A, 0xA9AB,
-    0x5844, 0x4865, 0x7806, 0x6827, 0x18C0, 0x08E1, 0x3882, 0x28A3,
-    0xCB7D, 0xDB5C, 0xEB3F, 0xFB1E, 0x8BF9, 0x9BD8, 0xABBB, 0xBB9A,
-    0x4A75, 0x5A54, 0x6A37, 0x7A16, 0x0AF1, 0x1AD0, 0x2AB3, 0x3A92,
-    0xFD2E, 0xED0F, 0xDD6C, 0xCD4D, 0xBDAA, 0xAD8B, 0x9DE8, 0x8DC9,
-    0x7C26, 0x6C07, 0x5C64, 0x4C45, 0x3CA2, 0x2C83, 0x1CE0, 0x0CC1,
-    0xEF1F, 0xFF3E, 0xCF5D, 0xDF7C, 0xAF9B, 0xBFBA, 0x8FD9, 0x9FF8,
-    0x6E17, 0x7E36, 0x4E55, 0x5E74, 0x2E93, 0x3EB2, 0x0ED1, 0x1EF0,
+    0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7, 0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD,
+    0xE1CE, 0xF1EF, 0x1231, 0x0210, 0x3273, 0x2252, 0x52B5, 0x4294, 0x72F7, 0x62D6, 0x9339, 0x8318, 0xB37B, 0xA35A,
+    0xD3BD, 0xC39C, 0xF3FF, 0xE3DE, 0x2462, 0x3443, 0x0420, 0x1401, 0x64E6, 0x74C7, 0x44A4, 0x5485, 0xA56A, 0xB54B,
+    0x8528, 0x9509, 0xE5EE, 0xF5CF, 0xC5AC, 0xD58D, 0x3653, 0x2672, 0x1611, 0x0630, 0x76D7, 0x66F6, 0x5695, 0x46B4,
+    0xB75B, 0xA77A, 0x9719, 0x8738, 0xF7DF, 0xE7FE, 0xD79D, 0xC7BC, 0x48C4, 0x58E5, 0x6886, 0x78A7, 0x0840, 0x1861,
+    0x2802, 0x3823, 0xC9CC, 0xD9ED, 0xE98E, 0xF9AF, 0x8948, 0x9969, 0xA90A, 0xB92B, 0x5AF5, 0x4AD4, 0x7AB7, 0x6A96,
+    0x1A71, 0x0A50, 0x3A33, 0x2A12, 0xDBFD, 0xCBDC, 0xFBBF, 0xEB9E, 0x9B79, 0x8B58, 0xBB3B, 0xAB1A, 0x6CA6, 0x7C87,
+    0x4CE4, 0x5CC5, 0x2C22, 0x3C03, 0x0C60, 0x1C41, 0xEDAE, 0xFD8F, 0xCDEC, 0xDDCD, 0xAD2A, 0xBD0B, 0x8D68, 0x9D49,
+    0x7E97, 0x6EB6, 0x5ED5, 0x4EF4, 0x3E13, 0x2E32, 0x1E51, 0x0E70, 0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF3A,
+    0x9F59, 0x8F78, 0x9188, 0x81A9, 0xB1CA, 0xA1EB, 0xD10C, 0xC12D, 0xF14E, 0xE16F, 0x1080, 0x00A1, 0x30C2, 0x20E3,
+    0x5004, 0x4025, 0x7046, 0x6067, 0x83B9, 0x9398, 0xA3FB, 0xB3DA, 0xC33D, 0xD31C, 0xE37F, 0xF35E, 0x02B1, 0x1290,
+    0x22F3, 0x32D2, 0x4235, 0x5214, 0x6277, 0x7256, 0xB5EA, 0xA5CB, 0x95A8, 0x8589, 0xF56E, 0xE54F, 0xD52C, 0xC50D,
+    0x34E2, 0x24C3, 0x14A0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405, 0xA7DB, 0xB7FA, 0x8799, 0x97B8, 0xE75F, 0xF77E,
+    0xC71D, 0xD73C, 0x26D3, 0x36F2, 0x0691, 0x16B0, 0x6657, 0x7676, 0x4615, 0x5634, 0xD94C, 0xC96D, 0xF90E, 0xE92F,
+    0x99C8, 0x89E9, 0xB98A, 0xA9AB, 0x5844, 0x4865, 0x7806, 0x6827, 0x18C0, 0x08E1, 0x3882, 0x28A3, 0xCB7D, 0xDB5C,
+    0xEB3F, 0xFB1E, 0x8BF9, 0x9BD8, 0xABBB, 0xBB9A, 0x4A75, 0x5A54, 0x6A37, 0x7A16, 0x0AF1, 0x1AD0, 0x2AB3, 0x3A92,
+    0xFD2E, 0xED0F, 0xDD6C, 0xCD4D, 0xBDAA, 0xAD8B, 0x9DE8, 0x8DC9, 0x7C26, 0x6C07, 0x5C64, 0x4C45, 0x3CA2, 0x2C83,
+    0x1CE0, 0x0CC1, 0xEF1F, 0xFF3E, 0xCF5D, 0xDF7C, 0xAF9B, 0xBFBA, 0x8FD9, 0x9FF8, 0x6E17, 0x7E36, 0x4E55, 0x5E74,
+    0x2E93, 0x3EB2, 0x0ED1, 0x1EF0,
 };
 
 static uint16_t calc_crc16(const uint8_t* data, size_t len) {
@@ -58,28 +45,40 @@ static uint16_t calc_crc16(const uint8_t* data, size_t len) {
 }
 
 static int hex_to_bytes(const char* hex, uint8_t* out, size_t max) {
-    if (!hex || !out) return -1;
-    if (hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) hex += 2;
+    if (!hex || !out)
+        return -1;
+    if (hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X'))
+        hex += 2;
 
     size_t hex_len = strlen(hex);
-    if (hex_len % 2 != 0) return -1;
+    if (hex_len % 2 != 0)
+        return -1;
 
     size_t n = hex_len / 2;
-    if (n > max) return -1;
+    if (n > max)
+        return -1;
 
     for (size_t i = 0; i < n; i++) {
         uint8_t hi, lo;
         char c = hex[i * 2];
-        if (c >= '0' && c <= '9') hi = c - '0';
-        else if (c >= 'a' && c <= 'f') hi = c - 'a' + 10;
-        else if (c >= 'A' && c <= 'F') hi = c - 'A' + 10;
-        else return -1;
+        if (c >= '0' && c <= '9')
+            hi = c - '0';
+        else if (c >= 'a' && c <= 'f')
+            hi = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F')
+            hi = c - 'A' + 10;
+        else
+            return -1;
 
         c = hex[i * 2 + 1];
-        if (c >= '0' && c <= '9') lo = c - '0';
-        else if (c >= 'a' && c <= 'f') lo = c - 'a' + 10;
-        else if (c >= 'A' && c <= 'F') lo = c - 'A' + 10;
-        else return -1;
+        if (c >= '0' && c <= '9')
+            lo = c - '0';
+        else if (c >= 'a' && c <= 'f')
+            lo = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F')
+            lo = c - 'A' + 10;
+        else
+            return -1;
 
         out[i] = (hi << 4) | lo;
     }
@@ -88,7 +87,8 @@ static int hex_to_bytes(const char* hex, uint8_t* out, size_t max) {
 
 static int bytes_to_hex(const uint8_t* data, size_t len, char* out, size_t max) {
     static const char hc[] = "0123456789ABCDEF";
-    if (!data || !out || max < len * 2 + 1) return -1;
+    if (!data || !out || max < len * 2 + 1)
+        return -1;
 
     for (size_t i = 0; i < len; i++) {
         out[i * 2] = hc[(data[i] >> 4) & 0x0F];
@@ -128,17 +128,20 @@ static void fl_print(fl_context_t* ctx, const char* fmt, ...) {
 }
 
 static uint8_t* get_buf(fl_context_t* ctx) {
-    if (ctx->dyn_base != 0) return (uint8_t*)ctx->dyn_base;
+    if (ctx->dyn_base != 0)
+        return (uint8_t*)ctx->dyn_base;
     return ctx->static_buf;
 }
 
 static size_t get_buf_size(fl_context_t* ctx) {
-    if (ctx->dyn_base != 0) return ctx->dyn_size;
+    if (ctx->dyn_base != 0)
+        return ctx->dyn_size;
     return ctx->static_size;
 }
 
 static size_t* get_used_ptr(fl_context_t* ctx) {
-    if (ctx->dyn_base != 0) return &ctx->dyn_used;
+    if (ctx->dyn_base != 0)
+        return &ctx->dyn_used;
     return &ctx->static_used;
 }
 
@@ -159,16 +162,19 @@ void fl_init(fl_context_t* ctx) {
 }
 
 static int write_code(fl_context_t* ctx, uint32_t off, const uint8_t* data, size_t len) {
-    if (off + len > get_buf_size(ctx)) return -1;
+    if (off + len > get_buf_size(ctx))
+        return -1;
     memcpy(get_buf(ctx) + off, data, len);
     size_t* used = get_used_ptr(ctx);
-    if (off + len > *used) *used = off + len;
+    if (off + len > *used)
+        *used = off + len;
     return 0;
 }
 
 static int exec_code(fl_context_t* ctx, uint32_t entry_off, int argc, const char** argv) {
     size_t used = *get_used_ptr(ctx);
-    if (entry_off >= used) return -1;
+    if (entry_off >= used)
+        return -1;
 
     uint32_t addr = (uint32_t)(get_buf(ctx) + entry_off) | 1;
     typedef int (*fn_t)(int, const char**);
@@ -266,7 +272,8 @@ static void cmd_clear(fl_context_t* ctx) {
 
 static int parse_args(const char* str, char* buf, size_t sz, char** av, int max) {
     int ac = 0;
-    if (!str || !*str) return 0;
+    if (!str || !*str)
+        return 0;
 
     strncpy(buf, str, sz - 1);
     buf[sz - 1] = '\0';
@@ -281,7 +288,10 @@ static int parse_args(const char* str, char* buf, size_t sz, char** av, int max)
             continue;
         }
         if (!in_q && (*p == ' ' || *p == '\t')) {
-            if (in_a) { *p = '\0'; in_a = false; }
+            if (in_a) {
+                *p = '\0';
+                in_a = false;
+            }
         } else if (!in_a) {
             av[ac++] = p;
             in_a = true;
@@ -316,7 +326,8 @@ static void cmd_call(fl_context_t* ctx, uintptr_t addr, const char* args) {
 
 static void cmd_read(fl_context_t* ctx, uintptr_t addr, size_t len) {
     static char hex[1024];
-    if (len > sizeof(hex) / 2) len = sizeof(hex) / 2;
+    if (len > sizeof(hex) / 2)
+        len = sizeof(hex) / 2;
 
     bytes_to_hex((const uint8_t*)addr, len, hex, sizeof(hex));
     fl_print(ctx, "Data: %s", hex);
@@ -355,8 +366,8 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
         return;
     }
 
-    fl_response(ctx, true, "Patch %lu: 0x%08lX -> 0x%08lX",
-                (unsigned long)comp, (unsigned long)orig, (unsigned long)target);
+    fl_response(ctx, true, "Patch %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
+                (unsigned long)target);
 }
 
 static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
@@ -370,7 +381,8 @@ static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
 }
 
 int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
-    if (argc == 0) return -1;
+    if (argc == 0)
+        return -1;
 
     const char* cmd = NULL;
     const char* data = NULL;
@@ -401,7 +413,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     };
 
     struct argparse ap;
-    static const char* const usage[] = { "fl --cmd <cmd> [opts]", NULL };
+    static const char* const usage[] = {"fl --cmd <cmd> [opts]", NULL};
 
     argparse_init(&ap, opts, usage, ARGPARSE_IGNORE_UNKNOWN_ARGS);
     argparse_parse(&ap, argc, argv);
@@ -416,28 +428,46 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     } else if (strcmp(cmd, "info") == 0) {
         cmd_info(ctx);
     } else if (strcmp(cmd, "alloc") == 0) {
-        if (size == 0) { fl_response(ctx, false, "Missing --size"); return -1; }
+        if (size == 0) {
+            fl_response(ctx, false, "Missing --size");
+            return -1;
+        }
         cmd_alloc(ctx, size);
     } else if (strcmp(cmd, "free") == 0) {
         cmd_free(ctx);
     } else if (strcmp(cmd, "upload") == 0) {
-        if (!data) { fl_response(ctx, false, "Missing --data"); return -1; }
+        if (!data) {
+            fl_response(ctx, false, "Missing --data");
+            return -1;
+        }
         cmd_upload(ctx, addr, data, cksum, cksum >= 0);
     } else if (strcmp(cmd, "clear") == 0) {
         cmd_clear(ctx);
     } else if (strcmp(cmd, "exec") == 0) {
         cmd_exec(ctx, entry, args);
     } else if (strcmp(cmd, "call") == 0) {
-        if (addr == 0) { fl_response(ctx, false, "Missing --addr"); return -1; }
+        if (addr == 0) {
+            fl_response(ctx, false, "Missing --addr");
+            return -1;
+        }
         cmd_call(ctx, addr, args);
     } else if (strcmp(cmd, "read") == 0) {
-        if (addr == 0) { fl_response(ctx, false, "Missing --addr"); return -1; }
+        if (addr == 0) {
+            fl_response(ctx, false, "Missing --addr");
+            return -1;
+        }
         cmd_read(ctx, addr, len);
     } else if (strcmp(cmd, "write") == 0) {
-        if (addr == 0 || !data) { fl_response(ctx, false, "Missing --addr/--data"); return -1; }
+        if (addr == 0 || !data) {
+            fl_response(ctx, false, "Missing --addr/--data");
+            return -1;
+        }
         cmd_write(ctx, addr, data, cksum, cksum >= 0);
     } else if (strcmp(cmd, "patch") == 0) {
-        if (orig == 0 || target == 0) { fl_response(ctx, false, "Missing --orig/--target"); return -1; }
+        if (orig == 0 || target == 0) {
+            fl_response(ctx, false, "Missing --orig/--target");
+            return -1;
+        }
         cmd_patch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
         cmd_unpatch(ctx, comp);

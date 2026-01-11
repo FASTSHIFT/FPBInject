@@ -13,8 +13,7 @@ static void stream_output(void* user, const char* str) {
     }
 }
 
-void fl_stream_init(fl_stream_t* s, fl_context_t* ctx, const fl_serial_t* serial,
-                    char* line_buf, size_t line_size) {
+void fl_stream_init(fl_stream_t* s, fl_context_t* ctx, const fl_serial_t* serial, char* line_buf, size_t line_size) {
     s->ctx = ctx;
     s->serial = serial;
     s->line_buf = line_buf;
@@ -72,7 +71,8 @@ void fl_stream_process(fl_stream_t* s) {
 
     while (s->serial->available_cb() > 0) {
         uint8_t c;
-        if (s->serial->read_cb(&c, 1) != 1) break;
+        if (s->serial->read_cb(&c, 1) != 1)
+            break;
 
         if (c == '\n' || c == '\r') {
             if (s->line_pos > 0) {
@@ -84,7 +84,8 @@ void fl_stream_process(fl_stream_t* s) {
         }
 
         if (c == '\b' || c == 0x7F) {
-            if (s->line_pos > 0) s->line_pos--;
+            if (s->line_pos > 0)
+                s->line_pos--;
             continue;
         }
 

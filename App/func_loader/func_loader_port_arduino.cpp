@@ -58,7 +58,9 @@ static void banner_output(void* user, const char* str) {
 
 void func_loader_run(void) {
     Serial.begin(115200);
-    while (!Serial) { ; }
+    while (!Serial) {
+        ;
+    }
     delay(100);
 
     fl_init(&s_ctx);

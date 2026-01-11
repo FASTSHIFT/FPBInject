@@ -46,8 +46,7 @@
 static uint8_t g_code_buf[FL_NUTTX_BUF_SIZE] __attribute__((aligned(4)));
 
 /* Output callback */
-static void nuttx_output_cb(void* user, const char* str)
-{
+static void nuttx_output_cb(void* user, const char* str) {
     (void)user;
     fputs(str, stdout);
 }
@@ -66,8 +65,7 @@ static fl_context_t g_ctx = {
     .dyn_used = 0,
 };
 
-static int parse_line(char* line, const char** argv, int max_argc)
-{
+static int parse_line(char* line, const char** argv, int max_argc) {
     int argc = 0;
     char* p = line;
     bool in_quote = false;
@@ -99,8 +97,7 @@ static int parse_line(char* line, const char** argv, int max_argc)
     return argc;
 }
 
-static int interactive_mode(void)
-{
+static int interactive_mode(void) {
     char line[FL_NUTTX_LINE_SIZE];
     static const char* argv[32];
 
@@ -141,8 +138,7 @@ static int interactive_mode(void)
 /**
  * @brief NuttX application entry point
  */
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     fl_init(&g_ctx);
 
     /* No arguments - interactive mode */
