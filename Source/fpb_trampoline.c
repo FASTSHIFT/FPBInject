@@ -46,23 +46,21 @@ volatile uint32_t fpb_trampoline_targets[FPB_TRAMPOLINE_COUNT] __attribute__((se
  *
  * @param n  Trampoline index (0-5)
  */
-#define DEFINE_TRAMPOLINE_ASM(n)                                              \
-    __attribute__((naked, section(".trampoline")))                            \
-    void fpb_trampoline_##n(void) {                                           \
-        __asm volatile(                                                       \
-            "push {r12}\n"                      /* Save R12 */                \
-            "ldr r12, =fpb_trampoline_targets\n" /* Load base address */      \
-            "ldr r12, [r12, %0]\n"              /* Load target[n] */          \
-            "cmp r12, #0\n"                     /* Check if target is set */  \
-            "beq 1f\n"                          /* If zero, return */         \
-            "str r12, [sp]\n"                   /* Store target on stack */   \
-            "pop {pc}\n"                        /* Pop to PC (jump) */        \
-            "1:\n"                                                            \
-            "pop {r12}\n"                       /* Restore R12 */             \
-            "bx lr\n"                           /* Return if no target */     \
-            :                                                                 \
-            : "i" ((n) * 4)                     /* Immediate offset */        \
-        );                                                                    \
+#define DEFINE_TRAMPOLINE_ASM(n)                                                         \
+    __attribute__((naked, section(".trampoline"))) void fpb_trampoline_##n(void) {       \
+        __asm volatile("push {r12}\n"                       /* Save R12 */               \
+                       "ldr r12, =fpb_trampoline_targets\n" /* Load base address */      \
+                       "ldr r12, [r12, %0]\n"               /* Load target[n] */         \
+                       "cmp r12, #0\n"                      /* Check if target is set */ \
+                       "beq 1f\n"                           /* If zero, return */        \
+                       "str r12, [sp]\n"                    /* Store target on stack */  \
+                       "pop {pc}\n"                         /* Pop to PC (jump) */       \
+                       "1:\n"                                                            \
+                       "pop {r12}\n" /* Restore R12 */                                   \
+                       "bx lr\n"     /* Return if no target */                           \
+                       :                                                                 \
+                       : "i"((n)*4) /* Immediate offset */                               \
+        );                                                                               \
     }
 
 /* Generate all 6 trampolines */
@@ -86,12 +84,11 @@ typedef void (*fpb_trampoline_func_t)(void);
  *
  * @param n  Trampoline index (0-5)
  */
-#define DEFINE_TRAMPOLINE_C(n)                                                \
-    __attribute__((section(".trampoline")))                                   \
-    void fpb_trampoline_##n(void) {                                           \
-        if (fpb_trampoline_targets[n]) {                                      \
-            ((fpb_trampoline_func_t)(fpb_trampoline_targets[n] & ~1u))();     \
-        }                                                                     \
+#define DEFINE_TRAMPOLINE_C(n)                                              \
+    __attribute__((section(".trampoline"))) void fpb_trampoline_##n(void) { \
+        if (fpb_trampoline_targets[n]) {                                    \
+            ((fpb_trampoline_func_t)(fpb_trampoline_targets[n] & ~1u))();   \
+        }                                                                   \
     }
 
 /* Generate all 6 trampolines */
@@ -105,13 +102,8 @@ DEFINE_TRAMPOLINE_C(5)
 #endif /* FPB_TRAMPOLINE_NO_ASM */
 
 /* Trampoline address table (in Flash, for lookup) */
-void (* const fpb_trampoline_table[FPB_TRAMPOLINE_COUNT])(void) = {
-    fpb_trampoline_0,
-    fpb_trampoline_1,
-    fpb_trampoline_2,
-    fpb_trampoline_3,
-    fpb_trampoline_4,
-    fpb_trampoline_5,
+void (*const fpb_trampoline_table[FPB_TRAMPOLINE_COUNT])(void) = {
+    fpb_trampoline_0, fpb_trampoline_1, fpb_trampoline_2, fpb_trampoline_3, fpb_trampoline_4, fpb_trampoline_5,
 };
 
 void fpb_trampoline_set_target(uint32_t comp, uint32_t target) {
@@ -128,7 +120,7 @@ void fpb_trampoline_clear_target(uint32_t comp) {
 
 uint32_t fpb_trampoline_get_address(uint32_t comp) {
     if (comp < FPB_TRAMPOLINE_COUNT) {
-        return (uint32_t)fpb_trampoline_table[comp] | 1;  /* Add Thumb bit */
+        return (uint32_t)fpb_trampoline_table[comp] | 1; /* Add Thumb bit */
     }
     return 0;
 }

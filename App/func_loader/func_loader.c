@@ -211,6 +211,7 @@ static void cmd_alloc(fl_context_t* ctx, size_t size) {
 
     if (ctx->dyn_base != 0 && ctx->free_cb) {
         ctx->free_cb((void*)ctx->dyn_base);
+        ctx->dyn_base = 0;
     }
 
     void* p = ctx->malloc_cb(size);
@@ -391,8 +392,8 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
         return;
     }
 
-    fl_response(ctx, true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX",
-                (unsigned long)comp, (unsigned long)orig, (unsigned long)tramp_addr, (unsigned long)target);
+    fl_response(ctx, true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX", (unsigned long)comp,
+                (unsigned long)orig, (unsigned long)tramp_addr, (unsigned long)target);
 }
 
 static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
@@ -505,7 +506,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         }
         cmd_tpatch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
-        fpb_trampoline_clear_target(comp);  /* Also clear trampoline target */
+        fpb_trampoline_clear_target(comp); /* Also clear trampoline target */
         cmd_unpatch(ctx, comp);
     } else {
         fl_response(ctx, false, "Unknown: %s", cmd);

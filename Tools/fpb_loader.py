@@ -208,9 +208,15 @@ class FPBLoader:
         resp = self._send_cmd(f"--cmd alloc --size {size}")
         result = self._parse_response(resp)
         if result.get("ok"):
-            base = result.get("base", 0)
-            print(f"Allocated {size} bytes at 0x{base:08X}")
-            return base
+            # Parse allocated address from response message
+            # Format: "Allocated <size> at 0x<addr>"
+            msg = result.get("msg", "")
+            import re
+            match = re.search(r'0x([0-9A-Fa-f]+)', msg)
+            if match:
+                base = int(match.group(1), 16)
+                print(f"Allocated {size} bytes at 0x{base:08X}")
+                return base
         print(f"Alloc failed: {result}")
         return None
 
@@ -226,33 +232,41 @@ class FPBLoader:
         result = self._parse_response(resp)
         return result.get("ok", False)
 
-    def upload(self, data: bytes, progress: bool = True) -> bool:
-        """Upload binary data in chunks."""
+    def upload(self, data: bytes, progress: bool = True, start_offset: int = 0) -> bool:
+        """Upload binary data in chunks.
+        
+        Args:
+            data: Binary data to upload
+            progress: Show progress bar
+            start_offset: Starting offset in device buffer (for alignment)
+        """
         total = len(data)
-        offset = 0
+        data_offset = 0
         # chunk_size is hex chars, so bytes per chunk = chunk_size / 2
         bytes_per_chunk = self.chunk_size // 2
 
-        while offset < total:
-            chunk = data[offset:offset + bytes_per_chunk]
+        while data_offset < total:
+            chunk = data[data_offset:data_offset + bytes_per_chunk]
             hex_data = chunk.hex().upper()
             checksum = crc16(chunk)
 
-            cmd = f"--cmd upload --addr {offset} --data {hex_data} --checksum {checksum}"
+            # Device offset = start_offset + data_offset
+            device_offset = start_offset + data_offset
+            cmd = f"--cmd upload --addr {device_offset} --data {hex_data} --checksum {checksum}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
 
             if not result.get("ok"):
-                print(f"\nUpload failed at offset {offset}: {result}")
+                print(f"\nUpload failed at offset {device_offset}: {result}")
                 return False
 
-            offset += len(chunk)
+            data_offset += len(chunk)
             if progress:
-                pct = offset * 100 // total
-                print(f"\rUploading: {offset}/{total} bytes ({pct}%)", end='', flush=True)
+                pct = data_offset * 100 // total
+                print(f"\rUploading: {data_offset}/{total} bytes ({pct}%)", end='', flush=True)
 
         if progress:
-            print(f"\nUpload complete: {total} bytes")
+            print(f"\nUpload complete: {total} bytes @ offset {start_offset}")
         return True
 
     def execute(self, entry: int = 0, args: str = "") -> Optional[int]:
@@ -790,17 +804,48 @@ Examples:
             target_addr = symbols[args.target]
             print(f"Target: {args.target} @ 0x{target_addr:08X}")
 
-            # Get base address
+            # Get device info to determine allocation mode
             info = loader.info()
-            base_addr = 0x20001000
-            if info and "base" in info:
-                base_addr = info["base"]
+            is_dynamic = info and info.get("base", 0) == 0 and info.get("size", 0) == 0
 
-            result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
-            if not result:
-                return 1
+            if is_dynamic:
+                # Dynamic allocation mode: compile first to get size, then alloc, then recompile
+                print("Dynamic allocation mode detected")
 
-            data, inject_symbols = result
+                # First pass: compile with dummy address (8-byte aligned) to get size
+                result = compile_inject(args.inject, 0x20000000, elf_path, args.config, args.verbose)
+                if not result:
+                    return 1
+                data, _ = result
+                code_size = len(data)
+
+                # Allocate memory on device (request extra for alignment)
+                alloc_size = code_size + 8  # Extra space for alignment
+                raw_addr = loader.alloc(alloc_size)
+                if not raw_addr:
+                    print("Error: Failed to allocate memory on device")
+                    return 1
+
+                # Calculate alignment offset
+                aligned_addr = (raw_addr + 7) & ~7
+                align_offset = aligned_addr - raw_addr
+                if align_offset:
+                    print(f"Alignment: raw=0x{raw_addr:08X}, aligned=0x{aligned_addr:08X}, offset={align_offset}")
+                base_addr = aligned_addr
+
+                # Second pass: recompile with aligned address
+                result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
+                if not result:
+                    return 1
+                data, inject_symbols = result
+            else:
+                # Static allocation mode: use pre-allocated buffer
+                base_addr = info.get("base", 0x20001000) if info else 0x20001000
+                align_offset = 0  # Static buffer should already be aligned
+                result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
+                if not result:
+                    return 1
+                data, inject_symbols = result
 
             inject_func = None
             if args.func:
@@ -837,7 +882,8 @@ Examples:
             print(f"Inject: {inject_func[0]} @ 0x{inject_func[1]:08X}")
 
             loader.clear()
-            if not loader.upload(data):
+            # Upload with alignment offset so data starts at aligned address
+            if not loader.upload(data, start_offset=align_offset):
                 return 1
 
             patch_addr = inject_func[1] | 1

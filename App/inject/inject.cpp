@@ -5,7 +5,6 @@ __attribute__((used, section(".text.inject"))) void inject_digitalWrite(uint8_t 
     value ? digitalWrite_HIGH(pin) : digitalWrite_LOW(pin);
 }
 
-__attribute__((used, section(".text.inject"))) void inject_no_args(void)
-{
+__attribute__((used, section(".text.inject"))) void inject_no_args(void) {
     Serial.printf("Injected: no args, ms=%d\n", (int)millis());
 }

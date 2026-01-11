@@ -169,10 +169,63 @@ void inject_no_args(void) {
 | Option | Default | Description |
 |--------|---------|-------------|
 | `APP_SELECT` | 1 | Application (1=blink, 2=test, 3=func_loader) |
+| `FL_ALLOC_MODE` | STATIC | Memory allocation mode (STATIC/LIBC/UMM) |
 | `FPB_NO_TRAMPOLINE` | OFF | Disable trampoline (for cores that can REMAP to RAM) |
 | `FPB_TRAMPOLINE_NO_ASM` | OFF | Use C instead of assembly (no argument preservation) |
 | `HSE_VALUE` | 8000000 | External oscillator frequency |
 | `STM32_DEVICE` | STM32F10X_MD | Target device variant |
+
+### Memory Allocation Modes
+
+| Mode | CMake Value | Description |
+|------|-------------|-------------|
+| **Static** | `STATIC` | Fixed-size static buffer (4KB, default) |
+| **LIBC** | `LIBC` | Standard libc malloc/free (dynamic) |
+| **UMM** | `UMM` | umm_malloc embedded allocator (8KB heap) |
+
+Example:
+
+```bash
+# Static allocation (default, 4KB fixed buffer)
+cmake -B build -DAPP_SELECT=3 -DFL_ALLOC_MODE=STATIC \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
+
+# LIBC malloc/free (dynamic allocation)
+cmake -B build -DAPP_SELECT=3 -DFL_ALLOC_MODE=LIBC \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
+
+# UMM_MALLOC (embedded allocator with 8KB heap)
+cmake -B build -DAPP_SELECT=3 -DFL_ALLOC_MODE=UMM \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
+```
+
+#### Dynamic Allocation Address Alignment
+
+> ⚠️ **Important Technical Note**
+>
+> When using dynamic allocation modes (LIBC or UMM), the injection code must be placed at an **8-byte aligned address**. ARM Cortex-M functions require proper alignment for correct execution.
+>
+> **The Problem:**
+> - `malloc()` may return addresses that are only 4-byte aligned (e.g., `0x20001544`)
+> - GCC aligns functions to 8-byte boundaries, causing a 4-byte offset in the compiled binary
+> - If code is uploaded without accounting for this offset, all address references (strings, function calls) will be incorrect
+>
+> **The Solution (handled automatically by `fpb_loader.py`):**
+> 1. Allocate extra space: `size + 8` bytes
+> 2. Calculate aligned address: `aligned = (raw + 7) & ~7`
+> 3. Upload code starting at the alignment offset
+>
+> ```
+> Example:
+>   malloc returns:  0x20001544 (4-byte aligned)
+>   aligned address: 0x20001548 (8-byte aligned)
+>   offset:          4 bytes
+>   
+>   Upload: data written to offset 4 in buffer
+>   Result: code starts at 0x20001548, addresses match
+> ```
+>
+> This is why static allocation (`FL_ALLOC_MODE=STATIC`) uses a buffer with `__attribute__((aligned(4), section(".ram_code")))` - ensuring proper alignment from the start.
 
 ### Trampoline Modes
 

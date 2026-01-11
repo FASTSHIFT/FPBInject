@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define FPB_TRAMPOLINE_COUNT  6  /* Number of available trampolines (STM32F103) */
+#define FPB_TRAMPOLINE_COUNT 6 /* Number of available trampolines (STM32F103) */
 
 #ifndef FPB_NO_TRAMPOLINE
 
@@ -43,9 +43,17 @@ uint32_t fpb_trampoline_get_address(uint32_t comp);
 #else /* FPB_NO_TRAMPOLINE */
 
 /* Stub functions when trampoline is disabled */
-static inline void fpb_trampoline_set_target(uint32_t comp, uint32_t target) { (void)comp; (void)target; }
-static inline void fpb_trampoline_clear_target(uint32_t comp) { (void)comp; }
-static inline uint32_t fpb_trampoline_get_address(uint32_t comp) { (void)comp; return 0; }
+static inline void fpb_trampoline_set_target(uint32_t comp, uint32_t target) {
+    (void)comp;
+    (void)target;
+}
+static inline void fpb_trampoline_clear_target(uint32_t comp) {
+    (void)comp;
+}
+static inline uint32_t fpb_trampoline_get_address(uint32_t comp) {
+    (void)comp;
+    return 0;
+}
 
 #endif /* FPB_NO_TRAMPOLINE */
 

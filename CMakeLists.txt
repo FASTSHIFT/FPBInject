@@ -20,6 +20,13 @@ set(APP_SELECT "1" CACHE STRING "Application to build (1=blink, 2=test, 3=func_l
 option(FPB_NO_TRAMPOLINE "Disable trampoline (for cores that can REMAP to RAM directly)" OFF)
 option(FPB_TRAMPOLINE_NO_ASM "Use C instead of assembly for trampoline (no argument preservation)" OFF)
 
+# Function loader allocation mode:
+# STATIC = Static buffer allocation (default)
+# LIBC   = Use standard libc malloc/free
+# UMM    = Use umm_malloc (embedded allocator)
+set(FL_ALLOC_MODE "STATIC" CACHE STRING "Function loader memory allocation mode (STATIC/LIBC/UMM)")
+set_property(CACHE FL_ALLOC_MODE PROPERTY STRINGS "STATIC" "LIBC" "UMM")
+
 # Compile definitions
 add_compile_definitions(
     ${STM32_DEVICE}
@@ -35,6 +42,15 @@ endif()
 
 if(FPB_TRAMPOLINE_NO_ASM)
     add_compile_definitions(FPB_TRAMPOLINE_NO_ASM)
+endif()
+
+# Add allocation mode definition
+if(FL_ALLOC_MODE STREQUAL "LIBC")
+    add_compile_definitions(FL_ALLOC_LIBC)
+elseif(FL_ALLOC_MODE STREQUAL "UMM")
+    add_compile_definitions(FL_ALLOC_UMM)
+else()
+    add_compile_definitions(FL_ALLOC_STATIC)
 endif()
 
 # Source directories
@@ -71,6 +87,14 @@ file(GLOB APP_FUNC_LOADER_SOURCES
     ${APP_DIR}/func_loader/*.cpp
     ${APP_DIR}/func_loader/argparse/*.c
 )
+
+# Add UMM_MALLOC sources only when needed
+if(FL_ALLOC_MODE STREQUAL "UMM")
+    list(APPEND APP_FUNC_LOADER_SOURCES
+        ${APP_DIR}/func_loader/umm_malloc/src/umm_malloc.c
+        ${APP_DIR}/func_loader/umm_malloc/src/umm_info.c
+    )
+endif()
 
 # Arduino API
 file(GLOB ARDUINO_SOURCES
@@ -124,6 +148,7 @@ set(INCLUDE_DIRS
     ${APP_DIR}/test
     ${APP_DIR}/func_loader
     ${APP_DIR}/func_loader/argparse
+    ${APP_DIR}/func_loader/umm_malloc/src
     ${ARDUINO_DIR}
     ${ARDUINO_DIR}/avr
     ${PLATFORM_DIR}/Config
@@ -166,6 +191,7 @@ message(STATUS "HSE: ${HSE_VALUE} Hz")
 message(STATUS "App Select: ${APP_SELECT}")
 message(STATUS "FPB_NO_TRAMPOLINE: ${FPB_NO_TRAMPOLINE}")
 message(STATUS "FPB_TRAMPOLINE_NO_ASM: ${FPB_TRAMPOLINE_NO_ASM}")
+message(STATUS "FL_ALLOC_MODE: ${FL_ALLOC_MODE}")
 message(STATUS "Linker Script: ${LINKER_SCRIPT}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "========================================")
