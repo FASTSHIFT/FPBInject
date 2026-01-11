@@ -1,227 +1,290 @@
-# FPBInject - Cortex-M FPB代码运行时注入工具
+# FPBInject - Cortex-M Runtime Code Injection Tool
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-STM32F103-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103.html)
 
-FPB-Based Embedded Runtime Code Injection Tool & Implementation
+Runtime code injection tool for ARM Cortex-M3/M4 using the Flash Patch and Breakpoint (FPB) unit.
 
-## 项目简介
+## Overview
 
-FPBInject是一个基于ARM Cortex-M3/M4 Flash Patch and Breakpoint (FPB) 单元的运行时代码注入工具。它允许在不修改Flash内容的情况下，在运行时动态替换函数实现，实现热补丁功能。
+FPBInject enables runtime function hooking and code injection on Cortex-M microcontrollers without modifying Flash memory. It leverages the FPB hardware unit to redirect function calls to custom code loaded in RAM.
 
-### 主要特性
+### Key Features
 
-- ✅ **运行时代码注入** - 无需擦写Flash即可修改程序行为
-- ✅ **硬件级实现** - 利用Cortex-M FPB硬件单元，零软件开销
-- ✅ **支持多个补丁** - STM32F103支持6个同时活跃的代码补丁
-- ✅ **透明重定向** - 对被补丁函数的调用者完全透明
-- ✅ **可逆操作** - 可随时禁用补丁恢复原始功能
+- ✅ **Zero Flash Modification** - Inject code at runtime without erasing/writing Flash
+- ✅ **Hardware-Level Redirection** - Uses Cortex-M FPB unit for zero-overhead patching
+- ✅ **Multiple Hooks** - Supports up to 6 simultaneous code patches (STM32F103)
+- ✅ **Transparent Hijacking** - Completely transparent to calling code
+- ✅ **Reversible** - Easily disable patches to restore original behavior
+- ✅ **Trampoline Architecture** - Pre-placed Flash trampolines jump to RAM code
 
-## 硬件要求
+## How It Works
 
-- **MCU**: STM32F103C8T6 (Blue Pill) 或其他Cortex-M3/M4设备
-- **调试器**: ST-Link V2
-- **其他**: USB线缆, PC13 LED (板载)
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        FPBInject Injection Flow                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│   1. Original Call           2. FPB Intercept         3. Trampoline     │
+│   ┌──────────────┐          ┌──────────────┐         ┌──────────────┐   │
+│   │ caller()     │          │   FPB Unit   │         │ trampoline_0 │   │
+│   │ calls        │────────> │ addr match   │───────> │ in Flash     │   │
+│   │ digitalWrite │          │ 0x08008308   │         │ loads target │   │
+│   └──────────────┘          └──────────────┘         └──────────────┘   │
+│                                                             │           │
+│   4. RAM Code Execution                                     ▼           │
+│   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │  inject_digitalWrite() @ 0x20000278 (RAM)                        │  │
+│   │  - Custom hook logic executes                                    │  │
+│   │  - Can call original function or replace entirely                │  │
+│   └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-## 软件依赖
+### Architecture
+
+The injection uses a two-stage approach:
+
+1. **FPB REMAP**: Redirects original function address to a trampoline function in Flash
+2. **Trampoline**: Pre-placed code in Flash that reads target address from RAM and jumps to it
+
+This design allows dynamic target changes without runtime Flash modification.
+
+## Hardware Requirements
+
+- **MCU**: STM32F103C8T6 (Blue Pill) or other Cortex-M3/M4 device
+- **Debugger**: ST-Link V2 (for flashing)
+- **Serial**: USB-to-Serial adapter or USB CDC
+- **LED**: PC13 (onboard Blue Pill LED)
+
+## Software Requirements
 
 - ARM GNU Toolchain (`arm-none-eabi-gcc`)
 - CMake (>= 3.16)
-- Ninja Build
-- OpenOCD 或 ST-Link Tools
-- Python 3.x (环境搭建脚本)
+- Python 3.x with `pyserial`
+- ST-Link Tools or OpenOCD
 
-## 快速开始
+## Quick Start
 
-### 1. 克隆仓库
+### 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/FPBInject.git
+git clone https://github.com/FASTSHIFT/FPBInject.git
 cd FPBInject
 ```
 
-### 2. 一键搭建环境
+### 2. Build
 
 ```bash
-python3 Tools/setup_env.py
-```
+# Configure
+cmake -B build -DAPP_SELECT=3 -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
 
-这将:
-- 安装必要的工具链
-- 创建VS Code配置文件
-- 编译项目
-
-### 3. 手动编译
-
-```bash
-# 配置CMake
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
-
-# 编译
+# Build
 cmake --build build
 ```
 
-### 4. 烧写固件
+### 3. Flash
 
-使用OpenOCD:
 ```bash
-openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
-        -c "program build/FPBInject.elf verify reset exit"
+st-flash write build/FPBInject.bin 0x08000000
 ```
 
-或使用st-flash:
+### 4. Inject Code
+
 ```bash
-st-flash --reset write build/FPBInject.bin 0x08000000
+# Inject custom code to hook digitalWrite function
+python3 Tools/fpb_loader.py -p /dev/ttyACM0 \
+    --inject App/inject/inject.cpp \
+    --target digitalWrite
 ```
 
-## FPB工作原理
+## Usage
 
-### 什么是FPB?
+### Command Line Options
 
-Flash Patch and Breakpoint (FPB) 是ARM Cortex-M处理器中的调试组件，原本设计用于:
-1. 设置硬件断点
-2. 修补Flash中的bug (无需重新编程)
+```bash
+fpb_loader.py [options]
 
-### FPB结构 (STM32F103)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    FPB Unit (Cortex-M3)                     │
-├─────────────────────────────────────────────────────────────┤
-│  FP_CTRL (0xE0002000)  - 控制寄存器                         │
-│  FP_REMAP (0xE0002004) - 重映射表基地址                     │
-│  FP_COMP0-5 (0xE0002008-0x1C) - 代码比较器 (6个)           │
-│  FP_COMP6-7 (0xE0002020-0x24) - 字面量比较器 (2个)         │
-└─────────────────────────────────────────────────────────────┘
+Options:
+  -p, --port PORT      Serial port (e.g., /dev/ttyACM0)
+  -b, --baudrate BAUD  Baud rate (default: 115200)
+  --inject FILE        Source file to inject (.c or .cpp)
+  --target FUNC        Target function to hook
+  --func NAME          Inject function name (default: first inject_*)
+  --comp N             FPB comparator index 0-5 (default: 0)
+  -i, --interactive    Interactive mode
+  --ping               Test connection
+  --info               Show device info
 ```
 
-### 代码注入流程
+### Examples
 
+```bash
+# Hook digitalWrite with custom logging
+python3 Tools/fpb_loader.py -p /dev/ttyACM0 \
+    --inject App/inject/inject.cpp \
+    --target digitalWrite
+
+# Hook blink_led with no-args injector
+python3 Tools/fpb_loader.py -p /dev/ttyACM0 \
+    --inject App/inject/inject.cpp \
+    --target 'blink_led()' \
+    --func inject_no_args
+
+# Use different comparator for multiple hooks
+python3 Tools/fpb_loader.py -p /dev/ttyACM0 \
+    --inject App/inject/inject.cpp \
+    --target pinMode \
+    --comp 1
 ```
-1. CPU取指请求          2. FPB地址匹配           3. 返回跳转指令
-┌─────────┐           ┌─────────────┐          ┌─────────────┐
-│  CPU    │──────────>│    FPB      │─────────>│ REMAP Table │
-│  fetch  │ addr=0x1000│  Comparator │ match!   │ B.W 0x2000  │
-│ 0x1000  │           │  [0x1000]   │          │             │
-└─────────┘           └─────────────┘          └─────────────┘
-                                                     │
-                      ┌──────────────────────────────┘
-                      ▼
-              4. 执行补丁函数
-              ┌─────────────┐
-              │ patch_func  │
-              │ @ 0x2000    │
-              └─────────────┘
-```
 
-## API使用
+### Writing Injection Code
 
-### 基本使用
+Create a source file with an `inject_*` function:
 
-```c
-#include "fpb_inject.h"
+```cpp
+// App/inject/inject.cpp
+#include <Arduino.h>
 
-// 原始函数
-void original_func(void) {
-    // 原始实现
+// Hook function - replaces digitalWrite
+__attribute__((used, section(".text.inject")))
+void inject_digitalWrite(uint8_t pin, uint8_t value) {
+    Serial.printf("Hooked: pin=%d val=%d\n", pin, value);
+    // Call original or custom implementation
+    value ? digitalWrite_HIGH(pin) : digitalWrite_LOW(pin);
 }
 
-// 补丁函数
-void patched_func(void) {
-    // 新实现
-}
-
-int main(void) {
-    // 初始化FPB
-    FPB_Init();
-    
-    // 设置补丁: 将original_func重定向到patched_func
-    FPB_SetPatch(0, (uint32_t)original_func, (uint32_t)patched_func);
-    
-    // 调用original_func实际会执行patched_func
-    original_func();  // 实际执行patched_func!
-    
-    // 禁用补丁
-    FPB_ClearPatch(0);
-    
-    // 现在调用original_func执行原始代码
-    original_func();  // 执行原始代码
-    
-    return 0;
+// Simple hook without arguments
+__attribute__((used, section(".text.inject")))
+void inject_no_args(void) {
+    Serial.printf("Function called at %dms\n", (int)millis());
 }
 ```
 
-### API参考
+## Configuration
 
-| 函数 | 描述 |
-|------|------|
-| `FPB_Init()` | 初始化FPB单元 |
-| `FPB_DeInit()` | 反初始化FPB |
-| `FPB_SetPatch(id, orig, patch)` | 设置代码补丁 |
-| `FPB_ClearPatch(id)` | 清除补丁 |
-| `FPB_EnableComp(id, enable)` | 使能/禁用比较器 |
-| `FPB_GetState()` | 获取FPB状态 |
-| `FPB_IsSupported()` | 检查FPB支持 |
+### CMake Options
 
-## Demo说明
+| Option | Default | Description |
+|--------|---------|-------------|
+| `APP_SELECT` | 1 | Application (1=blink, 2=test, 3=func_loader) |
+| `FPB_NO_TRAMPOLINE` | OFF | Disable trampoline (for cores that can REMAP to RAM) |
+| `FPB_TRAMPOLINE_NO_ASM` | OFF | Use C instead of assembly (no argument preservation) |
+| `HSE_VALUE` | 8000000 | External oscillator frequency |
+| `STM32_DEVICE` | STM32F10X_MD | Target device variant |
 
-本项目包含一个LED闪烁Demo，演示FPB注入功能:
+### Trampoline Modes
 
-1. **初始状态**: LED以500ms周期闪烁
-2. **注入后**: LED以100ms周期快速闪烁
-3. **循环演示**: 自动在原始/补丁函数间切换
+| Mode | CMake Option | Description |
+|------|--------------|-------------|
+| **ASM (default)** | - | Uses inline assembly to preserve R0-R3 registers |
+| **No ASM** | `-DFPB_TRAMPOLINE_NO_ASM=ON` | Simple C function call, no argument preservation |
+| **Disabled** | `-DFPB_NO_TRAMPOLINE=ON` | No trampoline, for cores that support direct RAM REMAP |
 
+Example:
+
+```bash
+# Build with C-based trampoline (no assembly)
+cmake -B build -DAPP_SELECT=3 -DFPB_TRAMPOLINE_NO_ASM=ON \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
+
+# Build without trampoline (for Cortex-M4/M7 with RAM REMAP support)
+cmake -B build -DAPP_SELECT=3 -DFPB_NO_TRAMPOLINE=ON \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
 ```
-时间轴:
-0s─────5s─────10s────15s────20s────25s────30s
-   正常500ms    ───>  FPB注入, 100ms  ─>  恢复500ms
-```
 
-## 项目结构
+## FPB Technical Details
+
+### Flash Patch and Breakpoint Unit
+
+The FPB is a Cortex-M debug component originally designed for:
+1. Setting hardware breakpoints
+2. Patching Flash bugs without reprogramming
+
+### STM32F103 FPB Resources
+
+| Resource | Count | Address Range |
+|----------|-------|---------------|
+| Code Comparators | 6 | 0x00000000 - 0x1FFFFFFF |
+| Literal Comparators | 2 | 0x00000000 - 0x1FFFFFFF |
+| REMAP Table | 8 entries | SRAM (configurable) |
+
+### Registers
+
+| Register | Address | Description |
+|----------|---------|-------------|
+| FP_CTRL | 0xE0002000 | Control register |
+| FP_REMAP | 0xE0002004 | Remap table base address |
+| FP_COMP0-5 | 0xE0002008-1C | Code comparators |
+| FP_COMP6-7 | 0xE0002020-24 | Literal comparators |
+
+## Project Structure
 
 ```
 FPBInject/
-├── CMakeLists.txt          # CMake构建配置
-├── README.md               # 项目说明
+├── CMakeLists.txt              # Build configuration
+├── README.md                   # This file
+├── LICENSE                     # MIT License
 ├── cmake/
-│   └── arm-none-eabi-gcc.cmake  # 工具链文件
+│   └── arm-none-eabi-gcc.cmake # Toolchain file
+├── App/
+│   ├── func_loader/            # Function loader application
+│   └── inject/                 # Example injection code
 ├── Project/
-│   ├── Application/
-│   │   └── main.cpp        # 主程序 (LED闪烁Demo)
-│   ├── ArduinoAPI/         # Arduino兼容API
-│   └── Platform/
-│       └── STM32F10x/      # STM32F10x平台支持
+│   ├── Application/            # Main application
+│   ├── ArduinoAPI/             # Arduino compatibility layer
+│   └── Platform/STM32F10x/     # Platform HAL
 ├── Source/
-│   ├── fpb_inject.c        # FPB驱动实现
-│   ├── fpb_inject.h        # FPB驱动头文件
-│   ├── fpb_test.c          # FPB测试模块
-│   └── fpb_test.h          # FPB测试头文件
+│   ├── fpb_inject.c/h          # FPB driver
+│   ├── fbp_trampoline.c/h      # Trampoline functions
+│   └── func_loader.c/h         # Command processor
 └── Tools/
-    └── setup_env.py        # 环境搭建脚本
+    ├── fpb_loader.py           # Host injection tool
+    └── setup_env.py            # Environment setup
 ```
 
-## 注意事项
+## Limitations
 
-1. **地址限制**: FPB只能patch Code区域 (0x00000000 - 0x1FFFFFFF)
-2. **比较器数量**: STM32F103只有6个代码比较器
-3. **Thumb指令**: 仅支持Thumb/Thumb-2指令集
-4. **调试模式**: 某些调试器可能使用FPB设置断点，注意冲突
+1. **Address Range**: FPB can only patch Code region (0x00000000 - 0x1FFFFFFF)
+2. **Comparator Count**: Limited to 6 simultaneous hooks (STM32F103)
+3. **Instruction Set**: Thumb/Thumb-2 only (not ARM mode)
+4. **Debugger Conflict**: Some debuggers use FPB for breakpoints
 
-## 应用场景
+## Use Cases
 
-- **热补丁**: 修复现场部署设备的bug
-- **功能切换**: 运行时启用/禁用功能
-- **A/B测试**: 在不同实现间切换
-- **安全研究**: 动态分析和hook技术
-- **调试辅助**: 临时修改程序行为
+- **Hot Patching**: Fix bugs on deployed devices
+- **Feature Toggle**: Enable/disable features at runtime  
+- **A/B Testing**: Switch between implementations
+- **Security Research**: Dynamic analysis and hooking
+- **Debugging**: Temporarily modify program behavior
+- **Instrumentation**: Add logging/tracing without recompilation
+
+## API Reference
+
+### FPB Functions
+
+```c
+void fpb_init(void);                              // Initialize FPB unit
+void fpb_set_patch(uint8_t comp, uint32_t orig, uint32_t target);
+void fpb_clear_patch(uint8_t comp);               // Clear patch
+fpb_state_t fpb_get_state(void);                  // Get FPB state
+```
+
+### Trampoline Functions
+
+```c
+void trampoline_set_target(uint32_t comp, uint32_t target);
+void trampoline_clear_target(uint32_t comp);
+uint32_t trampoline_get_address(uint32_t comp);
+```
 
 ## License
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
+MIT License - See [LICENSE](LICENSE) file.
 
-## 参考资料
+## References
 
 - [ARM Cortex-M3 Technical Reference Manual](https://developer.arm.com/documentation/ddi0337)
 - [ARM Debug Interface Architecture Specification](https://developer.arm.com/documentation/ihi0031)
-- [STM32F103 Reference Manual](https://www.st.com/resource/en/reference_manual/rm0008.pdf)
+- [STM32F103 Reference Manual (RM0008)](https://www.st.com/resource/en/reference_manual/rm0008.pdf)

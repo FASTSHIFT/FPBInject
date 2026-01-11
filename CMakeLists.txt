@@ -16,6 +16,10 @@ set(HSE_VALUE "8000000" CACHE STRING "HSE crystal frequency")
 # 3 = APP_FUNC_LOADER (Function loader)
 set(APP_SELECT "1" CACHE STRING "Application to build (1=blink, 2=test, 3=func_loader)")
 
+# FPB Trampoline options
+option(FPB_NO_TRAMPOLINE "Disable trampoline (for cores that can REMAP to RAM directly)" OFF)
+option(FPB_TRAMPOLINE_NO_ASM "Use C instead of assembly for trampoline (no argument preservation)" OFF)
+
 # Compile definitions
 add_compile_definitions(
     ${STM32_DEVICE}
@@ -23,6 +27,15 @@ add_compile_definitions(
     HSE_VALUE=${HSE_VALUE}
     APP_SELECT=${APP_SELECT}
 )
+
+# Add FPB trampoline options to compile definitions
+if(FPB_NO_TRAMPOLINE)
+    add_compile_definitions(FPB_NO_TRAMPOLINE)
+endif()
+
+if(FPB_TRAMPOLINE_NO_ASM)
+    add_compile_definitions(FPB_TRAMPOLINE_NO_ASM)
+endif()
 
 # Source directories
 set(PROJECT_DIR ${CMAKE_SOURCE_DIR}/Project)
@@ -151,6 +164,8 @@ message(STATUS "========================================")
 message(STATUS "Device: ${STM32_DEVICE}")
 message(STATUS "HSE: ${HSE_VALUE} Hz")
 message(STATUS "App Select: ${APP_SELECT}")
+message(STATUS "FPB_NO_TRAMPOLINE: ${FPB_NO_TRAMPOLINE}")
+message(STATUS "FPB_TRAMPOLINE_NO_ASM: ${FPB_TRAMPOLINE_NO_ASM}")
 message(STATUS "Linker Script: ${LINKER_SCRIPT}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "========================================")

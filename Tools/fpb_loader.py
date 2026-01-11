@@ -731,6 +731,7 @@ Examples:
 
     parser.add_argument('--inject', metavar='FILE', help='Injection source file')
     parser.add_argument('--target', help='Target function to hijack')
+    parser.add_argument('--func', help='Inject function name (default: first inject_* found)')
     parser.add_argument('--comp', type=int, default=0, help='FPB comparator')
     parser.add_argument('--config', help='Path to inject_config.json (default: build/inject_config.json)')
     parser.add_argument('--chunk-size', type=int, default=128,
@@ -802,10 +803,32 @@ Examples:
             data, inject_symbols = result
 
             inject_func = None
-            for name, addr in inject_symbols.items():
-                if name.startswith('inject_'):
-                    inject_func = (name, addr)
-                    break
+            if args.func:
+                # User specified function name
+                for name, addr in inject_symbols.items():
+                    if args.func in name:
+                        inject_func = (name, addr)
+                        break
+                if not inject_func:
+                    print(f"Error: Function '{args.func}' not found in source")
+                    print("Available symbols:")
+                    for name, addr in inject_symbols.items():
+                        print(f"  0x{addr:08X}  {name}")
+                    return 1
+            else:
+                # Find inject function matching target name, or first inject_*
+                target_lower = args.target.lower()
+                # First try to match inject_<target>
+                for name, addr in inject_symbols.items():
+                    name_lower = name.lower()
+                    if name_lower.startswith('inject_') and target_lower in name_lower:
+                        inject_func = (name, addr)
+                        break
+                # Fallback: first inject_* by address order
+                if not inject_func:
+                    inject_funcs = [(n, a) for n, a in inject_symbols.items() if n.startswith('inject_')]
+                    if inject_funcs:
+                        inject_func = min(inject_funcs, key=lambda x: x[1])
 
             if not inject_func:
                 print("Error: No inject_* function found in source")

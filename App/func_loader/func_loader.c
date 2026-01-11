@@ -6,7 +6,7 @@
 #include "func_loader.h"
 #include "argparse/argparse.h"
 #include "fpb_inject.h"
-#include "trampoline.h"
+#include "fpb_trampoline.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -372,21 +372,21 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
 }
 
 static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
-    if (comp >= TRAMPOLINE_COUNT) {
-        fl_response(ctx, false, "Invalid comp %lu (max %d)", (unsigned long)comp, TRAMPOLINE_COUNT - 1);
+    if (comp >= FPB_TRAMPOLINE_COUNT) {
+        fl_response(ctx, false, "Invalid comp %lu (max %d)", (unsigned long)comp, FPB_TRAMPOLINE_COUNT - 1);
         return;
     }
 
     /* Set trampoline target in RAM */
-    trampoline_set_target(comp, target);
+    fpb_trampoline_set_target(comp, target);
 
     /* Get trampoline address in Flash */
-    uint32_t tramp_addr = trampoline_get_address(comp);
+    uint32_t tramp_addr = fpb_trampoline_get_address(comp);
 
     /* Use FPB to redirect original function to trampoline */
     int ret = fpb_set_patch(comp, orig, tramp_addr);
     if (ret != 0) {
-        trampoline_clear_target(comp);
+        fpb_trampoline_clear_target(comp);
         fl_response(ctx, false, "fpb_set_patch failed: %d", ret);
         return;
     }
@@ -505,7 +505,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         }
         cmd_tpatch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
-        trampoline_clear_target(comp);  /* Also clear trampoline target */
+        fpb_trampoline_clear_target(comp);  /* Also clear trampoline target */
         cmd_unpatch(ctx, comp);
     } else {
         fl_response(ctx, false, "Unknown: %s", cmd);
