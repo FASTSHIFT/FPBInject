@@ -313,15 +313,15 @@ class FPBLoader:
         print(f"Patch failed: {result}")
         return False
 
-    def fpatch(self, orig: int, target: int) -> bool:
-        """Set Flash patch (directly modifies Flash)."""
-        cmd = f"--cmd fpatch --orig 0x{orig:X} --target 0x{target:X}"
+    def tpatch(self, comp: int, orig: int, target: int) -> bool:
+        """Set trampoline patch (uses FPB + RAM trampoline, no Flash modification)."""
+        cmd = f"--cmd tpatch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
         resp = self._send_cmd(cmd)
         result = self._parse_response(resp)
         if result.get("ok"):
-            print(f"Flash patched: 0x{orig:08X} -> 0x{target:08X}")
+            print(f"Trampoline patch: comp={comp}, 0x{orig:08X} -> 0x{target:08X}")
             return True
-        print(f"Flash patch failed: {result}")
+        print(f"Trampoline patch failed: {result}")
         return False
 
     def unpatch(self, comp: int) -> bool:
@@ -732,8 +732,6 @@ Examples:
     parser.add_argument('--inject', metavar='FILE', help='Injection source file')
     parser.add_argument('--target', help='Target function to hijack')
     parser.add_argument('--comp', type=int, default=0, help='FPB comparator')
-    parser.add_argument('--fpatch', action='store_true',
-                        help='Use Flash patching instead of FPB (modifies Flash directly)')
     parser.add_argument('--config', help='Path to inject_config.json (default: build/inject_config.json)')
     parser.add_argument('--chunk-size', type=int, default=128,
                         help='Max hex chars per upload command (default: 128, i.e. 64 bytes)')
@@ -820,13 +818,8 @@ Examples:
                 return 1
 
             patch_addr = inject_func[1] | 1
-            if args.fpatch:
-                # Use Flash patching - directly modifies Flash
-                print("Using Flash patching mode...")
-                loader.fpatch(target_addr, patch_addr)
-            else:
-                # Use FPB hardware breakpoint
-                loader.patch(args.comp, target_addr, patch_addr)
+            # Use trampoline patching - FPB -> Flash trampoline -> RAM
+            loader.tpatch(args.comp, target_addr, patch_addr)
             print("Injection active!")
 
         if args.interactive:

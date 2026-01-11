@@ -6,7 +6,7 @@
 #include "func_loader.h"
 #include "argparse/argparse.h"
 #include "fpb_inject.h"
-#include "flash_patch.h"
+#include "trampoline.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -371,13 +371,28 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
                 (unsigned long)target);
 }
 
-static void cmd_fpatch(fl_context_t* ctx, uintptr_t orig, uintptr_t target) {
-    int ret = flash_patch_function(orig, target);
-    if (ret != 0) {
-        fl_response(ctx, false, "flash_patch failed: %d", ret);
+static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
+    if (comp >= TRAMPOLINE_COUNT) {
+        fl_response(ctx, false, "Invalid comp %lu (max %d)", (unsigned long)comp, TRAMPOLINE_COUNT - 1);
         return;
     }
-    fl_response(ctx, true, "Flash patched: 0x%08lX -> 0x%08lX", (unsigned long)orig, (unsigned long)target);
+
+    /* Set trampoline target in RAM */
+    trampoline_set_target(comp, target);
+
+    /* Get trampoline address in Flash */
+    uint32_t tramp_addr = trampoline_get_address(comp);
+
+    /* Use FPB to redirect original function to trampoline */
+    int ret = fpb_set_patch(comp, orig, tramp_addr);
+    if (ret != 0) {
+        trampoline_clear_target(comp);
+        fl_response(ctx, false, "fpb_set_patch failed: %d", ret);
+        return;
+    }
+
+    fl_response(ctx, true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX",
+                (unsigned long)comp, (unsigned long)orig, (unsigned long)tramp_addr, (unsigned long)target);
 }
 
 static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
@@ -483,13 +498,14 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             return -1;
         }
         cmd_patch(ctx, comp, orig, target);
-    } else if (strcmp(cmd, "fpatch") == 0) {
+    } else if (strcmp(cmd, "tpatch") == 0) {
         if (orig == 0 || target == 0) {
             fl_response(ctx, false, "Missing --orig/--target");
             return -1;
         }
-        cmd_fpatch(ctx, orig, target);
+        cmd_tpatch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
+        trampoline_clear_target(comp);  /* Also clear trampoline target */
         cmd_unpatch(ctx, comp);
     } else {
         fl_response(ctx, false, "Unknown: %s", cmd);
