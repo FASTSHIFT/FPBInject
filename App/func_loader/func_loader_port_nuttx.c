@@ -1,0 +1,157 @@
+/**
+ * @file   func_loader_port_nuttx.c
+ * @brief  NuttX porting layer
+ *
+ * Register as NSH builtin command.
+ *
+ * Kconfig example:
+ *   config FPBINJECT_FL
+ *       tristate "FPBInject Function Loader"
+ *       default n
+ *       ---help---
+ *           FPB-based runtime code injection tool.
+ *
+ * Make.defs example:
+ *   ifneq ($(CONFIG_FPBINJECT_FL),)
+ *   PROGNAME = fl
+ *   PRIORITY = SCHED_PRIORITY_DEFAULT
+ *   STACKSIZE = 4096
+ *   MODULE = $(CONFIG_FPBINJECT_FL)
+ *   endif
+ *
+ * Usage:
+ *   nsh> fl --cmd ping
+ *   nsh> fl --cmd info
+ *   nsh> fl   # interactive mode
+ */
+
+#ifdef __NUTTX__
+
+#include "func_loader.h"
+#include <nuttx/config.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+#ifndef FL_NUTTX_BUF_SIZE
+#define FL_NUTTX_BUF_SIZE 8192
+#endif
+
+#ifndef FL_NUTTX_LINE_SIZE
+#define FL_NUTTX_LINE_SIZE 1024
+#endif
+
+/* Static code buffer */
+static uint8_t g_code_buf[FL_NUTTX_BUF_SIZE] __attribute__((aligned(4)));
+
+/* Output callback */
+static void nuttx_output_cb(void* user, const char* str)
+{
+    (void)user;
+    fputs(str, stdout);
+}
+
+/* Context */
+static fl_context_t g_ctx = {
+    .output_cb = nuttx_output_cb,
+    .output_user = NULL,
+    .malloc_cb = malloc,
+    .free_cb = free,
+    .static_buf = g_code_buf,
+    .static_size = sizeof(g_code_buf),
+    .static_used = 0,
+    .dyn_base = 0,
+    .dyn_size = 0,
+    .dyn_used = 0,
+};
+
+static int parse_line(char* line, const char** argv, int max_argc)
+{
+    int argc = 0;
+    char* p = line;
+    bool in_quote = false;
+    bool in_arg = false;
+
+    while (*p && argc < max_argc) {
+        if (*p == '"') {
+            in_quote = !in_quote;
+            if (!in_arg) {
+                argv[argc++] = p + 1;
+                in_arg = true;
+            }
+            memmove(p, p + 1, strlen(p));
+            continue;
+        }
+
+        if (!in_quote && (*p == ' ' || *p == '\t')) {
+            if (in_arg) {
+                *p = '\0';
+                in_arg = false;
+            }
+        } else if (!in_arg) {
+            argv[argc++] = p;
+            in_arg = true;
+        }
+        p++;
+    }
+
+    return argc;
+}
+
+static int interactive_mode(void)
+{
+    char line[FL_NUTTX_LINE_SIZE];
+    static const char* argv[32];
+
+    printf("FPBInject Function Loader (NuttX)\n");
+    printf("Type --cmd <command> or 'quit' to exit\n\n");
+
+    while (1) {
+        printf("fl> ");
+        fflush(stdout);
+
+        if (!fgets(line, sizeof(line), stdin)) {
+            break;
+        }
+
+        /* Remove newline */
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n') {
+            line[len - 1] = '\0';
+        }
+
+        if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0 || strcmp(line, "q") == 0) {
+            break;
+        }
+
+        if (line[0] == '\0') {
+            continue;
+        }
+
+        int argc = parse_line(line, argv, 32);
+        if (argc > 0) {
+            fl_exec_cmd(&g_ctx, argc, argv);
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @brief NuttX application entry point
+ */
+int main(int argc, char** argv)
+{
+    fl_init(&g_ctx);
+
+    /* No arguments - interactive mode */
+    if (argc <= 1) {
+        return interactive_mode();
+    }
+
+    /* Direct command execution */
+    return fl_exec_cmd(&g_ctx, argc - 1, (const char**)(argv + 1));
+}
+
+#endif /* __NUTTX__ */

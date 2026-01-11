@@ -87,6 +87,22 @@ static int argparse_getvalue(struct argparse* self, const struct argparse_option
         if (s[0] != '\0') // no digits or contains invalid characters
             argparse_error(self, opt, "expects an integer value", flags);
         break;
+    case ARGPARSE_OPT_POINTER:
+        errno = 0;
+        if (self->optvalue) {
+            *(uintptr_t*)opt->value = strtoul(self->optvalue, (char**)&s, 0);
+            self->optvalue = NULL;
+        } else if (self->argc > 1) {
+            self->argc--;
+            *(uintptr_t*)opt->value = strtoul(*++self->argv, (char**)&s, 0);
+        } else {
+            argparse_error(self, opt, "requires a value", flags);
+        }
+        if (errno == ERANGE)
+            argparse_error(self, opt, "numerical result out of range", flags);
+        if (s[0] != '\0')
+            argparse_error(self, opt, "expects an address value", flags);
+        break;
     case ARGPARSE_OPT_FLOAT:
         errno = 0;
         if (self->optvalue) {
@@ -121,6 +137,7 @@ static void argparse_options_check(const struct argparse_option* options) {
         case ARGPARSE_OPT_BOOLEAN:
         case ARGPARSE_OPT_BIT:
         case ARGPARSE_OPT_INTEGER:
+        case ARGPARSE_OPT_POINTER:
         case ARGPARSE_OPT_FLOAT:
         case ARGPARSE_OPT_STRING:
         case ARGPARSE_OPT_GROUP:

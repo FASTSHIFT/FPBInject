@@ -86,6 +86,5 @@ int main(void)
 
     /* Should never reach here */
     for (;;) {
-        __asm volatile("wfi");
     }
 }

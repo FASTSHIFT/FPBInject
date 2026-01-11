@@ -34,6 +34,7 @@ enum argparse_option_type {
     ARGPARSE_OPT_BIT,
     /* options with arguments (optional or required) */
     ARGPARSE_OPT_INTEGER,
+    ARGPARSE_OPT_POINTER,
     ARGPARSE_OPT_FLOAT,
     ARGPARSE_OPT_STRING,
 };
@@ -113,6 +114,8 @@ int argparse_help_cb_no_exit(struct argparse* self, const struct argparse_option
     { ARGPARSE_OPT_BIT, __VA_ARGS__ }
 #define OPT_INTEGER(...) \
     { ARGPARSE_OPT_INTEGER, __VA_ARGS__ }
+#define OPT_POINTER(...) \
+    { ARGPARSE_OPT_POINTER, __VA_ARGS__ }
 #define OPT_FLOAT(...) \
     { ARGPARSE_OPT_FLOAT, __VA_ARGS__ }
 #define OPT_STRING(...) \
