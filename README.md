@@ -344,3 +344,4 @@ MIT License - See [LICENSE](LICENSE) file.
 - [ARM Cortex-M3 Technical Reference Manual](https://developer.arm.com/documentation/ddi0337)
 - [ARM Debug Interface Architecture Specification](https://developer.arm.com/documentation/ihi0031)
 - [STM32F103 Reference Manual (RM0008)](https://www.st.com/resource/en/reference_manual/rm0008.pdf)
+- [HERA-FPB](https://github.com/akrishnaams/HERA-FPB)
