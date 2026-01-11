@@ -230,14 +230,16 @@ FPBInject/
 │   └── arm-none-eabi-gcc.cmake # Toolchain file
 ├── App/
 │   ├── func_loader/            # Function loader application
-│   └── inject/                 # Example injection code
+│   ├── inject/                 # Example injection code
+│   └── ...                     # Other app modules
 ├── Project/
-│   ├── Application/            # Main application
+│   ├── Application/            # Main application (entry)
 │   ├── ArduinoAPI/             # Arduino compatibility layer
-│   └── Platform/STM32F10x/     # Platform HAL
+│   └── Platform/
+│       └── STM32F10x/          # Platform HAL (drivers, startup, config)
 ├── Source/
 │   ├── fpb_inject.c/h          # FPB driver
-│   ├── fbp_trampoline.c/h      # Trampoline functions
+│   ├── fpb_trampoline.c/h      # Trampoline functions
 │   └── func_loader.c/h         # Command processor
 └── Tools/
     ├── fpb_loader.py           # Host injection tool
