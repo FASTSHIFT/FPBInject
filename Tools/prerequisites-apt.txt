@@ -1,0 +1,8 @@
+gcc-arm-none-eabi
+gdb-multiarch
+cmake
+ninja-build
+openocd
+stlink-tools
+git
+make
