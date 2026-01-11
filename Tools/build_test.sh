@@ -1,0 +1,297 @@
+#!/bin/bash
+#
+# FPBInject Build Test Script
+# Tests all configuration combinations to ensure they compile successfully
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+BUILD_DIR="$PROJECT_ROOT/build_test"
+TOOLCHAIN_FILE="$PROJECT_ROOT/cmake/arm-none-eabi-gcc.cmake"
+
+# Configuration options
+APP_SELECTS=(1 2 3)
+APP_NAMES=("BLINK" "TEST" "FUNC_LOADER")
+
+# FL_ALLOC_MODE only applies to APP_SELECT=3 (FUNC_LOADER)
+ALLOC_MODES=("STATIC" "LIBC" "UMM")
+
+# Trampoline options (only test a subset for now)
+TRAMPOLINE_CONFIGS=(
+    "OFF;OFF"    # Default: trampoline enabled, ASM
+    "OFF;ON"     # Trampoline enabled, C implementation
+    "ON;OFF"     # No trampoline (direct remap)
+)
+
+# Statistics
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
+SKIPPED_TESTS=0
+
+# Failed configurations
+declare -a FAILED_CONFIGS
+
+# Print header
+print_header() {
+    echo ""
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}  FPBInject Build Test${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
+}
+
+# Print test result
+print_result() {
+    local config="$1"
+    local result="$2"
+    local time="$3"
+    
+    if [ "$result" == "PASS" ]; then
+        echo -e "  ${GREEN}✓ PASS${NC} - $config (${time}s)"
+    elif [ "$result" == "FAIL" ]; then
+        echo -e "  ${RED}✗ FAIL${NC} - $config"
+    else
+        echo -e "  ${YELLOW}○ SKIP${NC} - $config"
+    fi
+}
+
+# Build a configuration
+build_config() {
+    local app_select="$1"
+    local alloc_mode="$2"
+    local no_trampoline="$3"
+    local no_asm="$4"
+    local config_name="$5"
+    
+    local build_subdir="$BUILD_DIR/$config_name"
+    
+    # Create build directory
+    mkdir -p "$build_subdir"
+    
+    # Run cmake
+    local cmake_args=(
+        -B "$build_subdir"
+        -S "$PROJECT_ROOT"
+        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE"
+        -DAPP_SELECT="$app_select"
+        -DFPB_NO_TRAMPOLINE="$no_trampoline"
+        -DFPB_TRAMPOLINE_NO_ASM="$no_asm"
+    )
+    
+    # Add alloc mode for func_loader
+    if [ "$app_select" == "3" ]; then
+        cmake_args+=(-DFL_ALLOC_MODE="$alloc_mode")
+    fi
+    
+    # Configure
+    if ! cmake "${cmake_args[@]}" > "$build_subdir/cmake.log" 2>&1; then
+        return 1
+    fi
+    
+    # Build
+    if ! cmake --build "$build_subdir" --parallel > "$build_subdir/build.log" 2>&1; then
+        return 1
+    fi
+    
+    # Check if ELF file exists
+    if [ ! -f "$build_subdir/FPBInject.elf" ]; then
+        return 1
+    fi
+    
+    return 0
+}
+
+# Run all tests
+run_tests() {
+    echo "Toolchain: $TOOLCHAIN_FILE"
+    echo "Build Dir: $BUILD_DIR"
+    echo ""
+    
+    # Clean build directory
+    if [ -d "$BUILD_DIR" ]; then
+        echo "Cleaning previous build test directory..."
+        rm -rf "$BUILD_DIR"
+    fi
+    mkdir -p "$BUILD_DIR"
+    
+    echo ""
+    echo -e "${YELLOW}Testing APP_SELECT configurations...${NC}"
+    echo ""
+    
+    # Test each APP_SELECT
+    for i in "${!APP_SELECTS[@]}"; do
+        local app="${APP_SELECTS[$i]}"
+        local app_name="${APP_NAMES[$i]}"
+        
+        echo -e "${BLUE}--- APP_SELECT=$app ($app_name) ---${NC}"
+        
+        if [ "$app" == "3" ]; then
+            # For FUNC_LOADER, test all allocation modes
+            for alloc in "${ALLOC_MODES[@]}"; do
+                # Test with default trampoline config
+                local config_name="APP${app}_${alloc}"
+                local config_desc="APP=$app($app_name) ALLOC=$alloc"
+                
+                TOTAL_TESTS=$((TOTAL_TESTS + 1))
+                
+                local start_time=$(date +%s)
+                
+                if build_config "$app" "$alloc" "OFF" "OFF" "$config_name"; then
+                    local end_time=$(date +%s)
+                    local elapsed=$((end_time - start_time))
+                    
+                    print_result "$config_desc" "PASS" "$elapsed"
+                    PASSED_TESTS=$((PASSED_TESTS + 1))
+                else
+                    print_result "$config_desc" "FAIL" ""
+                    FAILED_TESTS=$((FAILED_TESTS + 1))
+                    FAILED_CONFIGS+=("$config_desc")
+                fi
+            done
+        else
+            # For other apps, just test default config
+            local config_name="APP${app}"
+            local config_desc="APP=$app($app_name)"
+            
+            TOTAL_TESTS=$((TOTAL_TESTS + 1))
+            
+            local start_time=$(date +%s)
+            
+            if build_config "$app" "STATIC" "OFF" "OFF" "$config_name"; then
+                local end_time=$(date +%s)
+                local elapsed=$((end_time - start_time))
+                
+                print_result "$config_desc" "PASS" "$elapsed"
+                PASSED_TESTS=$((PASSED_TESTS + 1))
+            else
+                print_result "$config_desc" "FAIL" ""
+                FAILED_TESTS=$((FAILED_TESTS + 1))
+                FAILED_CONFIGS+=("$config_desc")
+            fi
+        fi
+    done
+    
+    echo ""
+    echo -e "${YELLOW}Testing Trampoline configurations (with FUNC_LOADER)...${NC}"
+    echo ""
+    
+    # Test trampoline configurations with FUNC_LOADER + STATIC
+    for tramp_config in "${TRAMPOLINE_CONFIGS[@]}"; do
+        IFS=';' read -r no_tramp no_asm <<< "$tramp_config"
+        
+        local config_name="TRAMP_${no_tramp}_${no_asm}"
+        local config_desc="NO_TRAMPOLINE=$no_tramp NO_ASM=$no_asm"
+        
+        TOTAL_TESTS=$((TOTAL_TESTS + 1))
+        
+        local start_time=$(date +%s)
+        
+        if build_config "3" "STATIC" "$no_tramp" "$no_asm" "$config_name"; then
+            local end_time=$(date +%s)
+            local elapsed=$((end_time - start_time))
+            
+            print_result "$config_desc" "PASS" "$elapsed"
+            PASSED_TESTS=$((PASSED_TESTS + 1))
+        else
+            print_result "$config_desc" "FAIL" ""
+            FAILED_TESTS=$((FAILED_TESTS + 1))
+            FAILED_CONFIGS+=("$config_desc")
+        fi
+    done
+}
+
+# Print summary
+print_summary() {
+    echo ""
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}  Test Summary${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
+    echo "  Total:   $TOTAL_TESTS"
+    echo -e "  ${GREEN}Passed:  $PASSED_TESTS${NC}"
+    echo -e "  ${RED}Failed:  $FAILED_TESTS${NC}"
+    echo -e "  ${YELLOW}Skipped: $SKIPPED_TESTS${NC}"
+    echo ""
+    
+    if [ ${#FAILED_CONFIGS[@]} -gt 0 ]; then
+        echo -e "${RED}Failed configurations:${NC}"
+        for config in "${FAILED_CONFIGS[@]}"; do
+            echo "  - $config"
+        done
+        echo ""
+    fi
+    
+    if [ $FAILED_TESTS -eq 0 ]; then
+        echo -e "${GREEN}All tests passed! ✓${NC}"
+        return 0
+    else
+        echo -e "${RED}Some tests failed! ✗${NC}"
+        return 1
+    fi
+}
+
+# Cleanup option
+cleanup() {
+    if [ -d "$BUILD_DIR" ]; then
+        echo "Cleaning up build test directory..."
+        rm -rf "$BUILD_DIR"
+    fi
+}
+
+# Parse arguments
+CLEAN_AFTER=false
+CLEAN_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --clean)
+            CLEAN_AFTER=true
+            shift
+            ;;
+        --clean-only)
+            CLEAN_ONLY=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [options]"
+            echo ""
+            echo "Options:"
+            echo "  --clean       Clean build_test directory after testing"
+            echo "  --clean-only  Only clean build_test directory, don't run tests"
+            echo "  -h, --help    Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Main
+if [ "$CLEAN_ONLY" == true ]; then
+    cleanup
+    exit 0
+fi
+
+print_header
+run_tests
+print_summary
+result=$?
+
+if [ "$CLEAN_AFTER" == true ]; then
+    cleanup
+fi
+
+exit $result
