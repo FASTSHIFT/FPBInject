@@ -274,9 +274,9 @@ fpb_state_t fpb_get_state(void);                  // Get FPB state
 ### Trampoline Functions
 
 ```c
-void trampoline_set_target(uint32_t comp, uint32_t target);
-void trampoline_clear_target(uint32_t comp);
-uint32_t trampoline_get_address(uint32_t comp);
+void fbp_trampoline_set_target(uint32_t comp, uint32_t target);
+void fbp_trampoline_clear_target(uint32_t comp);
+uint32_t fbp_trampoline_get_address(uint32_t comp);
 ```
 
 ## License
