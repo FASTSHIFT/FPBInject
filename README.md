@@ -248,6 +248,143 @@ cmake -B build -DAPP_SELECT=3 -DFPB_NO_TRAMPOLINE=ON \
       -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
 ```
 
+### Patch Modes
+
+FPBInject supports three different patch modes for function redirection:
+
+| Mode | Option | Best For | Description |
+|------|--------|----------|-------------|
+| **Trampoline** | `--patch-mode trampoline` | Cortex-M3/M4 | FPB REMAP to Flash trampoline → RAM (default) |
+| **DebugMonitor** | `--patch-mode debugmon` | ARMv8-M | FPB breakpoint → DebugMonitor exception → PC redirect |
+| **Direct** | `--patch-mode direct` | Special cases | Direct FPB REMAP (limited use) |
+
+Example:
+
+```bash
+# Default trampoline mode (Cortex-M3/M4)
+python3 Tools/fpb_loader.py -p /dev/ttyACM0 \
+    --inject App/inject/inject.cpp \
+    --target digitalWrite
+
+# DebugMonitor mode (for ARMv8-M or as alternative)
+python3 Tools/fpb_loader.py -p /dev/ttyACM0 \
+    --inject App/inject/inject.cpp \
+    --target digitalWrite \
+    --patch-mode debugmon
+```
+
+## DebugMonitor Mode
+
+### Why DebugMonitor Mode?
+
+**ARMv8-M Architecture Limitation**: Starting with ARMv8-M (Cortex-M23/M33/M55), ARM removed the FPB REMAP functionality. The FPB unit can only generate breakpoints, not redirect code execution. This means the traditional trampoline approach doesn't work on newer cores.
+
+DebugMonitor mode provides a software-based alternative that works on both legacy (Cortex-M3/M4) and modern (ARMv8-M) architectures.
+
+### How DebugMonitor Mode Works
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     DebugMonitor Redirection Flow                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│   1. Function Call           2. FPB Breakpoint       3. DebugMonitor    │
+│   ┌──────────────┐          ┌──────────────┐         ┌──────────────┐   │
+│   │ caller()     │          │   FPB Unit   │         │DebugMon_     │   │
+│   │ calls        │────────> │ BKPT trigger │───────> │Handler()     │   │
+│   │ digitalWrite │          │ @ 0x08008308 │         │ (exception)  │   │
+│   └──────────────┘          └──────────────┘         └──────────────┘   │
+│                                                             │           │
+│   4. Stack Frame Modification                               ▼           │
+│   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │  Exception Stack Frame:                                          │  │
+│   │  [SP+0]  R0      - preserved                                     │  │
+│   │  [SP+4]  R1      - preserved                                     │  │
+│   │  [SP+8]  R2      - preserved                                     │  │
+│   │  [SP+12] R3      - preserved                                     │  │
+│   │  [SP+16] R12     - preserved                                     │  │
+│   │  [SP+20] LR      - preserved                                     │  │
+│   │  [SP+24] PC  ◄── MODIFIED to inject_digitalWrite (0x20000278)    │  │
+│   │  [SP+28] xPSR    - preserved                                     │  │
+│   └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│   5. Exception Return → Execution continues at inject_digitalWrite()   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Technical Implementation
+
+1. **FPB Configuration**: Comparator is set with REPLACE=0b11 (breakpoint on both halfwords)
+2. **DebugMonitor Enable**: DEMCR.MON_EN is set to enable DebugMonitor exception
+3. **VTOR Relocation**: Vector table is copied to RAM to install custom DebugMon_Handler
+4. **PC Modification**: When breakpoint triggers, handler modifies stacked PC to redirect execution
+
+### Key Registers
+
+| Register | Address | Purpose |
+|----------|---------|---------|
+| DEMCR | 0xE000EDFC | Debug Exception and Monitor Control |
+| DFSR | 0xE000ED30 | Debug Fault Status Register |
+| SCB_VTOR | 0xE000ED08 | Vector Table Offset Register |
+
+### DEMCR Configuration
+
+```
+DEMCR bits used:
+  [24] TRCENA  - Trace enable (required for debug features)
+  [16] MON_EN  - DebugMonitor exception enable
+```
+
+### FPB Comparator Configuration (Breakpoint Mode)
+
+```
+FP_COMPn bits:
+  [31:30] REPLACE = 0b11  - Breakpoint on both halfwords
+  [28:2]  COMP           - Address to match (bits [28:2])
+  [0]     ENABLE = 1     - Comparator enable
+```
+
+### Advantages of DebugMonitor Mode
+
+| Advantage | Description |
+|-----------|-------------|
+| ✅ **ARMv8-M Compatible** | Works on Cortex-M23/M33/M55 where REMAP is removed |
+| ✅ **No Flash Trampolines** | Doesn't require pre-placed code in Flash |
+| ✅ **Full Register Preservation** | All registers preserved via exception frame |
+| ✅ **Dynamic Configuration** | Can add/remove hooks at runtime |
+
+### Limitations and Considerations
+
+| Limitation | Description |
+|------------|-------------|
+| ⚠️ **Higher Latency** | Exception entry/exit adds ~12-24 cycles overhead |
+| ⚠️ **Debugger Conflict** | External debugger may interfere with DebugMonitor |
+| ⚠️ **Priority Constraints** | DebugMonitor has fixed high priority (-1) |
+| ⚠️ **Vector Table RAM** | Requires ~256 bytes RAM for relocated vector table |
+
+### Build Configuration
+
+```bash
+# Enable DebugMonitor support (default: enabled)
+cmake -B build -DAPP_SELECT=3 \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
+
+# Disable DebugMonitor (reduces code size if not needed)
+cmake -B build -DAPP_SELECT=3 -DFPB_NO_DEBUGMON=ON \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
+```
+
+### When to Use DebugMonitor Mode
+
+| Use Case | Recommended Mode |
+|----------|-----------------|
+| Cortex-M3/M4 with Flash trampolines available | **Trampoline** (lower overhead) |
+| ARMv8-M (Cortex-M23/M33/M55) | **DebugMonitor** (only option) |
+| No Flash trampolines pre-placed | **DebugMonitor** |
+| Lowest latency required | **Trampoline** |
+| Maximum compatibility needed | **DebugMonitor** |
+
 ## FPB Technical Details
 
 ### Flash Patch and Breakpoint Unit
@@ -256,7 +393,16 @@ The FPB is a Cortex-M debug component originally designed for:
 1. Setting hardware breakpoints
 2. Patching Flash bugs without reprogramming
 
-### STM32F103 FPB Resources
+### FPB Versions
+
+| Version | Architecture | REMAP Support | Breakpoint Support |
+|---------|--------------|---------------|-------------------|
+| **FPBv1** | Cortex-M3/M4 (ARMv7-M) | ✅ Yes | ✅ Yes |
+| **FPBv2** | Cortex-M23/M33/M55 (ARMv8-M) | ❌ Removed | ✅ Yes |
+
+> ⚠️ **Important**: ARMv8-M removed the REMAP functionality from FPB. On these cores, FPB can only generate breakpoints, requiring the DebugMonitor approach for function redirection.
+
+### STM32F103 FPB Resources (FPBv1)
 
 | Resource | Count | Address Range |
 |----------|-------|---------------|
