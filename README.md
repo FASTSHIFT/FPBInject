@@ -171,6 +171,7 @@ void inject_no_args(void) {
 |--------|---------|-------------|
 | `APP_SELECT` | 1 | Application (1=blink, 2=test, 3=func_loader) |
 | `FL_ALLOC_MODE` | STATIC | Memory allocation mode (STATIC/LIBC/UMM) |
+| `FPB_NO_DEBUGMON` | OFF | Disable DebugMonitor support (reduces code size) |
 | `FPB_NO_TRAMPOLINE` | OFF | Disable trampoline (for cores that can REMAP to RAM) |
 | `FPB_TRAMPOLINE_NO_ASM` | OFF | Use C instead of assembly (no argument preservation) |
 | `HSE_VALUE` | 8000000 | External oscillator frequency |
