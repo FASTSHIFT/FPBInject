@@ -328,7 +328,7 @@ static void cmd_free(fl_context_t* ctx) {
     fl_response(ctx, true, "Freed");
 }
 
-static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, int cksum, bool verify) {
+static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, uintptr_t crc, bool verify) {
     static uint8_t buf[2048];
     int n;
 
@@ -365,8 +365,8 @@ static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, in
 
     if (verify) {
         uint16_t calc = calc_crc16(buf, n);
-        if (calc != (uint16_t)cksum) {
-            fl_response(ctx, false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)cksum, (unsigned)calc);
+        if (calc != (uint16_t)crc) {
+            fl_response(ctx, false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
             return;
         }
     }
@@ -449,7 +449,7 @@ static void cmd_read(fl_context_t* ctx, uintptr_t addr, size_t len) {
     fl_response(ctx, true, "Read %u from 0x%08lX", (unsigned)len, (unsigned long)addr);
 }
 
-static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* hex, int cksum, bool verify) {
+static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* hex, uintptr_t crc, bool verify) {
     static uint8_t buf[512];
     int n = hex_to_bytes(hex, buf, sizeof(buf));
     if (n < 0) {
@@ -459,7 +459,7 @@ static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* hex, int ck
 
     if (verify) {
         uint16_t calc = calc_crc16(buf, n);
-        if (calc != (uint16_t)cksum) {
+        if (calc != (uint16_t)crc) {
             fl_response(ctx, false, "CRC mismatch");
             return;
         }
@@ -572,7 +572,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     const char* data = NULL;
     const char* args = NULL;
     uintptr_t addr = 0;
-    int cksum = -1;
+    uintptr_t crc = 0xFFFFFFFF; /* Invalid CRC marker */
     uintptr_t len = 64;
     uintptr_t size = 0;
     uintptr_t comp = 0;
@@ -584,9 +584,9 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_HELP(),
         OPT_STRING('c', "cmd", &cmd, "Command", NULL, 0, 0),
         OPT_POINTER(0, "size", &size, "Alloc size", NULL, 0, 0),
-        OPT_POINTER('a', "addr", &addr, "Address/offset", NULL, 0, 0),
+        OPT_POINTER('a', "addr", &addr, "Address/offset (hex)", NULL, 0, 0),
         OPT_STRING('d', "data", &data, "Hex data", NULL, 0, 0),
-        OPT_INTEGER('s', "checksum", &cksum, "CRC-16", NULL, 0, 0),
+        OPT_POINTER(0, "crc", &crc, "CRC-16 (hex)", NULL, 0, 0),
         OPT_POINTER('e', "entry", &entry, "Entry offset", NULL, 0, 0),
         OPT_STRING(0, "args", &args, "Arguments", NULL, 0, 0),
         OPT_POINTER('l', "len", &len, "Read length", NULL, 0, 0),
@@ -628,7 +628,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             fl_response(ctx, false, "Missing --data");
             return -1;
         }
-        cmd_upload(ctx, addr, data, cksum, cksum >= 0);
+        cmd_upload(ctx, addr, data, crc, crc != 0xFFFFFFFF);
     } else if (strcmp(cmd, "clear") == 0) {
         cmd_clear(ctx);
     } else if (strcmp(cmd, "exec") == 0) {
@@ -650,7 +650,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             fl_response(ctx, false, "Missing --addr/--data");
             return -1;
         }
-        cmd_write(ctx, addr, data, cksum, cksum >= 0);
+        cmd_write(ctx, addr, data, crc, crc != 0xFFFFFFFF);
     } else if (strcmp(cmd, "patch") == 0) {
         if (orig == 0 || target == 0) {
             fl_response(ctx, false, "Missing --orig/--target");

@@ -144,7 +144,7 @@ class FPBLoader:
         if self.verbose:
             print(f"[FPB] {msg}")
 
-    def _send_cmd(self, cmd: str) -> str:
+    def _send_cmd(self, cmd: str, timeout: float = 2.0) -> str:
         """Send command and get response."""
         if not self.ser:
             return ""
@@ -160,14 +160,21 @@ class FPBLoader:
         self.ser.write((full_cmd + "\n").encode())
         self.ser.flush()
 
-        # Read response (until timeout)
+        # Read response - return early when we see [OK] or [ERR]
         response = ""
         start = time.time()
-        while time.time() - start < 2.0:
+        while time.time() - start < timeout:
             if self.ser.in_waiting:
                 chunk = self.ser.read(self.ser.in_waiting).decode('utf-8', errors='replace')
                 response += chunk
-            time.sleep(0.01)
+                # Check if response is complete (contains status marker)
+                if '[OK]' in response or '[ERR]' in response:
+                    # Give a tiny bit more time for any trailing data
+                    time.sleep(0.005)
+                    if self.ser.in_waiting:
+                        response += self.ser.read(self.ser.in_waiting).decode('utf-8', errors='replace')
+                    break
+            time.sleep(0.002)  # Reduced from 0.01 for faster polling
 
         self._log(f"RX: {response.strip()}")
         return response.strip()
@@ -258,43 +265,73 @@ class FPBLoader:
         result = self._parse_response(resp)
         return result.get("ok", False)
 
-    def upload(self, data: bytes, progress: bool = True, start_offset: int = 0) -> bool:
+    def upload(self, data: bytes, progress: bool = True, start_offset: int = 0) -> Tuple[bool, dict]:
         """Upload binary data in chunks using base64 encoding.
         
         Args:
             data: Binary data to upload
             progress: Show progress bar
             start_offset: Starting offset in device buffer (for alignment)
+            
+        Returns:
+            Tuple of (success, stats_dict)
         """
         total = len(data)
         data_offset = 0
         # Base64 encoding: 3 bytes -> 4 chars, so we use 48 bytes per chunk (64 chars base64)
         # This keeps command line reasonable length
         bytes_per_chunk = 48
+        
+        upload_start = time.time()
+        chunk_count = 0
+        total_chunks = (total + bytes_per_chunk - 1) // bytes_per_chunk
 
         while data_offset < total:
+            chunk_start = time.time()
             chunk = data[data_offset:data_offset + bytes_per_chunk]
             b64_data = base64.b64encode(chunk).decode('ascii')
-            checksum = crc16(chunk)
+            crc = crc16(chunk)
 
             # Device offset = start_offset + data_offset
             device_offset = start_offset + data_offset
-            cmd = f"--cmd upload --addr {device_offset} --data {b64_data} --checksum {checksum}"
+            # Use hex format for addr and crc
+            cmd = f"--cmd upload --addr 0x{device_offset:X} --data {b64_data} --crc 0x{crc:04X}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
 
             if not result.get("ok"):
-                print(f"\nUpload failed at offset {device_offset}: {result}")
-                return False
+                print(f"\nUpload failed at offset 0x{device_offset:X}: {result}")
+                return False, {}
 
             data_offset += len(chunk)
+            chunk_count += 1
+            
             if progress:
+                elapsed = time.time() - upload_start
                 pct = data_offset * 100 // total
-                print(f"\rUploading: {data_offset}/{total} bytes ({pct}%)", end='', flush=True)
+                # Calculate speed and ETA
+                if elapsed > 0:
+                    speed = data_offset / elapsed
+                    remaining = total - data_offset
+                    eta = remaining / speed if speed > 0 else 0
+                    print(f"\rUploading: {data_offset}/{total} bytes ({pct}%) "
+                          f"[{speed:.0f} B/s, ETA: {eta:.1f}s]", end='', flush=True)
+                else:
+                    print(f"\rUploading: {data_offset}/{total} bytes ({pct}%)", end='', flush=True)
 
+        upload_time = time.time() - upload_start
+        speed = total / upload_time if upload_time > 0 else 0
+        
+        stats = {
+            "bytes": total,
+            "chunks": chunk_count,
+            "time": upload_time,
+            "speed": speed
+        }
+        
         if progress:
-            print(f"\nUpload complete: {total} bytes @ offset {start_offset}")
-        return True
+            print(f"\nUpload complete: {total} bytes in {upload_time:.2f}s ({speed:.0f} B/s)")
+        return True, stats
 
     def execute(self, entry: int = 0, args: str = "") -> Optional[int]:
         """Execute uploaded code."""
@@ -337,8 +374,8 @@ class FPBLoader:
     def write(self, addr: int, data: bytes) -> bool:
         """Write memory."""
         hex_data = data.hex().upper()
-        checksum = crc16(data)
-        cmd = f"--cmd write --addr 0x{addr:X} --data {hex_data} --checksum {checksum}"
+        crc = crc16(data)
+        cmd = f"--cmd write --addr 0x{addr:X} --data {hex_data} --crc 0x{crc:04X}"
         resp = self._send_cmd(cmd)
         result = self._parse_response(resp)
         return result.get("ok", False)
@@ -718,7 +755,8 @@ def interactive_mode(loader: FPBLoader, elf_path: str = None):
 
                 # Clear and upload
                 loader.clear()
-                if not loader.upload(data):
+                success, _ = loader.upload(data)
+                if not success:
                     continue
 
                 # Set patch (Thumb address needs +1)
@@ -827,7 +865,8 @@ Examples:
         if args.upload:
             with open(args.upload, 'rb') as f:
                 data = f.read()
-            if loader.upload(data) and args.exec:
+            success, _ = loader.upload(data)
+            if success and args.exec:
                 loader.execute(args.entry)
 
         if args.inject and args.target:
@@ -852,11 +891,16 @@ Examples:
             info = loader.info()
             is_dynamic = info and info.get("base", 0) == 0 and info.get("size", 0) == 0
 
+            total_start_time = time.time()
+            compile_time = 0
+            upload_stats = {}
+
             if is_dynamic:
                 # Dynamic allocation mode: compile first to get size, then alloc, then recompile
                 print("Dynamic allocation mode detected")
 
                 # First pass: compile with dummy address (8-byte aligned) to get size
+                compile_start = time.time()
                 result = compile_inject(args.inject, 0x20000000, elf_path, args.config, args.verbose)
                 if not result:
                     return 1
@@ -879,6 +923,7 @@ Examples:
 
                 # Second pass: recompile with aligned address
                 result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
+                compile_time = time.time() - compile_start
                 if not result:
                     return 1
                 data, inject_symbols = result
@@ -886,7 +931,9 @@ Examples:
                 # Static allocation mode: use pre-allocated buffer
                 base_addr = info.get("base", 0x20001000) if info else 0x20001000
                 align_offset = 0  # Static buffer should already be aligned
+                compile_start = time.time()
                 result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
+                compile_time = time.time() - compile_start
                 if not result:
                     return 1
                 data, inject_symbols = result
@@ -927,7 +974,8 @@ Examples:
 
             loader.clear()
             # Upload with alignment offset so data starts at aligned address
-            if not loader.upload(data, start_offset=align_offset):
+            success, upload_stats = loader.upload(data, start_offset=align_offset)
+            if not success:
                 return 1
 
             patch_addr = inject_func[1] | 1
@@ -944,6 +992,14 @@ Examples:
                 # Direct FPB REMAP (limited, may not work for RAM targets)
                 loader.patch(args.comp, target_addr, patch_addr)
             
+            # Print statistics
+            total_time = time.time() - total_start_time
+            print(f"\n--- Injection Statistics ---")
+            print(f"Compile time:  {compile_time:.2f}s")
+            if upload_stats:
+                print(f"Upload time:   {upload_stats.get('time', 0):.2f}s ({upload_stats.get('speed', 0):.0f} B/s)")
+                print(f"Upload size:   {upload_stats.get('bytes', 0)} bytes in {upload_stats.get('chunks', 0)} chunks")
+            print(f"Total time:    {total_time:.2f}s")
             print(f"Injection active! (mode: {patch_mode})")
 
         if args.interactive:
