@@ -75,7 +75,6 @@ void blink_init(void) {
     fpb_init();
 
     /* Print startup info */
-    Serial.begin(115200);
     Serial.println("================================");
     Serial.println("FPBInject Demo - STM32F103");
     Serial.println("================================");

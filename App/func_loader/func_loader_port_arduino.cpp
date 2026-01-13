@@ -235,7 +235,6 @@ static void blink_led() {
 }
 
 void func_loader_run(void) {
-    Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
 
     /* Initialize allocator (mode-specific) */

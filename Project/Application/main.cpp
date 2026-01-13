@@ -65,6 +65,7 @@ int main(void)
 {
     /* Initialize MCU core */
     Core_Init();
+    Serial.begin(115200);
 
 #if APP_SELECT == APP_BLINK
     /* LED blink + FPB injection demo */
