@@ -8,16 +8,16 @@ Runtime code injection tool for ARM Cortex-M3/M4 using the Flash Patch and Break
 
 ## Overview
 
-FPBInject enables runtime function hooking and code injection on Cortex-M microcontrollers without modifying Flash memory. It leverages the FPB hardware unit to redirect function calls to custom code loaded in RAM.
+FPBInject enables runtime function hooking and code injection on Cortex-M microcontrollers without modifying Flash memory. It leverages the FPB hardware unit to redirect function calls to custom code loaded in RAM, supporting both legacy (Cortex-M3/M4) and modern (ARMv8-M) architectures.
 
 ### Key Features
 
 - ✅ **Zero Flash Modification** - Inject code at runtime without erasing/writing Flash
 - ✅ **Hardware-Level Redirection** - Uses Cortex-M FPB unit for zero-overhead patching
+- ✅ **Dual Injection Modes** - Supports REMAP (Cortex-M3/M4) and DebugMonitor (ARMv8-M)
 - ✅ **Multiple Hooks** - Supports up to 6 simultaneous code patches (STM32F103)
 - ✅ **Transparent Hijacking** - Completely transparent to calling code
 - ✅ **Reversible** - Easily disable patches to restore original behavior
-- ✅ **Trampoline Architecture** - Pre-placed Flash trampolines jump to RAM code
 
 ## How It Works
 
@@ -318,8 +318,7 @@ DebugMonitor mode provides a software-based alternative that works on both legac
 
 1. **FPB Configuration**: Comparator is set with REPLACE=0b11 (breakpoint on both halfwords)
 2. **DebugMonitor Enable**: DEMCR.MON_EN is set to enable DebugMonitor exception
-3. **VTOR Relocation**: Vector table is copied to RAM to install custom DebugMon_Handler
-4. **PC Modification**: When breakpoint triggers, handler modifies stacked PC to redirect execution
+3. **PC Modification**: When breakpoint triggers, handler modifies stacked PC to redirect execution
 
 ### Key Registers
 
@@ -327,7 +326,6 @@ DebugMonitor mode provides a software-based alternative that works on both legac
 |----------|---------|---------|
 | DEMCR | 0xE000EDFC | Debug Exception and Monitor Control |
 | DFSR | 0xE000ED30 | Debug Fault Status Register |
-| SCB_VTOR | 0xE000ED08 | Vector Table Offset Register |
 
 ### DEMCR Configuration
 
@@ -362,7 +360,6 @@ FP_COMPn bits:
 | ⚠️ **Higher Latency** | Exception entry/exit adds ~12-24 cycles overhead |
 | ⚠️ **Debugger Conflict** | External debugger may interfere with DebugMonitor |
 | ⚠️ **Priority Constraints** | DebugMonitor has fixed high priority (-1) |
-| ⚠️ **Vector Table RAM** | Requires ~256 bytes RAM for relocated vector table |
 
 ### Build Configuration
 
@@ -441,6 +438,7 @@ FPBInject/
 ├── Source/
 │   ├── fpb_inject.c/h          # FPB driver
 │   ├── fpb_trampoline.c/h      # Trampoline functions
+│   ├── fpb_debugmon.c/h        # DebugMonitor functions
 │   └── func_loader.c/h         # Command processor
 └── Tools/
     ├── fpb_loader.py           # Host injection tool
