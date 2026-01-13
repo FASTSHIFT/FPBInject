@@ -30,6 +30,7 @@
 #include "argparse/argparse.h"
 #include "fpb_inject.h"
 #include "fpb_trampoline.h"
+#include "fpb_debugmon.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -66,6 +67,68 @@ static uint16_t calc_crc16(const uint8_t* data, size_t len) {
         crc = (crc << 8) ^ s_crc16_table[(crc >> 8) ^ *data++];
     }
     return crc;
+}
+
+/* Base64 decoding table: ASCII -> 6-bit value, 255 = invalid, 64 = padding */
+static const uint8_t s_b64_dec[128] = {
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, /* 0-15 */
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, /* 16-31 */
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 62,  255, 255, 255, 63,  /* 32-47: +,/ */
+    52,  53,  54,  55,  56,  57,  58,  59,  60,  61,  255, 255, 255, 64,  255, 255, /* 48-63: 0-9,= */
+    255, 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,  12,  13,  14,  /* 64-79: A-O */
+    15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  255, 255, 255, 255, 255, /* 80-95: P-Z */
+    255, 26,  27,  28,  29,  30,  31,  32,  33,  34,  35,  36,  37,  38,  39,  40,  /* 96-111: a-o */
+    41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51,  255, 255, 255, 255, 255, /* 112-127: p-z */
+};
+
+static int base64_to_bytes(const char* b64, uint8_t* out, size_t max) {
+    if (!b64 || !out)
+        return -1;
+
+    size_t b64_len = strlen(b64);
+    if (b64_len == 0 || b64_len % 4 != 0)
+        return -1;
+
+    size_t out_len = (b64_len / 4) * 3;
+    /* Adjust for padding */
+    if (b64[b64_len - 1] == '=')
+        out_len--;
+    if (b64_len >= 2 && b64[b64_len - 2] == '=')
+        out_len--;
+
+    if (out_len > max)
+        return -1;
+
+    size_t i = 0, j = 0;
+    while (i < b64_len) {
+        uint8_t c0 = (uint8_t)b64[i];
+        uint8_t c1 = (uint8_t)b64[i + 1];
+        uint8_t c2 = (uint8_t)b64[i + 2];
+        uint8_t c3 = (uint8_t)b64[i + 3];
+
+        if (c0 >= 128 || c1 >= 128 || c2 >= 128 || c3 >= 128)
+            return -1;
+
+        uint8_t v0 = s_b64_dec[c0];
+        uint8_t v1 = s_b64_dec[c1];
+        uint8_t v2 = s_b64_dec[c2];
+        uint8_t v3 = s_b64_dec[c3];
+
+        if (v0 == 255 || v1 == 255 || (v2 == 255 && v2 != 64) || (v3 == 255 && v3 != 64))
+            return -1;
+
+        /* Decode 4 base64 chars -> up to 3 bytes */
+        out[j++] = (v0 << 2) | (v1 >> 4);
+        if (j < out_len && v2 != 64) {
+            out[j++] = ((v1 & 0x0F) << 4) | (v2 >> 2);
+            if (j < out_len && v3 != 64) {
+                out[j++] = ((v2 & 0x03) << 6) | v3;
+            }
+        }
+        i += 4;
+    }
+
+    return (int)out_len;
 }
 
 static int hex_to_bytes(const char* hex, uint8_t* out, size_t max) {
@@ -265,12 +328,39 @@ static void cmd_free(fl_context_t* ctx) {
     fl_response(ctx, true, "Freed");
 }
 
-static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* hex, int cksum, bool verify) {
+static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, int cksum, bool verify) {
     static uint8_t buf[2048];
-    int n = hex_to_bytes(hex, buf, sizeof(buf));
-    if (n < 0) {
-        fl_response(ctx, false, "Invalid hex");
-        return;
+    int n;
+
+    /* Try base64 first (contains uppercase and lowercase letters), then hex */
+    /* Base64 strings typically have length multiple of 4 and may contain A-Z, a-z, 0-9, +, /, = */
+    size_t len = strlen(data_str);
+    bool is_base64 = (len > 0) && (len % 4 == 0);
+
+    /* Check if it looks like base64 (contains lowercase letters or + or /) */
+    if (is_base64) {
+        for (size_t i = 0; i < len && is_base64; i++) {
+            char c = data_str[i];
+            if ((c >= 'a' && c <= 'z') || c == '+' || c == '/') {
+                break; /* Definitely base64 */
+            }
+            if (c == '=' && i >= len - 2) {
+                break; /* Padding at end - base64 */
+            }
+        }
+    }
+
+    if (is_base64) {
+        n = base64_to_bytes(data_str, buf, sizeof(buf));
+    }
+
+    /* Fallback to hex if base64 failed or data looks like hex */
+    if (!is_base64 || n < 0) {
+        n = hex_to_bytes(data_str, buf, sizeof(buf));
+        if (n < 0) {
+            fl_response(ctx, false, "Invalid data encoding");
+            return;
+        }
     }
 
     if (verify) {
@@ -396,6 +486,7 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
 }
 
 static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
+#ifndef FPB_NO_TRAMPOLINE
     if (comp >= FPB_TRAMPOLINE_COUNT) {
         fl_response(ctx, false, "Invalid comp %lu (max %d)", (unsigned long)comp, FPB_TRAMPOLINE_COUNT - 1);
         return;
@@ -417,6 +508,44 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
 
     fl_response(ctx, true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX", (unsigned long)comp,
                 (unsigned long)orig, (unsigned long)tramp_addr, (unsigned long)target);
+#else
+    (void)comp;
+    (void)orig;
+    (void)target;
+    fl_response(ctx, false, "Trampoline disabled (FPB_NO_TRAMPOLINE)");
+#endif
+}
+
+static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
+#ifndef FPB_NO_DEBUGMON
+    if (comp >= FPB_DEBUGMON_MAX_REDIRECTS) {
+        fl_response(ctx, false, "Invalid comp %lu (max %d)", (unsigned long)comp, FPB_DEBUGMON_MAX_REDIRECTS - 1);
+        return;
+    }
+
+    /* Initialize DebugMonitor if not already done */
+    if (!fpb_debugmon_is_active()) {
+        if (fpb_debugmon_init() != 0) {
+            fl_response(ctx, false, "DebugMonitor init failed");
+            return;
+        }
+    }
+
+    /* Set redirect via DebugMonitor */
+    int ret = fpb_debugmon_set_redirect(comp, orig, target);
+    if (ret != 0) {
+        fl_response(ctx, false, "fpb_debugmon_set_redirect failed: %d", ret);
+        return;
+    }
+
+    fl_response(ctx, true, "DebugMon %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
+                (unsigned long)target);
+#else
+    (void)comp;
+    (void)orig;
+    (void)target;
+    fl_response(ctx, false, "DebugMonitor disabled (FPB_NO_DEBUGMON)");
+#endif
 }
 
 static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
@@ -425,6 +554,12 @@ static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
         return;
     }
 
+#ifndef FPB_NO_TRAMPOLINE
+    fpb_trampoline_clear_target(comp);
+#endif
+#ifndef FPB_NO_DEBUGMON
+    fpb_debugmon_clear_redirect(comp);
+#endif
     fpb_clear_patch(comp);
     fl_response(ctx, true, "Cleared %lu", (unsigned long)comp);
 }
@@ -528,8 +663,13 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             return -1;
         }
         cmd_tpatch(ctx, comp, orig, target);
+    } else if (strcmp(cmd, "dpatch") == 0) {
+        if (orig == 0 || target == 0) {
+            fl_response(ctx, false, "Missing --orig/--target");
+            return -1;
+        }
+        cmd_dpatch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
-        fpb_trampoline_clear_target(comp); /* Also clear trampoline target */
         cmd_unpatch(ctx, comp);
     } else {
         fl_response(ctx, false, "Unknown: %s", cmd);

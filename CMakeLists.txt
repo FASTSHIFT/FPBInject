@@ -42,6 +42,9 @@ set(APP_SELECT "1" CACHE STRING "Application to build (1=blink, 2=test, 3=func_l
 option(FPB_NO_TRAMPOLINE "Disable trampoline (for cores that can REMAP to RAM directly)" OFF)
 option(FPB_TRAMPOLINE_NO_ASM "Use C instead of assembly for trampoline (no argument preservation)" OFF)
 
+# FPB DebugMonitor option (for ARMv8-M where REMAP is removed)
+option(FPB_NO_DEBUGMON "Disable DebugMonitor-based redirection" OFF)
+
 # Function loader allocation mode:
 # STATIC = Static buffer allocation (default)
 # LIBC   = Use standard libc malloc/free
@@ -64,6 +67,11 @@ endif()
 
 if(FPB_TRAMPOLINE_NO_ASM)
     add_compile_definitions(FPB_TRAMPOLINE_NO_ASM)
+endif()
+
+# Add DebugMonitor option to compile definitions
+if(FPB_NO_DEBUGMON)
+    add_compile_definitions(FPB_NO_DEBUGMON)
 endif()
 
 # Add allocation mode definition
@@ -213,6 +221,7 @@ message(STATUS "HSE: ${HSE_VALUE} Hz")
 message(STATUS "App Select: ${APP_SELECT}")
 message(STATUS "FPB_NO_TRAMPOLINE: ${FPB_NO_TRAMPOLINE}")
 message(STATUS "FPB_TRAMPOLINE_NO_ASM: ${FPB_TRAMPOLINE_NO_ASM}")
+message(STATUS "FPB_NO_DEBUGMON: ${FPB_NO_DEBUGMON}")
 message(STATUS "FL_ALLOC_MODE: ${FL_ALLOC_MODE}")
 message(STATUS "Linker Script: ${LINKER_SCRIPT}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")

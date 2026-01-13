@@ -36,6 +36,7 @@ Usage:
 """
 
 import argparse
+import base64
 import os
 import re
 import subprocess
@@ -258,7 +259,7 @@ class FPBLoader:
         return result.get("ok", False)
 
     def upload(self, data: bytes, progress: bool = True, start_offset: int = 0) -> bool:
-        """Upload binary data in chunks.
+        """Upload binary data in chunks using base64 encoding.
         
         Args:
             data: Binary data to upload
@@ -267,17 +268,18 @@ class FPBLoader:
         """
         total = len(data)
         data_offset = 0
-        # chunk_size is hex chars, so bytes per chunk = chunk_size / 2
-        bytes_per_chunk = self.chunk_size // 2
+        # Base64 encoding: 3 bytes -> 4 chars, so we use 48 bytes per chunk (64 chars base64)
+        # This keeps command line reasonable length
+        bytes_per_chunk = 48
 
         while data_offset < total:
             chunk = data[data_offset:data_offset + bytes_per_chunk]
-            hex_data = chunk.hex().upper()
+            b64_data = base64.b64encode(chunk).decode('ascii')
             checksum = crc16(chunk)
 
             # Device offset = start_offset + data_offset
             device_offset = start_offset + data_offset
-            cmd = f"--cmd upload --addr {device_offset} --data {hex_data} --checksum {checksum}"
+            cmd = f"--cmd upload --addr {device_offset} --data {b64_data} --checksum {checksum}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
 
@@ -361,6 +363,17 @@ class FPBLoader:
             print(f"Trampoline patch: comp={comp}, 0x{orig:08X} -> 0x{target:08X}")
             return True
         print(f"Trampoline patch failed: {result}")
+        return False
+
+    def dpatch(self, comp: int, orig: int, target: int) -> bool:
+        """Set DebugMonitor patch (uses FPB breakpoint + DebugMonitor exception, for ARMv8-M)."""
+        cmd = f"--cmd dpatch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
+        resp = self._send_cmd(cmd)
+        result = self._parse_response(resp)
+        if result.get("ok"):
+            print(f"DebugMonitor patch: comp={comp}, 0x{orig:08X} -> 0x{target:08X}")
+            return True
+        print(f"DebugMonitor patch failed: {result}")
         return False
 
     def unpatch(self, comp: int) -> bool:
@@ -751,6 +764,7 @@ Examples:
   %(prog)s -p /dev/ttyUSB0 --info      Get device info
   %(prog)s -p /dev/ttyUSB0 -i          Interactive mode
   %(prog)s -p /dev/ttyUSB0 --inject App/inject/inject.c --target digitalWrite
+  %(prog)s -p /dev/ttyUSB0 --inject inject.c --target func --patch-mode debugmon
 '''
     )
 
@@ -775,6 +789,11 @@ Examples:
     parser.add_argument('--config', help='Path to inject_config.json (default: build/inject_config.json)')
     parser.add_argument('--chunk-size', type=int, default=128,
                         help='Max hex chars per upload command (default: 128, i.e. 64 bytes)')
+    parser.add_argument('--patch-mode', choices=['trampoline', 'debugmon', 'direct'],
+                        default='trampoline',
+                        help='Patch mode: trampoline (FPB REMAP to Flash trampoline, default), '
+                             'debugmon (FPB breakpoint + DebugMonitor, for ARMv8-M), '
+                             'direct (FPB REMAP directly, limited)')
 
     parser.add_argument('-i', '--interactive', action='store_true')
 
@@ -912,9 +931,20 @@ Examples:
                 return 1
 
             patch_addr = inject_func[1] | 1
-            # Use trampoline patching - FPB -> Flash trampoline -> RAM
-            loader.tpatch(args.comp, target_addr, patch_addr)
-            print("Injection active!")
+            
+            # Apply patch using selected mode
+            patch_mode = args.patch_mode
+            if patch_mode == 'trampoline':
+                # Use trampoline patching - FPB REMAP -> Flash trampoline -> RAM
+                loader.tpatch(args.comp, target_addr, patch_addr)
+            elif patch_mode == 'debugmon':
+                # Use DebugMonitor patching - FPB breakpoint -> DebugMon exception -> modify PC
+                loader.dpatch(args.comp, target_addr, patch_addr)
+            else:
+                # Direct FPB REMAP (limited, may not work for RAM targets)
+                loader.patch(args.comp, target_addr, patch_addr)
+            
+            print(f"Injection active! (mode: {patch_mode})")
 
         if args.interactive:
             interactive_mode(loader, elf_path)

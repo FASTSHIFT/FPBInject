@@ -33,6 +33,12 @@ TRAMPOLINE_CONFIGS=(
     "ON;OFF"     # No trampoline (direct remap)
 )
 
+# DebugMonitor options
+DEBUGMON_CONFIGS=(
+    "OFF"    # DebugMonitor enabled (default)
+    "ON"     # DebugMonitor disabled
+)
+
 # Statistics
 TOTAL_TESTS=0
 PASSED_TESTS=0
@@ -73,6 +79,7 @@ build_config() {
     local no_trampoline="$3"
     local no_asm="$4"
     local config_name="$5"
+    local no_debugmon="${6:-OFF}"
     
     local build_subdir="$BUILD_DIR/$config_name"
     
@@ -87,6 +94,7 @@ build_config() {
         -DAPP_SELECT="$app_select"
         -DFPB_NO_TRAMPOLINE="$no_trampoline"
         -DFPB_TRAMPOLINE_NO_ASM="$no_asm"
+        -DFPB_NO_DEBUGMON="$no_debugmon"
     )
     
     # Add alloc mode for func_loader
@@ -198,6 +206,32 @@ run_tests() {
         local start_time=$(date +%s)
         
         if build_config "3" "STATIC" "$no_tramp" "$no_asm" "$config_name"; then
+            local end_time=$(date +%s)
+            local elapsed=$((end_time - start_time))
+            
+            print_result "$config_desc" "PASS" "$elapsed"
+            PASSED_TESTS=$((PASSED_TESTS + 1))
+        else
+            print_result "$config_desc" "FAIL" ""
+            FAILED_TESTS=$((FAILED_TESTS + 1))
+            FAILED_CONFIGS+=("$config_desc")
+        fi
+    done
+    
+    echo ""
+    echo -e "${YELLOW}Testing DebugMonitor configurations (with FUNC_LOADER)...${NC}"
+    echo ""
+    
+    # Test DebugMonitor configurations with FUNC_LOADER + STATIC
+    for debugmon_config in "${DEBUGMON_CONFIGS[@]}"; do
+        local config_name="DEBUGMON_${debugmon_config}"
+        local config_desc="NO_DEBUGMON=$debugmon_config"
+        
+        TOTAL_TESTS=$((TOTAL_TESTS + 1))
+        
+        local start_time=$(date +%s)
+        
+        if build_config "3" "STATIC" "OFF" "OFF" "$config_name" "$debugmon_config"; then
             local end_time=$(date +%s)
             local elapsed=$((end_time - start_time))
             
