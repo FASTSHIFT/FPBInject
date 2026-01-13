@@ -179,7 +179,11 @@ fpb_test_result_t fpb_test_parameter_redirect(void) {
         return result;
     }
 
-    fpb_set_patch(1, (uint32_t)test_func_original_b, (uint32_t)test_func_patched_b);
+    int ret = fpb_set_patch(1, (uint32_t)test_func_original_b, (uint32_t)test_func_patched_b);
+    if (ret != 0) {
+        result.message = "fpb_set_patch failed";
+        return result;
+    }
 
     uint32_t ret2 = test_func_original_b(10);
     if (ret2 != 30) {
@@ -211,7 +215,11 @@ fpb_test_result_t fpb_test_void_redirect(void) {
         return result;
     }
 
-    fpb_set_patch(2, (uint32_t)test_func_original_c, (uint32_t)test_func_patched_c);
+    int ret = fpb_set_patch(2, (uint32_t)test_func_original_c, (uint32_t)test_func_patched_c);
+    if (ret != 0) {
+        result.message = "fpb_set_patch failed";
+        return result;
+    }
 
     test_func_original_c();
     if (g_test_counter != 110) {
@@ -235,8 +243,16 @@ fpb_test_result_t fpb_test_multi_patch(void) {
     result.value = 0;
     result.passed = false;
 
-    fpb_set_patch(0, (uint32_t)test_func_original_a, (uint32_t)test_func_patched_a);
-    fpb_set_patch(1, (uint32_t)test_func_original_b, (uint32_t)test_func_patched_b);
+    int ret = fpb_set_patch(0, (uint32_t)test_func_original_a, (uint32_t)test_func_patched_a);
+    if (ret != 0) {
+        result.message = "fpb_set_patch failed (comp 0)";
+        return result;
+    }
+    ret = fpb_set_patch(1, (uint32_t)test_func_original_b, (uint32_t)test_func_patched_b);
+    if (ret != 0) {
+        result.message = "fpb_set_patch failed (comp 1)";
+        return result;
+    }
 
     uint32_t ret1 = test_func_original_a();
     uint32_t ret2 = test_func_original_b(5);
@@ -265,16 +281,27 @@ fpb_test_result_t fpb_test_multi_patch(void) {
     return result;
 }
 
-void fpb_run_all_tests(fpb_test_result_t* results, uint8_t* num_tests) {
+void fpb_run_all_tests(fpb_test_result_t* results, size_t results_len, uint8_t* num_tests) {
     uint8_t idx = 0;
 
     fpb_init();
 
-    results[idx++] = fpb_test_init();
-    results[idx++] = fpb_test_basic_redirect();
-    results[idx++] = fpb_test_parameter_redirect();
-    results[idx++] = fpb_test_void_redirect();
-    results[idx++] = fpb_test_multi_patch();
+    /* Array of test function pointers */
+    fpb_test_result_t (*tests[])(void) = {fpb_test_init, fpb_test_basic_redirect, fpb_test_parameter_redirect,
+                                          fpb_test_void_redirect, fpb_test_multi_patch};
+
+    size_t num = sizeof(tests) / sizeof(tests[0]);
+
+    if (results_len < num) {
+        printf("Error: Insufficient space in results array\n");
+        num = results_len;
+    }
+
+    for (size_t i = 0; i < num; ++i) {
+        results[idx] = tests[i]();
+        printf("[%s] %s: %s\n", results[idx].passed ? "PASS" : "FAIL", results[idx].test_name, results[idx].message);
+        idx++;
+    }
 
     *num_tests = idx;
 
@@ -303,12 +330,8 @@ void test_run(void) {
     printf("FPB Inject Test Suite\n");
     printf("========================================\n\n");
 
-    fpb_run_all_tests(results, &num_tests);
+    fpb_run_all_tests(results, sizeof(results) / sizeof(results[0]), &num_tests);
     fpb_get_test_summary(results, num_tests, &passed, &failed);
-
-    for (uint8_t i = 0; i < num_tests; i++) {
-        printf("[%s] %s: %s\n", results[i].passed ? "PASS" : "FAIL", results[i].test_name, results[i].message);
-    }
 
     printf("\n----------------------------------------\n");
     printf("Results: %d passed, %d failed\n", passed, failed);

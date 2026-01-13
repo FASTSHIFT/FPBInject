@@ -113,6 +113,11 @@ static inline void isb(void) {
 }
 
 int fpb_init(void) {
+    /* If already initialized, return success (idempotent) */
+    if (g_fpb_state.initialized) {
+        return 0;
+    }
+
     memset(&g_fpb_state, 0, sizeof(g_fpb_state));
     memset(g_fpb_remap_table, 0, sizeof(g_fpb_remap_table));
 
