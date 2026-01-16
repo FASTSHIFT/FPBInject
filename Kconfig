@@ -30,10 +30,11 @@ config FPBINJECT_STACKSIZE
 
 config FPBINJECT_BUF_SIZE
 	int "Static code buffer size"
-	default 8192
+	default -1
 	---help---
 		Size of the static buffer used for code injection.
 		This buffer is used to store injected code.
+		Set to -1 to use the dynamic buffer allocation.
 
 config FPBINJECT_LINE_SIZE
 	int "Command line buffer size"

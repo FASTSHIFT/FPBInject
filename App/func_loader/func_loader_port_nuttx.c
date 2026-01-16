@@ -59,15 +59,17 @@
 #include <stdbool.h>
 
 #ifndef FL_NUTTX_BUF_SIZE
-#define FL_NUTTX_BUF_SIZE 8192
+#define FL_NUTTX_BUF_SIZE -1
 #endif
 
 #ifndef FL_NUTTX_LINE_SIZE
 #define FL_NUTTX_LINE_SIZE 1024
 #endif
 
+#if FL_NUTTX_BUF_SIZE > 0
 /* Static code buffer */
 static uint8_t g_code_buf[FL_NUTTX_BUF_SIZE] __attribute__((aligned(4)));
+#endif
 
 /* Output callback */
 static void nuttx_output_cb(void* user, const char* str) {
@@ -84,11 +86,21 @@ static void nuttx_flush_dcache_cb(uintptr_t start, uintptr_t end) {
 static fl_context_t g_ctx = {
     .output_cb = nuttx_output_cb,
     .output_user = NULL,
+#if FL_NUTTX_BUF_SIZE <= 0
     .malloc_cb = malloc,
     .free_cb = free,
+#else
+    .malloc_cb = NULL,
+    .free_cb = NULL,
+#endif
     .flush_dcache_cb = nuttx_flush_dcache_cb,
+#if FL_NUTTX_BUF_SIZE > 0
     .static_buf = g_code_buf,
     .static_size = sizeof(g_code_buf),
+#else
+    .static_buf = NULL,
+    .static_size = 0,
+#endif
     .static_used = 0,
     .dyn_base = 0,
     .dyn_size = 0,
