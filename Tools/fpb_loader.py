@@ -1096,7 +1096,7 @@ Examples:
 NuttX example (using compile_commands.json):
   %(prog)s -p /dev/ttyACM0 -b 921600 --inject inject.c --target syslog \\
            --compile-commands out/xxx/compile_commands.json \\
-           -e out/xxx/nuttx.elf --patch-mode debugmon -ni
+           -e nuttx.elf.elf --patch-mode debugmon -ni
 '''
     )
 

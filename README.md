@@ -383,6 +383,101 @@ cmake -B build -DAPP_SELECT=3 -DFPB_NO_DEBUGMON=ON \
 | Lowest latency required | **Trampoline** |
 | Maximum compatibility needed | **DebugMonitor** |
 
+### NuttX Implementation (fpb_debugmon_nuttx.c)
+
+On NuttX RTOS, the DebugMonitor implementation uses NuttX's native `up_debugpoint_add()` API instead of directly manipulating hardware registers. This provides better integration with the OS and avoids conflicts with other debug components.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                   NuttX DebugMonitor Implementation                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│   1. Initialization                                                     │
+│   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │  fpb_debugmon_init()                                             │  │
+│   │  ├── irq_attach(NVIC_IRQ_DBGMONITOR, arm_dbgmonitor, NULL)       │  │
+│   │  │   (Replace vendor's PANIC handler with NuttX's handler)       │  │
+│   │  └── arm_enable_dbgmonitor()                                     │  │
+│   │       (Initialize FPB/DWT hardware)                              │  │
+│   └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│   2. Set Redirect                                                       │
+│   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │  fpb_debugmon_set_redirect(comp, orig_addr, redirect_addr)       │  │
+│   │  └── up_debugpoint_add(DEBUGPOINT_BREAKPOINT, addr, size,        │  │
+│   │                        debugmon_callback, &redirect_info)        │  │
+│   └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│   3. Breakpoint Trigger                                                 │
+│   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │  CPU hits breakpoint → arm_dbgmonitor() → debugmon_callback()    │  │
+│   │  └── regs = running_regs()    ← Get saved register context       │  │
+│   │  └── regs[REG_PC] = redirect_addr   ← Modify stacked PC          │  │
+│   │  └── Exception return → Execution at inject function             │  │
+│   └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Key NuttX APIs Used
+
+| API | Purpose |
+|-----|---------|
+| `up_debugpoint_add()` | Register breakpoint with callback |
+| `up_debugpoint_remove()` | Remove breakpoint |
+| `arm_enable_dbgmonitor()` | Initialize FPB/DWT hardware |
+| `arm_dbgmonitor()` | NuttX's DebugMonitor exception handler |
+| `running_regs()` | Get current task's saved register context |
+| `irq_attach()` | Register interrupt handler |
+
+#### Register Context Modification
+
+In NuttX, when an exception occurs, the register context is saved to `tcb->xcp.regs`. The `running_regs()` macro provides access to this:
+
+```c
+#define running_regs() ((FAR void **)(g_running_tasks[this_cpu()]->xcp.regs))
+```
+
+By modifying `regs[REG_PC]`, we can redirect execution when the exception returns.
+
+#### Vendor Platform Considerations
+
+Some vendors register their own DebugMonitor handler that calls `PANIC()`. The NuttX implementation re-attaches NuttX's proper `arm_dbgmonitor()` handler during initialization to ensure correct callback dispatch:
+
+```c
+/* Replace vendor's PANIC handler with NuttX's proper handler */
+irq_attach(NVIC_IRQ_DBGMONITOR, arm_dbgmonitor, NULL);
+up_enable_irq(NVIC_IRQ_DBGMONITOR);
+arm_enable_dbgmonitor();
+```
+
+#### NuttX Kconfig Requirements
+
+```kconfig
+CONFIG_ARCH_HAVE_DEBUG=y      # Required for up_debugpoint_add()
+CONFIG_FPBINJECT=y            # Enable FPBInject
+```
+
+#### NuttX Usage Example
+
+```bash
+# Inject code on NuttX device with compile_commands.json for includes/defines
+python3 Tools/fpb_loader.py -p /dev/ttyACM0 -b 921600 \
+    --inject App/inject/inject.cpp \
+    --target lv_malloc \
+    --patch-mode debugmon \
+    --elf nuttx.elf.elf \
+    --compile-commands out/xxx/compile_commands.json \
+    -ni
+```
+
+The `-ni` (NuttX interactive) flag automatically:
+1. Sends `fl` command to enter device's interactive mode
+2. Executes injection commands
+3. Sends `exit` to return to normal shell
+
 ## FPB Technical Details
 
 ### Flash Patch and Breakpoint Unit

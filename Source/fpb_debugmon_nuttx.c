@@ -29,7 +29,7 @@
  * - FPB breakpoints for Code region (0x00000000-0x1FFFFFFF)
  * - DWT watchpoints for any address (including PSRAM, external memory)
  *
- * For code running in PSRAM (e.g., 0x2Cxxxxxx on BES platform), we use
+ * For code running in PSRAM, we use
  * DWT watchpoint in "execute" mode instead of FPB breakpoint.
  */
 
@@ -136,7 +136,7 @@ int fpb_debugmon_init(void) {
 
 #ifdef CONFIG_ARCH_HAVE_DEBUG
     /* Re-attach NuttX's arm_dbgmonitor handler.
-     * BES platform overrides this with a PANIC() handler in bes_irq.c,
+     * Some platforms override this with a PANIC() handler in bes_irq.c,
      * so we need to replace it with NuttX's implementation that properly
      * dispatches to our callback via up_debugpoint_add().
      */
