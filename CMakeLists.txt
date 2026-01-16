@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-if(CONFIG_APPS_DIR)
+if(1)
 if(CONFIG_FPBINJECT)
   nuttx_add_application(
     NAME ${CONFIG_FPBINJECT_PROGNAME}
@@ -34,7 +34,7 @@ if(CONFIG_FPBINJECT)
       App/func_loader/argparse/argparse.c
       Source/fpb_inject.c
       Source/fpb_trampoline.c
-      Source/fpb_debugmon.c
+      Source/fpb_debugmon_nuttx.c
     INCLUDE_DIRECTORIES
       ${CMAKE_CURRENT_LIST_DIR}/App/func_loader
       ${CMAKE_CURRENT_LIST_DIR}/App/func_loader/argparse
@@ -44,7 +44,6 @@ if(CONFIG_FPBINJECT)
       FL_NUTTX_BUF_SIZE=${CONFIG_FPBINJECT_BUF_SIZE}
       FL_NUTTX_LINE_SIZE=${CONFIG_FPBINJECT_LINE_SIZE}
   )
-
 endif()
 else()
   # Standalone Bare-metal Build Mode (STM32F103)

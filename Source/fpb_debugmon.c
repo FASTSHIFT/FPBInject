@@ -48,7 +48,8 @@
 
 #include "fpb_debugmon.h"
 
-#ifndef FPB_NO_DEBUGMON
+/* NuttX uses fpb_debugmon_nuttx.c instead */
+#if !defined(FPB_NO_DEBUGMON) && !defined(__NUTTX__)
 
 #include <string.h>
 #include <stdio.h>
@@ -57,6 +58,8 @@
 #define FPB_DEBUGMON_LOG 0
 
 #if FPB_DEBUGMON_LOG
+
+#ifdef __STM32F1__
 /* Direct UART1 output for debugging (polling mode, no interrupts) */
 #define USART1_BASE 0x40013800UL
 #define USART1_SR (*(volatile uint32_t*)(USART1_BASE + 0x00))
@@ -68,6 +71,13 @@ static void dbg_putc(char c) {
         ;
     USART1_DR = c;
 }
+#else
+#include <stdio.h>
+
+static void dbg_putc(char c) {
+    putc(c, stdout);
+}
+#endif
 
 static void dbg_puts(const char* s) {
     while (*s)
@@ -283,11 +293,12 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
         return -1;
     }
 
-    /* Original address must be in Code region */
-    if (original_addr >= 0x20000000UL) {
-        dbg_puts("[DBGMON] ERROR: addr not in code region\r\n");
-        return -1;
-    }
+    /* Note: Traditional FPB (FPBv1) only supports Code region (0x00000000-0x1FFFFFFF).
+     * However, FPBv2 on ARMv8-M supports wider address ranges.
+     * Some platforms may execute code from PSRAM or external memory.
+     * We remove the address check and let the hardware decide if it's supported.
+     * If the address is not matchable by FPB, the breakpoint simply won't trigger.
+     */
 
     /* Strip Thumb bit for comparison */
     uint32_t match_addr = original_addr & ~1UL;
@@ -416,14 +427,18 @@ void fpb_debugmon_handler(uint32_t* stack_frame) {
 }
 
 /* ============================================================================
- * DebugMonitor Handler (weak, can be overridden)
+ * DebugMonitor Handler (weak, for platforms without attach callback)
  * ============================================================================ */
 
+#ifndef FPB_DEBUGMON_NO_DEFAULT_HANDLER
 /**
  * @brief  DebugMonitor exception handler
  *
  * This is the actual exception vector handler.
  * It determines which stack was used and calls fpb_debugmon_handler.
+ *
+ * Note: On NuttX and other RTOS, use fpb_debugmon_set_attach_cb() instead,
+ * as the exception vector is managed by the OS.
  */
 __attribute__((weak, naked)) void DebugMon_Handler(void) {
     /* Use naked to avoid compiler-generated prologue/epilogue
@@ -444,5 +459,6 @@ __attribute__((weak, naked)) void DebugMon_Handler(void) {
         "pop {lr}\n"
         "bx lr\n");
 }
+#endif /* !FPB_DEBUGMON_NO_DEFAULT_HANDLER */
 
-#endif /* !FPB_NO_DEBUGMON */
+#endif /* !FPB_NO_DEBUGMON && !__NUTTX__ */
