@@ -42,4 +42,5 @@
 
 # Others
 build/
+build_test/
 __pycache__/
