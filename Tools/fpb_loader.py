@@ -491,34 +491,212 @@ def load_inject_config(config_path: str = None) -> Optional[Dict]:
     return None
 
 
+def parse_compile_commands(compile_commands_path: str, source_filter: str = None,
+                          verbose: bool = False) -> Optional[Dict]:
+    """
+    Parse compile_commands.json to extract compiler flags.
+    This reuses the NuttX build system's includes and defines.
+
+    Args:
+        compile_commands_path: Path to compile_commands.json
+        source_filter: Optional substring to filter source file (e.g., '.c' or specific file name)
+        verbose: Print debug info
+
+    Returns:
+        Config dict compatible with inject_config.json format
+    """
+    import json
+    import shlex
+
+    if not os.path.exists(compile_commands_path):
+        print(f"Error: compile_commands.json not found: {compile_commands_path}")
+        return None
+
+    try:
+        with open(compile_commands_path, 'r') as f:
+            commands = json.load(f)
+    except Exception as e:
+        print(f"Error loading compile_commands.json: {e}")
+        return None
+
+    if not commands:
+        print("Error: compile_commands.json is empty")
+        return None
+
+    # Find a suitable entry (prefer .c files, not .S assembly)
+    selected_entry = None
+    for entry in commands:
+        file_path = entry.get('file', '')
+        if source_filter:
+            if source_filter in file_path:
+                selected_entry = entry
+                break
+        elif file_path.endswith('.c') and '__ASSEMBLY__' not in entry.get('command', ''):
+            selected_entry = entry
+            break
+
+    if not selected_entry:
+        for entry in commands:
+            if entry.get('file', '').endswith('.c'):
+                selected_entry = entry
+                break
+
+    if not selected_entry:
+        print("Error: No suitable C file entry found in compile_commands.json")
+        return None
+
+    if verbose:
+        print(f"Using compile entry for: {selected_entry.get('file')}")
+
+    command_str = selected_entry.get('command', '')
+    if not command_str:
+        print("Error: No command found in entry")
+        return None
+
+    try:
+        tokens = shlex.split(command_str)
+    except Exception as e:
+        print(f"Error parsing command: {e}")
+        return None
+
+    compiler = tokens[0] if tokens else 'arm-none-eabi-gcc'
+    includes = []
+    defines = []
+    cflags = []
+
+    i = 1
+    while i < len(tokens):
+        token = tokens[i]
+
+        if token == '-I' and i + 1 < len(tokens):
+            includes.append(tokens[i + 1])
+            i += 2
+            continue
+        elif token.startswith('-I'):
+            includes.append(token[2:])
+            i += 1
+            continue
+
+        if token == '-isystem' and i + 1 < len(tokens):
+            includes.append(tokens[i + 1])
+            i += 2
+            continue
+
+        if token == '-D' and i + 1 < len(tokens):
+            defines.append(tokens[i + 1])
+            i += 2
+            continue
+        elif token.startswith('-D'):
+            defines.append(token[2:])
+            i += 1
+            continue
+
+        if token == '-o' and i + 1 < len(tokens):
+            i += 2
+            continue
+
+        if token.endswith(('.c', '.cpp', '.S', '.s', '.o')):
+            i += 1
+            continue
+
+        if token == '--param' and i + 1 < len(tokens):
+            i += 2
+            continue
+
+        if token.startswith('-Wa,'):
+            i += 1
+            continue
+
+        # Keep architecture flags
+        if any(token.startswith(p) for p in ['-mthumb', '-mcpu', '-mtune', '-march', '-mfpu', '-mfloat-abi']):
+            cflags.append(token)
+        elif token in ['-ffunction-sections', '-fdata-sections', '-fno-common', '-nostdlib']:
+            cflags.append(token)
+
+        i += 1
+
+    # Add size optimization for inject code
+    if '-Os' not in cflags:
+        cflags.append('-Os')
+
+    includes = list(dict.fromkeys(includes))
+    defines = list(dict.fromkeys(defines))
+    cflags = list(dict.fromkeys(cflags))
+
+    # Only replace the filename part, not the full path
+    compiler_dir = os.path.dirname(compiler)
+    compiler_name = os.path.basename(compiler)
+    objcopy_name = compiler_name.replace('gcc', 'objcopy').replace('g++', 'objcopy')
+    objcopy = os.path.join(compiler_dir, objcopy_name) if compiler_dir else objcopy_name
+
+    config = {
+        'compiler': compiler,
+        'objcopy': objcopy,
+        'includes': includes,
+        'defines': defines,
+        'cflags': cflags,
+        'ldflags': [],
+        '_path': compile_commands_path,
+        '_source': 'compile_commands.json'
+    }
+
+    if verbose:
+        print(f"Extracted from compile_commands.json:")
+        print(f"  Compiler: {compiler}")
+        print(f"  Includes: {len(includes)} paths")
+        print(f"  Defines:  {len(defines)}")
+        print(f"  CFlags:   {cflags}")
+
+    return config
+
+
 def compile_inject(source: str, base_addr: int, elf_path: str = None,
-                   config_path: str = None, verbose: bool = False) -> Optional[Tuple[bytes, Dict[str, int]]]:
+                   config_path: str = None, compile_commands_path: str = None,
+                   verbose: bool = False) -> Optional[Tuple[bytes, Dict[str, int]]]:
     """
     Compile injection code to binary.
-    Uses inject_config.json from CMake build for toolchain settings.
+    Uses inject_config.json or compile_commands.json for toolchain settings.
     Returns (binary_data, symbols) or None on failure.
+
+    Args:
+        source: Path to injection source file (.c/.cpp)
+        base_addr: Base address for injection code
+        elf_path: Path to main ELF for symbol resolution
+        config_path: Path to inject_config.json
+        compile_commands_path: Path to compile_commands.json (alternative to config_path)
+        verbose: Enable verbose output
     """
-    # Load config
-    config = load_inject_config(config_path)
+    # Load config - prefer compile_commands if specified
+    config = None
+    if compile_commands_path:
+        config = parse_compile_commands(compile_commands_path, verbose=verbose)
+        if config and verbose:
+            print(f"Using compile_commands: {compile_commands_path}")
+
     if not config:
-        print("Error: inject_config.json not found. Run cmake to generate it.")
-        print("       cmake -B build -G Ninja && cmake --build build")
+        config = load_inject_config(config_path)
+
+    if not config:
+        print("Error: No config found.")
+        print("       Options:")
+        print("       1. Use --config to specify inject_config.json")
+        print("       2. Use --compile-commands to specify compile_commands.json")
+        print("       3. Run cmake -B build -G Ninja && cmake --build build")
         return None
 
     if verbose:
         print(f"Using config: {config.get('_path', 'unknown')}")
 
-    # Get compiler/objcopy from config, then apply toolchain path
-    compiler_name = config.get('compiler', 'arm-none-eabi-gcc')
-    objcopy_name = config.get('objcopy', 'arm-none-eabi-objcopy')
+    # Get compiler/objcopy from config
+    compiler = config.get('compiler', 'arm-none-eabi-gcc')
+    objcopy = config.get('objcopy', 'arm-none-eabi-objcopy')
 
-    # If config has full paths, extract just the tool name
-    compiler_name = os.path.basename(compiler_name)
-    objcopy_name = os.path.basename(objcopy_name)
-
-    # Apply toolchain path if set
-    compiler = get_tool_path(compiler_name)
-    objcopy = get_tool_path(objcopy_name)
+    # If compile_commands provided full paths, use them directly
+    # Otherwise, apply toolchain path
+    if not os.path.isabs(compiler):
+        compiler = get_tool_path(compiler)
+    if not os.path.isabs(objcopy):
+        objcopy = get_tool_path(objcopy)
 
     if verbose and _toolchain_path:
         print(f"Using toolchain: {_toolchain_path}")
@@ -601,7 +779,7 @@ SECTIONS
             data = f.read()
 
         # Get symbols
-        nm_cmd = get_tool_path('arm-none-eabi-nm')
+        nm_cmd = objcopy.replace('objcopy', 'nm')
         result = subprocess.run([nm_cmd, '-C', elf_file], capture_output=True, text=True)
 
         symbols = {}
@@ -624,6 +802,89 @@ SECTIONS
 # =============================================================================
 # Interactive Mode
 # =============================================================================
+
+def nuttx_interactive_mode(loader: FPBLoader):
+    """
+    NuttX device interactive mode.
+    
+    Connects to the device's 'fl' command interactive shell and provides
+    a pass-through terminal experience. First sends 'fl' to enter device's
+    interactive mode (showing 'fl> ' prompt), then passes through user input.
+    
+    This mode:
+    1. Sends 'fl' command to enter device interactive mode
+    2. Sends user input directly to device
+    3. Reads and displays device output
+    4. Handles 'quit'/'exit'/'q' to exit both device and host
+    """
+    import select
+    import threading
+    
+    print("\nNuttX FPBInject Interactive Mode")
+    print("Entering device 'fl' interactive mode...")
+    print("Type commands to send to device. 'quit'/'exit'/'q' to exit.")
+    print("Ctrl+C to force exit.\n")
+    
+    ser = loader.ser
+    if not ser:
+        print("Error: Not connected to device")
+        return
+    
+    # Clear any pending data
+    ser.reset_input_buffer()
+    
+    # Send 'fl' command to enter device interactive mode
+    ser.write(b'fl\n')
+    time.sleep(0.1)  # Wait for device to enter interactive mode
+    
+    stop_event = threading.Event()
+    
+    def reader_thread():
+        """Background thread to read and display device output."""
+        buffer = ""
+        while not stop_event.is_set():
+            try:
+                if ser.in_waiting > 0:
+                    data = ser.read(ser.in_waiting)
+                    if data:
+                        text = data.decode('utf-8', errors='replace')
+                        # Print output, handling prompt specially
+                        print(text, end='', flush=True)
+                else:
+                    time.sleep(0.01)
+            except Exception as e:
+                if not stop_event.is_set():
+                    print(f"\nReader error: {e}")
+                break
+    
+    # Start reader thread
+    reader = threading.Thread(target=reader_thread, daemon=True)
+    reader.start()
+    
+    try:
+        while True:
+            try:
+                line = input()
+            except EOFError:
+                break
+            
+            # Check for local exit commands
+            cmd = line.strip().lower()
+            if cmd in ('quit', 'exit', 'q'):
+                # Send exit to device first
+                ser.write((line + '\n').encode('utf-8'))
+                time.sleep(0.1)
+                break
+            
+            # Send command to device
+            ser.write((line + '\n').encode('utf-8'))
+            
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user")
+    finally:
+        stop_event.set()
+        reader.join(timeout=0.5)
+        print("\nExited NuttX interactive mode")
 
 def interactive_mode(loader: FPBLoader, elf_path: str = None):
     """Interactive command mode."""
@@ -827,9 +1088,15 @@ Examples:
   %(prog)s --list                      List serial ports
   %(prog)s -p /dev/ttyUSB0 --ping      Test connection
   %(prog)s -p /dev/ttyUSB0 --info      Get device info
-  %(prog)s -p /dev/ttyUSB0 -i          Interactive mode
+  %(prog)s -p /dev/ttyUSB0 -i          Host-side interactive mode
+  %(prog)s -p /dev/ttyUSB0 -ni         NuttX device interactive mode (pass-through)
   %(prog)s -p /dev/ttyUSB0 --inject App/inject/inject.c --target digitalWrite
   %(prog)s -p /dev/ttyUSB0 --inject inject.c --target func --patch-mode debugmon
+
+NuttX example (using compile_commands.json):
+  %(prog)s -p /dev/ttyACM0 -b 921600 --inject inject.c --target syslog \\
+           --compile-commands out/xxx/compile_commands.json \\
+           -e out/xxx/nuttx.elf --patch-mode debugmon -ni
 '''
     )
 
@@ -854,6 +1121,8 @@ Examples:
     parser.add_argument('--func', help='Inject function name (default: first inject_* found)')
     parser.add_argument('--comp', type=int, default=0, help='FPB comparator')
     parser.add_argument('--config', help='Path to inject_config.json (default: build/inject_config.json)')
+    parser.add_argument('--compile-commands', metavar='PATH',
+                        help='Path to compile_commands.json to extract NuttX/project compiler flags')
     parser.add_argument('--chunk-size', type=int, default=128,
                         help='Max hex chars per upload command (default: 128, i.e. 64 bytes)')
     parser.add_argument('--patch-mode', choices=['trampoline', 'debugmon', 'direct'],
@@ -862,7 +1131,10 @@ Examples:
                              'debugmon (FPB breakpoint + DebugMonitor, for ARMv8-M), '
                              'direct (FPB REMAP directly, limited)')
 
-    parser.add_argument('-i', '--interactive', action='store_true')
+    parser.add_argument('-i', '--interactive', action='store_true',
+                        help='Host-side interactive mode with local command parsing')
+    parser.add_argument('-ni', '--nuttx-interactive', action='store_true',
+                        help='NuttX device interactive mode (pass-through to device fl shell)')
 
     args = parser.parse_args()
 
@@ -943,7 +1215,8 @@ Examples:
 
                 # First pass: compile with dummy address (8-byte aligned) to get size
                 compile_start = time.time()
-                result = compile_inject(args.inject, 0x20000000, elf_path, args.config, args.verbose)
+                result = compile_inject(args.inject, 0x20000000, elf_path, args.config,
+                                         getattr(args, 'compile_commands', None), args.verbose)
                 if not result:
                     return 1
                 data, _ = result
@@ -964,7 +1237,8 @@ Examples:
                 base_addr = aligned_addr
 
                 # Second pass: recompile with aligned address
-                result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
+                result = compile_inject(args.inject, base_addr, elf_path, args.config,
+                                         getattr(args, 'compile_commands', None), args.verbose)
                 compile_time = time.time() - compile_start
                 if not result:
                     return 1
@@ -974,7 +1248,8 @@ Examples:
                 base_addr = info.get("base", 0x20001000) if info else 0x20001000
                 align_offset = 0  # Static buffer should already be aligned
                 compile_start = time.time()
-                result = compile_inject(args.inject, base_addr, elf_path, args.config, args.verbose)
+                result = compile_inject(args.inject, base_addr, elf_path, args.config,
+                                         getattr(args, 'compile_commands', None), args.verbose)
                 compile_time = time.time() - compile_start
                 if not result:
                     return 1
@@ -1044,7 +1319,9 @@ Examples:
             print(f"Total time:    {total_time:.2f}s")
             print(f"Injection active! (mode: {patch_mode})")
 
-        if args.interactive:
+        if args.nuttx_interactive:
+            nuttx_interactive_mode(loader)
+        elif args.interactive:
             interactive_mode(loader, elf_path)
 
     finally:

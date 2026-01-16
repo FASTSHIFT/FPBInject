@@ -52,6 +52,7 @@
 
 #include "func_loader.h"
 #include <nuttx/config.h>
+#include <nuttx/cache.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,12 +75,18 @@ static void nuttx_output_cb(void* user, const char* str) {
     fputs(str, stdout);
 }
 
+/* Flush dcache callback */
+static void nuttx_flush_dcache_cb(uintptr_t start, uintptr_t end) {
+    up_flush_dcache(start, end);
+}
+
 /* Context */
 static fl_context_t g_ctx = {
     .output_cb = nuttx_output_cb,
     .output_user = NULL,
     .malloc_cb = malloc,
     .free_cb = free,
+    .flush_dcache_cb = nuttx_flush_dcache_cb,
     .static_buf = g_code_buf,
     .static_size = sizeof(g_code_buf),
     .static_used = 0,

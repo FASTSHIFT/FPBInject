@@ -376,6 +376,15 @@ static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, ui
         return;
     }
 
+    /* Flush data cache after upload to ensure code is visible to CPU */
+    if (ctx->flush_dcache_cb) {
+        uint8_t* code_buf = get_buf(ctx);
+        size_t buf_size = get_buf_size(ctx);
+        if (code_buf && buf_size > 0) {
+            ctx->flush_dcache_cb((uintptr_t)code_buf, (uintptr_t)code_buf + buf_size);
+        }
+    }
+
     fl_response(ctx, true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)off);
 }
 

@@ -41,6 +41,7 @@ extern "C" {
 typedef void (*fl_output_cb_t)(void* user, const char* str);
 typedef void* (*fl_malloc_cb_t)(size_t size);
 typedef void (*fl_free_cb_t)(void* ptr);
+typedef void (*fl_flush_dcache_cb_t)(uintptr_t start, uintptr_t end);
 
 /**
  * @brief Function loader context
@@ -55,6 +56,9 @@ typedef struct {
     /* Memory callbacks (optional, for dynamic alloc) */
     fl_malloc_cb_t malloc_cb;
     fl_free_cb_t free_cb;
+
+    /* Cache flush callback (optional, for platforms with dcache) */
+    fl_flush_dcache_cb_t flush_dcache_cb;
 
     /* Static buffer (required if malloc_cb is NULL) */
     uint8_t* static_buf;
