@@ -120,6 +120,7 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
     uint32_t old_pc = regs[REG_PC];
     regs[REG_PC] = redirect->redirect_addr;
 
+    (void)old_pc;
     // syslog(LOG_DEBUG, "[DBGMON] redirect: 0x%08lX -> 0x%08lX\n", (unsigned long)old_pc,
     //        (unsigned long)redirect->redirect_addr);
 }

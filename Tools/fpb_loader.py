@@ -1169,6 +1169,15 @@ NuttX example (using compile_commands.json):
     if not loader.connect():
         return 1
 
+    # Enter NuttX fl interactive mode if requested
+    nuttx_mode = getattr(args, 'nuttx_interactive', False)
+    if nuttx_mode:
+        print("Entering NuttX 'fl' interactive mode...")
+        loader.ser.write(b'fl\n')
+        # Read and discard any welcome message
+        if loader.ser.in_waiting > 0:
+            loader.ser.read(loader.ser.in_waiting)
+
     try:
         if args.ping:
             loader.ping()
@@ -1319,12 +1328,17 @@ NuttX example (using compile_commands.json):
             print(f"Total time:    {total_time:.2f}s")
             print(f"Injection active! (mode: {patch_mode})")
 
-        if args.nuttx_interactive:
-            nuttx_interactive_mode(loader)
-        elif args.interactive:
+        if args.interactive:
             interactive_mode(loader, elf_path)
 
     finally:
+        # Exit NuttX fl interactive mode if we entered it
+        if nuttx_mode:
+            print("\nExiting NuttX 'fl' interactive mode...")
+            loader.ser.write(b'exit\n')
+            # Read and discard exit response
+            if loader.ser.in_waiting > 0:
+                loader.ser.read(loader.ser.in_waiting)
         loader.disconnect()
 
     return 0
