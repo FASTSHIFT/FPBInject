@@ -425,12 +425,26 @@ class FPBLoader:
 # ELF Utilities
 # =============================================================================
 
+# Global toolchain path (set by --toolchain argument)
+_toolchain_path: Optional[str] = None
+
+
+def get_tool_path(tool_name: str) -> str:
+    """Get full path for a toolchain tool."""
+    if _toolchain_path:
+        full_path = os.path.join(_toolchain_path, tool_name)
+        if os.path.exists(full_path):
+            return full_path
+    return tool_name
+
+
 def get_symbols(elf_path: str) -> Dict[str, int]:
     """Extract symbols from ELF file."""
     symbols = {}
     try:
+        nm_tool = get_tool_path('arm-none-eabi-nm')
         result = subprocess.run(
-            ['arm-none-eabi-nm', '-C', elf_path],
+            [nm_tool, '-C', elf_path],
             capture_output=True, text=True, check=True
         )
         for line in result.stdout.splitlines():
@@ -494,8 +508,21 @@ def compile_inject(source: str, base_addr: int, elf_path: str = None,
     if verbose:
         print(f"Using config: {config.get('_path', 'unknown')}")
 
-    compiler = config.get('compiler', 'arm-none-eabi-gcc')
-    objcopy = config.get('objcopy', 'arm-none-eabi-objcopy')
+    # Get compiler/objcopy from config, then apply toolchain path
+    compiler_name = config.get('compiler', 'arm-none-eabi-gcc')
+    objcopy_name = config.get('objcopy', 'arm-none-eabi-objcopy')
+
+    # If config has full paths, extract just the tool name
+    compiler_name = os.path.basename(compiler_name)
+    objcopy_name = os.path.basename(objcopy_name)
+
+    # Apply toolchain path if set
+    compiler = get_tool_path(compiler_name)
+    objcopy = get_tool_path(objcopy_name)
+
+    if verbose and _toolchain_path:
+        print(f"Using toolchain: {_toolchain_path}")
+
     includes = config.get('includes', [])
     defines = config.get('defines', [])
     cflags = config.get('cflags', [])
@@ -574,7 +601,7 @@ SECTIONS
             data = f.read()
 
         # Get symbols
-        nm_cmd = objcopy.replace('objcopy', 'nm')
+        nm_cmd = get_tool_path('arm-none-eabi-nm')
         result = subprocess.run([nm_cmd, '-C', elf_file], capture_output=True, text=True)
 
         symbols = {}
@@ -811,6 +838,8 @@ Examples:
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-e', '--elf', default='build/FPBInject.elf',
                         help='Main ELF file for symbols')
+    parser.add_argument('-t', '--toolchain', metavar='PATH',
+                        help='Custom toolchain directory (e.g., prebuilts/gcc/linux-x86_64/arm-none-eabi/bin)')
 
     parser.add_argument('--list', action='store_true', help='List serial ports')
     parser.add_argument('--ping', action='store_true')
@@ -840,6 +869,19 @@ Examples:
     if args.list:
         list_ports()
         return 0
+
+    # Set global toolchain path
+    global _toolchain_path
+    if args.toolchain:
+        toolchain_path = args.toolchain
+        if not os.path.isabs(toolchain_path):
+            toolchain_path = os.path.abspath(toolchain_path)
+        if os.path.isdir(toolchain_path):
+            _toolchain_path = toolchain_path
+            if args.verbose:
+                print(f"Using toolchain: {_toolchain_path}")
+        else:
+            print(f"Warning: Toolchain directory not found: {toolchain_path}")
 
     if not args.port:
         parser.print_help()

@@ -5,8 +5,8 @@
  * Use of this source code is governed by a MIT-style license that can be found
  * in the LICENSE file.
  */
-#ifndef ARGPARSE_H
-#define ARGPARSE_H
+#ifndef FL_ARGPARSE_H
+#define FL_ARGPARSE_H
 
 /* For c++ compatibility */
 #ifdef __cplusplus
@@ -102,8 +102,8 @@ struct argparse {
 };
 
 // built-in callbacks
-int argparse_help_cb(struct argparse* self, const struct argparse_option* option);
-int argparse_help_cb_no_exit(struct argparse* self, const struct argparse_option* option);
+int fl_argparse_help_cb(struct argparse* self, const struct argparse_option* option);
+int fl_argparse_help_cb_no_exit(struct argparse* self, const struct argparse_option* option);
 
 // built-in option macros
 #define OPT_END() \
@@ -122,12 +122,12 @@ int argparse_help_cb_no_exit(struct argparse* self, const struct argparse_option
     { ARGPARSE_OPT_STRING, __VA_ARGS__ }
 #define OPT_GROUP(h) \
     { ARGPARSE_OPT_GROUP, 0, NULL, NULL, h, NULL, 0, 0 }
-#define OPT_HELP() OPT_BOOLEAN('h', "help", NULL, "show this help message and exit", argparse_help_cb, 0, OPT_NONEG)
+#define OPT_HELP() OPT_BOOLEAN('h', "help", NULL, "show this help message and exit", fl_argparse_help_cb, 0, OPT_NONEG)
 
-int argparse_init(struct argparse* self, struct argparse_option* options, const char* const* usages, int flags);
-void argparse_describe(struct argparse* self, const char* description, const char* epilog);
-int argparse_parse(struct argparse* self, int argc, const char** argv);
-void argparse_usage(struct argparse* self);
+int fl_argparse_init(struct argparse* self, struct argparse_option* options, const char* const* usages, int flags);
+void fl_argparse_describe(struct argparse* self, const char* description, const char* epilog);
+int fl_argparse_parse(struct argparse* self, int argc, const char** argv);
+void fl_argparse_usage(struct argparse* self);
 
 #ifdef __cplusplus
 }

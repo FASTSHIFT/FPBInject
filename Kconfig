@@ -1,0 +1,44 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+menuconfig FPBINJECT
+	tristate "FPBInject - Cortex-M FPB Runtime Injection Tool"
+	default n
+	---help---
+		Enable FPBInject function loader. This is a runtime code injection
+		tool using ARM Cortex-M Flash Patch and Breakpoint (FPB) unit.
+		It allows dynamic function patching and redirection at runtime.
+
+if FPBINJECT
+
+config FPBINJECT_PROGNAME
+	string "Program name"
+	default "fl"
+	---help---
+		This is the name of the program that will be used when the NSH ELF
+		program is installed.
+
+config FPBINJECT_PRIORITY
+	int "FPBInject task priority"
+	default 100
+
+config FPBINJECT_STACKSIZE
+	int "FPBInject stack size"
+	default 4096
+
+config FPBINJECT_BUF_SIZE
+	int "Static code buffer size"
+	default 8192
+	---help---
+		Size of the static buffer used for code injection.
+		This buffer is used to store injected code.
+
+config FPBINJECT_LINE_SIZE
+	int "Command line buffer size"
+	default 1024
+	---help---
+		Size of the command line input buffer for interactive mode.
+
+endif # FPBINJECT

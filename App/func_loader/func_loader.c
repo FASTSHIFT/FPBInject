@@ -599,8 +599,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     struct argparse ap;
     static const char* const usage[] = {"fl --cmd <cmd> [opts]", NULL};
 
-    argparse_init(&ap, opts, usage, ARGPARSE_IGNORE_UNKNOWN_ARGS);
-    int ret = argparse_parse(&ap, argc, argv);
+    fl_argparse_init(&ap, opts, usage, ARGPARSE_IGNORE_UNKNOWN_ARGS);
+    int ret = fl_argparse_parse(&ap, argc, argv);
     if (ret < 0) {
         fl_response(ctx, false, "Invalid arguments");
         return -1;

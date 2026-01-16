@@ -195,7 +195,7 @@ static int argparse_long_opt(struct argparse* self, const struct argparse_option
     return -2;
 }
 
-int argparse_init(struct argparse* self, struct argparse_option* options, const char* const* usages, int flags) {
+int fl_argparse_init(struct argparse* self, struct argparse_option* options, const char* const* usages, int flags) {
     memset(self, 0, sizeof(*self));
     self->options = options;
     self->usages = usages;
@@ -205,12 +205,12 @@ int argparse_init(struct argparse* self, struct argparse_option* options, const 
     return 0;
 }
 
-void argparse_describe(struct argparse* self, const char* description, const char* epilog) {
+void fl_argparse_describe(struct argparse* self, const char* description, const char* epilog) {
     self->description = description;
     self->epilog = epilog;
 }
 
-int argparse_parse(struct argparse* self, int argc, const char** argv) {
+int fl_argparse_parse(struct argparse* self, int argc, const char** argv) {
     self->argc = argc - 1;
     self->argv = argv + 1;
     self->out = argv;
@@ -263,7 +263,7 @@ int argparse_parse(struct argparse* self, int argc, const char** argv) {
 
     unknown:
         fprintf(stderr, "error: unknown option `%s`\n", self->argv[0]);
-        argparse_usage(self);
+        fl_argparse_usage(self);
         if (!(self->flags & ARGPARSE_IGNORE_UNKNOWN_ARGS)) {
             return (EXIT_FAILURE);
         }
@@ -276,7 +276,7 @@ end:
     return self->cpidx + self->argc;
 }
 
-void argparse_usage(struct argparse* self) {
+void fl_argparse_usage(struct argparse* self) {
     if (self->usages) {
         const char* const* usages = self->usages;
         fprintf(stdout, "Usage: %s\n", *usages++);
@@ -365,13 +365,13 @@ void argparse_usage(struct argparse* self) {
         fprintf(stdout, "%s\n", self->epilog);
 }
 
-int argparse_help_cb_no_exit(struct argparse* self, const struct argparse_option* option) {
+int fl_argparse_help_cb_no_exit(struct argparse* self, const struct argparse_option* option) {
     (void)option;
-    argparse_usage(self);
+    fl_argparse_usage(self);
     return (EXIT_SUCCESS);
 }
 
-int argparse_help_cb(struct argparse* self, const struct argparse_option* option) {
-    argparse_help_cb_no_exit(self, option);
+int fl_argparse_help_cb(struct argparse* self, const struct argparse_option* option) {
+    fl_argparse_help_cb_no_exit(self, option);
     return (EXIT_SUCCESS);
 }
