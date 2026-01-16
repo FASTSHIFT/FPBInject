@@ -123,7 +123,7 @@ static void print_alloc_info(void) {
  * -------------------------------------------------------------------------- */
 #define ALLOC_MODE_NAME "UMM"
 
-static uint8_t s_heap_buf[8192] __attribute__((aligned(4)));
+static uint8_t s_heap_buf[4096] __attribute__((aligned(4)));
 
 static void* umm_malloc_cb(size_t size) {
     return umm_malloc(size);
