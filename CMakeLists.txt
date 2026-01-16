@@ -20,7 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-if(1)
+# Detect build environment:
+# - NuttX: NUTTX_APPS_DIR variable is defined by NuttX CMake system
+# - Bare-metal: standalone build with FPBINJECT_ROOT defined
+if(NUTTX_APPS_DIR)
 if(CONFIG_FPBINJECT)
   nuttx_add_application(
     NAME ${CONFIG_FPBINJECT_PROGNAME}
