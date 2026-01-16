@@ -58,6 +58,7 @@ add_compile_definitions(
     USE_STDPERIPH_DRIVER
     HSE_VALUE=${HSE_VALUE}
     APP_SELECT=${APP_SELECT}
+    ARDUINO=111
 )
 
 # Add FPB trampoline options to compile definitions
