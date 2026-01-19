@@ -37,6 +37,9 @@ def get_fpb_inject():
     global _fpb_inject
     if _fpb_inject is None:
         _fpb_inject = FPBInject(state.device)
+        # Initialize toolchain path from device config
+        if state.device.toolchain_path:
+            _fpb_inject.set_toolchain_path(state.device.toolchain_path)
     return _fpb_inject
 
 
@@ -155,6 +158,8 @@ def register_routes(app):
                 "auto_connect": device.auto_connect,
                 "auto_compile": device.auto_compile,
                 "patch_source_path": device.patch_source_path,
+                "nuttx_mode": device.nuttx_mode,
+                "watcher_enabled": device.watcher_enabled,
                 "inject_active": device.inject_active,
                 "last_inject_target": device.last_inject_target,
                 "last_inject_func": device.last_inject_func,
@@ -214,6 +219,9 @@ def register_routes(app):
                         device.patch_source_content = f.read()
                 except:
                     pass
+
+        if "nuttx_mode" in data:
+            device.nuttx_mode = data["nuttx_mode"]
 
         state.save_config()
         return jsonify({"success": True})
@@ -594,6 +602,7 @@ Base Address: 0x{base_addr:08X}
             return jsonify({"success": False, "error": "No directories to watch"})
 
         state.device.watch_dirs = dirs
+        state.device.watcher_enabled = True
         state.save_config()
 
         success = _start_file_watcher(dirs)
@@ -603,6 +612,8 @@ Base Address: 0x{base_addr:08X}
     def api_watch_stop():
         """Stop file watching."""
         _stop_file_watcher()
+        state.device.watcher_enabled = False
+        state.save_config()
         return jsonify({"success": True})
 
     @app.route("/api/watch/clear", methods=["POST"])
@@ -846,11 +857,43 @@ def _trigger_auto_inject(file_path):
 
             if not modified:
                 device.auto_inject_status = "idle"
-                device.auto_inject_message = "未检测到函数修改"
                 device.auto_inject_modified_funcs = []
                 device.auto_inject_progress = 0
                 device.auto_inject_last_update = time.time()
                 logger.info(f"No modified functions detected in {file_path}")
+
+                # Auto unpatch: if the last injected target function is now unchanged,
+                # it means the file has been restored to original state
+                if device.inject_active and device.last_inject_target:
+                    logger.info(
+                        f"Target function '{device.last_inject_target}' restored to original, auto unpatch..."
+                    )
+                    device.auto_inject_message = "函数已恢复原状，正在清除注入..."
+                    try:
+                        fpb = get_fpb_inject()
+                        fpb.enter_fl_mode()
+                        try:
+                            success, msg = fpb.unpatch(0)
+                            if success:
+                                device.inject_active = False
+                                device.auto_inject_status = "success"
+                                device.auto_inject_message = (
+                                    "函数已恢复原状，已自动清除注入"
+                                )
+                                device.auto_inject_progress = 100
+                                logger.info("Auto unpatch successful")
+                            else:
+                                device.auto_inject_message = f"清除注入失败: {msg}"
+                                logger.warning(f"Auto unpatch failed: {msg}")
+                        finally:
+                            fpb.exit_fl_mode()
+                    except Exception as e:
+                        device.auto_inject_message = f"清除注入出错: {e}"
+                        logger.warning(f"Auto unpatch error: {e}")
+                    device.auto_inject_last_update = time.time()
+                else:
+                    device.auto_inject_message = "未检测到函数修改"
+
                 return
 
             device.auto_inject_modified_funcs = modified

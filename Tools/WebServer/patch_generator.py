@@ -44,6 +44,7 @@ class FunctionInfo:
     end_byte: int
     code: str
     signature: str  # Return type + name + params
+    is_static: bool = False  # Whether the function is static
 
 
 class CParser:
@@ -151,7 +152,18 @@ class CParser:
             end_byte=end_byte,
             code=code,
             signature=signature,
+            is_static=self._is_static_function(node, source_code),
         )
+
+    def _is_static_function(self, node, source_code: str) -> bool:
+        """Check if a function is declared as static."""
+        # Look for storage_class_specifier with 'static'
+        for child in node.children:
+            if child.type == "storage_class_specifier":
+                specifier = source_code[child.start_byte : child.end_byte]
+                if specifier == "static":
+                    return True
+        return False
 
     def _find_identifier(self, node, source_code: str) -> Optional[str]:
         """Recursively find the identifier (function name) in a declarator."""
@@ -164,6 +176,67 @@ class CParser:
                 return result
 
         return None
+
+    def find_called_functions(
+        self, func_code: str, all_functions: Dict[str, FunctionInfo]
+    ) -> List[str]:
+        """
+        Find all function calls within a function's code.
+
+        Args:
+            func_code: The source code of the function
+            all_functions: Dictionary of all functions in the file
+
+        Returns:
+            List of function names that are called
+        """
+        called = []
+
+        if self._parser:
+            # Use tree-sitter for accurate parsing
+            tree = self._parser.parse(bytes(func_code, "utf-8"))
+            called = self._find_calls_tree_sitter(
+                tree.root_node, func_code, all_functions
+            )
+        else:
+            # Regex fallback
+            called = self._find_calls_regex(func_code, all_functions)
+
+        return list(set(called))  # Remove duplicates
+
+    def _find_calls_tree_sitter(
+        self, node, source_code: str, all_functions: Dict[str, FunctionInfo]
+    ) -> List[str]:
+        """Find function calls using tree-sitter."""
+        calls = []
+
+        if node.type == "call_expression":
+            # Get the function being called
+            func_node = node.child_by_field_name("function")
+            if func_node and func_node.type == "identifier":
+                func_name = source_code[func_node.start_byte : func_node.end_byte]
+                if func_name in all_functions:
+                    calls.append(func_name)
+
+        for child in node.children:
+            calls.extend(
+                self._find_calls_tree_sitter(child, source_code, all_functions)
+            )
+
+        return calls
+
+    def _find_calls_regex(
+        self, func_code: str, all_functions: Dict[str, FunctionInfo]
+    ) -> List[str]:
+        """Find function calls using regex (fallback)."""
+        calls = []
+        # Pattern: identifier followed by (
+        pattern = r"\b(\w+)\s*\("
+        for match in re.finditer(pattern, func_code):
+            func_name = match.group(1)
+            if func_name in all_functions:
+                calls.append(func_name)
+        return calls
 
     def _parse_with_regex(self, source_code: str) -> Dict[str, FunctionInfo]:
         """Fallback parser using regex (less accurate)."""
@@ -381,18 +454,37 @@ class PatchGenerator:
         # Get the directory of the source file for resolving relative includes
         source_dir = os.path.dirname(os.path.abspath(file_path))
 
+        # Analyze dependencies: find static functions called by modified functions
+        # These need to be included because they might be inlined in the ELF
+        dependent_static_funcs = self._find_dependent_static_functions(
+            functions, modified_functions
+        )
+
+        # Combine modified functions and their static dependencies
+        functions_to_keep = set(modified_functions) | dependent_static_funcs
+        logger.info(f"Functions to keep: {functions_to_keep}")
+        if dependent_static_funcs:
+            logger.info(f"Including static dependencies: {dependent_static_funcs}")
+
         # Track which lines belong to functions
-        line_to_func = {}  # line_num -> (func_name, is_modified)
+        line_to_func = {}  # line_num -> (func_name, should_keep, should_rename)
         for name, info in functions.items():
-            is_modified = name in modified_functions
+            should_keep = name in functions_to_keep
+            should_rename = (
+                name in modified_functions
+            )  # Only rename the actually modified ones
             for line_num in range(info.start_line, info.end_line + 1):
-                line_to_func[line_num] = (name, is_modified)
+                line_to_func[line_num] = (name, should_keep, should_rename)
 
         # Add header comment
         patch_lines.append("/**")
         patch_lines.append(" * Auto-generated patch file by FPBInject")
         patch_lines.append(f" * Source: {file_path}")
         patch_lines.append(f" * Modified functions: {', '.join(modified_functions)}")
+        if dependent_static_funcs:
+            patch_lines.append(
+                f" * Static dependencies: {', '.join(dependent_static_funcs)}"
+            )
         patch_lines.append(" */")
         patch_lines.append("")
 
@@ -400,23 +492,50 @@ class PatchGenerator:
         current_func = None
         skip_until_end = False
 
+        # Track conditional compilation nesting to remove feature guards
+        # We'll remove #if/#ifdef/#ifndef ... #endif blocks that guard entire features
+        # These often prevent inject functions from being compiled
+        ifdef_stack = []  # Stack of (#if line_num, condition)
+
         for line_num, line in enumerate(lines, 1):
+            stripped = line.strip()
+
+            # Track conditional compilation directives
+            if stripped.startswith("#if"):
+                # Check if this is a feature guard (like #if LV_USE_NUTTX)
+                # We'll comment these out to ensure our inject functions are compiled
+                ifdef_stack.append((line_num, stripped))
+                # Comment out the #if directive instead of including it
+                patch_lines.append(f"// [FPBInject removed] {line}")
+                continue
+            elif stripped.startswith("#else") or stripped.startswith("#elif"):
+                if ifdef_stack:
+                    # Comment out
+                    patch_lines.append(f"// [FPBInject removed] {line}")
+                    continue
+            elif stripped.startswith("#endif"):
+                if ifdef_stack:
+                    ifdef_stack.pop()
+                    # Comment out the #endif
+                    patch_lines.append(f"// [FPBInject removed] {line}")
+                    continue
+
             if line_num in line_to_func:
-                func_name, is_modified = line_to_func[line_num]
+                func_name, should_keep, should_rename = line_to_func[line_num]
 
                 if func_name != current_func:
                     # Entering a new function
                     current_func = func_name
-                    skip_until_end = not is_modified
+                    skip_until_end = not should_keep
 
                 if skip_until_end:
-                    # Skip unmodified function body
+                    # Skip function body that we don't need
                     continue
 
-                if is_modified:
+                if should_keep:
                     # Check if this line contains the function name (for renaming)
                     func_info = functions[func_name]
-                    if line_num == func_info.start_line:
+                    if line_num == func_info.start_line and should_rename:
                         # This is the function signature line, rename it
                         # Find and replace the function name
                         renamed_line = self._rename_function_in_line(
@@ -490,6 +609,59 @@ class PatchGenerator:
             # Keep original if file not found (might be in system include path)
             logger.debug(f"Include file not found: {abs_path}, keeping original")
             return line
+
+    def _find_dependent_static_functions(
+        self,
+        all_functions: Dict[str, FunctionInfo],
+        modified_functions: List[str],
+    ) -> set:
+        """
+        Find all static functions that are called by the modified functions.
+
+        This is important because static functions might be inlined by the compiler
+        and thus not present in the ELF symbol table.
+
+        Args:
+            all_functions: Dictionary of all functions in the file
+            modified_functions: List of modified function names
+
+        Returns:
+            Set of static function names that should be included
+        """
+        dependent_statics = set()
+        visited = set()
+
+        def find_dependencies(func_name: str):
+            """Recursively find static function dependencies."""
+            if func_name in visited:
+                return
+            visited.add(func_name)
+
+            if func_name not in all_functions:
+                return
+
+            func_info = all_functions[func_name]
+            called_funcs = self.parser.find_called_functions(
+                func_info.code, all_functions
+            )
+
+            for called_name in called_funcs:
+                if called_name in all_functions:
+                    called_info = all_functions[called_name]
+                    # Include static functions (they might be inlined in ELF)
+                    if called_info.is_static and called_name not in modified_functions:
+                        dependent_statics.add(called_name)
+                        logger.debug(
+                            f"Found static dependency: {func_name} -> {called_name}"
+                        )
+                        # Recursively find dependencies of this static function
+                        find_dependencies(called_name)
+
+        # Find dependencies for all modified functions
+        for func_name in modified_functions:
+            find_dependencies(func_name)
+
+        return dependent_statics
 
     def generate_patch_from_diff(
         self,

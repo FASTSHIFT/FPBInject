@@ -242,6 +242,31 @@ body {
     transform: rotate(-90deg);
 }
 
+/* Card Collapsible */
+.card-collapsible .card-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.card-collapsible .card-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.card-collapsible .card-toggle {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    transition: transform var(--transition-fast);
+    margin-left: var(--spacing-sm);
+}
+
+.card-collapsible.collapsed .card-body {
+    display: none;
+}
+
+.card-collapsible.collapsed .card-toggle {
+    transform: rotate(-90deg);
+}
+
 .section-header h2 {
     font-size: 1rem;
     font-weight: 600;

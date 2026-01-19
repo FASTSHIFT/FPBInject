@@ -63,6 +63,9 @@ class DeviceState:
         self.auto_connect = False
         self.auto_compile = False  # Auto compile on file change
 
+        # File watcher settings
+        self.watcher_enabled = False  # File watcher enable state (persisted)
+
         # Device info (from fl --info)
         self.device_info = None
         self.base_addr = 0

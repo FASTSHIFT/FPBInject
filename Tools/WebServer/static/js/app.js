@@ -48,6 +48,31 @@ function loadSectionStates() {
     });
 }
 
+// ===================== Card Toggle =====================
+
+function toggleCard(cardId, event) {
+    // Prevent toggle when clicking buttons inside the header
+    if (event && event.target.closest('button, .card-actions')) {
+        return;
+    }
+    const card = document.getElementById(cardId);
+    if (card) {
+        card.classList.toggle('collapsed');
+        const collapsed = card.classList.contains('collapsed');
+        localStorage.setItem('card_' + cardId, collapsed ? 'collapsed' : 'expanded');
+    }
+}
+
+function loadCardStates() {
+    const cards = document.querySelectorAll('.card-collapsible');
+    cards.forEach(card => {
+        const state = localStorage.getItem('card_' + card.id);
+        if (state === 'collapsed') {
+            card.classList.add('collapsed');
+        }
+    });
+}
+
 // ===================== API Helper =====================
 
 async function api(endpoint, method = 'GET', data = null) {
@@ -71,8 +96,9 @@ async function api(endpoint, method = 'GET', data = null) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     loadSectionStates();
-    refreshPorts();
-    await refreshStatus();
+    loadCardStates();
+    await refreshPorts();  // Wait for port list to populate first
+    await refreshStatus(); // Then load status which may set the saved port
     initTerminal();
     initRawTerminal();
     startLogPolling();
@@ -390,9 +416,19 @@ async function refreshStatus() {
         isConnected = result.connected;
         updateConnectionUI(result.connected);
 
-        // Update form fields
+        // Update form fields - port needs special handling after refreshPorts populates the list
         if (result.port) {
-            document.getElementById('portSelect').value = result.port;
+            const portSelect = document.getElementById('portSelect');
+            // Try to set the value, may need to wait for port list to populate
+            portSelect.value = result.port;
+            // If the port doesn't exist in the list yet, add it as a custom option
+            if (!portSelect.value && result.port) {
+                const opt = document.createElement('option');
+                opt.value = result.port;
+                opt.textContent = result.port;
+                portSelect.appendChild(opt);
+                portSelect.value = result.port;
+            }
         }
         if (result.baudrate) {
             document.getElementById('baudrate').value = result.baudrate;
@@ -417,6 +453,21 @@ async function refreshStatus() {
             // Show auto inject panel if auto_compile is enabled
             if (result.auto_compile) {
                 document.getElementById('autoInjectPanel').style.display = 'block';
+            }
+        }
+        
+        // Load NuttX mode state
+        if (result.nuttx_mode !== undefined) {
+            nuttxModeActive = result.nuttx_mode;
+            updateNuttxModeUI();
+        }
+        
+        // Load watcher enabled state and start watcher if needed
+        if (result.watcher_enabled !== undefined) {
+            document.getElementById('watcherEnable').checked = result.watcher_enabled;
+            if (result.watcher_enabled && result.watch_dirs && result.watch_dirs.length > 0) {
+                // Auto-start watcher on page load if it was enabled
+                startWatcher();
             }
         }
 
@@ -568,6 +619,8 @@ let nuttxModeActive = false;
 function toggleNuttxMode() {
     nuttxModeActive = !nuttxModeActive;
     updateNuttxModeUI();
+    // Save to config
+    api('/config', 'POST', { nuttx_mode: nuttxModeActive });
     if (term) {
         if (nuttxModeActive) {
             term.writeln('\x1b[36m[NuttX Mode]\x1b[0m 已启用 NuttX 交互模式 (-ni)');
@@ -739,12 +792,20 @@ async function performInject() {
         progressText.textContent = '注入成功!';
 
         if (term) {
-            term.writeln('\x1b[32m[Injection Successful]\x1b[0m');
-            term.writeln(`  Target: ${targetFunc} @ ${result.target_addr}`);
-            term.writeln(`  Inject: ${result.inject_func} @ ${result.inject_addr}`);
-            term.writeln(`  Size: ${result.code_size} bytes`);
-            term.writeln(`  Compile: ${result.compile_time}s, Upload: ${result.upload_time}s`);
-            term.writeln(`  Mode: ${result.patch_mode}${nuttxModeActive ? ' (NuttX)' : ''}`);
+            term.writeln('\x1b[32m╔══════════════════════════════════════════╗\x1b[0m');
+            term.writeln('\x1b[32m║         \x1b[1m✓ 注入成功\x1b[22m                       ║\x1b[0m');
+            term.writeln('\x1b[32m╠══════════════════════════════════════════╣\x1b[0m');
+            term.writeln(`\x1b[32m║\x1b[0m  目标函数: \x1b[36m${targetFunc}\x1b[0m`);
+            term.writeln(`\x1b[32m║\x1b[0m  目标地址: \x1b[33m${result.target_addr}\x1b[0m`);
+            term.writeln(`\x1b[32m║\x1b[0m  注入函数: \x1b[36m${result.inject_func}\x1b[0m`);
+            term.writeln(`\x1b[32m║\x1b[0m  注入地址: \x1b[33m${result.inject_addr}\x1b[0m`);
+            term.writeln('\x1b[32m╠══════════════════════════════════════════╣\x1b[0m');
+            term.writeln(`\x1b[32m║\x1b[0m  代码大小: \x1b[35m${result.code_size} bytes\x1b[0m`);
+            term.writeln(`\x1b[32m║\x1b[0m  编译耗时: \x1b[35m${result.compile_time}s\x1b[0m`);
+            term.writeln(`\x1b[32m║\x1b[0m  上传耗时: \x1b[35m${result.upload_time}s\x1b[0m`);
+            term.writeln(`\x1b[32m║\x1b[0m  总计耗时: \x1b[35m${result.total_time}s\x1b[0m`);
+            term.writeln(`\x1b[32m║\x1b[0m  Patch模式: \x1b[34m${result.patch_mode}${nuttxModeActive ? ' (NuttX)' : ''}\x1b[0m`);
+            term.writeln('\x1b[32m╚══════════════════════════════════════════╝\x1b[0m');
         }
 
         // 更新 Patch 预览
@@ -818,6 +879,22 @@ function copyPatchContent() {
 }
 
 // ===================== File Watcher Functions =====================
+
+async function startWatcher() {
+    const dirs = document.getElementById('watchDirs').value.split('\n').filter(d => d.trim());
+    if (dirs.length === 0) {
+        return false;
+    }
+
+    const result = await api('/watch/start', 'POST', { dirs });
+    if (result.success) {
+        document.getElementById('watcherEnable').checked = true;
+        if (term) {
+            term.writeln('\x1b[36m[Watcher]\x1b[0m 文件监控已启动');
+        }
+    }
+    return result.success;
+}
 
 async function toggleWatcher() {
     const enabled = document.getElementById('watcherEnable').checked;

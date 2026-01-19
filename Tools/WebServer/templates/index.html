@@ -107,9 +107,10 @@
             <!-- Center Content -->
             <div class="content-area">
                 <!-- Configuration Section -->
-                <section class="section" id="sectionConfig">
-                    <div class="section-header">
-                        <h2><span class="section-icon">⚙️</span> 配置设置</h2>
+                <section class="section section-collapsible" id="sectionConfig">
+                    <div class="section-header" onclick="toggleSection('sectionConfig')">
+                        <h2><span class="section-icon">⚙️</span> 基础设置</h2>
+                        <span class="section-toggle">▼</span>
                     </div>
                     <div class="section-body">
                         <div class="card-grid">
@@ -171,9 +172,10 @@
                 </section>
 
                 <!-- Injection Section -->
-                <section class="section" id="sectionInject">
-                    <div class="section-header">
+                <section class="section section-collapsible" id="sectionInject">
+                    <div class="section-header" onclick="toggleSection('sectionInject')">
                         <h2><span class="section-icon">💉</span> 代码注入</h2>
+                        <span class="section-toggle">▼</span>
                     </div>
                     <div class="section-body">
                         <div class="card-grid">
@@ -347,9 +349,10 @@
                 </section>
 
                 <!-- Terminal Section -->
-                <section class="section" id="sectionTerminal">
-                    <div class="section-header">
+                <section class="section section-collapsible" id="sectionTerminal">
+                    <div class="section-header" onclick="toggleSection('sectionTerminal')">
                         <h2><span class="section-icon">💻</span> 终端</h2>
+                        <span class="section-toggle">▼</span>
                     </div>
                     <div class="section-body">
                         <div class="terminal-tabs">

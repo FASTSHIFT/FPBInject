@@ -389,10 +389,9 @@ class FPBInject:
         if not ser:
             raise FPBInjectError("Serial port not connected")
 
-        # Build command: fl [-ni] --cmd ...
-        # Check if NuttX mode is enabled
-        nuttx_flag = " -ni" if getattr(self.device, "nuttx_mode", False) else ""
-        full_cmd = f"fl{nuttx_flag} {cmd}" if not cmd.strip().startswith("fl ") else cmd
+        # Build command: fl --cmd ...
+        # Note: -ni flag is NOT used here - it's only for entering interactive mode
+        full_cmd = f"fl {cmd}" if not cmd.strip().startswith("fl ") else cmd
         logger.debug(f"TX: {full_cmd}")
 
         # Log raw TX
