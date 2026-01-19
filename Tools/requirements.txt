@@ -1,0 +1,8 @@
+# Requirements for apps/examples/FPBInject/Tools and subdirectories
+# Automatically generated from top-level imports in .py files
+# Please review and pin versions as needed
+Flask
+Flask-Cors
+pyserial
+watchdog
+tree_sitter
