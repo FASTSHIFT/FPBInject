@@ -34,6 +34,7 @@ PERSISTENT_KEYS = [
     "auto_compile",
     "patch_source_path",
     "nuttx_mode",
+    "watcher_enabled",
 ]
 
 
