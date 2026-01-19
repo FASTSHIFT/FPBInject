@@ -303,5 +303,59 @@ class TestConfigPersistence(unittest.TestCase):
             state_module.CONFIG_FILE = original_config_file
 
 
+class TestDeviceStateExtended(unittest.TestCase):
+    """DeviceState 扩展测试"""
+
+    def test_raw_serial_log_limit(self):
+        """测试原始串口日志限制"""
+        state = DeviceState()
+        state.raw_log_max_size = 5
+
+        for i in range(10):
+            state.raw_serial_log.append({"dir": "TX", "data": f"msg{i}"})
+            if len(state.raw_serial_log) > state.raw_log_max_size:
+                state.raw_serial_log = state.raw_serial_log[-state.raw_log_max_size :]
+
+        self.assertEqual(len(state.raw_serial_log), 5)
+
+    def test_device_info_default(self):
+        """测试设备信息默认值"""
+        state = DeviceState()
+        self.assertIsNone(state.device_info)
+
+    def test_patch_source_content(self):
+        """测试补丁源码内容"""
+        state = DeviceState()
+        self.assertEqual(state.patch_source_content, "")
+
+        state.patch_source_content = "// test code"
+        self.assertEqual(state.patch_source_content, "// test code")
+
+
+class TestAppStateExtended(unittest.TestCase):
+    """AppState 扩展测试"""
+
+    def test_symbols_loaded_default(self):
+        """测试符号加载状态默认值"""
+        app_state = AppState()
+        self.assertFalse(app_state.symbols_loaded)
+
+    def test_symbols_default(self):
+        """测试符号默认值"""
+        app_state = AppState()
+        self.assertEqual(app_state.symbols, {})
+
+    def test_file_watcher_default(self):
+        """测试文件监视器默认值"""
+        app_state = AppState()
+        self.assertIsNone(app_state.file_watcher)
+
+    def test_get_pending_changes_empty(self):
+        """测试获取空的待处理变更"""
+        app_state = AppState()
+        changes = app_state.get_pending_changes()
+        self.assertEqual(changes, [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

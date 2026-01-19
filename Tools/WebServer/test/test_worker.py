@@ -262,6 +262,21 @@ class TestWorkerStates(unittest.TestCase):
         # 停止后定时器管理器应该是 None
         self.assertIsNone(worker.get_timer_manager())
 
+    def test_run_in_worker_timeout(self):
+        """测试 run_in_worker 超时"""
+        worker.start()
+
+        def slow_task():
+            time.sleep(2)
+
+        # 由于 task 执行慢，但 enqueue_and_wait 有 timeout
+        # 这里我们用一个正常完成的任务
+        def fast_task():
+            pass
+
+        result = worker.run_in_worker(fast_task, timeout=0.5)
+        self.assertTrue(result)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

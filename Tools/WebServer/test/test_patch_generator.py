@@ -361,5 +361,126 @@ void bar(void) {
             self.gen.detect_modified_functions("/nonexistent/file.c")
 
 
+class TestPatchGeneratorExtended(unittest.TestCase):
+    """PatchGenerator 扩展测试"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.gen = PatchGenerator()
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_generate_patch(self):
+        """测试生成补丁代码"""
+        code = """
+void foo(void) {
+    printf("hello\\n");
+}
+
+void bar(int x) {
+    printf("%d\\n", x);
+}
+"""
+        current_file = os.path.join(self.temp_dir, "test.c")
+        with open(current_file, "w") as f:
+            f.write(code)
+
+        patch_content, injected = self.gen.generate_patch(current_file, ["foo"])
+
+        self.assertIn("inject_foo", patch_content)
+        self.assertIn("foo", injected)
+
+    def test_generate_patch_no_functions(self):
+        """测试没有要修改的函数"""
+        code = """
+void foo(void) {
+    printf("hello\\n");
+}
+"""
+        current_file = os.path.join(self.temp_dir, "test.c")
+        with open(current_file, "w") as f:
+            f.write(code)
+
+        patch_content, injected = self.gen.generate_patch(current_file, [])
+
+        self.assertEqual(injected, [])
+
+    def test_generate_patch_nonexistent_function(self):
+        """测试修改不存在的函数"""
+        code = """
+void foo(void) {
+    printf("hello\\n");
+}
+"""
+        current_file = os.path.join(self.temp_dir, "test.c")
+        with open(current_file, "w") as f:
+            f.write(code)
+
+        # 如果函数不存在于文件中，generate_patch 仍然会尝试处理
+        # 但不会真正注入（因为找不到函数体）
+        patch_content, injected = self.gen.generate_patch(current_file, ["nonexistent"])
+
+        # 验证生成的 patch 不包含 inject_nonexistent 的实现
+        self.assertNotIn("inject_nonexistent", patch_content)
+
+
+class TestCParserExtended(unittest.TestCase):
+    """CParser 扩展测试"""
+
+    def setUp(self):
+        self.parser = CParser()
+
+    def test_parse_function_with_comments(self):
+        """测试解析带注释的函数"""
+        code = """
+// This is a comment
+void foo(void) {
+    // Another comment
+    return;
+}
+"""
+        funcs = self.parser.parse_functions(code)
+        self.assertIn("foo", funcs)
+
+    def test_parse_multiline_function_signature(self):
+        """测试解析多行函数签名"""
+        code = """
+int very_long_function_name(
+    int parameter_one,
+    int parameter_two,
+    int parameter_three
+) {
+    return parameter_one + parameter_two + parameter_three;
+}
+"""
+        funcs = self.parser.parse_functions(code)
+        self.assertIn("very_long_function_name", funcs)
+
+    def test_parse_function_array_param(self):
+        """测试解析数组参数函数"""
+        code = """
+void process_array(int arr[], int size) {
+    for (int i = 0; i < size; i++) {
+        arr[i] *= 2;
+    }
+}
+"""
+        funcs = self.parser.parse_functions(code)
+        self.assertIn("process_array", funcs)
+
+    def test_parse_function_pointer_param(self):
+        """测试解析函数指针参数"""
+        code = """
+void callback_handler(void (*callback)(int)) {
+    callback(42);
+}
+"""
+        funcs = self.parser.parse_functions(code)
+        self.assertIn("callback_handler", funcs)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -241,5 +241,124 @@ class TestModuleFunctions(unittest.TestCase):
         stop_watching(None)  # 不应该报错
 
 
+class TestPollingWatcherExtended(unittest.TestCase):
+    """PollingWatcher 扩展测试"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.callback = Mock()
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_should_process(self):
+        """测试文件扩展名检查"""
+        watcher = PollingWatcher(
+            directories=[self.temp_dir],
+            callback=self.callback,
+            extensions=[".c", ".h"],
+        )
+
+        self.assertTrue(watcher._should_process("/path/to/file.c"))
+        self.assertTrue(watcher._should_process("/path/to/file.h"))
+        self.assertFalse(watcher._should_process("/path/to/file.txt"))
+
+    def test_scan_directory_empty(self):
+        """测试扫描空目录"""
+        watcher = PollingWatcher(
+            directories=[self.temp_dir],
+            callback=self.callback,
+        )
+
+        files = watcher._scan_directory(self.temp_dir)
+        self.assertEqual(files, {})
+
+    def test_scan_directory_with_files(self):
+        """测试扫描有文件的目录"""
+        # 创建测试文件
+        test_file = os.path.join(self.temp_dir, "test.c")
+        with open(test_file, "w") as f:
+            f.write("// test")
+
+        watcher = PollingWatcher(
+            directories=[self.temp_dir],
+            callback=self.callback,
+        )
+
+        files = watcher._scan_directory(self.temp_dir)
+        self.assertIn(test_file, files)
+
+    def test_scan_directory_nonexistent(self):
+        """测试扫描不存在的目录"""
+        watcher = PollingWatcher(
+            directories=["/nonexistent/12345"],
+            callback=self.callback,
+        )
+
+        files = watcher._scan_directory("/nonexistent/12345")
+        self.assertEqual(files, {})
+
+    def test_detect_deleted_file(self):
+        """测试检测文件删除"""
+        # 创建文件
+        test_file = os.path.join(self.temp_dir, "to_delete.c")
+        with open(test_file, "w") as f:
+            f.write("// to delete")
+
+        watcher = PollingWatcher(
+            directories=[self.temp_dir],
+            callback=self.callback,
+            interval=0.1,
+        )
+
+        watcher.start()
+        time.sleep(0.2)
+
+        # 删除文件
+        os.remove(test_file)
+
+        time.sleep(0.3)
+        watcher.stop()
+
+        # 应该检测到删除
+        calls = [c for c in self.callback.call_args_list if c[0][1] == "deleted"]
+        self.assertTrue(len(calls) > 0)
+
+
+class TestFileWatcherExtended(unittest.TestCase):
+    """FileWatcher 扩展测试"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.callback = Mock()
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_double_start(self):
+        """测试重复启动"""
+        watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
+
+        result1 = watcher.start()
+        result2 = watcher.start()  # 第二次启动
+
+        self.assertTrue(result1)
+        # 第二次启动可能返回 True (已在运行)
+
+        watcher.stop()
+
+    def test_double_stop(self):
+        """测试重复停止"""
+        watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
+
+        watcher.start()
+        watcher.stop()
+        watcher.stop()  # 第二次停止不应报错
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

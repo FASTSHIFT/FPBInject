@@ -706,5 +706,137 @@ class TestFPBInjectCoverage(unittest.TestCase):
                 os.remove(self.device.elf_path)
 
 
+class TestFPBInjectCommands(unittest.TestCase):
+    """FPBInject 命令测试 (扩展覆盖率)"""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.device.ser = Mock()
+        self.device.ser.isOpen.return_value = True
+        self.device.ser.in_waiting = 0
+        self.fpb = FPBInject(self.device)
+
+    def test_ping_success(self):
+        """测试 ping 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK] Pong")
+
+        success, msg = self.fpb.ping()
+
+        self.assertTrue(success)
+
+    def test_ping_failure(self):
+        """测试 ping 失败"""
+        self.fpb._send_cmd = Mock(return_value="[ERR] No response")
+
+        success, msg = self.fpb.ping()
+
+        self.assertFalse(success)
+
+    def test_info_success(self):
+        """测试 info 成功"""
+        self.fpb._send_cmd = Mock(
+            return_value="Base: 0x20000000\nSize: 1024\nUsed: 100\n[OK]"
+        )
+
+        info, error = self.fpb.info()
+
+        self.assertIsNotNone(info)
+        self.assertEqual(info["base"], 0x20000000)
+        self.assertEqual(info["size"], 1024)
+        self.assertEqual(info["used"], 100)
+
+    def test_info_failure(self):
+        """测试 info 失败"""
+        self.fpb._send_cmd = Mock(return_value="[ERR] Device not ready")
+
+        info, error = self.fpb.info()
+
+        self.assertIsNone(info)
+        self.assertIn("Device not ready", error)
+
+    def test_alloc_success(self):
+        """测试 alloc 成功"""
+        # alloc response format: "[OK] Allocated buffer at 0x20001000"
+        self.fpb._send_cmd = Mock(return_value="[OK] Allocated buffer at 0x20001000")
+
+        addr, error = self.fpb.alloc(1024)
+
+        self.assertEqual(addr, 0x20001000)
+        self.assertEqual(error, "")
+
+    def test_alloc_failure(self):
+        """测试 alloc 失败"""
+        self.fpb._send_cmd = Mock(return_value="[ERR] Out of memory")
+
+        addr, error = self.fpb.alloc(1024)
+
+        self.assertIsNone(addr)
+
+    def test_free_success(self):
+        """测试 free 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK] Freed")
+
+        success, msg = self.fpb.free()
+
+        self.assertTrue(success)
+
+    def test_clear_success(self):
+        """测试 clear 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK] Cleared")
+
+        success, msg = self.fpb.clear()
+
+        self.assertTrue(success)
+
+    def test_patch_success(self):
+        """测试 patch 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK] Patched")
+
+        success, msg = self.fpb.patch(0, 0x08000000, 0x20001000)
+
+        self.assertTrue(success)
+
+    def test_tpatch_success(self):
+        """测试 tpatch 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK] Trampoline patched")
+
+        success, msg = self.fpb.tpatch(0, 0x08000000, 0x20001000)
+
+        self.assertTrue(success)
+
+    def test_dpatch_success(self):
+        """测试 dpatch 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK] DebugMonitor patched")
+
+        success, msg = self.fpb.dpatch(0, 0x08000000, 0x20001000)
+
+        self.assertTrue(success)
+
+    def test_unpatch_success(self):
+        """测试 unpatch 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK] Unpatched")
+
+        success, msg = self.fpb.unpatch(0)
+
+        self.assertTrue(success)
+
+    def test_exit_fl_mode(self):
+        """测试退出 fl 模式"""
+        self.device.ser.read.return_value = b"[OK]\nap>"
+        self.device.ser.in_waiting = 10
+
+        result = self.fpb.exit_fl_mode(timeout=0.1)
+
+        self.assertTrue(result)
+
+    def test_exit_fl_mode_error(self):
+        """测试退出 fl 模式异常"""
+        self.device.ser.write.side_effect = Exception("Write error")
+
+        result = self.fpb.exit_fl_mode(timeout=0.1)
+
+        self.assertFalse(result)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

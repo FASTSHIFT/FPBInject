@@ -340,5 +340,51 @@ class TestModuleFunctions(unittest.TestCase):
         self.assertIsNotNone(tm)
 
 
+class TestDeviceWorkerExtended(unittest.TestCase):
+    """DeviceWorker 扩展测试"""
+
+    def setUp(self):
+        self.device = Mock()
+        self.device.ser = None
+        self.device.serial_log = []
+        self.device.log_next_id = 0
+        self.device.log_max_size = 1000
+        self.worker = DeviceWorker(self.device)
+
+    def tearDown(self):
+        if self.worker.is_running():
+            self.worker.stop()
+
+    def test_queue_overflow_handling(self):
+        """测试队列溢出处理"""
+        self.worker.start()
+        time.sleep(0.1)
+
+        # 快速入队多个任务
+        for i in range(10):
+            self.worker.enqueue("test", {"index": i})
+
+        time.sleep(0.5)
+        # 应该正常完成，不应崩溃
+
+    def test_enqueue_with_handler(self):
+        """测试带处理器的入队"""
+        self.worker.start()
+        time.sleep(0.1)
+
+        result = self.worker.enqueue("serial_write", {"data": b"test"})
+        self.assertTrue(result)
+
+    def test_multiple_start_stop_cycles(self):
+        """测试多次启动停止循环"""
+        for _ in range(3):
+            self.worker.start()
+            time.sleep(0.1)
+            self.assertTrue(self.worker.is_running())
+            self.worker.stop()
+            time.sleep(0.1)
+            self.assertFalse(self.worker.is_running())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
