@@ -949,10 +949,14 @@ SECTIONS
             with open(bin_file, "rb") as f:
                 data = f.read()
 
-            # Get symbols
+            # Get symbols - use --defined-only to exclude symbols from --just-symbols
+            # and filter by address range to only include symbols in our inject code
             nm_cmd = objcopy.replace("objcopy", "nm")
             result = subprocess.run(
-                [nm_cmd, "-C", elf_file], capture_output=True, text=True, env=env
+                [nm_cmd, "-C", "--defined-only", elf_file],
+                capture_output=True,
+                text=True,
+                env=env,
             )
 
             symbols = {}
@@ -961,10 +965,14 @@ SECTIONS
                 if len(parts) >= 3:
                     try:
                         addr = int(parts[0], 16)
+                        sym_type = parts[1]  # T=text global, t=text local, etc.
                         name = parts[2]
-                        symbols[name] = addr
-                    except ValueError:
-                        # Address field is not a valid hex number
+                        # Only include text section symbols (T or t) that are in our base_addr range
+                        # This filters out symbols imported via --just-symbols
+                        if sym_type.upper() == "T" and addr >= base_addr:
+                            symbols[name] = addr
+                    except (ValueError, IndexError):
+                        # Address field is not a valid hex number or malformed line
                         pass
 
             # Log inject_* symbols for debugging
@@ -975,9 +983,10 @@ SECTIONS
                 logger.warning(
                     f"No inject_* symbols found in compiled ELF. Total symbols: {len(symbols)}"
                 )
-                # Log all symbols for debugging (first 20)
-                all_syms = list(symbols.keys())[:20]
-                logger.debug(f"First 20 symbols: {all_syms}")
+                # Log all symbols for debugging (use warning level to ensure visibility)
+                logger.warning(f"All defined text symbols: {list(symbols.keys())}")
+                # Also log raw nm output for debugging
+                logger.warning(f"Raw nm output:\n{result.stdout[:2000]}")
 
             return data, symbols, ""
 

@@ -914,6 +914,10 @@ def _trigger_auto_inject(file_path):
                 device.auto_inject_last_update = time.time()
                 return
 
+            # Log first 500 chars of patch for debugging
+            logger.info(f"Generated patch (first 500 chars):\n{patch_content[:500]}")
+            logger.info(f"Injected functions: {injected}")
+
             # Update patch source
             device.patch_source_content = patch_content
 
