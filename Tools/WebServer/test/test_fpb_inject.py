@@ -7,7 +7,10 @@ FPB Inject 模块测试
 import os
 import sys
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+import tempfile
+import json
+import subprocess
+from unittest.mock import Mock, patch, MagicMock, call
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -411,6 +414,296 @@ class TestFPBInjectError(unittest.TestCase):
     def test_exception_inheritance(self):
         """测试异常继承"""
         self.assertTrue(issubclass(FPBInjectError, Exception))
+
+
+class TestFPBInjectCoverage(unittest.TestCase):
+    """FPBInject 类测试 (扩展覆盖率)"""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.device.ser = Mock()
+        self.device.ser.isOpen.return_value = True
+        self.fpb = FPBInject(self.device)
+
+    def test_send_cmd_write_error(self):
+        """测试发送命令写入错误"""
+        self.device.ser.write.side_effect = Exception("Write Error")
+
+        with self.assertRaises(Exception):  # _send_cmd doesn't catch exception
+            self.fpb._send_cmd("test")
+
+    def test_send_cmd_read_error(self):
+        """测试发送命令读取错误"""
+        # send_cmd calls write then read
+        # Mock ser.read to raise exception
+        self.device.ser.in_waiting = 5
+        self.device.ser.read.side_effect = Exception("Read Error")
+
+        with self.assertRaises(Exception):
+            self.fpb._send_cmd("test")
+
+    def test_parse_compile_commands(self):
+        """测试解析 compile_commands.json"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": "arm-none-eabi-gcc -c main.c -o main.o -I/inc -DDEBUG",
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["compiler"], "arm-none-eabi-gcc")
+            self.assertIn("/inc", result["includes"])
+            self.assertIn("DEBUG", result["defines"])
+
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_complex(self):
+        """测试解析复杂的编译命令"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": "/usr/bin/gcc -c -I/a -I /b -D A -DB -isystem /sys -o out.o main.c -mcpu=cortex-m4 -Os",
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertIn("/a", result["includes"])
+            self.assertIn("/b", result["includes"])
+            self.assertIn("/sys", result["includes"])
+            self.assertIn("A", result["defines"])
+            self.assertIn("B", result["defines"])
+            self.assertIn("-mcpu=cortex-m4", result["cflags"])
+            self.assertIn("-Os", result["cflags"])
+
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_malformed(self):
+        """测试解析格式错误的 json"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("Not JSON")
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_empty(self):
+        """测试空JSON列表"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump([], f)
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    @patch("subprocess.run")
+    def test_get_symbols(self, mock_run):
+        """测试获取符号表"""
+        mock_output = MagicMock()
+        mock_output.stdout = """
+08000000 T main
+20000000 D var
+08001000 t static_func
+"""
+        mock_run.return_value = mock_output
+        self.fpb._toolchain_path = "/usr/bin"
+
+        symbols = self.fpb.get_symbols("/path/to/elf")
+
+        self.assertIn("main", symbols)
+        self.assertEqual(symbols["main"], 0x08000000)
+        self.assertIn("static_func", symbols)
+
+    @patch("subprocess.run")
+    def test_get_symbols_error(self, mock_run):
+        """测试获取符号表失败"""
+        mock_run.side_effect = Exception("nm failed")
+
+        symbols = self.fpb.get_symbols("/path/to/elf")
+
+        self.assertEqual(symbols, {})
+
+    def test_upload_success(self):
+        """测试 upload 成功"""
+        self.fpb._send_cmd = Mock(return_value="[OK]")
+
+        data = b"\x01" * 100
+        success, result = self.fpb.upload(data, 0x20000000)
+
+        self.assertTrue(success)
+        self.assertEqual(result["bytes"], 100)
+        # 100 bytes / 48 bytes per chunk = 3 chunks
+        self.assertEqual(result["chunks"], 3)
+
+    def test_upload_fail(self):
+        """测试 upload 失败"""
+        self.fpb._send_cmd = Mock(return_value="[ERR] Write error")
+
+        data = b"\x01" * 10
+        success, result = self.fpb.upload(data, 0x20000000)
+
+        self.assertFalse(success)
+        self.assertIn("Write error", result["error"])
+
+    def test_upload_callback(self):
+        """测试 upload 回调"""
+        self.fpb._send_cmd = Mock(return_value="[OK]")
+        callback = Mock()
+
+        data = b"\x01" * 100
+        self.fpb.upload(data, 0x20000000, progress_callback=callback)
+
+        self.assertEqual(callback.call_count, 3)
+
+    def test_inject_no_symbols(self):
+        """测试注入时找不到目标符号"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms:
+                mock_syms.return_value = {}  # Empty symbols
+
+                success, result = self.fpb.inject("source", "target_func")
+
+                self.assertFalse(success)
+                self.assertIn("not found in ELF", result["error"])
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_compile_fail(self, mock_compile):
+        """测试注入时编译步骤失败"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+                self.fpb, "info"
+            ) as mock_info:
+
+                mock_syms.return_value = {"target_func": 0x08000000}
+                mock_info.return_value = ({"base": 0x20000000}, "")
+
+                mock_compile.return_value = (None, None, "Compile Error")
+
+                success, result = self.fpb.inject("source", "target_func")
+
+                self.assertFalse(success)
+                self.assertIn("Compile Error", result["error"])
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpb_inject.FPBInject.clear")
+    @patch("fpb_inject.FPBInject.upload")
+    @patch("fpb_inject.FPBInject.tpatch")
+    def test_inject_success_flow(
+        self, mock_tpatch, mock_upload, mock_clear, mock_compile
+    ):
+        """测试注入成功流程"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+                self.fpb, "info"
+            ) as mock_info:
+
+                mock_syms.return_value = {"target_func": 0x08000000}
+                mock_info.return_value = ({"base": 0x20000000}, "")
+
+                # compile_inject returns (data, symbols, error)
+                mock_compile.return_value = (
+                    b"\x01\x02",
+                    {"inject_target_func": 0x20000000},
+                    "",
+                )
+
+                mock_upload.return_value = (True, {"time": 0.1})
+                mock_tpatch.return_value = (True, "")
+
+                success, result = self.fpb.inject(
+                    "source",
+                    "target_func",
+                    inject_func="inject_target_func",
+                    patch_mode="trampoline",
+                )
+
+                self.assertTrue(success)
+                mock_clear.assert_called()
+                mock_upload.assert_called()
+                mock_tpatch.assert_called()
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_dynamic_allocation(self, mock_compile):
+        """测试动态分配注入"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+                self.fpb, "info"
+            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+                self.fpb, "clear"
+            ), patch.object(
+                self.fpb, "upload"
+            ) as mock_upload, patch.object(
+                self.fpb, "tpatch"
+            ) as mock_tpatch:
+
+                mock_syms.return_value = {"target_func": 0x08000000}
+                # info returns empty/zero base/size to trigger dynamic alloc
+                mock_info.return_value = ({"base": 0, "size": 0}, "")
+
+                mock_alloc.return_value = (0x20001000, "")
+                mock_upload.return_value = (True, {})
+                mock_tpatch.return_value = (True, "")
+
+                # First compilation for size
+                # Second compilation for address
+                mock_compile.side_effect = [
+                    (b"\x00" * 100, {}, ""),  # 1st
+                    (b"\x00" * 100, {"inject_target_func": 0x20001000}, ""),  # 2nd
+                ]
+
+                success, result = self.fpb.inject("source", "target_func")
+
+                self.assertTrue(success)
+                mock_alloc.assert_called()
+                self.assertEqual(mock_compile.call_count, 2)
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
 
 
 if __name__ == "__main__":

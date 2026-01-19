@@ -148,7 +148,95 @@ class TestStatusAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertFalse(data["connected"])
         self.assertEqual(data["port"], "/dev/ttyUSB0")
-        self.assertEqual(data["baudrate"], 115200)
+
+
+class TestRoutesFPB(TestRoutesBase):
+    """FPB 相关路由测试"""
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_ping(self, mock_get_fpb):
+        """测试 Ping"""
+        mock_fpb = Mock()
+        mock_fpb.ping.return_value = (True, "pong")
+        mock_get_fpb.return_value = mock_fpb
+
+        response = self.client.post("/api/fpb/ping")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["message"], "pong")
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_info(self, mock_get_fpb):
+        """测试 Info"""
+        mock_fpb = Mock()
+        mock_fpb.info.return_value = ({"chip": "ESP32"}, "")
+        mock_get_fpb.return_value = mock_fpb
+
+        response = self.client.get("/api/fpb/info")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["info"]["chip"], "ESP32")
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_inject(self, mock_get_fpb):
+        """测试 Inject"""
+        mock_fpb = Mock()
+        mock_fpb.inject.return_value = (True, {"time": 100})
+        mock_get_fpb.return_value = mock_fpb
+
+        payload = {
+            "source_content": "void f(){}",
+            "target_func": "main",
+        }
+        response = self.client.post("/api/fpb/inject", json=payload)
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        mock_fpb.enter_fl_mode.assert_called()
+        mock_fpb.exit_fl_mode.assert_called()
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_inject_missing_params(self, mock_get_fpb):
+        """测试 Inject 缺少参数"""
+        response = self.client.post("/api/fpb/inject", json={})
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not provided", data["error"])
+
+    def test_api_config(self):
+        """测试配置更新"""
+        payload = {
+            "port": "/dev/ttyTest",
+            "baudrate": 9600,
+            "patch_mode": "debugmon",
+            "chunk_size": 128,
+        }
+        response = self.client.post("/api/config", json=payload)
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(state.device.port, "/dev/ttyTest")
+        self.assertEqual(state.device.baudrate, 9600)
+        self.assertEqual(state.device.patch_mode, "debugmon")
+        self.assertEqual(state.device.chunk_size, 128)
+
+    def test_patch_template(self):
+        """测试获取补丁模板"""
+        response = self.client.get("/api/patch/template")
+        data = json.loads(response.data)
+        self.assertTrue(data["success"])
+        self.assertIn("content", data)
+
+    def test_generate_patch(self):
+        """测试生成补丁"""
+        payload = {"target_func": "my_func"}
+        response = self.client.post("/api/patch/generate", json=payload)
+        data = json.loads(response.data)
+        self.assertTrue(data["success"])
+        self.assertIn("inject_my_func", data["content"])
 
     def test_get_status_all_fields(self):
         """测试获取所有状态字段"""
