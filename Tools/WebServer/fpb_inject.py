@@ -470,35 +470,45 @@ class FPBInject:
     def _parse_response(self, resp: str) -> dict:
         """Parse response - format: [OK] msg or [ERR] msg"""
         resp = resp.strip()
-        
+
         # Remove ANSI escape sequences and shell prompts
         import re
-        # Remove ANSI escape codes like [K, [0m, etc.
-        clean_resp = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]|\[\d*[A-Za-z]', '', resp)
+
+        # Remove ANSI escape codes: ESC[...X sequences only (must have ESC prefix)
+        # Do NOT match [OK] or [ERR] which don't have ESC prefix
+        clean_resp = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", resp)
+        # Remove standalone terminal control codes like [K (but not [OK] or [ERR])
+        # Only match single letter codes that are NOT O or E (to preserve [OK]/[ERR])
+        clean_resp = re.sub(r"\[([0-9;]*[A-NP-Za-df-z])\b", "", clean_resp)
         # Remove common shell prompts
-        clean_resp = re.sub(r'(ap|nsh)>\s*$', '', clean_resp, flags=re.MULTILINE)
+        clean_resp = re.sub(r"(ap|nsh|fl)>\s*$", "", clean_resp, flags=re.MULTILINE)
         clean_resp = clean_resp.strip()
-        
-        lines = clean_resp.split("\n")
+
+        # First, check for [OK] or [ERR] in the original response (before cleaning)
+        # This ensures we don't miss them due to overzealous cleaning
+        lines = resp.split("\n")
         for line in reversed(lines):
             line = line.strip()
-            if line.startswith("[OK]"):
-                msg = line[4:].strip()
+            if "[OK]" in line:
+                # Extract message after [OK]
+                idx = line.find("[OK]")
+                msg = line[idx + 4 :].strip()
                 return {"ok": True, "msg": msg, "raw": resp}
-            elif line.startswith("[ERR]"):
-                msg = line[5:].strip()
+            elif "[ERR]" in line:
+                idx = line.find("[ERR]")
+                msg = line[idx + 5 :].strip()
                 return {"ok": False, "msg": msg, "raw": resp}
-        
+
         # If no [OK] or [ERR] found, check if response looks successful
         # (some commands may not return explicit status)
         lower_resp = clean_resp.lower()
         if "error" in lower_resp or "fail" in lower_resp or "invalid" in lower_resp:
             return {"ok": False, "msg": clean_resp, "raw": resp}
-        
+
         # If response is mostly empty or just prompts, assume success
         if not clean_resp or len(clean_resp) < 5:
             return {"ok": True, "msg": "", "raw": resp}
-            
+
         return {"ok": False, "msg": clean_resp, "raw": resp}
 
     def ping(self) -> Tuple[bool, str]:
@@ -668,7 +678,11 @@ class FPBInject:
             nm_tool = self.get_tool_path("arm-none-eabi-nm")
             env = self._get_subprocess_env()
             result = subprocess.run(
-                [nm_tool, "-C", elf_path], capture_output=True, text=True, check=True, env=env
+                [nm_tool, "-C", elf_path],
+                capture_output=True,
+                text=True,
+                check=True,
+                env=env,
             )
             for line in result.stdout.splitlines():
                 parts = line.split()
@@ -927,7 +941,9 @@ SECTIONS
                 return None, None, f"Link error:\n{result.stderr}"
 
             # Extract binary
-            subprocess.run([objcopy, "-O", "binary", elf_file, bin_file], check=True, env=env)
+            subprocess.run(
+                [objcopy, "-O", "binary", elf_file, bin_file], check=True, env=env
+            )
 
             # Read binary
             with open(bin_file, "rb") as f:
