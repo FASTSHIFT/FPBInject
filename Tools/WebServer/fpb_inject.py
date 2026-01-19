@@ -323,6 +323,16 @@ class FPBInject:
                 return full_path
         return tool_name
 
+    def _get_subprocess_env(self) -> dict:
+        """Get environment dict with toolchain path prepended to PATH."""
+        env = os.environ.copy()
+        if self._toolchain_path and os.path.isdir(self._toolchain_path):
+            # Prepend toolchain path to PATH so ccache and other tools can find the compiler
+            current_path = env.get("PATH", "")
+            env["PATH"] = f"{self._toolchain_path}:{current_path}"
+            logger.debug(f"Subprocess PATH prepended with: {self._toolchain_path}")
+        return env
+
     def enter_fl_mode(self, timeout: float = 1.0) -> bool:
         """Enter fl interactive mode by sending 'fl' command."""
         ser = self.device.ser
@@ -460,7 +470,16 @@ class FPBInject:
     def _parse_response(self, resp: str) -> dict:
         """Parse response - format: [OK] msg or [ERR] msg"""
         resp = resp.strip()
-        lines = resp.split("\n")
+        
+        # Remove ANSI escape sequences and shell prompts
+        import re
+        # Remove ANSI escape codes like [K, [0m, etc.
+        clean_resp = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]|\[\d*[A-Za-z]', '', resp)
+        # Remove common shell prompts
+        clean_resp = re.sub(r'(ap|nsh)>\s*$', '', clean_resp, flags=re.MULTILINE)
+        clean_resp = clean_resp.strip()
+        
+        lines = clean_resp.split("\n")
         for line in reversed(lines):
             line = line.strip()
             if line.startswith("[OK]"):
@@ -469,7 +488,18 @@ class FPBInject:
             elif line.startswith("[ERR]"):
                 msg = line[5:].strip()
                 return {"ok": False, "msg": msg, "raw": resp}
-        return {"ok": False, "msg": resp, "raw": resp}
+        
+        # If no [OK] or [ERR] found, check if response looks successful
+        # (some commands may not return explicit status)
+        lower_resp = clean_resp.lower()
+        if "error" in lower_resp or "fail" in lower_resp or "invalid" in lower_resp:
+            return {"ok": False, "msg": clean_resp, "raw": resp}
+        
+        # If response is mostly empty or just prompts, assume success
+        if not clean_resp or len(clean_resp) < 5:
+            return {"ok": True, "msg": "", "raw": resp}
+            
+        return {"ok": False, "msg": clean_resp, "raw": resp}
 
     def ping(self) -> Tuple[bool, str]:
         """Ping device."""
@@ -636,8 +666,9 @@ class FPBInject:
         symbols = {}
         try:
             nm_tool = self.get_tool_path("arm-none-eabi-nm")
+            env = self._get_subprocess_env()
             result = subprocess.run(
-                [nm_tool, "-C", elf_path], capture_output=True, text=True, check=True
+                [nm_tool, "-C", elf_path], capture_output=True, text=True, check=True, env=env
             )
             for line in result.stdout.splitlines():
                 parts = line.split()
@@ -853,7 +884,9 @@ class FPBInject:
             if verbose:
                 logger.info(f"Compile: {' '.join(cmd)}")
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # Use environment with toolchain path in PATH for ccache to find compiler
+            env = self._get_subprocess_env()
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
             if result.returncode != 0:
                 return None, None, f"Compile error:\n{result.stderr}"
 
@@ -889,12 +922,12 @@ SECTIONS
             if verbose:
                 logger.info(f"Link: {' '.join(link_cmd)}")
 
-            result = subprocess.run(link_cmd, capture_output=True, text=True)
+            result = subprocess.run(link_cmd, capture_output=True, text=True, env=env)
             if result.returncode != 0:
                 return None, None, f"Link error:\n{result.stderr}"
 
             # Extract binary
-            subprocess.run([objcopy, "-O", "binary", elf_file, bin_file], check=True)
+            subprocess.run([objcopy, "-O", "binary", elf_file, bin_file], check=True, env=env)
 
             # Read binary
             with open(bin_file, "rb") as f:
@@ -903,7 +936,7 @@ SECTIONS
             # Get symbols
             nm_cmd = objcopy.replace("objcopy", "nm")
             result = subprocess.run(
-                [nm_cmd, "-C", elf_file], capture_output=True, text=True
+                [nm_cmd, "-C", elf_file], capture_output=True, text=True, env=env
             )
 
             symbols = {}
