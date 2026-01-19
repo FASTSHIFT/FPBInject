@@ -32,7 +32,6 @@ from state import state
 from fpb_inject import serial_open
 from device_worker import start_worker
 
-
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 

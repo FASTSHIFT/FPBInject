@@ -555,15 +555,21 @@ class FPBInject:
         """Allocate memory buffer."""
         try:
             resp = self._send_cmd(f"--cmd alloc --size {size}")
+            logger.debug(f"Alloc response: {resp}")
             result = self._parse_response(resp)
+            logger.debug(f"Alloc parsed result: {result}")
             if result.get("ok"):
                 msg = result.get("msg", "")
                 match = re.search(r"0x([0-9A-Fa-f]+)", msg)
                 if match:
                     base = int(match.group(1), 16)
+                    logger.info(f"Alloc successful: size={size}, base=0x{base:08X}")
                     return base, ""
+                else:
+                    logger.warning(f"Alloc: Could not parse address from msg: {msg}")
             return None, result.get("msg", "Alloc failed")
         except Exception as e:
+            logger.exception(f"Alloc exception: {e}")
             return None, str(e)
 
     def free(self) -> Tuple[bool, str]:
@@ -960,19 +966,37 @@ SECTIONS
             )
 
             symbols = {}
+            all_symbols_debug = []  # For debugging: collect all parsed symbols
             for line in result.stdout.strip().split("\n"):
                 parts = line.split()
                 if len(parts) >= 3:
                     try:
                         addr = int(parts[0], 16)
                         sym_type = parts[1]  # T=text global, t=text local, etc.
-                        name = parts[2]
+                        # For demangled names (nm -C), the name may contain spaces
+                        # e.g., "inject_foo(int, char*)" becomes multiple parts
+                        # Join all parts after the type to get the full name
+                        full_name = " ".join(parts[2:])
+                        # Extract just the function name (before the first '(' if present)
+                        if "(" in full_name:
+                            name = full_name.split("(")[0]
+                        else:
+                            name = full_name
+                        all_symbols_debug.append(f"{parts[0]} {sym_type} {name}")
                         # Only include text section symbols (T or t) that are in our base_addr range
                         # This filters out symbols imported via --just-symbols
                         if sym_type.upper() == "T" and addr >= base_addr:
                             symbols[name] = addr
+                            logger.debug(
+                                f"Including symbol: {name} @ 0x{addr:08X} (type={sym_type})"
+                            )
+                        else:
+                            logger.debug(
+                                f"Excluding symbol: {name} @ 0x{addr:08X} (type={sym_type}, base_addr=0x{base_addr:08X})"
+                            )
                     except (ValueError, IndexError):
                         # Address field is not a valid hex number or malformed line
+                        logger.debug(f"Skipping malformed nm line: {line}")
                         pass
 
             # Log inject_* symbols for debugging
@@ -987,6 +1011,20 @@ SECTIONS
                 logger.warning(f"All defined text symbols: {list(symbols.keys())}")
                 # Also log raw nm output for debugging
                 logger.warning(f"Raw nm output:\n{result.stdout[:2000]}")
+                # Log source content first 500 chars to check if inject_ functions exist
+                logger.warning(
+                    f"Source content preview (first 1000 chars):\n{source_content[:1000]}"
+                )
+                # Check if source contains inject_ pattern
+                import re
+
+                inject_pattern = re.findall(r"\binject_\w+", source_content)
+                if inject_pattern:
+                    logger.warning(
+                        f"Found inject_ patterns in source: {inject_pattern[:10]}"
+                    )
+                else:
+                    logger.warning("No inject_ patterns found in source code!")
 
             return data, symbols, ""
 
@@ -1061,8 +1099,10 @@ SECTIONS
             alloc_size = code_size + 8
 
             raw_addr, error = self.alloc(alloc_size)
-            if error:
-                return False, {"error": f"Alloc failed: {error}"}
+            if error or raw_addr is None:
+                return False, {
+                    "error": f"Alloc failed: {error or 'No address returned'}"
+                }
 
             aligned_addr = (raw_addr + 7) & ~7
             align_offset = aligned_addr - raw_addr
