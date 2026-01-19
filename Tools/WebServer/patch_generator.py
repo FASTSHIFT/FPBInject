@@ -243,15 +243,16 @@ class CParser:
         functions = {}
 
         # Pattern to match function definitions
-        # This is simplified and may not handle all cases
+        # Handle multi-line signatures where { is on the next line
+        # Pattern matches: return_type function_name(params) with optional newline before {
         pattern = r"""
             ^                           # Start of line
-            (?:[\w\s\*]+?)              # Return type (non-greedy)
+            ([\w\s\*]+?)                # Return type (capture for finding signature start)
             \s+                         # Whitespace
             (\w+)                       # Function name (capture)
             \s*                         # Optional whitespace
             \([^)]*\)                   # Parameters
-            \s*                         # Optional whitespace
+            \s*                         # Optional whitespace (can include newline)
             \{                          # Opening brace
         """
 
@@ -263,8 +264,21 @@ class CParser:
             match = re.match(pattern, remaining, re.MULTILINE | re.VERBOSE)
 
             if match:
-                func_name = match.group(1)
-                start_line = i + 1
+                func_name = match.group(2)
+
+                # Find which line contains the function name (signature line)
+                # The match starts at line i, but we need to find the line with func_name
+                signature_line = i
+                matched_text = match.group(0)
+                lines_in_match = matched_text.count("\n")
+
+                # Search for the line containing the function name
+                for offset in range(lines_in_match + 1):
+                    if func_name in lines[i + offset]:
+                        signature_line = i + offset
+                        break
+
+                start_line = signature_line + 1  # Convert to 1-based
 
                 # Find the matching closing brace
                 brace_count = 0
@@ -376,6 +390,8 @@ class PatchGenerator:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             current_content = f.read()
 
+        logger.info(f"Detecting modified functions in: {file_path}")
+
         # Get original content
         if original_content is None:
             original_content = self.get_git_head_content(file_path)
@@ -391,6 +407,9 @@ class PatchGenerator:
         original_funcs = self.parser.parse_functions(original_content)
         current_funcs = self.parser.parse_functions(current_content)
 
+        logger.info(f"Original file has {len(original_funcs)} functions")
+        logger.info(f"Current file has {len(current_funcs)} functions")
+
         # Find modified functions
         modified = []
 
@@ -403,7 +422,13 @@ class PatchGenerator:
                 # Modified function
                 modified.append(name)
                 logger.info(f"Modified function detected: {name}")
+                # Log first 200 chars of diff for debugging
+                orig_preview = original_funcs[name].code[:100].replace("\n", "\\n")
+                curr_preview = current_info.code[:100].replace("\n", "\\n")
+                logger.debug(f"Original (first 100 chars): {orig_preview}")
+                logger.debug(f"Current (first 100 chars): {curr_preview}")
 
+        logger.info(f"Total modified functions: {len(modified)} - {modified}")
         return modified
 
     def generate_patch(
@@ -475,6 +500,16 @@ class PatchGenerator:
             )  # Only rename the actually modified ones
             for line_num in range(info.start_line, info.end_line + 1):
                 line_to_func[line_num] = (name, should_keep, should_rename)
+            # Log info for modified functions
+            if should_rename:
+                logger.info(
+                    f"Function '{name}': start_line={info.start_line}, end_line={info.end_line}"
+                )
+                # Log the actual content of start_line
+                if info.start_line <= len(lines):
+                    logger.info(
+                        f"Start line content: {lines[info.start_line - 1].strip()}"
+                    )
 
         # Add header comment
         patch_lines.append("/**")
@@ -527,6 +562,9 @@ class PatchGenerator:
                     # Entering a new function
                     current_func = func_name
                     skip_until_end = not should_keep
+                    logger.debug(
+                        f"Line {line_num}: Entering function '{func_name}', should_keep={should_keep}, should_rename={should_rename}"
+                    )
 
                 if skip_until_end:
                     # Skip function body that we don't need
@@ -541,6 +579,18 @@ class PatchGenerator:
                         renamed_line = self._rename_function_in_line(
                             line, func_name, f"inject_{func_name}"
                         )
+                        logger.info(
+                            f"Renaming function '{func_name}' to 'inject_{func_name}'"
+                        )
+                        logger.info(f"Original line ({line_num}): {line.strip()}")
+                        logger.info(f"Renamed line:  {renamed_line.strip()}")
+                        # Verify rename was successful
+                        if f"inject_{func_name}" in renamed_line:
+                            logger.info(f"Rename successful!")
+                        else:
+                            logger.warning(
+                                f"Rename may have FAILED! inject_{func_name} not found in renamed_line"
+                            )
                         patch_lines.append(renamed_line)
                     else:
                         patch_lines.append(line)
@@ -554,6 +604,19 @@ class PatchGenerator:
                 patch_lines.append(converted_line)
 
         patch_content = "\n".join(patch_lines)
+
+        # Verify inject_ functions exist in generated patch
+        import re
+
+        inject_funcs_in_patch = re.findall(r"\binject_\w+", patch_content)
+        if inject_funcs_in_patch:
+            logger.info(
+                f"Verified inject_ functions in patch: {list(set(inject_funcs_in_patch))[:10]}"
+            )
+        else:
+            logger.warning("WARNING: No inject_ functions found in generated patch!")
+            logger.warning(f"Modified functions were: {modified_functions}")
+            logger.warning(f"Patch content length: {len(patch_content)} chars")
 
         # Save to file if output_path specified
         if output_path:

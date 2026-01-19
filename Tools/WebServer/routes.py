@@ -918,6 +918,22 @@ def _trigger_auto_inject(file_path):
             logger.info(f"Generated patch (first 500 chars):\n{patch_content[:500]}")
             logger.info(f"Injected functions: {injected}")
 
+            # Check if inject_ functions are in the patch content
+            import re
+
+            inject_func_pattern = re.findall(r"\binject_\w+\s*\(", patch_content)
+            if inject_func_pattern:
+                logger.info(
+                    f"Found inject_ function definitions in patch: {inject_func_pattern[:5]}"
+                )
+            else:
+                logger.warning(
+                    "No inject_ function definitions found in generated patch!"
+                )
+                logger.warning(
+                    f"Patch content (first 2000 chars):\n{patch_content[:2000]}"
+                )
+
             # Update patch source
             device.patch_source_content = patch_content
 

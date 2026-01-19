@@ -1,422 +1,468 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FPBInject Hub</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css" />
     <!-- xterm.js -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-</head>
+  </head>
 
-<body>
+  <body>
     <div class="app-container">
-        <!-- Header -->
-        <header class="app-header">
-            <div class="header-brand">
-                <h1><a href="https://github.com/FASTSHIFT/FPBInject" target="_blank" class="brand-link">FPBInject</a>
-                    <span class="brand-suffix">Hub</span>
-                </h1>
-            </div>
-            <div class="header-status">
-                <span class="status-indicator" id="connectionIndicator"></span>
-                <span id="connectionStatus" class="status-text disconnected">未连接</span>
-            </div>
-            <div class="header-actions">
-                <p class="author">by <a href="https://github.com/FASTSHIFT" target="_blank">_VIFEXTech</a></p>
-            </div>
-        </header>
+      <!-- Header -->
+      <header class="app-header">
+        <div class="header-brand">
+          <h1>
+            <a href="https://github.com/FASTSHIFT/FPBInject" target="_blank" class="brand-link">FPBInject</a>
+            <span class="brand-suffix">Hub</span>
+          </h1>
+        </div>
+        <div class="header-status">
+          <span class="status-indicator" id="connectionIndicator"></span>
+          <span id="connectionStatus" class="status-text disconnected">未连接</span>
+        </div>
+        <div class="header-actions">
+          <p class="author">by <a href="https://github.com/FASTSHIFT" target="_blank">_VIFEXTech</a></p>
+        </div>
+      </header>
 
-        <!-- Main Content -->
-        <main class="app-main">
-            <!-- Sidebar: Device & Config -->
-            <aside class="sidebar">
-                <!-- Device Connection Panel -->
-                <section class="panel panel-primary" id="panelDevice">
-                    <div class="panel-header">
-                        <h2><span class="panel-icon">🔌</span> 设备连接</h2>
+      <!-- Main Content -->
+      <main class="app-main">
+        <!-- Sidebar: Device & Config -->
+        <aside class="sidebar">
+          <!-- Device Connection Panel -->
+          <section class="panel panel-primary" id="panelDevice">
+            <div class="panel-header">
+              <h2><span class="panel-icon">🔌</span> 设备连接</h2>
+            </div>
+            <div class="panel-body">
+              <div class="form-group">
+                <label class="form-label" for="portSelect">串口</label>
+                <div class="input-group">
+                  <select id="portSelect" class="form-control" title="选择要连接的串口设备">
+                    <option value="">选择串口...</option>
+                  </select>
+                  <button class="btn btn-icon" onclick="refreshPorts()" title="刷新串口列表">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="baudrate">波特率</label>
+                <input
+                  type="number"
+                  id="baudrate"
+                  class="form-control"
+                  value="115200"
+                  placeholder="115200"
+                  title="输入串口波特率"
+                />
+              </div>
+              <button id="connectBtn" class="btn btn-primary btn-block" onclick="toggleConnect()">
+                <span class="btn-icon-left">⚡</span> 连接
+              </button>
+            </div>
+          </section>
+
+          <!-- Quick Status Panel -->
+          <section class="panel" id="panelQuickStatus">
+            <div class="panel-header">
+              <h2><span class="panel-icon">📊</span> 注入状态</h2>
+              <span class="panel-badge" id="injectBadge">未激活</span>
+            </div>
+            <div class="panel-body">
+              <div class="stat-item">
+                <span class="stat-label">目标函数:</span>
+                <span class="stat-value" id="targetFuncDisplay">-</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">注入函数:</span>
+                <span class="stat-value" id="injectFuncDisplay">-</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">注入时间:</span>
+                <span class="stat-value" id="injectTimeDisplay">-</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- FPB Operations -->
+          <section class="panel panel-compact" id="panelFPB">
+            <div class="panel-header">
+              <h2><span class="panel-icon">🔧</span> FPB 操作</h2>
+            </div>
+            <div class="panel-body">
+              <div class="btn-group-vertical">
+                <button onclick="fpbPing()" class="btn btn-secondary btn-sm">Ping</button>
+                <button onclick="fpbInfo()" class="btn btn-secondary btn-sm">获取设备信息</button>
+                <button onclick="fpbUnpatch()" class="btn btn-danger btn-sm">清除注入</button>
+                <button
+                  id="nuttxModeBtn"
+                  onclick="toggleNuttxMode()"
+                  class="btn btn-secondary btn-sm"
+                  title="NuttX fl shell 透传模式 (-ni)"
+                >
+                  NuttX 交互模式
+                </button>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <!-- Center Content -->
+        <div class="content-area">
+          <!-- Configuration Section -->
+          <section class="section section-collapsible" id="sectionConfig">
+            <div class="section-header" onclick="toggleSection('sectionConfig')">
+              <h2><span class="section-icon">⚙️</span> 基础设置</h2>
+              <span class="section-toggle">▼</span>
+            </div>
+            <div class="section-body">
+              <div class="card-grid">
+                <!-- Paths Config Card -->
+                <div class="card card-wide" id="cardPaths">
+                  <div class="card-header">
+                    <h3>路径配置</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="form-group">
+                      <label class="form-label"
+                        >ELF 文件路径
+                        <span class="form-hint" title="主程序 ELF 文件，用于符号解析">ⓘ</span>
+                      </label>
+                      <div class="input-group">
+                        <input type="text" id="elfPath" class="form-control" placeholder="/path/to/firmware.elf" />
+                        <button class="btn btn-icon" onclick="browseFile('elfPath', '.elf')" title="浏览">📁</button>
+                      </div>
                     </div>
-                    <div class="panel-body">
-                        <div class="form-group">
-                            <label class="form-label" for="portSelect">串口</label>
-                            <div class="input-group">
-                                <select id="portSelect" class="form-control" title="选择要连接的串口设备">
-                                    <option value="">选择串口...</option>
-                                </select>
-                                <button class="btn btn-icon" onclick="refreshPorts()" title="刷新串口列表">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                        stroke-width="2">
-                                        <path
-                                            d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="baudrate">波特率</label>
-                            <input type="number" id="baudrate" class="form-control" value="115200" placeholder="115200"
-                                title="输入串口波特率">
-                        </div>
-                        <button id="connectBtn" class="btn btn-primary btn-block" onclick="toggleConnect()">
-                            <span class="btn-icon-left">⚡</span> 连接
+                    <div class="form-group">
+                      <label class="form-label"
+                        >Compile Commands 路径
+                        <span class="form-hint" title="compile_commands.json 文件，用于获取编译参数">ⓘ</span>
+                      </label>
+                      <div class="input-group">
+                        <input
+                          type="text"
+                          id="compileCommandsPath"
+                          class="form-control"
+                          placeholder="/path/to/compile_commands.json"
+                        />
+                        <button class="btn btn-icon" onclick="browseFile('compileCommandsPath', '.json')" title="浏览">
+                          📁
                         </button>
+                      </div>
                     </div>
-                </section>
-
-                <!-- Quick Status Panel -->
-                <section class="panel" id="panelQuickStatus">
-                    <div class="panel-header">
-                        <h2><span class="panel-icon">📊</span> 注入状态</h2>
-                        <span class="panel-badge" id="injectBadge">未激活</span>
+                    <div class="form-group">
+                      <label class="form-label"
+                        >工具链路径 (可选)
+                        <span class="form-hint" title="自定义工具链 bin 目录路径">ⓘ</span>
+                      </label>
+                      <div class="input-group">
+                        <input
+                          type="text"
+                          id="toolchainPath"
+                          class="form-control"
+                          placeholder="/path/to/toolchain/bin"
+                        />
+                        <button class="btn btn-icon" onclick="browseDir('toolchainPath')" title="浏览">📁</button>
+                      </div>
                     </div>
-                    <div class="panel-body">
-                        <div class="stat-item">
-                            <span class="stat-label">目标函数:</span>
-                            <span class="stat-value" id="targetFuncDisplay">-</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">注入函数:</span>
-                            <span class="stat-value" id="injectFuncDisplay">-</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">注入时间:</span>
-                            <span class="stat-value" id="injectTimeDisplay">-</span>
-                        </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label class="form-label">Patch 模式</label>
+                        <select id="patchMode" class="form-control">
+                          <option value="trampoline">Trampoline (FPB REMAP)</option>
+                          <option value="debugmon">DebugMonitor (ARMv8-M)</option>
+                          <option value="direct">Direct (直接跳转)</option>
+                        </select>
+                      </div>
+                      <button onclick="saveConfig()" class="btn btn-primary">保存配置</button>
                     </div>
-                </section>
-
-                <!-- FPB Operations -->
-                <section class="panel panel-compact" id="panelFPB">
-                    <div class="panel-header">
-                        <h2><span class="panel-icon">🔧</span> FPB 操作</h2>
-                    </div>
-                    <div class="panel-body">
-                        <div class="btn-group-vertical">
-                            <button onclick="fpbPing()" class="btn btn-secondary btn-sm">Ping</button>
-                            <button onclick="fpbInfo()" class="btn btn-secondary btn-sm">获取设备信息</button>
-                            <button onclick="fpbUnpatch()" class="btn btn-danger btn-sm">清除注入</button>
-                            <button id="nuttxModeBtn" onclick="toggleNuttxMode()" class="btn btn-secondary btn-sm" title="NuttX fl shell 透传模式 (-ni)">NuttX 交互模式</button>
-                        </div>
-                    </div>
-                </section>
-            </aside>
-
-            <!-- Center Content -->
-            <div class="content-area">
-                <!-- Configuration Section -->
-                <section class="section section-collapsible" id="sectionConfig">
-                    <div class="section-header" onclick="toggleSection('sectionConfig')">
-                        <h2><span class="section-icon">⚙️</span> 基础设置</h2>
-                        <span class="section-toggle">▼</span>
-                    </div>
-                    <div class="section-body">
-                        <div class="card-grid">
-                            <!-- Paths Config Card -->
-                            <div class="card card-wide" id="cardPaths">
-                                <div class="card-header">
-                                    <h3>路径配置</h3>
-                                </div>
-                                <div class="card-body">
-                                    <div class="form-group">
-                                        <label class="form-label">ELF 文件路径
-                                            <span class="form-hint" title="主程序 ELF 文件，用于符号解析">ⓘ</span>
-                                        </label>
-                                        <div class="input-group">
-                                            <input type="text" id="elfPath" class="form-control"
-                                                placeholder="/path/to/firmware.elf">
-                                            <button class="btn btn-icon" onclick="browseFile('elfPath', '.elf')"
-                                                title="浏览">📁</button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">Compile Commands 路径
-                                            <span class="form-hint" title="compile_commands.json 文件，用于获取编译参数">ⓘ</span>
-                                        </label>
-                                        <div class="input-group">
-                                            <input type="text" id="compileCommandsPath" class="form-control"
-                                                placeholder="/path/to/compile_commands.json">
-                                            <button class="btn btn-icon"
-                                                onclick="browseFile('compileCommandsPath', '.json')"
-                                                title="浏览">📁</button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">工具链路径 (可选)
-                                            <span class="form-hint" title="自定义工具链 bin 目录路径">ⓘ</span>
-                                        </label>
-                                        <div class="input-group">
-                                            <input type="text" id="toolchainPath" class="form-control"
-                                                placeholder="/path/to/toolchain/bin">
-                                            <button class="btn btn-icon" onclick="browseDir('toolchainPath')"
-                                                title="浏览">📁</button>
-                                        </div>
-                                    </div>
-                                    <div class="form-row">
-                                        <div class="form-group">
-                                            <label class="form-label">Patch 模式</label>
-                                            <select id="patchMode" class="form-control">
-                                                <option value="trampoline">Trampoline (FPB REMAP)</option>
-                                                <option value="debugmon">DebugMonitor (ARMv8-M)</option>
-                                                <option value="direct">Direct (直接跳转)</option>
-                                            </select>
-                                        </div>
-                                        <button onclick="saveConfig()" class="btn btn-primary">保存配置</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Injection Section -->
-                <section class="section section-collapsible" id="sectionInject">
-                    <div class="section-header" onclick="toggleSection('sectionInject')">
-                        <h2><span class="section-icon">💉</span> 代码注入</h2>
-                        <span class="section-toggle">▼</span>
-                    </div>
-                    <div class="section-body">
-                        <div class="card-grid">
-                            <!-- Target Selection Card -->
-                            <div class="card" id="cardTarget">
-                                <div class="card-header">
-                                    <h3>目标函数</h3>
-                                    <button class="btn btn-icon btn-sm" onclick="reloadSymbols()" title="重新加载符号">🔄</button>
-                                </div>
-                                <div class="card-body">
-                                    <div class="form-group">
-                                        <label class="form-label">搜索函数</label>
-                                        <input type="text" id="symbolSearch" class="form-control"
-                                            placeholder="输入函数名搜索..." oninput="searchSymbols()">
-                                    </div>
-                                    <div class="symbol-list" id="symbolList">
-                                        <div class="symbol-hint">加载 ELF 文件后显示符号列表</div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">选中的目标函数</label>
-                                        <input type="text" id="targetFunc" class="form-control"
-                                            placeholder="选择或输入目标函数名">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Patch Source Card -->
-                            <div class="card card-wide" id="cardPatchSource">
-                                <div class="card-header">
-                                    <h3>Patch 源代码</h3>
-                                    <div class="card-actions">
-                                        <button class="btn btn-secondary btn-sm" onclick="generatePatch()"
-                                            title="根据目标函数生成模板">生成模板</button>
-                                        <button class="btn btn-secondary btn-sm" onclick="loadPatchFromFile()"
-                                            title="从文件加载">从文件加载</button>
-                                        <button class="btn btn-secondary btn-sm" onclick="savePatchToFile()"
-                                            title="保存到文件">保存到文件</button>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <div class="code-editor-wrapper">
-                                        <textarea id="patchSource" class="code-editor" spellcheck="false"
-                                            placeholder="在此输入或粘贴 patch 代码..."></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Inject Button -->
-                        <div class="action-bar">
-                            <button id="injectBtn" onclick="performInject()" class="btn btn-success btn-lg">
-                                <span class="btn-icon-left">🚀</span> 编译并注入
-                            </button>
-                            <div class="inject-progress" id="injectProgress" style="display: none;">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="injectProgressFill"></div>
-                                </div>
-                                <span class="progress-text" id="injectProgressText">准备中...</span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- File Watcher Section -->
-                <section class="section section-collapsible" id="sectionWatcher">
-                    <div class="section-header" onclick="toggleSection('sectionWatcher')">
-                        <h2><span class="section-icon">👁️</span> 文件监控</h2>
-                        <span class="section-toggle">▼</span>
-                    </div>
-                    <div class="section-body">
-                        <div class="card card-wide">
-                            <div class="card-header">
-                                <h3>监控目录</h3>
-                                <label class="switch-mini">
-                                    <input type="checkbox" id="watcherEnable" onchange="toggleWatcher()">
-                                    <span class="switch-slider"></span>
-                                </label>
-                            </div>
-                            <div class="card-body">
-                                <div class="form-group">
-                                    <label class="form-label">监控路径 (每行一个)</label>
-                                    <textarea id="watchDirs" class="form-control" rows="3"
-                                        placeholder="/path/to/watch/dir1&#10;/path/to/watch/dir2"></textarea>
-                                </div>
-                                <div class="form-row">
-                                    <label class="checkbox-inline">
-                                        <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()">
-                                        <span>文件变化时自动编译注入</span>
-                                    </label>
-                                </div>
-                                
-                                <!-- Auto Inject Status Panel -->
-                                <div class="auto-inject-panel" id="autoInjectPanel" style="display: none;">
-                                    <div class="auto-inject-header">
-                                        <span class="auto-inject-icon" id="autoInjectIcon">⏳</span>
-                                        <span class="auto-inject-title">自动注入状态</span>
-                                        <button class="btn btn-icon btn-xs" onclick="resetAutoInjectStatus()" title="重置">✖</button>
-                                    </div>
-                                    <div class="auto-inject-body">
-                                        <div class="auto-inject-progress">
-                                            <div class="auto-inject-progress-bar" id="autoInjectProgressBar" style="width: 0%"></div>
-                                        </div>
-                                        <div class="auto-inject-message" id="autoInjectMessage">等待文件变化...</div>
-                                        <div class="auto-inject-funcs" id="autoInjectFuncs"></div>
-                                    </div>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label class="form-label">待处理的变化</label>
-                                    <div class="change-list" id="changeList">
-                                        <div class="change-hint">无待处理的文件变化</div>
-                                    </div>
-                                </div>
-                                <div class="btn-group">
-                                    <button onclick="clearChanges()" class="btn btn-secondary btn-sm">清空变化列表</button>
-                                    <button onclick="applyChanges()" class="btn btn-primary btn-sm">应用变化并重新注入</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Auto Patch Generator Card -->
-                        <div class="card card-wide" id="cardAutoPatch">
-                            <div class="card-header">
-                                <h3>🔮 自动 Patch 生成</h3>
-                            </div>
-                            <div class="card-body">
-                                <p class="hint-text">检测源文件中修改的函数，自动生成 inject_xxx 补丁代码</p>
-                                <div class="form-group">
-                                    <label class="form-label">源文件路径</label>
-                                    <div class="input-group">
-                                        <input type="text" id="autoPatchSource" class="form-control" 
-                                            placeholder="点击选择或输入 .c/.cpp 文件路径">
-                                        <button class="btn btn-icon" onclick="browseFile('autoPatchSource', '.c,.cpp,.h')" title="浏览">📁</button>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">检测到的修改函数</label>
-                                    <div class="modified-func-list" id="modifiedFuncList">
-                                        <span class="hint-text">未检测</span>
-                                    </div>
-                                </div>
-                                <div class="btn-group">
-                                    <button onclick="detectModifiedFunctions()" class="btn btn-secondary btn-sm">🔍 检测修改</button>
-                                    <button onclick="autoGeneratePatch()" class="btn btn-primary btn-sm">⚡ 生成 Patch</button>
-                                </div>
-                                <div class="form-group" style="margin-top: var(--spacing-md);">
-                                    <label class="form-label">生成的 Patch 代码</label>
-                                    <pre id="autoPatchContent" class="patch-preview" style="max-height: 300px;">点击 "生成 Patch" 查看结果...</pre>
-                                </div>
-                                <div class="btn-group">
-                                    <button onclick="copyAutoPatchContent()" class="btn btn-secondary btn-sm">📋 复制</button>
-                                    <button onclick="useAutoPatchAsSource()" class="btn btn-primary btn-sm">✅ 使用此 Patch</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Patch File Preview Card -->
-                        <div class="card card-wide" id="cardPatchPreview">
-                            <div class="card-header">
-                                <h3>📄 生成的 Patch 文件预览</h3>
-                                <div class="card-actions">
-                                    <button onclick="refreshPatchPreview()" class="btn btn-icon btn-sm" title="刷新预览">🔄</button>
-                                    <button onclick="copyPatchContent()" class="btn btn-secondary btn-sm">复制</button>
-                                </div>
-                            </div>
-                            <div class="card-body">
-                                <pre id="patchPreviewContent" class="patch-preview">编译后将显示生成的 patch 文件内容...</pre>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Terminal Section -->
-                <section class="section section-collapsible" id="sectionTerminal">
-                    <div class="section-header" onclick="toggleSection('sectionTerminal')">
-                        <h2><span class="section-icon">💻</span> 终端</h2>
-                        <span class="section-toggle">▼</span>
-                    </div>
-                    <div class="section-body">
-                        <div class="terminal-tabs">
-                            <div class="terminal-tab-headers">
-                                <button class="terminal-tab-btn active" onclick="switchTerminalTab('tool')" id="tabBtnTool">
-                                    📋 工具日志
-                                </button>
-                                <button class="terminal-tab-btn" onclick="switchTerminalTab('raw')" id="tabBtnRaw">
-                                    📡 串口原始日志
-                                </button>
-                            </div>
-                            <div class="terminal-tab-actions">
-                                <button onclick="clearCurrentTerminal()" class="btn btn-danger btn-sm">清空</button>
-                            </div>
-                        </div>
-                        <div class="terminal-panels">
-                            <div class="terminal-wrapper" id="terminalPanelTool">
-                                <div id="terminal-container"></div>
-                            </div>
-                            <div class="terminal-wrapper" id="terminalPanelRaw" style="display: none;">
-                                <div id="raw-terminal-container"></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+                  </div>
+                </div>
+              </div>
             </div>
-        </main>
+          </section>
 
-        <!-- Footer -->
-        <footer class="app-footer">
-            <span>FPBInject Hub v1.0</span>
-            <span class="footer-sep">|</span>
-            <span>Runtime Code Injection Tool</span>
-        </footer>
+          <!-- Injection Section -->
+          <section class="section section-collapsible" id="sectionInject">
+            <div class="section-header" onclick="toggleSection('sectionInject')">
+              <h2><span class="section-icon">💉</span> 代码注入</h2>
+              <span class="section-toggle">▼</span>
+            </div>
+            <div class="section-body">
+              <div class="card-grid">
+                <!-- Target Selection Card -->
+                <div class="card" id="cardTarget">
+                  <div class="card-header">
+                    <h3>目标函数</h3>
+                    <button class="btn btn-icon btn-sm" onclick="reloadSymbols()" title="重新加载符号">🔄</button>
+                  </div>
+                  <div class="card-body">
+                    <div class="form-group">
+                      <label class="form-label">搜索函数</label>
+                      <input
+                        type="text"
+                        id="symbolSearch"
+                        class="form-control"
+                        placeholder="输入函数名搜索..."
+                        oninput="searchSymbols()"
+                      />
+                    </div>
+                    <div class="symbol-list" id="symbolList">
+                      <div class="symbol-hint">加载 ELF 文件后显示符号列表</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">选中的目标函数</label>
+                      <input type="text" id="targetFunc" class="form-control" placeholder="选择或输入目标函数名" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Patch Source Card -->
+                <div class="card card-wide" id="cardPatchSource">
+                  <div class="card-header">
+                    <h3>Patch 源代码</h3>
+                    <div class="card-actions">
+                      <button class="btn btn-secondary btn-sm" onclick="generatePatch()" title="根据目标函数生成模板">
+                        生成模板
+                      </button>
+                      <button class="btn btn-secondary btn-sm" onclick="loadPatchFromFile()" title="从文件加载">
+                        从文件加载
+                      </button>
+                      <button class="btn btn-secondary btn-sm" onclick="savePatchToFile()" title="保存到文件">
+                        保存到文件
+                      </button>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <div class="code-editor-wrapper">
+                      <textarea
+                        id="patchSource"
+                        class="code-editor"
+                        spellcheck="false"
+                        placeholder="在此输入或粘贴 patch 代码..."
+                      ></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Inject Button -->
+              <div class="action-bar">
+                <button id="injectBtn" onclick="performInject()" class="btn btn-success btn-lg">
+                  <span class="btn-icon-left">🚀</span> 编译并注入
+                </button>
+                <div class="inject-progress" id="injectProgress" style="display: none">
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="injectProgressFill"></div>
+                  </div>
+                  <span class="progress-text" id="injectProgressText">准备中...</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- File Watcher Section -->
+          <section class="section section-collapsible" id="sectionWatcher">
+            <div class="section-header" onclick="toggleSection('sectionWatcher')">
+              <h2><span class="section-icon">👁️</span> 文件监控</h2>
+              <span class="section-toggle">▼</span>
+            </div>
+            <div class="section-body">
+              <div class="card card-wide">
+                <div class="card-header">
+                  <h3>监控目录</h3>
+                  <label class="switch-mini">
+                    <input type="checkbox" id="watcherEnable" onchange="toggleWatcher()" />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+                <div class="card-body">
+                  <div class="form-group">
+                    <label class="form-label">监控路径 (每行一个)</label>
+                    <textarea
+                      id="watchDirs"
+                      class="form-control"
+                      rows="3"
+                      placeholder="/path/to/watch/dir1&#10;/path/to/watch/dir2"
+                    ></textarea>
+                  </div>
+                  <div class="form-row">
+                    <label class="checkbox-inline">
+                      <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
+                      <span>文件变化时自动编译注入</span>
+                    </label>
+                  </div>
+
+                  <!-- Auto Inject Status Panel -->
+                  <div class="auto-inject-panel" id="autoInjectPanel" style="display: none">
+                    <div class="auto-inject-header">
+                      <span class="auto-inject-icon" id="autoInjectIcon">⏳</span>
+                      <span class="auto-inject-title">自动注入状态</span>
+                      <button class="btn btn-icon btn-xs" onclick="resetAutoInjectStatus()" title="重置">✖</button>
+                    </div>
+                    <div class="auto-inject-body">
+                      <div class="auto-inject-progress">
+                        <div class="auto-inject-progress-bar" id="autoInjectProgressBar" style="width: 0%"></div>
+                      </div>
+                      <div class="auto-inject-message" id="autoInjectMessage">等待文件变化...</div>
+                      <div class="auto-inject-funcs" id="autoInjectFuncs"></div>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">待处理的变化</label>
+                    <div class="change-list" id="changeList">
+                      <div class="change-hint">无待处理的文件变化</div>
+                    </div>
+                  </div>
+                  <div class="btn-group">
+                    <button onclick="clearChanges()" class="btn btn-secondary btn-sm">清空变化列表</button>
+                    <button onclick="applyChanges()" class="btn btn-primary btn-sm">应用变化并重新注入</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Auto Patch Generator Card -->
+              <div class="card card-wide" id="cardAutoPatch">
+                <div class="card-header">
+                  <h3>🔮 自动 Patch 生成</h3>
+                </div>
+                <div class="card-body">
+                  <p class="hint-text">检测源文件中修改的函数，自动生成 inject_xxx 补丁代码</p>
+                  <div class="form-group">
+                    <label class="form-label">源文件路径</label>
+                    <div class="input-group">
+                      <input
+                        type="text"
+                        id="autoPatchSource"
+                        class="form-control"
+                        placeholder="点击选择或输入 .c/.cpp 文件路径"
+                      />
+                      <button class="btn btn-icon" onclick="browseFile('autoPatchSource', '.c,.cpp,.h')" title="浏览">
+                        📁
+                      </button>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">检测到的修改函数</label>
+                    <div class="modified-func-list" id="modifiedFuncList">
+                      <span class="hint-text">未检测</span>
+                    </div>
+                  </div>
+                  <div class="btn-group">
+                    <button onclick="detectModifiedFunctions()" class="btn btn-secondary btn-sm">🔍 检测修改</button>
+                    <button onclick="autoGeneratePatch()" class="btn btn-primary btn-sm">⚡ 生成 Patch</button>
+                  </div>
+                  <div class="form-group" style="margin-top: var(--spacing-md)">
+                    <label class="form-label">生成的 Patch 代码</label>
+                    <pre id="autoPatchContent" class="patch-preview" style="max-height: 300px">
+点击 "生成 Patch" 查看结果...</pre
+                    >
+                  </div>
+                  <div class="btn-group">
+                    <button onclick="copyAutoPatchContent()" class="btn btn-secondary btn-sm">📋 复制</button>
+                    <button onclick="useAutoPatchAsSource()" class="btn btn-primary btn-sm">✅ 使用此 Patch</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Patch File Preview Card -->
+              <div class="card card-wide" id="cardPatchPreview">
+                <div class="card-header">
+                  <h3>📄 生成的 Patch 文件预览</h3>
+                  <div class="card-actions">
+                    <button onclick="refreshPatchPreview()" class="btn btn-icon btn-sm" title="刷新预览">🔄</button>
+                    <button onclick="copyPatchContent()" class="btn btn-secondary btn-sm">复制</button>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <pre id="patchPreviewContent" class="patch-preview">编译后将显示生成的 patch 文件内容...</pre>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Terminal Section -->
+          <section class="section section-collapsible" id="sectionTerminal">
+            <div class="section-header" onclick="toggleSection('sectionTerminal')">
+              <h2><span class="section-icon">💻</span> 终端</h2>
+              <span class="section-toggle">▼</span>
+            </div>
+            <div class="section-body">
+              <div class="terminal-tabs">
+                <div class="terminal-tab-headers">
+                  <button class="terminal-tab-btn active" onclick="switchTerminalTab('tool')" id="tabBtnTool">
+                    📋 工具日志
+                  </button>
+                  <button class="terminal-tab-btn" onclick="switchTerminalTab('raw')" id="tabBtnRaw">
+                    📡 串口原始日志
+                  </button>
+                </div>
+                <div class="terminal-tab-actions">
+                  <button onclick="clearCurrentTerminal()" class="btn btn-danger btn-sm">清空</button>
+                </div>
+              </div>
+              <div class="terminal-panels">
+                <div class="terminal-wrapper" id="terminalPanelTool">
+                  <div id="terminal-container"></div>
+                </div>
+                <div class="terminal-wrapper" id="terminalPanelRaw" style="display: none">
+                  <div id="raw-terminal-container"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="app-footer">
+        <span>FPBInject Hub v1.0</span>
+        <span class="footer-sep">|</span>
+        <span>Runtime Code Injection Tool</span>
+      </footer>
     </div>
 
     <!-- File Browser Modal -->
-    <div class="modal-overlay" id="fileBrowserModal" style="display: none;">
-        <div class="modal modal-large">
-            <div class="modal-header">
-                <h3>文件浏览器</h3>
-                <button class="modal-close" onclick="closeFileBrowser()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">当前路径</label>
-                    <div class="input-group">
-                        <input type="text" id="browserPath" class="form-control" onkeyup="onBrowserPathKeyup(event)">
-                        <button class="btn btn-icon" onclick="navigateTo(document.getElementById('browserPath').value)"
-                            title="前往">➡️</button>
-                    </div>
-                </div>
-                <div class="file-list" id="fileList">
-                    <!-- File list will be populated here -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeFileBrowser()">取消</button>
-                <button class="btn btn-primary" onclick="selectBrowserItem()">选择</button>
-            </div>
+    <div class="modal-overlay" id="fileBrowserModal" style="display: none">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h3>文件浏览器</h3>
+          <button class="modal-close" onclick="closeFileBrowser()">&times;</button>
         </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">当前路径</label>
+            <div class="input-group">
+              <input type="text" id="browserPath" class="form-control" onkeyup="onBrowserPathKeyup(event)" />
+              <button
+                class="btn btn-icon"
+                onclick="navigateTo(document.getElementById('browserPath').value)"
+                title="前往"
+              >
+                ➡️
+              </button>
+            </div>
+          </div>
+          <div class="file-list" id="fileList">
+            <!-- File list will be populated here -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeFileBrowser()">取消</button>
+          <button class="btn btn-primary" onclick="selectBrowserItem()">选择</button>
+        </div>
+      </div>
     </div>
 
     <script src="/static/js/app.js"></script>
-</body>
-
+  </body>
 </html>

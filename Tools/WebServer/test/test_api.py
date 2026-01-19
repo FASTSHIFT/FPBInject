@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import create_app
 from state import state
 
-
 # Create test app
 app = create_app()
 
