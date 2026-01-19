@@ -44,4 +44,3 @@
 build/
 build_test/
 __pycache__/
-config.json
