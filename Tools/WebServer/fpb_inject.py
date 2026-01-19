@@ -959,9 +959,25 @@ SECTIONS
             for line in result.stdout.strip().split("\n"):
                 parts = line.split()
                 if len(parts) >= 3:
-                    addr = int(parts[0], 16)
-                    name = parts[2]
-                    symbols[name] = addr
+                    try:
+                        addr = int(parts[0], 16)
+                        name = parts[2]
+                        symbols[name] = addr
+                    except ValueError:
+                        # Address field is not a valid hex number
+                        pass
+
+            # Log inject_* symbols for debugging
+            inject_syms = {k: v for k, v in symbols.items() if "inject" in k.lower()}
+            if inject_syms:
+                logger.info(f"Found inject symbols: {inject_syms}")
+            else:
+                logger.warning(
+                    f"No inject_* symbols found in compiled ELF. Total symbols: {len(symbols)}"
+                )
+                # Log all symbols for debugging (first 20)
+                all_syms = list(symbols.keys())[:20]
+                logger.debug(f"First 20 symbols: {all_syms}")
 
             return data, symbols, ""
 
