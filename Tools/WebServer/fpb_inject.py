@@ -709,6 +709,45 @@ class FPBInject:
         except Exception as e:
             return False, str(e)
 
+    def find_slot_for_target(self, target_addr: int) -> Tuple[int, bool]:
+        """
+        Find a suitable slot for the target address.
+
+        Strategy (B - Smart Reuse):
+        1. If target_addr is already patched in some slot, reuse that slot
+        2. Otherwise find first empty slot
+        3. If no empty slot, return -1
+
+        Returns:
+            Tuple of (slot_id, needs_unpatch)
+            - slot_id: The slot to use, or -1 if no slot available
+            - needs_unpatch: True if the slot needs to be cleared first
+        """
+        info, error = self.info()
+        if error or not info:
+            return 0, False  # Default to slot 0 if can't get info
+
+        slots = info.get("slots", [])
+        first_empty = -1
+
+        for slot in slots:
+            slot_id = slot.get("id", -1)
+            occupied = slot.get("occupied", False)
+            orig_addr = slot.get("orig_addr", 0)
+
+            if occupied:
+                # Check if this slot already patches our target
+                if orig_addr == target_addr or orig_addr == (target_addr & ~1):
+                    return slot_id, True  # Reuse this slot, need to unpatch first
+            else:
+                if first_empty < 0:
+                    first_empty = slot_id
+
+        if first_empty >= 0:
+            return first_empty, False
+
+        return -1, False  # No slot available
+
     def get_symbols(self, elf_path: str) -> Dict[str, int]:
         """Extract symbols from ELF file."""
         symbols = {}
@@ -1137,13 +1176,91 @@ SECTIONS
 
             return data, symbols, ""
 
+    def inject_single(
+        self,
+        target_addr: int,
+        inject_addr: int,
+        inject_name: str,
+        data: bytes,
+        align_offset: int,
+        patch_mode: str,
+        comp: int,
+        progress_callback=None,
+    ) -> Tuple[bool, dict]:
+        """
+        Inject a single function (internal helper).
+
+        This uploads code and applies patch for ONE function.
+        Used by inject() for multi-function injection.
+
+        Args:
+            target_addr: Target function address
+            inject_addr: Inject function address in compiled code
+            inject_name: Name of inject function
+            data: Compiled binary data
+            align_offset: Alignment offset for upload
+            patch_mode: Patch mode (trampoline, debugmon, direct)
+            comp: FPB comparator index (auto-select if -1)
+            progress_callback: Progress callback function
+
+        Returns:
+            Tuple of (success, result_dict)
+        """
+        result = {
+            "target_addr": f"0x{target_addr:08X}",
+            "inject_func": inject_name,
+            "inject_addr": f"0x{inject_addr:08X}",
+            "slot": -1,
+        }
+
+        # Auto-select slot if comp == -1
+        if comp < 0:
+            slot_id, needs_unpatch = self.find_slot_for_target(target_addr)
+            if slot_id < 0:
+                return False, {"error": "No available FPB slots"}
+
+            if needs_unpatch:
+                logger.info(
+                    f"Reusing slot {slot_id} for target 0x{target_addr:08X}, unpatch first"
+                )
+                self.unpatch(comp=slot_id)
+
+            comp = slot_id
+
+        result["slot"] = comp
+
+        # Upload code
+        upload_start = align_offset
+        success, upload_result = self.upload(
+            data, start_offset=upload_start, progress_callback=progress_callback
+        )
+        if not success:
+            return False, {"error": upload_result.get("error", "Upload failed")}
+
+        result["upload_time"] = round(upload_result.get("time", 0), 2)
+
+        # Apply patch
+        patch_addr = inject_addr | 1  # Thumb address
+
+        if patch_mode == "trampoline":
+            success, msg = self.tpatch(comp, target_addr, patch_addr)
+        elif patch_mode == "debugmon":
+            success, msg = self.dpatch(comp, target_addr, patch_addr)
+        else:
+            success, msg = self.patch(comp, target_addr, patch_addr)
+
+        if not success:
+            return False, {"error": f"Patch failed: {msg}"}
+
+        return True, result
+
     def inject(
         self,
         source_content: str,
         target_func: str,
         inject_func: str = None,
         patch_mode: str = "trampoline",
-        comp: int = 0,
+        comp: int = -1,
         progress_callback=None,
         source_ext: str = None,
     ) -> Tuple[bool, dict]:
@@ -1155,7 +1272,7 @@ SECTIONS
             target_func: Target function name to replace
             inject_func: Inject function name (default: auto-detect)
             patch_mode: Patch mode (trampoline, debugmon, direct)
-            comp: FPB comparator index
+            comp: FPB comparator index, -1 for auto-select (default)
             progress_callback: Progress callback function
             source_ext: Source file extension (.c or .cpp)
 
@@ -1170,6 +1287,7 @@ SECTIONS
             "inject_func": None,
             "target_addr": None,
             "inject_addr": None,
+            "slot": -1,
         }
 
         total_start = time.time()
@@ -1185,6 +1303,23 @@ SECTIONS
 
         target_addr = symbols[target_func]
         result["target_addr"] = f"0x{target_addr:08X}"
+
+        # Auto-select slot for this target
+        actual_comp = comp
+        if comp < 0:
+            slot_id, needs_unpatch = self.find_slot_for_target(target_addr)
+            if slot_id < 0:
+                return False, {"error": "No available FPB slots"}
+
+            if needs_unpatch:
+                logger.info(
+                    f"Reusing slot {slot_id} for target 0x{target_addr:08X}, unpatch first"
+                )
+                self.unpatch(comp=slot_id)
+
+            actual_comp = slot_id
+
+        result["slot"] = actual_comp
 
         # Get device info
         info, error = self.info()
@@ -1210,9 +1345,6 @@ SECTIONS
             code_size = len(data)
             alloc_size = code_size + 8
 
-            # Clear previous patches and free memory BEFORE allocating new memory
-            self.unpatch(all=True)
-
             raw_addr, error = self.alloc(alloc_size)
             if error or raw_addr is None:
                 return False, {
@@ -1236,9 +1368,6 @@ SECTIONS
         else:
             base_addr = info.get("base", 0x20001000) if info else 0x20001000
             align_offset = 0
-
-            # Clear previous patches for static allocation
-            self.unpatch(all=True)
 
             data, inject_symbols, error = self.compile_inject(
                 source_content,
@@ -1294,15 +1423,15 @@ SECTIONS
 
         result["upload_time"] = round(upload_result.get("time", 0), 2)
 
-        # Apply patch
+        # Apply patch using auto-selected slot
         patch_addr = found_inject_func[1] | 1  # Thumb address
 
         if patch_mode == "trampoline":
-            success, msg = self.tpatch(comp, target_addr, patch_addr)
+            success, msg = self.tpatch(actual_comp, target_addr, patch_addr)
         elif patch_mode == "debugmon":
-            success, msg = self.dpatch(comp, target_addr, patch_addr)
+            success, msg = self.dpatch(actual_comp, target_addr, patch_addr)
         else:
-            success, msg = self.patch(comp, target_addr, patch_addr)
+            success, msg = self.patch(actual_comp, target_addr, patch_addr)
 
         if not success:
             return False, {"error": f"Patch failed: {msg}"}
@@ -1317,6 +1446,167 @@ SECTIONS
         self.device.last_inject_time = time.time()
 
         return True, result
+
+    def inject_multi(
+        self,
+        source_content: str,
+        patch_mode: str = "trampoline",
+        progress_callback=None,
+        source_ext: str = None,
+    ) -> Tuple[bool, dict]:
+        """
+        Perform multi-function injection workflow.
+
+        Each inject_<target_func> function in the source gets its own Slot
+        with independent memory allocation.
+
+        Args:
+            source_content: Patch source code content with multiple inject_* functions
+            patch_mode: Patch mode (trampoline, debugmon, direct)
+            progress_callback: Progress callback function
+            source_ext: Source file extension (.c or .cpp)
+
+        Returns:
+            Tuple of (success, result_dict)
+        """
+        import re
+
+        result = {
+            "compile_time": 0,
+            "upload_time": 0,
+            "total_time": 0,
+            "code_size": 0,
+            "injections": [],  # List of individual injection results
+            "errors": [],
+        }
+
+        total_start = time.time()
+
+        # Load ELF symbols
+        elf_path = self.device.elf_path
+        if not elf_path or not os.path.exists(elf_path):
+            return False, {"error": "ELF file not found"}
+
+        elf_symbols = self.get_symbols(elf_path)
+
+        # First, do a quick compile to find all inject_* functions
+        data, inject_symbols, error = self.compile_inject(
+            source_content,
+            0x20000000,  # Temporary base address
+            elf_path,
+            self.device.compile_commands_path,
+            source_ext=source_ext,
+        )
+        if error:
+            return False, {"error": error}
+
+        # Find all inject_* functions and their target mappings
+        inject_funcs = [
+            (n, a) for n, a in inject_symbols.items() if n.startswith("inject_")
+        ]
+
+        if not inject_funcs:
+            return False, {"error": "No inject_* functions found in source"}
+
+        # Sort by address for consistent ordering
+        inject_funcs.sort(key=lambda x: x[1])
+
+        logger.info(
+            f"Found {len(inject_funcs)} inject functions: {[f[0] for f in inject_funcs]}"
+        )
+
+        # Build list of (target_func, inject_func) pairs
+        injection_targets = []
+        for inject_name, _ in inject_funcs:
+            target_func = inject_name[7:]  # Remove "inject_" prefix
+
+            # Try to find target in ELF symbols (case-insensitive match)
+            target_addr = None
+            actual_target_name = target_func
+            for sym_name, sym_addr in elf_symbols.items():
+                if sym_name.lower() == target_func.lower():
+                    target_addr = sym_addr
+                    actual_target_name = sym_name
+                    break
+
+            if target_addr is None:
+                result["errors"].append(f"Target '{target_func}' not found in ELF")
+                logger.warning(
+                    f"Target function '{target_func}' not found in ELF symbols"
+                )
+                continue
+
+            injection_targets.append((actual_target_name, inject_name))
+
+        if not injection_targets:
+            return False, {"error": "No valid injection targets found"}
+
+        # Now inject each function independently using the existing inject() method
+        # Each function gets its own alloc -> compile -> upload -> patch cycle
+        total_compile_time = 0
+        total_upload_time = 0
+        total_code_size = 0
+
+        for target_func, inject_func in injection_targets:
+            logger.info(f"Injecting {target_func} -> {inject_func}")
+
+            # Use inject() for complete independent injection
+            # comp=-1 means auto-select slot with smart reuse
+            success, inj_result = self.inject(
+                source_content=source_content,
+                target_func=target_func,
+                inject_func=inject_func,
+                patch_mode=patch_mode,
+                comp=-1,  # Auto-select slot
+                progress_callback=progress_callback,
+                source_ext=source_ext,
+            )
+
+            injection_entry = {
+                "target_func": target_func,
+                "target_addr": inj_result.get("target_addr", "?"),
+                "inject_func": inject_func,
+                "inject_addr": inj_result.get("inject_addr", "?"),
+                "slot": inj_result.get("slot", -1),
+                "code_size": inj_result.get("code_size", 0),
+                "success": success,
+            }
+
+            if not success:
+                injection_entry["error"] = inj_result.get("error", "Unknown error")
+                result["errors"].append(
+                    f"Inject '{target_func}' failed: {inj_result.get('error', '?')}"
+                )
+                logger.error(
+                    f"Inject failed for {target_func}: {inj_result.get('error')}"
+                )
+            else:
+                total_compile_time += inj_result.get("compile_time", 0)
+                total_upload_time += inj_result.get("upload_time", 0)
+                total_code_size += inj_result.get("code_size", 0)
+                logger.info(
+                    f"Injected {target_func} -> {inject_func} @ slot {inj_result.get('slot', '?')}"
+                )
+
+            result["injections"].append(injection_entry)
+
+        result["compile_time"] = round(total_compile_time, 2)
+        result["upload_time"] = round(total_upload_time, 2)
+        result["code_size"] = total_code_size
+        result["total_time"] = round(time.time() - total_start, 2)
+        result["patch_mode"] = patch_mode
+
+        # Count successful injections
+        successful = sum(1 for inj in result["injections"] if inj.get("success", False))
+        result["successful_count"] = successful
+        result["total_count"] = len(injection_targets)
+
+        # Update device state
+        if successful > 0:
+            self.device.inject_active = True
+            self.device.last_inject_time = time.time()
+
+        return successful > 0, result
 
 
 def scan_serial_ports() -> List[dict]:

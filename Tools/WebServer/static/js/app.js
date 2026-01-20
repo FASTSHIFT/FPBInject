@@ -461,6 +461,98 @@ async function fpbUnpatch(slotId) {
   }
 }
 
+async function fpbReinject(slotId) {
+  // Re-inject current patch source to the specified slot
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
+
+  // Get current patch source
+  const patchSource = document.getElementById('patchSource')?.value || '';
+  if (!patchSource.trim()) {
+    writeToOutput('[ERROR] No patch source code available', 'error');
+    return;
+  }
+
+  // Get target function from slot state
+  const slotState = slotStates[slotId];
+  if (!slotState || !slotState.func) {
+    writeToOutput(`[INFO] Slot ${slotId} has no target function, using multi-inject`, 'info');
+    // Use multi-inject API
+    await fpbInjectMulti();
+    return;
+  }
+
+  const targetFunc = slotState.func;
+  writeToOutput(`[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`, 'info');
+
+  try {
+    const patchMode = document.getElementById('patchMode')?.value || 'trampoline';
+    const res = await fetch('/api/fpb/inject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_content: patchSource,
+        target_func: targetFunc,
+        patch_mode: patchMode,
+        comp: slotId  // Force specific slot
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      writeToOutput(`[SUCCESS] Re-injected ${targetFunc} to Slot ${slotId}`, 'success');
+      await fpbInfo();
+    } else {
+      writeToOutput(`[ERROR] Re-inject failed: ${data.error || 'Unknown error'}`, 'error');
+    }
+  } catch (e) {
+    writeToOutput(`[ERROR] Re-inject error: ${e}`, 'error');
+  }
+}
+
+async function fpbInjectMulti() {
+  // Inject all functions in patch source using multi-inject API
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
+
+  const patchSource = document.getElementById('patchSource')?.value || '';
+  if (!patchSource.trim()) {
+    writeToOutput('[ERROR] No patch source code available', 'error');
+    return;
+  }
+
+  writeToOutput('[INFO] Injecting all functions...', 'info');
+
+  try {
+    const patchMode = document.getElementById('patchMode')?.value || 'trampoline';
+    const res = await fetch('/api/fpb/inject/multi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_content: patchSource,
+        patch_mode: patchMode
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      const successCount = data.successful_count || 0;
+      const totalCount = data.total_count || 0;
+      writeToOutput(`[SUCCESS] Injected ${successCount}/${totalCount} functions`, 'success');
+      displayAutoInjectStats(data, 'multi');
+      await fpbInfo();
+    } else {
+      writeToOutput(`[ERROR] Multi-inject failed: ${data.error || 'Unknown error'}`, 'error');
+    }
+  } catch (e) {
+    writeToOutput(`[ERROR] Multi-inject error: ${e}`, 'error');
+  }
+}
+
 async function fpbUnpatchAll() {
   if (!isConnected) {
     writeToOutput('[ERROR] Not connected', 'error');
@@ -1337,9 +1429,9 @@ async function pollAutoInjectStatus() {
           if (result && Object.keys(result).length > 0) {
             displayAutoInjectStats(result, modifiedFuncs[0] || 'unknown');
           }
-          // Create preview tab for the patch
+          // Create preview tab for the patch (use source file name)
           if (modifiedFuncs.length > 0) {
-            createPatchPreviewTab(modifiedFuncs[0]);
+            createPatchPreviewTab(modifiedFuncs[0], sourceFile);
           }
           // Refresh slot UI after successful injection
           updateSlotUI();
@@ -1376,8 +1468,29 @@ function displayAutoInjectStats(result, targetFunc) {
   const patchMode = result.patch_mode || 'unknown';
   
   writeToOutput(`--- Auto-Injection Statistics ---`, 'system');
-  writeToOutput(`Target:        ${targetFunc} @ ${result.target_addr || 'unknown'}`, 'info');
-  writeToOutput(`Inject func:   ${result.inject_func || 'unknown'} @ ${result.inject_addr || 'unknown'}`, 'info');
+  
+  // Check if this is multi-function injection result
+  const injections = result.injections || [];
+  if (injections.length > 0) {
+    // Multi-function injection
+    const successCount = result.successful_count || 0;
+    const totalCount = result.total_count || injections.length;
+    writeToOutput(`Functions:     ${successCount}/${totalCount} injected successfully`, 'info');
+    
+    for (const inj of injections) {
+      const status = inj.success ? '✓' : '✗';
+      const slotInfo = inj.slot >= 0 ? `[Slot ${inj.slot}]` : '';
+      writeToOutput(`  ${status} ${inj.target_func || 'unknown'} @ ${inj.target_addr || '?'} -> ${inj.inject_func || '?'} @ ${inj.inject_addr || '?'} ${slotInfo}`, inj.success ? 'info' : 'error');
+    }
+  } else {
+    // Single function injection (legacy format)
+    writeToOutput(`Target:        ${targetFunc} @ ${result.target_addr || 'unknown'}`, 'info');
+    writeToOutput(`Inject func:   ${result.inject_func || 'unknown'} @ ${result.inject_addr || 'unknown'}`, 'info');
+    if (result.slot !== undefined) {
+      writeToOutput(`Slot:          ${result.slot}`, 'info');
+    }
+  }
+  
   writeToOutput(`Compile time:  ${compileTime.toFixed(2)}s`, 'info');
   writeToOutput(`Upload time:   ${uploadTime.toFixed(2)}s (${uploadSpeed} B/s)`, 'info');
   writeToOutput(`Code size:     ${codeSize} bytes`, 'info');
@@ -1403,9 +1516,15 @@ async function loadPatchSourceFromBackend() {
   return null;
 }
 
-async function createPatchPreviewTab(funcName) {
-  const tabId = `patch_${funcName}`;
-  const tabTitle = `patch_${funcName}.c`;
+async function createPatchPreviewTab(funcName, sourceFile = null) {
+  // Use source file name if provided, otherwise fall back to function name
+  let baseName = funcName;
+  if (sourceFile) {
+    // Extract filename without path and extension
+    baseName = sourceFile.split('/').pop().replace(/\.[^.]+$/, '');
+  }
+  const tabId = `patch_${baseName}`;
+  const tabTitle = `patch_${baseName}.c`;
   
   // Load patch content from backend
   let patchContent = '';

@@ -285,7 +285,11 @@ def register_routes(app):
 
         # Ensure symbols are loaded for address lookup
         device = state.device
-        if not state.symbols_loaded and device.elf_path and os.path.exists(device.elf_path):
+        if (
+            not state.symbols_loaded
+            and device.elf_path
+            and os.path.exists(device.elf_path)
+        ):
             state.symbols = fpb.get_symbols(device.elf_path)
             state.symbols_loaded = True
 
@@ -375,7 +379,7 @@ def register_routes(app):
         target_func = data.get("target_func")
         inject_func = data.get("inject_func")
         patch_mode = data.get("patch_mode", state.device.patch_mode)
-        comp = data.get("comp", 0)
+        comp = data.get("comp", -1)  # Default to auto-select slot
         source_ext = data.get("source_ext", ".c")  # Default to .c
 
         if not source_content:
@@ -408,12 +412,57 @@ def register_routes(app):
 
         if success:
             add_tool_log(
-                f"[SUCCESS] Injection complete: {target_func} @ {result.get('addr', 'unknown')}"
+                f"[SUCCESS] Injection complete: {target_func} @ slot {result.get('slot', '?')}"
             )
         else:
             add_tool_log(
                 f"[ERROR] Injection failed: {result.get('error', 'unknown error')}"
             )
+
+        return jsonify({"success": success, **result})
+
+    @app.route("/api/fpb/inject/multi", methods=["POST"])
+    def api_fpb_inject_multi():
+        """Perform multi-function code injection. Each inject_* function gets its own Slot."""
+        data = request.json or {}
+        source_content = data.get("source_content")
+        patch_mode = data.get("patch_mode", state.device.patch_mode)
+        source_ext = data.get("source_ext", ".c")
+
+        if not source_content:
+            return jsonify({"success": False, "error": "Source content not provided"})
+
+        fpb = get_fpb_inject()
+
+        add_tool_log(
+            f"[INJECT_MULTI] Starting multi-function injection (mode: {patch_mode})"
+        )
+
+        # Enter fl interactive mode before injection
+        fpb.enter_fl_mode()
+
+        try:
+            success, result = fpb.inject_multi(
+                source_content=source_content,
+                patch_mode=patch_mode,
+                source_ext=source_ext,
+            )
+        finally:
+            # Exit fl interactive mode after injection
+            fpb.exit_fl_mode()
+
+        if success:
+            successful = result.get("successful_count", 0)
+            total = result.get("total_count", 0)
+            add_tool_log(
+                f"[SUCCESS] Multi-injection complete: {successful}/{total} functions"
+            )
+        else:
+            add_tool_log(
+                f"[ERROR] Multi-injection failed: {result.get('error', 'unknown error')}"
+            )
+
+        return jsonify({"success": success, **result})
 
         return jsonify({"success": success, **result})
 
@@ -1326,52 +1375,89 @@ def _trigger_auto_inject(file_path):
             fpb.enter_fl_mode()
 
             try:
-                # Step 5: Perform injection (use first modified function as target)
+                # Step 5: Perform multi-function injection
                 device.auto_inject_message = "正在编译..."
                 device.auto_inject_progress = 60
                 device.auto_inject_last_update = time.time()
-
-                target_func = modified[0]
-                inject_func = f"inject_{target_func}"
 
                 # Get source file extension from the original file
                 source_ext = os.path.splitext(file_path)[1] or ".c"
 
                 device.auto_inject_status = "injecting"
-                device.auto_inject_message = f"正在注入: {target_func} → {inject_func}"
+                func_list = ", ".join(modified[:3])
+                if len(modified) > 3:
+                    func_list += f" 等 {len(modified)} 个函数"
+                device.auto_inject_message = f"正在注入: {func_list}"
                 device.auto_inject_progress = 80
                 device.auto_inject_last_update = time.time()
 
-                success, result = fpb.inject(
+                # Use inject_multi for multi-function injection
+                # Each inject_* function gets its own Slot with smart reuse
+                success, result = fpb.inject_multi(
                     source_content=patch_content,
-                    target_func=target_func,
-                    inject_func=inject_func,
                     patch_mode=device.patch_mode,
-                    comp=0,
                     source_ext=source_ext,
                 )
 
                 if success:
+                    successful_count = result.get("successful_count", 0)
+                    total_count = result.get("total_count", 0)
+                    injections = result.get("injections", [])
+
+                    # Build summary message
+                    if successful_count == total_count:
+                        status_msg = f"注入成功: {successful_count} 个函数"
+                    else:
+                        status_msg = (
+                            f"部分成功: {successful_count}/{total_count} 个函数"
+                        )
+
+                    # Add injected function names
+                    injected_names = [
+                        inj.get("target_func", "?")
+                        for inj in injections
+                        if inj.get("success", False)
+                    ]
+                    if injected_names:
+                        status_msg += f" ({', '.join(injected_names[:3])})"
+                        if len(injected_names) > 3:
+                            status_msg += f" 等"
+
                     device.auto_inject_status = "success"
-                    device.auto_inject_message = f"注入成功: {inject_func}"
+                    device.auto_inject_message = status_msg
                     device.auto_inject_progress = 100
-                    device.auto_inject_result = result  # Save injection statistics
+                    device.auto_inject_result = result
                     device.inject_active = True
-                    device.last_inject_target = target_func
-                    device.last_inject_func = inject_func
                     device.last_inject_time = time.time()
+
+                    # Set last inject target/func from first successful injection
+                    for inj in injections:
+                        if inj.get("success", False):
+                            device.last_inject_target = inj.get("target_func")
+                            device.last_inject_func = inj.get("inject_func")
+                            break
+
                     logger.info(
-                        f"Auto inject successful: {target_func} → {inject_func}"
+                        f"Auto inject successful: {successful_count}/{total_count} functions"
                     )
+
+                    # Log errors if any
+                    errors = result.get("errors", [])
+                    if errors:
+                        for err in errors:
+                            logger.warning(f"Injection warning: {err}")
+
                     # Update slot info after successful injection
                     fpb.info()
                 else:
                     device.auto_inject_status = "failed"
-                    device.auto_inject_message = (
-                        f"注入失败: {result.get('error', 'Unknown error')}"
-                    )
+                    error_msg = result.get("error", "Unknown error")
+                    errors = result.get("errors", [])
+                    if errors:
+                        error_msg = "; ".join(errors[:3])
+                    device.auto_inject_message = f"注入失败: {error_msg}"
                     device.auto_inject_progress = 0
-                    logger.error(f"Auto inject failed: {result.get('error')}")
+                    logger.error(f"Auto inject failed: {error_msg}")
 
             finally:
                 # Step 6: Exit fl interactive mode
