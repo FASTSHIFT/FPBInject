@@ -34,6 +34,7 @@
 #include "func_loader.h"
 #include "func_loader_stream.h"
 #include <Arduino.h>
+#include <stdio.h>
 
 /* Include UMM_MALLOC header only when needed */
 #if defined(FL_ALLOC_UMM)
@@ -64,7 +65,7 @@ static void alloc_init(void) {
 }
 
 static void print_alloc_info(void) {
-    Serial.printf("Buffer: %u bytes @ 0x%08lX (STATIC)\n", (unsigned)sizeof(s_code_buf), (unsigned long)s_code_buf);
+    printf("Buffer: %u bytes @ 0x%08lX (STATIC)\n", (unsigned)sizeof(s_code_buf), (unsigned long)s_code_buf);
 }
 
 #elif defined(FL_ALLOC_LIBC)
@@ -78,7 +79,7 @@ static void alloc_init(void) {
 }
 
 static void print_alloc_info(void) {
-    Serial.println("Allocator: LIBC malloc/free");
+    println("Allocator: LIBC malloc/free");
 }
 
 #elif defined(FL_ALLOC_UMM)
@@ -94,7 +95,7 @@ static void alloc_init(void) {
 }
 
 static void print_alloc_info(void) {
-    Serial.printf("Heap: %u bytes @ 0x%08lX (UMM_MALLOC)\n", (unsigned)sizeof(s_heap_buf), (unsigned long)s_heap_buf);
+    printf("Heap: %u bytes @ 0x%08lX (UMM_MALLOC)\n", (unsigned)sizeof(s_heap_buf), (unsigned long)s_heap_buf);
 }
 
 #else
@@ -124,8 +125,8 @@ static int serial_available_cb(void) {
 
 /* Output helper for banner */
 static void banner_output(void* user, const char* str) {
-    (void)user;
-    Serial.print(str);
+    HardwareSerial* serial = (HardwareSerial*)user;
+    serial->print(str);
 }
 
 static void blink_led() {
@@ -173,7 +174,7 @@ void func_loader_run(void) {
 
     /* Print banner */
     s_ctx.output_cb = banner_output;
-    s_ctx.output_user = NULL;
+    s_ctx.output_user = &Serial;
 
     Serial.println("=====================================");
     Serial.println("FPBInject Function Loader v1.0");
