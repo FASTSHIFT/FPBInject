@@ -521,17 +521,20 @@ class FPBInject:
             return False, str(e)
 
     def info(self) -> Tuple[Optional[dict], str]:
-        """Get device info."""
+        """Get device info including slot states."""
         try:
             resp = self._send_cmd("--cmd info")
             result = self._parse_response(resp)
 
             if result.get("ok"):
                 raw = result.get("raw", "")
-                info = {"ok": True}
+                info = {"ok": True, "slots": [], "is_dynamic": False}
                 for line in raw.split("\n"):
                     line = line.strip()
-                    if line.startswith("Base:"):
+                    if line.startswith("Alloc:"):
+                        alloc_type = line.split(":")[1].strip().lower()
+                        info["is_dynamic"] = alloc_type == "dynamic"
+                    elif line.startswith("Base:"):
                         try:
                             info["base"] = int(line.split(":")[1].strip(), 0)
                         except:
@@ -544,6 +547,50 @@ class FPBInject:
                     elif line.startswith("Used:"):
                         try:
                             info["used"] = int(line.split(":")[1].strip())
+                        except:
+                            pass
+                    elif line.startswith("Slots:"):
+                        try:
+                            parts = line.split(":")[1].strip().split("/")
+                            info["active_slots"] = int(parts[0])
+                            info["total_slots"] = int(parts[1])
+                        except:
+                            pass
+                    elif line.startswith("Slot["):
+                        # Parse: Slot[0]: 0x08001234 -> 0x20001000, 128 bytes
+                        # or:    Slot[0]: empty
+                        try:
+                            match = re.match(
+                                r"Slot\[(\d+)\]:\s*(0x[0-9A-Fa-f]+)\s*->\s*(0x[0-9A-Fa-f]+),\s*(\d+)\s*bytes",
+                                line,
+                            )
+                            if match:
+                                slot_id = int(match.group(1))
+                                orig_addr = int(match.group(2), 16)
+                                target_addr = int(match.group(3), 16)
+                                code_size = int(match.group(4))
+                                info["slots"].append(
+                                    {
+                                        "id": slot_id,
+                                        "occupied": True,
+                                        "orig_addr": orig_addr,
+                                        "target_addr": target_addr,
+                                        "code_size": code_size,
+                                    }
+                                )
+                            elif "empty" in line:
+                                match = re.match(r"Slot\[(\d+)\]:", line)
+                                if match:
+                                    slot_id = int(match.group(1))
+                                    info["slots"].append(
+                                        {
+                                            "id": slot_id,
+                                            "occupied": False,
+                                            "orig_addr": 0,
+                                            "target_addr": 0,
+                                            "code_size": 0,
+                                        }
+                                    )
                         except:
                             pass
                 return info, ""
@@ -571,24 +618,6 @@ class FPBInject:
         except Exception as e:
             logger.exception(f"Alloc exception: {e}")
             return None, str(e)
-
-    def free(self) -> Tuple[bool, str]:
-        """Free memory buffer."""
-        try:
-            resp = self._send_cmd("--cmd free")
-            result = self._parse_response(resp)
-            return result.get("ok", False), result.get("msg", "")
-        except Exception as e:
-            return False, str(e)
-
-    def clear(self) -> Tuple[bool, str]:
-        """Clear upload buffer."""
-        try:
-            resp = self._send_cmd("--cmd clear")
-            result = self._parse_response(resp)
-            return result.get("ok", False), result.get("msg", "")
-        except Exception as e:
-            return False, str(e)
 
     def upload(
         self, data: bytes, start_offset: int = 0, progress_callback=None
@@ -667,10 +696,13 @@ class FPBInject:
         except Exception as e:
             return False, str(e)
 
-    def unpatch(self, comp: int) -> Tuple[bool, str]:
-        """Clear FPB patch."""
+    def unpatch(self, comp: int = 0, all: bool = False) -> Tuple[bool, str]:
+        """Clear FPB patch. If all=True, clear all patches and free memory."""
         try:
-            cmd = f"--cmd unpatch --comp {comp}"
+            if all:
+                cmd = "--cmd unpatch --all"
+            else:
+                cmd = f"--cmd unpatch --comp {comp}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
             return result.get("ok", False), result.get("msg", "")
@@ -1159,7 +1191,7 @@ SECTIONS
         if error:
             return False, {"error": f"Failed to get device info: {error}"}
 
-        is_dynamic = info and info.get("base", 0) == 0 and info.get("size", 0) == 0
+        is_dynamic = info and info.get("is_dynamic", False)
 
         compile_start = time.time()
 
@@ -1177,6 +1209,9 @@ SECTIONS
 
             code_size = len(data)
             alloc_size = code_size + 8
+
+            # Clear previous patches and free memory BEFORE allocating new memory
+            self.unpatch(all=True)
 
             raw_addr, error = self.alloc(alloc_size)
             if error or raw_addr is None:
@@ -1201,6 +1236,9 @@ SECTIONS
         else:
             base_addr = info.get("base", 0x20001000) if info else 0x20001000
             align_offset = 0
+
+            # Clear previous patches for static allocation
+            self.unpatch(all=True)
 
             data, inject_symbols, error = self.compile_inject(
                 source_content,
@@ -1244,10 +1282,12 @@ SECTIONS
         result["inject_func"] = found_inject_func[0]
         result["inject_addr"] = f"0x{found_inject_func[1]:08X}"
 
-        # Clear and upload
-        self.clear()
+        # Upload code
+        # --addr is always offset: dynamic mode uses align_offset, static mode uses 0
+        # Lower machine adds offset to last_alloc (dynamic) or static_buf (static)
+        upload_start = align_offset
         success, upload_result = self.upload(
-            data, start_offset=align_offset, progress_callback=progress_callback
+            data, start_offset=upload_start, progress_callback=progress_callback
         )
         if not success:
             return False, {"error": upload_result.get("error", "Upload failed")}

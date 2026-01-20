@@ -69,9 +69,6 @@ static fl_context_t s_ctx = {
     .static_buf = s_code_buf,
     .static_size = sizeof(s_code_buf),
     .static_used = 0,
-    .dyn_base = 0,
-    .dyn_size = 0,
-    .dyn_used = 0,
 };
 
 static void alloc_init(void) {
@@ -104,9 +101,6 @@ static fl_context_t s_ctx = {
     .static_buf = NULL,
     .static_size = 0,
     .static_used = 0,
-    .dyn_base = 0,
-    .dyn_size = 0,
-    .dyn_used = 0,
 };
 
 static void alloc_init(void) {
@@ -141,9 +135,6 @@ static fl_context_t s_ctx = {
     .static_buf = NULL,
     .static_size = 0,
     .static_used = 0,
-    .dyn_base = 0,
-    .dyn_size = 0,
-    .dyn_used = 0,
 };
 
 static void alloc_init(void) {
@@ -169,9 +160,6 @@ static fl_context_t s_ctx = {
     .static_buf = s_code_buf,
     .static_size = sizeof(s_code_buf),
     .static_used = 0,
-    .dyn_base = 0,
-    .dyn_size = 0,
-    .dyn_used = 0,
 };
 
 static void alloc_init(void) {

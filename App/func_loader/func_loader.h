@@ -56,6 +56,7 @@ typedef struct {
     uint32_t orig_addr;   /* Original function address */
     uint32_t target_addr; /* Injected code address */
     uint32_t code_size;   /* Injected code size */
+    uintptr_t alloc_addr; /* Allocated memory address (for free on unpatch) */
 } fl_slot_state_t;
 
 /**
@@ -76,14 +77,14 @@ typedef struct {
     fl_flush_dcache_cb_t flush_dcache_cb;
 
     /* Static buffer (required if malloc_cb is NULL) */
-    uint8_t* static_buf;
+    void* static_buf;
     size_t static_size;
 
     /* Internal state (managed by fl_init) */
+    bool is_inited; /* true after first fl_init() call */
     size_t static_used;
-    uintptr_t dyn_base;
-    size_t dyn_size;
-    size_t dyn_used;
+    uintptr_t last_alloc;   /* Last dynamic allocation address */
+    size_t last_alloc_size; /* Last dynamic allocation size */
 
     /* Slot tracking */
     fl_slot_state_t slots[FL_MAX_SLOTS];
@@ -93,6 +94,11 @@ typedef struct {
  * @brief Initialize context
  */
 void fl_init(fl_context_t* ctx);
+
+/**
+ * @brief Check if context is initialized
+ */
+bool fl_is_inited(fl_context_t* ctx);
 
 /**
  * @brief Execute command from argc/argv

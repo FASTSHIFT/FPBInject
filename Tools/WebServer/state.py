@@ -33,7 +33,6 @@ PERSISTENT_KEYS = [
     "auto_connect",
     "auto_compile",
     "patch_source_path",
-    "nuttx_mode",
     "watcher_enabled",
 ]
 
@@ -76,9 +75,6 @@ class DeviceState:
         self.last_inject_func = None
         self.last_inject_time = None
         self.inject_active = False
-
-        # NuttX interactive mode
-        self.nuttx_mode = False  # NuttX fl shell pass-through mode
 
         # Serial log (RX/TX direction log)
         self.serial_log = []

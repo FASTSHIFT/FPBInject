@@ -258,7 +258,6 @@ class TestRoutesFPB(TestRoutesBase):
             "auto_connect",
             "auto_compile",
             "patch_source_path",
-            "nuttx_mode",
             "watcher_enabled",
             "inject_active",
         ]
@@ -329,18 +328,6 @@ class TestConfigAPI(TestRoutesBase):
 
         self.assertTrue(data["success"])
         self.assertTrue(state.device.auto_compile)
-
-    def test_update_nuttx_mode(self):
-        """测试更新 NuttX 模式"""
-        response = self.client.post(
-            "/api/config",
-            data=json.dumps({"nuttx_mode": True}),
-            content_type="application/json",
-        )
-        data = json.loads(response.data)
-
-        self.assertTrue(data["success"])
-        self.assertTrue(state.device.nuttx_mode)
 
     @patch("routes._restart_file_watcher")
     def test_update_watch_dirs(self, mock_restart):

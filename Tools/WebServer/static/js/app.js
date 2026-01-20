@@ -16,7 +16,7 @@ let autoInjectPollInterval = null;
 let lastAutoInjectStatus = 'idle';
 let autoInjectProgressHideTimer = null;
 let selectedSlot = 0;
-let slotStates = Array(6).fill().map(() => ({ occupied: false, func: 'Empty', addr: '' }));
+let slotStates = Array(6).fill().map(() => ({ occupied: false, func: '', orig_addr: '', target_addr: '', code_size: 0 }));
 
 // Tabs state
 let editorTabs = [{ id: 'patch_source', title: 'patch_source.c', type: 'c', closable: false }];
@@ -402,10 +402,11 @@ function updateSlotUI() {
 
     if (funcSpan) {
       if (state.occupied) {
-        const injectInfo = state.inject_func ? ` → ${state.inject_func}` : '';
-        const sizeInfo = state.code_size ? ` (${state.code_size}B)` : '';
-        funcSpan.textContent = `${state.func}${injectInfo}${sizeInfo}`;
-        funcSpan.title = `Original: ${state.func} @ ${state.addr}\nInjected: ${state.inject_func || 'N/A'}\nCode size: ${state.code_size || 0} bytes`;
+        // Format: orig_addr (func_name) -> target_addr, size bytes
+        const funcName = state.func ? ` (${state.func})` : '';
+        const sizeInfo = state.code_size ? `, ${state.code_size}B` : '';
+        funcSpan.textContent = `${state.orig_addr}${funcName} → ${state.target_addr}${sizeInfo}`;
+        funcSpan.title = `Original: ${state.orig_addr}${funcName}\nTarget: ${state.target_addr}\nCode size: ${state.code_size || 0} bytes`;
       } else {
         funcSpan.textContent = 'Empty';
         funcSpan.title = '';
@@ -447,9 +448,11 @@ async function fpbUnpatch(slotId) {
     const data = await res.json();
 
     if (data.success) {
-      slotStates[slotId] = { occupied: false, func: 'Empty', addr: '' };
+      slotStates[slotId] = { occupied: false, func: '', orig_addr: '', target_addr: '', code_size: 0 };
       updateSlotUI();
       writeToOutput(`[SUCCESS] Slot ${slotId} cleared`, 'success');
+      // Refresh device info to get accurate state
+      fpbInfo();
     } else {
       writeToOutput(`[ERROR] Failed to clear slot ${slotId}: ${data.message}`, 'error');
     }
@@ -465,13 +468,19 @@ async function fpbUnpatchAll() {
   }
 
   try {
-    const res = await fetch('/api/fpb/unpatch', { method: 'POST' });
+    const res = await fetch('/api/fpb/unpatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true })
+    });
     const data = await res.json();
 
     if (data.success) {
-      slotStates = Array(6).fill().map(() => ({ occupied: false, func: 'Empty', addr: '' }));
+      slotStates = Array(6).fill().map(() => ({ occupied: false, func: '', orig_addr: '', target_addr: '', code_size: 0 }));
       updateSlotUI();
-      writeToOutput('[SUCCESS] All slots cleared', 'success');
+      writeToOutput('[SUCCESS] All slots cleared and memory freed', 'success');
+      // Refresh device info to get accurate state
+      fpbInfo();
     } else {
       writeToOutput(`[ERROR] Failed to clear all: ${data.message}`, 'error');
     }
@@ -668,9 +677,9 @@ async function fpbInfo() {
           if (i < 6) {
             slotStates[i] = {
               occupied: slot.occupied || false,
-              func: slot.func || 'Empty',
-              addr: slot.addr || '',
-              inject_func: slot.inject_func || '',
+              func: slot.func || '',
+              orig_addr: slot.orig_addr || '',
+              target_addr: slot.target_addr || '',
               code_size: slot.code_size || 0
             };
           }
@@ -696,18 +705,38 @@ function updateMemoryInfo(memory) {
   const memoryEl = document.getElementById('memoryInfo');
   if (!memoryEl) return;
 
+  const isDynamic = memory.is_dynamic || false;
   const base = memory.base || 0;
   const size = memory.size || 0;
   const used = memory.used || 0;
-  const free = size - used;
-  const usedPercent = size > 0 ? Math.round((used / size) * 100) : 0;
 
-  memoryEl.innerHTML = `
-    <div style="font-size: 10px; color: var(--vscode-descriptionForeground);">
-      Base: 0x${base.toString(16).toUpperCase().padStart(8, '0')} | 
-      Used: ${used}/${size} bytes (${usedPercent}%)
-    </div>
-  `;
+  if (isDynamic) {
+    // Dynamic mode: show alloc type and used memory
+    memoryEl.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span style="font-size: 10px; padding: 2px 6px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border-radius: 3px;">Dynamic</span>
+        <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">Used: ${used} Bytes</span>
+      </div>
+    `;
+  } else {
+    // Static mode: show base, size, used with progress bar
+    const free = size - used;
+    const usedPercent = size > 0 ? Math.round((used / size) * 100) : 0;
+    memoryEl.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span style="font-size: 10px; padding: 2px 6px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border-radius: 3px;">Static</span>
+          <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">Base: 0x${base.toString(16).toUpperCase().padStart(8, '0')}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <div style="flex: 1; height: 4px; background: var(--vscode-input-background); border-radius: 2px; overflow: hidden;">
+            <div style="width: ${usedPercent}%; height: 100%; background: var(--vscode-progressBar-background);"></div>
+          </div>
+          <span style="font-size: 9px; color: var(--vscode-descriptionForeground); white-space: nowrap;">${used}/${size} (${usedPercent}%)</span>
+        </div>
+      </div>
+    `;
+  }
 }
 
 /* ===========================
@@ -836,17 +865,14 @@ async function performInject() {
       progressText.textContent = 'Complete!';
       progressFill.style.width = '100%';
 
-      slotStates[selectedSlot] = {
-        occupied: true,
-        func: targetFunc,
-        addr: finalResult.target_addr || '0x????',
-        inject_func: finalResult.inject_func || '',
-        code_size: finalResult.code_size || 0
-      };
+      // Don't update local state, let fpbInfo refresh from device
       updateSlotUI();
 
       // Display injection statistics
       displayInjectionStats(finalResult, targetFunc);
+
+      // Refresh device info to get actual slot states from device
+      fpbInfo();
 
       setTimeout(() => {
         progressEl.style.display = 'none';
@@ -1087,7 +1113,6 @@ async function loadConfig() {
     if (data.watcher_enabled) document.getElementById('watcherEnable').checked = data.watcher_enabled;
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
     if (data.auto_compile !== undefined) document.getElementById('autoCompile').checked = data.auto_compile;
-    if (data.nuttx_mode !== undefined) document.getElementById('nuttxMode').checked = data.nuttx_mode;
 
     updateWatcherStatus(data.watcher_enabled);
     
@@ -1109,8 +1134,7 @@ async function saveConfig(silent = false) {
     patch_mode: document.getElementById('patchMode').value,
     watcher_enabled: document.getElementById('watcherEnable').checked,
     watch_dirs: getWatchDirs(),
-    auto_compile: document.getElementById('autoCompile').checked,
-    nuttx_mode: document.getElementById('nuttxMode').checked
+    auto_compile: document.getElementById('autoCompile').checked
   };
 
   try {
@@ -1129,10 +1153,6 @@ async function saveConfig(silent = false) {
   } catch (e) {
     writeToOutput(`[ERROR] Save failed: ${e}`, 'error');
   }
-}
-
-function onNuttxModeChange() {
-  saveConfig(true);
 }
 
 // Setup auto-save for all config inputs

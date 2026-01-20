@@ -172,19 +172,6 @@ static int hex_to_bytes(const char* hex, uint8_t* out, size_t max) {
     return (int)n;
 }
 
-static int bytes_to_hex(const uint8_t* data, size_t len, char* out, size_t max) {
-    static const char hc[] = "0123456789ABCDEF";
-    if (!data || !out || max < len * 2 + 1)
-        return -1;
-
-    for (size_t i = 0; i < len; i++) {
-        out[i * 2] = hc[(data[i] >> 4) & 0x0F];
-        out[i * 2 + 1] = hc[data[i] & 0x0F];
-    }
-    out[len * 2] = '\0';
-    return (int)(len * 2);
-}
-
 static void output(fl_context_t* ctx, const char* str) {
     if (ctx->output_cb) {
         ctx->output_cb(ctx->output_user, str);
@@ -215,20 +202,14 @@ static void fl_print(fl_context_t* ctx, const char* fmt, ...) {
 }
 
 static uint8_t* get_buf(fl_context_t* ctx) {
-    if (ctx->dyn_base != 0)
-        return (uint8_t*)ctx->dyn_base;
     return ctx->static_buf;
 }
 
 static size_t get_buf_size(fl_context_t* ctx) {
-    if (ctx->dyn_base != 0)
-        return ctx->dyn_size;
     return ctx->static_size;
 }
 
 static size_t* get_used_ptr(fl_context_t* ctx) {
-    if (ctx->dyn_base != 0)
-        return &ctx->dyn_used;
     return &ctx->static_used;
 }
 
@@ -242,36 +223,15 @@ static size_t fl_get_size(fl_context_t* ctx) {
 
 void fl_init(fl_context_t* ctx) {
     ctx->static_used = 0;
-    ctx->dyn_base = 0;
-    ctx->dyn_size = 0;
-    ctx->dyn_used = 0;
+    ctx->last_alloc = 0;
+    ctx->last_alloc_size = 0;
     memset(ctx->slots, 0, sizeof(ctx->slots));
     fpb_init();
+    ctx->is_inited = true;
 }
 
-static int write_code(fl_context_t* ctx, uint32_t off, const uint8_t* data, size_t len) {
-    if (off + len > get_buf_size(ctx))
-        return -1;
-    memcpy(get_buf(ctx) + off, data, len);
-    size_t* used = get_used_ptr(ctx);
-    if (off + len > *used)
-        *used = off + len;
-    return 0;
-}
-
-static int exec_code(fl_context_t* ctx, uint32_t entry_off, int argc, const char** argv) {
-    size_t used = *get_used_ptr(ctx);
-    if (entry_off >= used)
-        return -1;
-
-    uint32_t addr = (uint32_t)(get_buf(ctx) + entry_off) | 1;
-    typedef int (*fn_t)(int, const char**);
-    fn_t fn = (fn_t)addr;
-
-    __asm volatile("dsb");
-    __asm volatile("isb");
-
-    return fn(argc, argv);
+bool fl_is_inited(fl_context_t* ctx) {
+    return ctx->is_inited;
 }
 
 static void cmd_ping(fl_context_t* ctx) {
@@ -279,23 +239,34 @@ static void cmd_ping(fl_context_t* ctx) {
 }
 
 static void cmd_info(fl_context_t* ctx) {
-    const char* mode = ctx->malloc_cb ? "dynamic" : "static";
+    bool is_dynamic = ctx->malloc_cb != NULL;
+    const char* mode = is_dynamic ? "dynamic" : "static";
     const fpb_state_t* fpb = fpb_get_state();
     uint32_t num_comps = fpb->num_code_comp;
     uint32_t active_count = 0;
+    size_t total_used = 0;
 
-    /* Count active slots */
+    /* Count active slots and total code size */
     for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS; i++) {
         if (ctx->slots[i].active) {
             active_count++;
+            total_used += ctx->slots[i].code_size;
         }
     }
 
     fl_print(ctx, "FPBInject v1.0");
     fl_print(ctx, "Alloc: %s", mode);
-    fl_print(ctx, "Base: 0x%08lX", (unsigned long)fl_get_base(ctx));
-    fl_print(ctx, "Size: %u", (unsigned)fl_get_size(ctx));
-    fl_print(ctx, "Used: %u", (unsigned)*get_used_ptr(ctx));
+
+    if (!is_dynamic) {
+        /* Static mode: show buffer info */
+        fl_print(ctx, "Base: 0x%08lX", (unsigned long)fl_get_base(ctx));
+        fl_print(ctx, "Size: %u", (unsigned)fl_get_size(ctx));
+        fl_print(ctx, "Used: %u", (unsigned)*get_used_ptr(ctx));
+    } else {
+        /* Dynamic mode: show total used from slots */
+        fl_print(ctx, "Used: %u", (unsigned)total_used);
+    }
+
     fl_print(ctx, "Slots: %u/%u", (unsigned)active_count, (unsigned)num_comps);
 
     /* Print each slot status */
@@ -318,28 +289,28 @@ static void cmd_alloc(fl_context_t* ctx, size_t size) {
         return;
     }
 
-    if (ctx->dyn_base != 0 && ctx->free_cb) {
-        ctx->free_cb((void*)ctx->dyn_base);
-        ctx->dyn_base = 0;
+    /* Free previous allocation if any */
+    if (ctx->last_alloc != 0 && ctx->free_cb) {
+        ctx->free_cb((void*)ctx->last_alloc);
+        ctx->last_alloc = 0;
+        ctx->last_alloc_size = 0;
     }
 
     void* p = ctx->malloc_cb(size);
     if (!p) {
-        ctx->dyn_base = 0;
-        ctx->dyn_size = 0;
         fl_response(ctx, false, "Alloc failed");
         return;
     }
 
-    ctx->dyn_base = (uintptr_t)p;
-    ctx->dyn_size = size;
-    ctx->dyn_used = 0;
+    ctx->last_alloc = (uintptr_t)p;
+    ctx->last_alloc_size = size;
     fl_response(ctx, true, "Allocated %u at 0x%08lX", (unsigned)size, (unsigned long)p);
 }
 
-static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, uintptr_t crc, bool verify) {
+static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str, uintptr_t crc, bool verify) {
     static uint8_t buf[2048];
     int n;
+    bool is_dynamic = ctx->malloc_cb != NULL;
 
     /* Try base64 first (contains uppercase and lowercase letters), then hex */
     /* Base64 strings typically have length multiple of 4 and may contain A-Z, a-z, 0-9, +, /, = */
@@ -375,110 +346,45 @@ static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, ui
     if (verify) {
         uint16_t calc = calc_crc16(buf, n);
         if (calc != (uint16_t)crc) {
+            /* CRC mismatch - free last_alloc in dynamic mode to prevent leak */
+            if (is_dynamic && ctx->last_alloc != 0 && ctx->free_cb) {
+                ctx->free_cb((void*)ctx->last_alloc);
+                ctx->last_alloc = 0;
+                ctx->last_alloc_size = 0;
+            }
             fl_response(ctx, false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
             return;
         }
     }
 
-    if (write_code(ctx, off, buf, n) != 0) {
-        fl_response(ctx, false, "Overflow at 0x%lX", (unsigned long)off);
-        return;
+    uint8_t* dest;
+    if (is_dynamic) {
+        /* Dynamic mode: offset relative to last_alloc */
+        if (ctx->last_alloc == 0) {
+            fl_response(ctx, false, "No allocation, call alloc first");
+            return;
+        }
+        dest = (uint8_t*)(ctx->last_alloc + offset);
+    } else {
+        /* Static mode: offset relative to static_buf */
+        if (offset + n > ctx->static_size) {
+            fl_response(ctx, false, "Overflow at 0x%lX", (unsigned long)offset);
+            return;
+        }
+        dest = ctx->static_buf + offset;
+        if (offset + n > ctx->static_used) {
+            ctx->static_used = offset + n;
+        }
     }
+
+    memcpy(dest, buf, n);
 
     /* Flush data cache after upload to ensure code is visible to CPU */
     if (ctx->flush_dcache_cb) {
-        uint8_t* code_buf = get_buf(ctx);
-        size_t buf_size = get_buf_size(ctx);
-        if (code_buf && buf_size > 0) {
-            ctx->flush_dcache_cb((uintptr_t)code_buf, (uintptr_t)code_buf + buf_size);
-        }
+        ctx->flush_dcache_cb((uintptr_t)dest, (uintptr_t)dest + n);
     }
 
-    fl_response(ctx, true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)off);
-}
-
-static int parse_args(const char* str, char* buf, size_t sz, char** av, int max) {
-    int ac = 0;
-    if (!str || !*str)
-        return 0;
-
-    strncpy(buf, str, sz - 1);
-    buf[sz - 1] = '\0';
-
-    char* p = buf;
-    bool in_q = false, in_a = false;
-
-    while (*p && ac < max) {
-        if (*p == '"') {
-            in_q = !in_q;
-            memmove(p, p + 1, strlen(p));
-            continue;
-        }
-        if (!in_q && (*p == ' ' || *p == '\t')) {
-            if (in_a) {
-                *p = '\0';
-                in_a = false;
-            }
-        } else if (!in_a) {
-            av[ac++] = p;
-            in_a = true;
-        }
-        p++;
-    }
-    return ac;
-}
-
-static void cmd_exec(fl_context_t* ctx, uint32_t entry, const char* args) {
-    static char buf[256];
-    static char* av[FL_MAX_ARGC];
-    int ac = parse_args(args, buf, sizeof(buf), av, FL_MAX_ARGC);
-
-    fl_print(ctx, "Exec at 0x%lX, %d args", (unsigned long)entry, ac);
-    int ret = exec_code(ctx, entry, ac, (const char**)av);
-    fl_response(ctx, true, "Returned %d (0x%08lX)", ret, (unsigned long)ret);
-}
-
-static void cmd_call(fl_context_t* ctx, uintptr_t addr, const char* args) {
-    static char buf[256];
-    static char* av[FL_MAX_ARGC];
-    int ac = parse_args(args, buf, sizeof(buf), av, FL_MAX_ARGC);
-
-    fl_print(ctx, "Call 0x%08lX, %d args", (unsigned long)addr, ac);
-
-    typedef int (*fn_t)(int, const char**);
-    fn_t fn = (fn_t)(addr | 1);
-    int ret = fn(ac, (const char**)av);
-    fl_response(ctx, true, "Returned %d (0x%08lX)", ret, (unsigned long)ret);
-}
-
-static void cmd_read(fl_context_t* ctx, uintptr_t addr, size_t len) {
-    static char hex[1024];
-    if (len > sizeof(hex) / 2)
-        len = sizeof(hex) / 2;
-
-    bytes_to_hex((const uint8_t*)addr, len, hex, sizeof(hex));
-    fl_print(ctx, "Data: %s", hex);
-    fl_response(ctx, true, "Read %u from 0x%08lX", (unsigned)len, (unsigned long)addr);
-}
-
-static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* hex, uintptr_t crc, bool verify) {
-    static uint8_t buf[512];
-    int n = hex_to_bytes(hex, buf, sizeof(buf));
-    if (n < 0) {
-        fl_response(ctx, false, "Invalid hex");
-        return;
-    }
-
-    if (verify) {
-        uint16_t calc = calc_crc16(buf, n);
-        if (calc != (uint16_t)crc) {
-            fl_response(ctx, false, "CRC mismatch");
-            return;
-        }
-    }
-
-    memcpy((void*)addr, buf, n);
-    fl_response(ctx, true, "Wrote %d to 0x%08lX", n, (unsigned long)addr);
+    fl_response(ctx, true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)dest);
 }
 
 static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
@@ -493,11 +399,15 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
         return;
     }
 
-    /* Record slot state */
+    /* Record slot state, transfer last_alloc ownership to slot */
+    bool is_dynamic = ctx->malloc_cb != NULL;
     ctx->slots[comp].active = true;
     ctx->slots[comp].orig_addr = orig;
     ctx->slots[comp].target_addr = target;
-    ctx->slots[comp].code_size = *get_used_ptr(ctx);
+    ctx->slots[comp].code_size = is_dynamic ? ctx->last_alloc_size : ctx->static_used;
+    ctx->slots[comp].alloc_addr = ctx->last_alloc;
+    ctx->last_alloc = 0; /* Ownership transferred */
+    ctx->last_alloc_size = 0;
 
     fl_response(ctx, true, "Patch %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
                 (unsigned long)target);
@@ -524,11 +434,15 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
         return;
     }
 
-    /* Record slot state */
+    /* Record slot state, transfer last_alloc ownership to slot */
+    bool is_dynamic = ctx->malloc_cb != NULL;
     ctx->slots[comp].active = true;
     ctx->slots[comp].orig_addr = orig;
     ctx->slots[comp].target_addr = target;
-    ctx->slots[comp].code_size = *get_used_ptr(ctx);
+    ctx->slots[comp].code_size = is_dynamic ? ctx->last_alloc_size : ctx->static_used;
+    ctx->slots[comp].alloc_addr = ctx->last_alloc;
+    ctx->last_alloc = 0; /* Ownership transferred */
+    ctx->last_alloc_size = 0;
 
     fl_response(ctx, true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX", (unsigned long)comp,
                 (unsigned long)orig, (unsigned long)tramp_addr, (unsigned long)target);
@@ -562,11 +476,15 @@ static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
         return;
     }
 
-    /* Record slot state */
+    /* Record slot state, transfer last_alloc ownership to slot */
+    bool is_dynamic = ctx->malloc_cb != NULL;
     ctx->slots[comp].active = true;
     ctx->slots[comp].orig_addr = orig;
     ctx->slots[comp].target_addr = target;
-    ctx->slots[comp].code_size = *get_used_ptr(ctx);
+    ctx->slots[comp].code_size = is_dynamic ? ctx->last_alloc_size : ctx->static_used;
+    ctx->slots[comp].alloc_addr = ctx->last_alloc;
+    ctx->last_alloc = 0; /* Ownership transferred */
+    ctx->last_alloc_size = 0;
 
     fl_response(ctx, true, "DebugMon %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
                 (unsigned long)target);
@@ -599,27 +517,26 @@ static void cmd_unpatch(fl_context_t* ctx, uint32_t comp, bool all) {
 #endif
             fpb_clear_patch(i);
 
+            /* Free slot's allocated memory if any */
+            if (ctx->slots[i].alloc_addr != 0 && ctx->free_cb) {
+                ctx->free_cb((void*)ctx->slots[i].alloc_addr);
+            }
+
             /* Clear slot state */
             ctx->slots[i].active = false;
             ctx->slots[i].orig_addr = 0;
             ctx->slots[i].target_addr = 0;
             ctx->slots[i].code_size = 0;
+            ctx->slots[i].alloc_addr = 0;
             cleared++;
         }
     }
 
-    /* If unpatch all, also clear/free memory */
+    /* If unpatch all, also clear static buffer */
     if (all) {
-        /* Clear buffer */
-        memset(get_buf(ctx), 0, get_buf_size(ctx));
-        *get_used_ptr(ctx) = 0;
-
-        /* Free dynamic memory if allocated */
-        if (ctx->dyn_base != 0 && ctx->free_cb) {
-            ctx->free_cb((void*)ctx->dyn_base);
-            ctx->dyn_base = 0;
-            ctx->dyn_size = 0;
-            ctx->dyn_used = 0;
+        if (ctx->static_buf && ctx->static_size > 0) {
+            memset(ctx->static_buf, 0, ctx->static_size);
+            ctx->static_used = 0;
         }
         fl_response(ctx, true, "Cleared all %u slots, memory freed", (unsigned)cleared);
     } else {
@@ -657,7 +574,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_INTEGER(0, "comp", &comp, "Comparator ID", NULL, 0, 0),
         OPT_POINTER(0, "orig", &orig, "Original addr", NULL, 0, 0),
         OPT_POINTER(0, "target", &target, "Target addr", NULL, 0, 0),
-        OPT_INTEGER(0, "all", &all, "Clear all (1=yes)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "all", &all, "Clear all", NULL, 0, 0),
         OPT_END(),
     };
 
@@ -692,26 +609,6 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             return -1;
         }
         cmd_upload(ctx, addr, data, crc, crc >= 0);
-    } else if (strcmp(cmd, "exec") == 0) {
-        cmd_exec(ctx, entry, args);
-    } else if (strcmp(cmd, "call") == 0) {
-        if (addr == 0) {
-            fl_response(ctx, false, "Missing --addr");
-            return -1;
-        }
-        cmd_call(ctx, addr, args);
-    } else if (strcmp(cmd, "read") == 0) {
-        if (addr == 0) {
-            fl_response(ctx, false, "Missing --addr");
-            return -1;
-        }
-        cmd_read(ctx, addr, len);
-    } else if (strcmp(cmd, "write") == 0) {
-        if (addr == 0 || !data) {
-            fl_response(ctx, false, "Missing --addr/--data");
-            return -1;
-        }
-        cmd_write(ctx, addr, data, crc, crc >= 0);
     } else if (strcmp(cmd, "patch") == 0) {
         if (orig == 0 || target == 0) {
             fl_response(ctx, false, "Missing --orig/--target");
@@ -731,7 +628,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         }
         cmd_dpatch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
-        cmd_unpatch(ctx, comp, all != 0);
+        cmd_unpatch(ctx, comp, all);
     } else {
         fl_response(ctx, false, "Unknown: %s", cmd);
         return -1;

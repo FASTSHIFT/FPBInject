@@ -175,7 +175,6 @@ def register_routes(app):
                 "auto_connect": device.auto_connect,
                 "auto_compile": device.auto_compile,
                 "patch_source_path": device.patch_source_path,
-                "nuttx_mode": device.nuttx_mode,
                 "watcher_enabled": device.watcher_enabled,
                 "inject_active": device.inject_active,
                 "last_inject_target": device.last_inject_target,
@@ -200,7 +199,6 @@ def register_routes(app):
                 "patch_mode": device.patch_mode,
                 "watcher_enabled": device.watcher_enabled,
                 "auto_compile": device.auto_compile,
-                "nuttx_mode": device.nuttx_mode,
             }
         )
 
@@ -264,9 +262,6 @@ def register_routes(app):
                 except:
                     pass
 
-        if "nuttx_mode" in data:
-            device.nuttx_mode = data["nuttx_mode"]
-
         state.save_config()
         return jsonify({"success": True})
 
@@ -288,25 +283,47 @@ def register_routes(app):
             return jsonify({"success": False, "error": error})
         state.device.device_info = info
 
-        # Build slot states from device state
+        # Get symbols for address lookup
+        symbols_reverse = {}
+        if state.symbols:
+            symbols_reverse = {v: k for k, v in state.symbols.items()}
+
+        # Build slot states from device info
         slots = []
+        device_slots = info.get("slots", [])
         for i in range(6):
-            slot_info = {
-                "occupied": False,
-                "func": "Empty",
-                "addr": "",
-                "inject_addr": "",
-                "code_size": 0,
-            }
-            # Check if this slot has an active injection
-            if i == 0 and state.device.inject_active:
-                slot_info["occupied"] = True
-                slot_info["func"] = state.device.last_inject_target or "Unknown"
-                slot_info["inject_func"] = state.device.last_inject_func or ""
-            slots.append(slot_info)
+            slot_data = next((s for s in device_slots if s.get("id") == i), None)
+            if slot_data and slot_data.get("occupied"):
+                orig_addr = slot_data.get("orig_addr", 0)
+                target_addr = slot_data.get("target_addr", 0)
+                code_size = slot_data.get("code_size", 0)
+                # Lookup function name from symbols
+                func_name = symbols_reverse.get(orig_addr, "")
+                slots.append(
+                    {
+                        "id": i,
+                        "occupied": True,
+                        "orig_addr": f"0x{orig_addr:08X}",
+                        "target_addr": f"0x{target_addr:08X}",
+                        "func": func_name,
+                        "code_size": code_size,
+                    }
+                )
+            else:
+                slots.append(
+                    {
+                        "id": i,
+                        "occupied": False,
+                        "orig_addr": "",
+                        "target_addr": "",
+                        "func": "",
+                        "code_size": 0,
+                    }
+                )
 
         # Memory info
         memory_info = {
+            "is_dynamic": info.get("is_dynamic", False) if info else False,
             "base": info.get("base", 0) if info else 0,
             "size": info.get("size", 0) if info else 0,
             "used": info.get("used", 0) if info else 0,
@@ -323,15 +340,22 @@ def register_routes(app):
 
     @app.route("/api/fpb/unpatch", methods=["POST"])
     def api_fpb_unpatch():
-        """Clear FPB patch."""
+        """Clear FPB patch. Use all=True to clear all patches and free memory."""
         data = request.json or {}
         comp = data.get("comp", 0)
+        clear_all = data.get("all", False)
 
         fpb = get_fpb_inject()
-        success, msg = fpb.unpatch(comp)
+        success, msg = fpb.unpatch(comp=comp, all=clear_all)
 
         if success:
-            state.device.inject_active = False
+            if clear_all:
+                state.device.inject_active = False
+                state.device.last_inject_target = None
+                state.device.last_inject_func = None
+            add_tool_log(
+                f"[UNPATCH] {'All slots' if clear_all else f'Slot {comp}'} cleared"
+            )
 
         return jsonify({"success": success, "message": msg})
 
@@ -344,7 +368,6 @@ def register_routes(app):
         inject_func = data.get("inject_func")
         patch_mode = data.get("patch_mode", state.device.patch_mode)
         comp = data.get("comp", 0)
-        nuttx_mode = data.get("nuttx_mode", state.device.nuttx_mode)
         source_ext = data.get("source_ext", ".c")  # Default to .c
 
         if not source_content:
@@ -352,9 +375,6 @@ def register_routes(app):
 
         if not target_func:
             return jsonify({"success": False, "error": "Target function not specified"})
-
-        # Update NuttX mode in device state
-        state.device.nuttx_mode = nuttx_mode
 
         fpb = get_fpb_inject()
 
@@ -398,7 +418,6 @@ def register_routes(app):
         inject_func = data.get("inject_func")
         patch_mode = data.get("patch_mode", state.device.patch_mode)
         comp = data.get("comp", 0)
-        nuttx_mode = data.get("nuttx_mode", state.device.nuttx_mode)
         source_ext = data.get("source_ext", ".c")
 
         if not source_content:
@@ -407,8 +426,6 @@ def register_routes(app):
         if not target_func:
             return jsonify({"success": False, "error": "Target function not specified"})
 
-        # Store request data for streaming
-        state.device.nuttx_mode = nuttx_mode
         progress_queue = queue.Queue()
 
         def progress_callback(uploaded, total):
@@ -1338,6 +1355,8 @@ def _trigger_auto_inject(file_path):
                     logger.info(
                         f"Auto inject successful: {target_func} → {inject_func}"
                     )
+                    # Update slot info after successful injection
+                    fpb.info()
                 else:
                     device.auto_inject_status = "failed"
                     device.auto_inject_message = (

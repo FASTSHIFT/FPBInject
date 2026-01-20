@@ -66,11 +66,6 @@
 #define FL_NUTTX_LINE_SIZE 1024
 #endif
 
-#if FL_NUTTX_BUF_SIZE > 0
-/* Static code buffer */
-static uint8_t g_code_buf[FL_NUTTX_BUF_SIZE] __attribute__((aligned(4)));
-#endif
-
 /* Output callback */
 static void nuttx_output_cb(void* user, const char* str) {
     (void)user;
@@ -81,31 +76,6 @@ static void nuttx_output_cb(void* user, const char* str) {
 static void nuttx_flush_dcache_cb(uintptr_t start, uintptr_t end) {
     up_flush_dcache(start, end);
 }
-
-/* Context */
-static fl_context_t g_ctx = {
-    .output_cb = nuttx_output_cb,
-    .output_user = NULL,
-#if FL_NUTTX_BUF_SIZE <= 0
-    .malloc_cb = malloc,
-    .free_cb = free,
-#else
-    .malloc_cb = NULL,
-    .free_cb = NULL,
-#endif
-    .flush_dcache_cb = nuttx_flush_dcache_cb,
-#if FL_NUTTX_BUF_SIZE > 0
-    .static_buf = g_code_buf,
-    .static_size = sizeof(g_code_buf),
-#else
-    .static_buf = NULL,
-    .static_size = 0,
-#endif
-    .static_used = 0,
-    .dyn_base = 0,
-    .dyn_size = 0,
-    .dyn_used = 0,
-};
 
 static int parse_line(char* line, const char** argv, int max_argc) {
     int argc = 0;
@@ -139,7 +109,7 @@ static int parse_line(char* line, const char** argv, int max_argc) {
     return argc;
 }
 
-static int interactive_mode(void) {
+static int interactive_mode(fl_context_t* ctx) {
     char line[FL_NUTTX_LINE_SIZE];
     static const char* argv[32];
 
@@ -170,7 +140,7 @@ static int interactive_mode(void) {
 
         int argc = parse_line(line, argv, 32);
         if (argc > 0) {
-            fl_exec_cmd(&g_ctx, argc, argv);
+            fl_exec_cmd(ctx, argc, argv);
         }
     }
 
@@ -181,15 +151,30 @@ static int interactive_mode(void) {
  * @brief NuttX application entry point
  */
 int main(int argc, char** argv) {
-    fl_init(&g_ctx);
+    static fl_context_t ctx = {0};
+
+    if (!fl_is_inited(&ctx)) {
+        ctx.output_cb = nuttx_output_cb;
+        ctx.flush_dcache_cb = nuttx_flush_dcache_cb;
+#if FL_NUTTX_BUF_SIZE <= 0
+        ctx.malloc_cb = malloc;
+        ctx.free_cb = free;
+#else
+        /* Static code buffer */
+        static uint32_t code_buf[FL_NUTTX_BUF_SIZE / sizeof(uint32_t)];
+        ctx.static_buf = code_buf;
+        ctx.static_size = sizeof(code_buf);
+#endif
+        fl_init(&ctx);
+    }
 
     /* No arguments - interactive mode */
     if (argc <= 1) {
-        return interactive_mode();
+        return interactive_mode(&ctx);
     }
 
     /* Direct command execution */
-    return fl_exec_cmd(&g_ctx, argc - 1, (const char**)(argv + 1));
+    return fl_exec_cmd(&ctx, argc - 1, (const char**)(argv + 1));
 }
 
 #endif /* __NUTTX__ */
