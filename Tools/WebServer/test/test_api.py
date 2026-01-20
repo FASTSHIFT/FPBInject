@@ -272,7 +272,7 @@ class TestFPBInjectAPI(unittest.TestCase):
         data = json.loads(response.data)
         self.assertTrue(data["success"])
         self.assertIn("items", data)
-        self.assertIn("path", data)
+        self.assertIn("current_path", data)
 
     def test_browse_home(self):
         """测试浏览 home 目录"""

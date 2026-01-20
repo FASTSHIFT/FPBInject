@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, PropertyMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -221,11 +221,17 @@ class TestSerialOperations(unittest.TestCase):
 
     def test_serial_read(self):
         """测试串口读取"""
-        self.mock_ser.in_waiting = 10
+        # Mock in_waiting to return 10 bytes available
+        type(self.mock_ser).in_waiting = PropertyMock(return_value=10)
         self.mock_ser.read.return_value = b"test data\n"
+        
+        # Also need to mock raw_serial_log for raw log
+        self.device.raw_serial_log = []
+        self.device.raw_log_next_id = 0
+        self.device.raw_log_max_size = 1000
 
         self.worker.start()
-        time.sleep(0.2)
+        time.sleep(0.5)  # Give more time for worker to process
 
         # 应该有日志记录
         self.assertTrue(len(self.device.serial_log) > 0)
