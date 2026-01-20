@@ -248,8 +248,8 @@ foreach(dir ${INCLUDE_DIRS})
     endif()
 endforeach()
 
-# Generate inject_config.json
-file(WRITE ${CMAKE_BINARY_DIR}/inject_config.json
+# Generate compile_commands.json
+file(WRITE ${CMAKE_BINARY_DIR}/compile_commands.json
 "{
   \"compiler\": \"${CMAKE_C_COMPILER}\",
   \"objcopy\": \"${CMAKE_OBJCOPY}\",
@@ -269,4 +269,4 @@ file(WRITE ${CMAKE_BINARY_DIR}/inject_config.json
 }
 ")
 
-message(STATUS "Generated: ${CMAKE_BINARY_DIR}/inject_config.json")
+message(STATUS "Generated: ${CMAKE_BINARY_DIR}/compile_commands.json")

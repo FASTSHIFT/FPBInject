@@ -463,8 +463,8 @@ def load_inject_config(config_path: str = None) -> Optional[Dict]:
     Load inject compile configuration from JSON file.
     Search order:
       1. Explicit config_path
-      2. build/inject_config.json (relative to script)
-      3. ../build/inject_config.json (relative to script)
+      2. build/compile_commands.json (relative to script)
+      3. ../build/compile_commands.json (relative to script)
     """
     import json
 
@@ -474,8 +474,8 @@ def load_inject_config(config_path: str = None) -> Optional[Dict]:
 
     script_dir = Path(__file__).parent.absolute()
     search_paths.extend([
-        script_dir.parent / 'build' / 'inject_config.json',
-        script_dir / 'build' / 'inject_config.json',
+        script_dir.parent / 'build' / 'compile_commands.json',
+        script_dir / 'build' / 'compile_commands.json',
     ])
 
     for p in search_paths:
@@ -503,7 +503,7 @@ def parse_compile_commands(compile_commands_path: str, source_filter: str = None
         verbose: Print debug info
 
     Returns:
-        Config dict compatible with inject_config.json format
+        Config dict compatible with compile_commands.json format
     """
     import json
     import shlex
@@ -655,14 +655,14 @@ def compile_inject(source: str, base_addr: int, elf_path: str = None,
                    verbose: bool = False) -> Optional[Tuple[bytes, Dict[str, int]]]:
     """
     Compile injection code to binary.
-    Uses inject_config.json or compile_commands.json for toolchain settings.
+    Uses compile_commands.json or compile_commands.json for toolchain settings.
     Returns (binary_data, symbols) or None on failure.
 
     Args:
         source: Path to injection source file (.c/.cpp)
         base_addr: Base address for injection code
         elf_path: Path to main ELF for symbol resolution
-        config_path: Path to inject_config.json
+        config_path: Path to compile_commands.json
         compile_commands_path: Path to compile_commands.json (alternative to config_path)
         verbose: Enable verbose output
     """
@@ -679,7 +679,7 @@ def compile_inject(source: str, base_addr: int, elf_path: str = None,
     if not config:
         print("Error: No config found.")
         print("       Options:")
-        print("       1. Use --config to specify inject_config.json")
+        print("       1. Use --config to specify compile_commands.json")
         print("       2. Use --compile-commands to specify compile_commands.json")
         print("       3. Run cmake -B build -G Ninja && cmake --build build")
         return None
@@ -1120,7 +1120,7 @@ NuttX example (using compile_commands.json):
     parser.add_argument('--target', help='Target function to hijack')
     parser.add_argument('--func', help='Inject function name (default: first inject_* found)')
     parser.add_argument('--comp', type=int, default=0, help='FPB comparator')
-    parser.add_argument('--config', help='Path to inject_config.json (default: build/inject_config.json)')
+    parser.add_argument('--config', help='Path to compile_commands.json (default: build/compile_commands.json)')
     parser.add_argument('--compile-commands', metavar='PATH',
                         help='Path to compile_commands.json to extract NuttX/project compiler flags')
     parser.add_argument('--chunk-size', type=int, default=128,
