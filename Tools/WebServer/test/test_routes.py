@@ -258,7 +258,6 @@ class TestRoutesFPB(TestRoutesBase):
             "auto_connect",
             "auto_compile",
             "patch_source_path",
-            "watcher_enabled",
             "inject_active",
         ]
 

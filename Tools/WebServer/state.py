@@ -33,7 +33,6 @@ PERSISTENT_KEYS = [
     "auto_connect",
     "auto_compile",
     "patch_source_path",
-    "watcher_enabled",
 ]
 
 
@@ -61,10 +60,7 @@ class DeviceState:
 
         # Auto settings
         self.auto_connect = False
-        self.auto_compile = False  # Auto compile on file change
-
-        # File watcher settings
-        self.watcher_enabled = False  # File watcher enable state (persisted)
+        self.auto_compile = False  # Auto compile and inject on file change
 
         # Device info (from fl --info)
         self.device_info = None

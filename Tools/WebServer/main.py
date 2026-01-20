@@ -93,8 +93,8 @@ def restore_state():
     """Restore serial connection state and file watcher."""
     device = state.device
 
-    # Restore file watcher if enabled
-    if device.watcher_enabled and device.watch_dirs:
+    # Restore file watcher if auto_compile is enabled
+    if device.auto_compile and device.watch_dirs:
         logger.info(
             f"Restoring file watcher for {len(device.watch_dirs)} directories..."
         )

@@ -39,7 +39,6 @@ class TestDeviceState(unittest.TestCase):
         # 自动设置
         self.assertFalse(state.auto_connect)
         self.assertFalse(state.auto_compile)
-        self.assertFalse(state.watcher_enabled)
 
         # NuttX 模式
         self.assertFalse(state.nuttx_mode)
@@ -63,7 +62,6 @@ class TestDeviceState(unittest.TestCase):
         state.baudrate = 921600
         state.watch_dirs = ["/dir1", "/dir2"]
         state.nuttx_mode = True
-        state.watcher_enabled = True
 
         d = state.to_dict()
 
@@ -78,7 +76,6 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(d["baudrate"], 921600)
         self.assertEqual(d["watch_dirs"], ["/dir1", "/dir2"])
         self.assertTrue(d["nuttx_mode"])
-        self.assertTrue(d["watcher_enabled"])
 
     def test_from_dict(self):
         """测试从字典导入"""
@@ -97,7 +94,6 @@ class TestDeviceState(unittest.TestCase):
             "auto_compile": True,
             "patch_source_path": "/src/patch.c",
             "nuttx_mode": True,
-            "watcher_enabled": True,
         }
 
         state.from_dict(data)
@@ -111,7 +107,6 @@ class TestDeviceState(unittest.TestCase):
         self.assertTrue(state.auto_connect)
         self.assertTrue(state.auto_compile)
         self.assertTrue(state.nuttx_mode)
-        self.assertTrue(state.watcher_enabled)
 
     def test_from_dict_partial(self):
         """测试部分导入"""

@@ -1644,11 +1644,8 @@ async function loadConfig() {
     if (data.compile_commands_path) document.getElementById('compileCommandsPath').value = data.compile_commands_path;
     if (data.toolchain_path) document.getElementById('toolchainPath').value = data.toolchain_path;
     if (data.patch_mode) document.getElementById('patchMode').value = data.patch_mode;
-    if (data.watcher_enabled) document.getElementById('watcherEnable').checked = data.watcher_enabled;
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
     if (data.auto_compile !== undefined) document.getElementById('autoCompile').checked = data.auto_compile;
-
-    updateWatcherStatus(data.watcher_enabled);
     
     // Start auto-inject polling if auto_compile is enabled
     if (data.auto_compile) {
@@ -1666,7 +1663,6 @@ async function saveConfig(silent = false) {
     compile_commands_path: document.getElementById('compileCommandsPath').value,
     toolchain_path: document.getElementById('toolchainPath').value,
     patch_mode: document.getElementById('patchMode').value,
-    watcher_enabled: document.getElementById('watcherEnable').checked,
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile').checked
   };
@@ -1778,26 +1774,10 @@ function removeWatchDir(btn) {
   saveConfig(true); // Auto-save after removing
 }
 
-function toggleWatcher() {
-  const enabled = document.getElementById('watcherEnable').checked;
-  updateWatcherStatus(enabled);
-  // Sync to backend
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ watcher_enabled: enabled })
-  });
-}
-
-function updateWatcherStatus(enabled) {
-  const statusEl = document.getElementById('watcherStatus');
-  statusEl.textContent = `Watcher: ${enabled ? 'On' : 'Off'}`;
-}
-
 function onAutoCompileChange() {
   const enabled = document.getElementById('autoCompile').checked;
   writeToOutput(`[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`, 'info');
-  // Sync to backend
+  // Sync to backend - this will also start/stop the file watcher
   fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

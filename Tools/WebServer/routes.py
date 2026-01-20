@@ -175,7 +175,6 @@ def register_routes(app):
                 "auto_connect": device.auto_connect,
                 "auto_compile": device.auto_compile,
                 "patch_source_path": device.patch_source_path,
-                "watcher_enabled": device.watcher_enabled,
                 "inject_active": device.inject_active,
                 "last_inject_target": device.last_inject_target,
                 "last_inject_func": device.last_inject_func,
@@ -197,7 +196,6 @@ def register_routes(app):
                 "compile_commands_path": device.compile_commands_path,
                 "watch_dirs": device.watch_dirs,
                 "patch_mode": device.patch_mode,
-                "watcher_enabled": device.watcher_enabled,
                 "auto_compile": device.auto_compile,
             }
         )
@@ -243,11 +241,8 @@ def register_routes(app):
 
         if "auto_compile" in data:
             device.auto_compile = data["auto_compile"]
-
-        if "watcher_enabled" in data:
-            device.watcher_enabled = data["watcher_enabled"]
-            # Start or stop file watcher based on setting
-            if device.watcher_enabled:
+            # Start or stop file watcher based on auto_compile setting
+            if device.auto_compile:
                 _restart_file_watcher()
             else:
                 _stop_file_watcher()
@@ -1034,7 +1029,6 @@ Base Address: 0x{base_addr:08X}
             return jsonify({"success": False, "error": "No directories to watch"})
 
         state.device.watch_dirs = dirs
-        state.device.watcher_enabled = True
         state.save_config()
 
         success = _start_file_watcher(dirs)
@@ -1044,7 +1038,6 @@ Base Address: 0x{base_addr:08X}
     def api_watch_stop():
         """Stop file watching."""
         _stop_file_watcher()
-        state.device.watcher_enabled = False
         state.save_config()
         return jsonify({"success": True})
 
@@ -1387,8 +1380,8 @@ def _restart_file_watcher():
 
 
 def restore_file_watcher():
-    """Restore file watcher on startup if watcher_enabled is True."""
-    if state.device.watcher_enabled and state.device.watch_dirs:
+    """Restore file watcher on startup if auto_compile is enabled."""
+    if state.device.auto_compile and state.device.watch_dirs:
         _start_file_watcher(state.device.watch_dirs)
 
 
