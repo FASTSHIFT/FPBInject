@@ -174,6 +174,9 @@ class DeviceWorker:
                 raw_data = ser.read(available)
                 if raw_data:
                     data_str = raw_data.decode(errors="replace")
+                    # Add to raw serial log for terminal display
+                    self._add_raw_serial_log(data_str)
+                    # Add formatted log entries
                     for line in data_str.splitlines(keepends=True):
                         self._add_serial_log("RX", line)
         except Exception:
@@ -188,6 +191,17 @@ class DeviceWorker:
         self.device.serial_log.append(entry)
         if len(self.device.serial_log) > self.device.log_max_size:
             self.device.serial_log = self.device.serial_log[-self.device.log_max_size :]
+
+    def _add_raw_serial_log(self, data):
+        """Add raw serial data to device's raw log (for terminal display)."""
+        log_id = self.device.raw_log_next_id
+        self.device.raw_log_next_id += 1
+        entry = {"id": log_id, "data": data}
+        self.device.raw_serial_log.append(entry)
+        if len(self.device.raw_serial_log) > self.device.raw_log_max_size:
+            self.device.raw_serial_log = self.device.raw_serial_log[
+                -self.device.raw_log_max_size :
+            ]
 
 
 # Global worker instance

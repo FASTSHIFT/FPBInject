@@ -1,639 +1,1528 @@
-// FPBInject Workbench JavaScript
+/*========================================
+  FPBInject Workbench - Main Application JS
+  ========================================*/
 
+/* ===========================
+   GLOBAL STATE
+   =========================== */
 let isConnected = false;
-let logInterval = null;
-let lastLogIndex = 0;
-
-// xterm.js terminal instance
-let term = null;
-let fitAddon = null;
-let currentLine = '';
-let sendingCommand = false;
-
-// Raw terminal instance (Serial Log)
-let rawTerm = null;
+let toolTerminal = null;
+let rawTerminal = null;
+let toolFitAddon = null;
 let rawFitAddon = null;
-let lastRawLogIndex = 0;
 let currentTerminalTab = 'tool';
+let logPollInterval = null;
+let autoInjectPollInterval = null;
+let lastAutoInjectStatus = 'idle';
+let autoInjectProgressHideTimer = null;
+let selectedSlot = 0;
+let slotStates = Array(6).fill().map(() => ({ occupied: false, func: 'Empty', addr: '' }));
+
+// Tabs state
+let editorTabs = [{ id: 'patch_source', title: 'patch_source.c', type: 'c', closable: false }];
+let activeEditorTab = 'patch_source';
 
 // File browser state
-let browserCallback = null;
-let browserFilter = '';
+let fileBrowserCallback = null;
+let fileBrowserFilter = '';
+let fileBrowserMode = 'file';
+let currentBrowserPath = '/';
+let selectedBrowserItem = null;
 
-// ===================== Utility Functions =====================
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function api(endpoint, method = 'GET', data = null) {
-  const options = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  };
-  if (method !== 'GET') {
-    options.body = JSON.stringify(data || {});
-  }
-
-  try {
-    const response = await fetch('/api' + endpoint, options);
-    return await response.json();
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-}
-
-// ===================== Initialization =====================
-
-document.addEventListener('DOMContentLoaded', async () => {
-  // Restore sidebar state optional - <details> handles it natively
-
-  await refreshPorts();
-  await refreshStatus();
-
-  // Initialize terminals
-  initTerminal();
-  initRawTerminal();
-
-  // Start polling
-  startLogPolling();
-
-  // Load editor content
-  loadPatchSource();
-
-  // Auto-save configs
-  setupConfigListeners();
-
-  // Handle specific VS Code-like behaviors
-  setupSidebarInteractions();
-
-  // Load symbols initially if possible
-  searchSymbols();
+/* ===========================
+   INITIALIZATION
+   =========================== */
+document.addEventListener('DOMContentLoaded', () => {
+  loadThemePreference();  // Load theme FIRST before terminal init
+  initTerminals();
+  refreshPorts();
+  loadConfig();
+  initSashResize();
+  loadLayoutPreferences();
+  updateSlotUI();
+  initSlotSelectListener();
+  updateDisabledState(); // Initial disabled state
+  setupAutoSave(); // Setup auto-save for config inputs
 });
 
-function setupSidebarInteractions() {
-  // Activity bar switching (basic implementation)
-  const items = document.querySelectorAll('.activity-item:not(.spacer)');
-  items.forEach(item => {
-    item.addEventListener('click', () => {
-      // Remove active from all
-      items.forEach(i => i.classList.remove('active'));
-      // Add to clicked
-      item.classList.add('active');
-
-      // In a real app, this would switch sidebar content
-      const title = item.getAttribute('title');
-      if (title === 'Explorer') {
-        document.querySelector('.sidebar').style.display = 'flex';
-        // Trigger resize for editor if needed
-      } else {
-        // Placeholder for other views
-        console.log(`Switched to ${title}`);
-      }
-    });
-  });
+// Initialize slot select dropdown listener
+function initSlotSelectListener() {
+  const slotSelect = document.getElementById('slotSelect');
+  if (slotSelect) {
+    slotSelect.addEventListener('change', onSlotSelectChange);
+  }
 }
 
-function setupConfigListeners() {
-  // Auto-save config on changes
-  const ids = ['elfPath', 'compileCommandsPath', 'toolchainPath', 'patchMode', 'watchDirs', 'baudrate'];
-  ids.forEach(id => {
+// Update UI disabled state based on connection
+function updateDisabledState() {
+  const disableWhenDisconnected = [
+    'targetFunc', 'slotSelect', 'patchSource', 'injectBtn'
+  ];
+  const opacityElements = [
+    'editorContainer', 'slotContainer'
+  ];
+  
+  disableWhenDisconnected.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      el.addEventListener('change', saveConfig);
+      el.disabled = !isConnected;
+      el.style.opacity = isConnected ? '1' : '0.5';
     }
   });
+  
+  // Add visual feedback for disabled sections
+  opacityElements.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.opacity = isConnected ? '1' : '0.6';
+      el.style.pointerEvents = isConnected ? 'auto' : 'none';
+    }
+  });
+  
+  // Device info buttons
+  document.querySelectorAll('#slotContainer .slot-btn').forEach(btn => {
+    btn.disabled = !isConnected;
+  });
+}
 
-  const targetFuncEl = document.getElementById('targetFunc');
-  if (targetFuncEl) {
-    targetFuncEl.addEventListener('change', savePatchSource);
+/* ===========================
+   THEME TOGGLE
+   =========================== */
+const darkTerminalTheme = {
+  background: '#1e1e1e',
+  foreground: '#cccccc',
+  cursor: '#ffffff',
+  cursorAccent: '#1e1e1e',
+  selection: '#264f78'
+};
+
+const lightTerminalTheme = {
+  background: '#f3f3f3',
+  foreground: '#333333',
+  cursor: '#333333',
+  cursorAccent: '#f3f3f3',
+  selection: '#add6ff'
+};
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const currentTheme = html.getAttribute('data-theme');
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', newTheme);
+  localStorage.setItem('fpbinject-theme', newTheme);
+  updateThemeIcon();
+  updateTerminalTheme();
+}
+
+function loadThemePreference() {
+  const savedTheme = localStorage.getItem('fpbinject-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateThemeIcon();
+  // Terminal theme will be set during initTerminals
+}
+
+function updateThemeIcon() {
+  const themeIcon = document.getElementById('themeIcon');
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  if (themeIcon) {
+    // Use existing codicons: lightbulb for light, lightbulb-autofix for dark
+    themeIcon.className = currentTheme === 'light' ? 'codicon codicon-lightbulb' : 'codicon codicon-lightbulb-autofix';
+  }
+}
+
+function updateTerminalTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const termTheme = currentTheme === 'light' ? lightTerminalTheme : darkTerminalTheme;
+  
+  if (toolTerminal) {
+    toolTerminal.options.theme = termTheme;
+  }
+  if (rawTerminal) {
+    rawTerminal.options.theme = termTheme;
+  }
+}
+
+/* ===========================
+   SASH RESIZE FUNCTIONALITY
+   =========================== */
+function initSashResize() {
+  const sashSidebar = document.getElementById('sashSidebar');
+  const sashPanel = document.getElementById('sashPanel');
+  const sidebar = document.getElementById('sidebar');
+  const panelContainer = document.getElementById('panelContainer');
+
+  let isResizingSidebar = false;
+  let isResizingPanel = false;
+  let startX = 0;
+  let startY = 0;
+  let startWidth = 0;
+  let startHeight = 0;
+
+  // Sidebar resize
+  if (sashSidebar) {
+    sashSidebar.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isResizingSidebar = true;
+      startX = e.clientX;
+      startWidth = sidebar.offsetWidth;
+      document.body.classList.add('resizing-sidebar');
+      sashSidebar.classList.add('active');
+    });
   }
 
-  document.getElementById('patchSource')?.addEventListener('input', savePatchSource);
-}
+  // Panel resize
+  if (sashPanel) {
+    sashPanel.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isResizingPanel = true;
+      startY = e.clientY;
+      startHeight = panelContainer.offsetHeight;
+      document.body.classList.add('resizing-panel');
+      sashPanel.classList.add('active');
+    });
+  }
 
-// ===================== Terminal Functions =====================
+  document.addEventListener('mousemove', (e) => {
+    if (isResizingSidebar) {
+      const delta = e.clientX - startX;
+      const newWidth = Math.max(180, Math.min(600, startWidth + delta));
+      document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
+    }
 
-function initTerminal() {
-  const container = document.getElementById('terminal-container');
-  if (!container || term) return;
-
-  // VS Code Dark Theme Colors
-  term = new Terminal({
-    theme: {
-      background: '#1e1e1e', // --vscode-panel-background
-      foreground: '#cccccc', // --vscode-panel-foreground
-      cursor: '#cccccc',
-      selectionBackground: '#264f78',
-      black: '#000000',
-      red: '#cd3131',
-      green: '#0dbc79',
-      yellow: '#e5e510',
-      blue: '#2472c8',
-      magenta: '#bc3fbc',
-      cyan: '#11a8cd',
-      white: '#e5e5e5',
-      brightBlack: '#666666',
-      brightRed: '#f14c4c',
-      brightGreen: '#23d18b',
-      brightYellow: '#f5f543',
-      brightBlue: '#3b8eea',
-      brightMagenta: '#d670d6',
-      brightCyan: '#29b8db',
-      brightWhite: '#e5e5e5'
-    },
-    fontFamily: "'Consolas', 'Monaco', monospace",
-    fontSize: 13,
-    cursorBlink: true,
-    cursorStyle: 'block',
-    scrollback: 5000,
-    convertEol: true
-  });
-
-  fitAddon = new FitAddon.FitAddon();
-  term.loadAddon(fitAddon);
-  term.open(container);
-  fitAddon.fit();
-
-  // Handle input
-  term.onData((data) => {
-    if (data === '\r') {
-      term.write('\r\n');
-      if (currentLine.trim()) {
-        sendTerminalCommand(currentLine);
-      }
-      currentLine = '';
-    } else if (data === '\x7f' || data === '\b') {
-      if (currentLine.length > 0) {
-        currentLine = currentLine.slice(0, -1);
-        term.write('\b \b');
-      }
-    } else if (data === '\x03') { // Ctrl+C
-      currentLine = '';
-      term.write('^C\r\n');
-    } else {
-      currentLine += data;
-      term.write(data);
+    if (isResizingPanel) {
+      const delta = startY - e.clientY;
+      const newHeight = Math.max(100, Math.min(500, startHeight + delta));
+      document.documentElement.style.setProperty('--panel-height', newHeight + 'px');
     }
   });
 
-  term.writeln('\x1b[38;2;63;185;80m[FPBInject Workbench]\x1b[0m Ready.');
+  document.addEventListener('mouseup', () => {
+    if (isResizingSidebar) {
+      isResizingSidebar = false;
+      document.body.classList.remove('resizing-sidebar');
+      sashSidebar.classList.remove('active');
+      saveLayoutPreferences();
+      fitTerminals();
+    }
+
+    if (isResizingPanel) {
+      isResizingPanel = false;
+      document.body.classList.remove('resizing-panel');
+      sashPanel.classList.remove('active');
+      saveLayoutPreferences();
+      fitTerminals();
+    }
+  });
 }
 
-function initRawTerminal() {
-  const container = document.getElementById('raw-terminal-container');
-  if (!container || rawTerm) return;
+function loadLayoutPreferences() {
+  const sidebarWidth = localStorage.getItem('fpbinject-sidebar-width');
+  const panelHeight = localStorage.getItem('fpbinject-panel-height');
 
-  rawTerm = new Terminal({
-    theme: {
-      background: '#1e1e1e',
-      foreground: '#cccccc',
-      cursor: '#cccccc'
-    },
-    fontFamily: "'Consolas', 'Monaco', monospace",
-    fontSize: 12,
-    cursorBlink: false,
-    disableStdin: true,
-    scrollback: 10000
-  });
+  if (sidebarWidth) {
+    document.documentElement.style.setProperty('--sidebar-width', sidebarWidth);
+  }
+  if (panelHeight) {
+    document.documentElement.style.setProperty('--panel-height', panelHeight);
+  }
+}
 
-  rawFitAddon = new FitAddon.FitAddon();
-  rawTerm.loadAddon(rawFitAddon);
-  rawTerm.open(container);
-  rawFitAddon.fit();
+function saveLayoutPreferences() {
+  const sidebarWidth = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width');
+  const panelHeight = getComputedStyle(document.documentElement).getPropertyValue('--panel-height');
+
+  localStorage.setItem('fpbinject-sidebar-width', sidebarWidth.trim());
+  localStorage.setItem('fpbinject-panel-height', panelHeight.trim());
+}
+
+/* ===========================
+   TERMINAL MANAGEMENT
+   =========================== */
+function getTerminalTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  return currentTheme === 'light' ? lightTerminalTheme : darkTerminalTheme;
+}
+
+function initTerminals() {
+  const termTheme = getTerminalTheme();
+  
+  // Tool Terminal (OUTPUT - Python logs)
+  const toolContainer = document.getElementById('terminal-container');
+  if (toolContainer && typeof Terminal !== 'undefined') {
+    toolTerminal = new Terminal({
+      theme: termTheme,
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: 12,
+      cursorBlink: false,
+      disableStdin: true,
+      // Enable mouse selection
+      allowProposedApi: true
+    });
+    toolFitAddon = new FitAddon.FitAddon();
+    toolTerminal.loadAddon(toolFitAddon);
+    toolTerminal.open(toolContainer);
+    toolFitAddon.fit();
+    
+    // Enable text selection with mouse
+    toolTerminal.attachCustomKeyEventHandler((e) => {
+      // Allow Ctrl+C for copy
+      if (e.ctrlKey && e.key === 'c') {
+        const selection = toolTerminal.getSelection();
+        if (selection) {
+          navigator.clipboard.writeText(selection);
+          return false;
+        }
+      }
+      return true;
+    });
+    
+    toolTerminal.writeln('\x1b[36m[OUTPUT] FPBInject Workbench Ready\x1b[0m');
+  }
+
+  // Raw Terminal (SERIAL PORT - interactive)
+  const rawContainer = document.getElementById('raw-terminal-container');
+  if (rawContainer && typeof Terminal !== 'undefined') {
+    rawTerminal = new Terminal({
+      theme: termTheme,
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: 12,
+      cursorBlink: true,
+      disableStdin: false,
+      allowProposedApi: true
+    });
+    rawFitAddon = new FitAddon.FitAddon();
+    rawTerminal.loadAddon(rawFitAddon);
+    rawTerminal.open(rawContainer);
+    rawFitAddon.fit();
+
+    // Enable text selection with mouse + Ctrl+C copy
+    rawTerminal.attachCustomKeyEventHandler((e) => {
+      if (e.ctrlKey && e.key === 'c') {
+        const selection = rawTerminal.getSelection();
+        if (selection) {
+          navigator.clipboard.writeText(selection);
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // Setup input handler for interactive terminal
+    rawTerminal.onData(data => {
+      if (isConnected) {
+        sendTerminalCommand(data);
+      }
+    });
+  }
+
+  window.addEventListener('resize', fitTerminals);
+}
+
+function fitTerminals() {
+  setTimeout(() => {
+    if (toolFitAddon) toolFitAddon.fit();
+    if (rawFitAddon) rawFitAddon.fit();
+  }, 100);
 }
 
 function switchTerminalTab(tab) {
   currentTerminalTab = tab;
+
+  document.getElementById('tabBtnTool').classList.toggle('active', tab === 'tool');
+  document.getElementById('tabBtnRaw').classList.toggle('active', tab === 'raw');
+
   const toolPanel = document.getElementById('terminalPanelTool');
   const rawPanel = document.getElementById('terminalPanelRaw');
-  const tabBtnTool = document.getElementById('tabBtnTool');
-  const tabBtnRaw = document.getElementById('tabBtnRaw');
 
-  if (tab === 'tool') {
-    toolPanel.style.display = 'block';
-    rawPanel.style.display = 'none';
-    tabBtnTool.classList.add('active');
-    tabBtnRaw.classList.remove('active');
-    if (fitAddon) fitAddon.fit();
-  } else {
-    toolPanel.style.display = 'none';
-    rawPanel.style.display = 'block';
-    tabBtnTool.classList.remove('active');
-    tabBtnRaw.classList.add('active');
-    if (rawFitAddon) rawFitAddon.fit();
-  }
+  // Show both panels temporarily to allow proper fitting
+  toolPanel.style.visibility = 'hidden';
+  rawPanel.style.visibility = 'hidden';
+  toolPanel.style.display = 'block';
+  rawPanel.style.display = 'block';
+
+  // Fit terminals while both are displayed
+  if (toolFitAddon) toolFitAddon.fit();
+  if (rawFitAddon) rawFitAddon.fit();
+
+  // Then show only the active tab
+  toolPanel.style.display = tab === 'tool' ? 'block' : 'none';
+  rawPanel.style.display = tab === 'raw' ? 'block' : 'none';
+  toolPanel.style.visibility = 'visible';
+  rawPanel.style.visibility = 'visible';
 }
 
 function clearCurrentTerminal() {
-  if (currentTerminalTab === 'tool') {
-    if (term) {
-      term.clear();
-      api('/log/clear', 'POST');
-      lastLogIndex = 0;
-    }
-  } else {
-    if (rawTerm) {
-      rawTerm.clear();
-      api('/raw_log/clear', 'POST');
-      lastRawLogIndex = 0;
-    }
+  if (currentTerminalTab === 'tool' && toolTerminal) {
+    toolTerminal.clear();
+    toolTerminal.writeln('\x1b[36m[OUTPUT] Terminal cleared\x1b[0m');
+  } else if (currentTerminalTab === 'raw' && rawTerminal) {
+    rawTerminal.clear();
   }
 }
 
-async function sendTerminalCommand(command) {
-  if (!command || sendingCommand) return;
-  sendingCommand = true;
-  try {
-    await api('/command', 'POST', { command });
-  } finally {
-    setTimeout(() => sendingCommand = false, 50);
+function writeToOutput(message, type = 'info') {
+  if (!toolTerminal) return;
+  const colors = {
+    info: '\x1b[37m',
+    success: '\x1b[32m',
+    warning: '\x1b[33m',
+    error: '\x1b[31m',
+    system: '\x1b[36m'
+  };
+  const color = colors[type] || colors.info;
+  toolTerminal.writeln(`${color}${message}\x1b[0m`);
+}
+
+function writeToSerial(data) {
+  if (rawTerminal) {
+    rawTerminal.write(data);
   }
 }
 
-// ===================== Log Polling =====================
+/* ===========================
+   SLOT MANAGEMENT
+   =========================== */
+function updateSlotUI() {
+  let activeCount = 0;
 
-let fetchingLogs = false;
-function startLogPolling() {
-  if (logInterval) clearInterval(logInterval);
-  logInterval = setInterval(fetchLogs, 100);
-}
+  for (let i = 0; i < 6; i++) {
+    const slotItem = document.querySelector(`.slot-item[data-slot="${i}"]`);
+    const funcSpan = document.getElementById(`slot${i}Func`);
+    const state = slotStates[i];
 
-async function fetchLogs() {
-  if (fetchingLogs) return;
-  fetchingLogs = true;
-
-  try {
-    // Tool logs
-    const result = await api('/log?since=' + lastLogIndex);
-    if (result.success && result.logs && result.logs.length > 0) {
-      result.logs.forEach(entry => {
-        // In tool terminal, we mostly care about stdout (RX from backend)
-        if (term && entry.dir === 'RX') {
-          term.write(entry.data);
-        }
-      });
-      lastLogIndex = result.next_index;
+    if (slotItem) {
+      slotItem.classList.toggle('occupied', state.occupied);
+      slotItem.classList.toggle('active', i === selectedSlot);
     }
 
-    // Raw logs
-    const rawResult = await api('/raw_log?since=' + lastRawLogIndex);
-    if (rawResult.success && rawResult.logs && rawResult.logs.length > 0) {
-      rawResult.logs.forEach(entry => {
-        if (rawTerm) {
-          const color = entry.dir === 'TX' ? '\x1b[32m' : '\x1b[34m';
-          const data = entry.data.replace(/\r/g, '').replace(/\n/g, '\r\n');
-          rawTerm.write(`${color}[${entry.dir}]\x1b[0m ${data}`);
-        }
-      });
-      lastRawLogIndex = rawResult.next_index;
+    if (funcSpan) {
+      funcSpan.textContent = state.occupied ? state.func : 'Empty';
+      funcSpan.title = state.occupied ? `${state.func} @ ${state.addr}` : '';
+    }
+
+    if (state.occupied) activeCount++;
+  }
+
+  document.getElementById('activeSlotCount').textContent = `${activeCount}/6`;
+  document.getElementById('currentSlotDisplay').textContent = `Slot: ${selectedSlot}`;
+  document.getElementById('slotSelect').value = selectedSlot;
+}
+
+function selectSlot(slotId) {
+  selectedSlot = parseInt(slotId);
+  updateSlotUI();
+  writeToOutput(`[INFO] Selected Slot ${slotId}`, 'info');
+}
+
+// Handle slot selection from dropdown
+function onSlotSelectChange() {
+  const slotId = parseInt(document.getElementById('slotSelect').value);
+  selectSlot(slotId);
+}
+
+async function fpbUnpatch(slotId) {
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/fpb/unpatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comp: slotId })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      slotStates[slotId] = { occupied: false, func: 'Empty', addr: '' };
+      updateSlotUI();
+      writeToOutput(`[SUCCESS] Slot ${slotId} cleared`, 'success');
+    } else {
+      writeToOutput(`[ERROR] Failed to clear slot ${slotId}: ${data.message}`, 'error');
     }
   } catch (e) {
-    console.error(e);
-  } finally {
-    fetchingLogs = false;
+    writeToOutput(`[ERROR] Unpatch error: ${e}`, 'error');
   }
 }
 
+async function fpbUnpatchAll() {
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
 
-// ===================== Connection & Config =====================
+  try {
+    const res = await fetch('/api/fpb/unpatch', { method: 'POST' });
+    const data = await res.json();
 
+    if (data.success) {
+      slotStates = Array(6).fill().map(() => ({ occupied: false, func: 'Empty', addr: '' }));
+      updateSlotUI();
+      writeToOutput('[SUCCESS] All slots cleared', 'success');
+    } else {
+      writeToOutput(`[ERROR] Failed to clear all: ${data.message}`, 'error');
+    }
+  } catch (e) {
+    writeToOutput(`[ERROR] Unpatch all error: ${e}`, 'error');
+  }
+}
+
+/* ===========================
+   CONNECTION MANAGEMENT
+   =========================== */
 async function refreshPorts() {
-  const result = await api('/ports');
-  const select = document.getElementById('portSelect');
-  if (!select) return;
+  try {
+    const res = await fetch('/api/ports');
+    const data = await res.json();
+    const sel = document.getElementById('portSelect');
+    const prevValue = sel.value;
+    sel.innerHTML = '';
 
-  const current = select.value;
-  select.innerHTML = '';
-
-  if (result.success && result.ports) {
-    result.ports.forEach(p => {
+    // Handle both array of strings and array of objects
+    const ports = data.ports || [];
+    ports.forEach(p => {
       const opt = document.createElement('option');
-      opt.value = p.device;
-      opt.innerText = `${p.device} (${p.description})`;
-      select.appendChild(opt);
+      // Support both string format and object format {port: "xxx", desc: "xxx"}
+      const portName = (typeof p === 'string') ? p : (p.port || p.device || String(p));
+      opt.value = portName;
+      opt.textContent = portName;
+      sel.appendChild(opt);
     });
-    if (current) select.value = current;
-  }
-}
 
-async function refreshStatus() {
-  const status = await api('/status');
-  if (!status.success) return;
-
-  isConnected = status.connected;
-  const btn = document.getElementById('connectBtn');
-  const ind = document.getElementById('connectionIndicatorBase');
-  const txt = document.getElementById('connectionStatus');
-  const portSelect = document.getElementById('portSelect');
-  const baudInput = document.getElementById('baudrate');
-
-  if (isConnected) {
-    btn.innerText = 'Disconnect';
-    btn.classList.add('destructive');
-    ind.style.color = 'var(--success-color)';
-    txt.innerText = `Connected: ${status.port}`;
-    portSelect.value = status.port;
-    portSelect.disabled = true;
-    baudInput.disabled = true;
-  } else {
-    btn.innerText = 'Connect';
-    btn.classList.remove('destructive');
-    ind.style.color = 'var(--vscode-disabledForeground)';
-    txt.innerText = 'Disconnected';
-    portSelect.disabled = false;
-    baudInput.disabled = false;
-    if (status.port && portSelect.querySelector(`option[value="${status.port}"]`)) {
-      portSelect.value = status.port;
+    // Restore previous selection if still available
+    const portValues = ports.map(p => (typeof p === 'string') ? p : (p.port || p.device || String(p)));
+    if (portValues.includes(prevValue)) {
+      sel.value = prevValue;
     }
+  } catch (e) {
+    writeToOutput(`[ERROR] Failed to refresh ports: ${e}`, 'error');
   }
-
-  // Config fields
-  if (status.config) {
-    setInputVal('elfPath', status.config.elf_path);
-    setInputVal('compileCommandsPath', status.config.compile_commands_path);
-    setInputVal('toolchainPath', status.config.toolchain_path);
-    setInputVal('patchMode', status.config.patch_mode || 'trampoline');
-    setInputVal('watchDirs', (status.config.watch_dirs || []).join('\n'));
-    setInputVal('baudrate', status.config.baudrate || 115200);
-
-    document.getElementById('watcherEnable').checked = status.watcher_enabled;
-
-    // Also update display
-    const display = document.getElementById('targetFuncDisplay');
-    if (display && status.config.last_inject_target) {
-      display.innerText = status.config.last_inject_target;
-    }
-  }
-
-  // Watcher Status Label
-  const watchStat = document.getElementById('watcherStatus');
-  if (watchStat) {
-    watchStat.innerText = status.watcher_enabled ? 'Watcher: On' : 'Watcher: Off';
-  }
-}
-
-function setInputVal(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.value = val || '';
 }
 
 async function toggleConnect() {
-  if (isConnected) {
-    await api('/disconnect', 'POST');
-  } else {
+  const btn = document.getElementById('connectBtn');
+  const statusEl = document.getElementById('connectionStatus');
+
+  if (!isConnected) {
     const port = document.getElementById('portSelect').value;
-    const baud = parseInt(document.getElementById('baudrate').value);
-    if (!port) return alert('No port selected');
-    await api('/connect', 'POST', { port, baudrate: baud });
-  }
-  await refreshStatus();
-}
+    const baud = document.getElementById('baudrate').value;
 
-async function saveConfig() {
-  const config = {
-    elf_path: document.getElementById('elfPath').value,
-    compile_commands_path: document.getElementById('compileCommandsPath').value,
-    toolchain_path: document.getElementById('toolchainPath').value,
-    patch_mode: document.getElementById('patchMode').value,
-    watch_dirs: document.getElementById('watchDirs').value.split('\n').filter(s => s.trim()),
-    baudrate: parseInt(document.getElementById('baudrate').value),
-  };
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
 
-  await api('/config', 'POST', config);
-}
+    try {
+      const res = await fetch('/api/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port, baudrate: parseInt(baud) })
+      });
+      const data = await res.json();
 
-// ===================== Editor & Patching =====================
-
-async function loadPatchSource() {
-  const result = await api('/patch/source');
-  if (result.success) {
-    const ed = document.getElementById('patchSource');
-    if (ed) {
-      ed.value = result.content || '';
+      if (data.success) {
+        isConnected = true;
+        btn.textContent = 'Disconnect';
+        btn.classList.add('connected');
+        statusEl.textContent = `${port}`;
+        writeToOutput(`[CONNECTED] ${port} @ ${baud} baud`, 'success');
+        startLogPolling();
+        fpbInfo();
+        updateDisabledState(); // Enable UI
+      } else {
+        throw new Error(data.message || 'Connection failed');
+      }
+    } catch (e) {
+      writeToOutput(`[ERROR] ${e}`, 'error');
+      btn.textContent = 'Connect';
     }
-  }
-}
 
-async function savePatchSource() {
-  const ed = document.getElementById('patchSource');
-  if (ed) {
-    await api('/patch/source', 'POST', { content: ed.value, save_to_file: true });
-  }
-}
-
-async function generatePatch() {
-  const targetFunc = document.getElementById('targetFunc').value;
-  if (!targetFunc) return alert('Target function required');
-
-  const result = await api('/patch/generate', 'POST', { target_func: targetFunc });
-  if (result.success) {
-    const ed = document.getElementById('patchSource');
-    if (ed) {
-      ed.value = result.content;
-      savePatchSource();
-    }
+    btn.disabled = false;
   } else {
-    alert('Generate failed: ' + result.error);
+    try {
+      await fetch('/api/disconnect', { method: 'POST' });
+      isConnected = false;
+      btn.textContent = 'Connect';
+      btn.classList.remove('connected');
+      statusEl.textContent = 'Disconnected';
+      writeToOutput('[DISCONNECTED]', 'warning');
+      stopLogPolling();
+      updateDisabledState(); // Disable UI
+    } catch (e) {
+      writeToOutput(`[ERROR] Disconnect failed: ${e}`, 'error');
+    }
   }
 }
 
-async function autoGeneratePatch() {
-  // Note: Python needs file_path. We'll try to guess it from config or use a dedicated endpoint if available
-  // For now we assume we don't have the source file path easily unless it's in config
-  alert('Feature requires server-side file path context. Please use "Generate Template" for now.');
+/* ===========================
+   LOG POLLING
+   =========================== */
+let toolLogNextId = 0;
+let rawLogNextId = 0;
+
+function startLogPolling() {
+  stopLogPolling();
+  toolLogNextId = 0;
+  rawLogNextId = 0;
+  logPollInterval = setInterval(fetchLogs, 200);
 }
 
-async function performInject() {
-  const source = document.getElementById('patchSource').value;
-  const targetFunc = document.getElementById('targetFunc').value;
+function stopLogPolling() {
+  if (logPollInterval) {
+    clearInterval(logPollInterval);
+    logPollInterval = null;
+  }
+}
 
-  if (!source) return alert('No patch source code');
-  if (!targetFunc) return alert('No target function specified');
+async function fetchLogs() {
+  try {
+    const res = await fetch(`/api/logs?tool_since=${toolLogNextId}&raw_since=${rawLogNextId}`);
+    
+    // Check if response is ok
+    if (!res.ok) {
+      return; // Silently ignore non-200 responses
+    }
+    
+    // Check content type before parsing
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return; // Not JSON, skip
+    }
+    
+    const text = await res.text();
+    if (!text || text.trim() === '') {
+      return; // Empty response, skip
+    }
+    
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.warn('Log parse error:', parseError, 'Response:', text.substring(0, 100));
+      return;
+    }
 
-  // Show progress
-  const progress = document.getElementById('injectProgress');
-  const bar = document.getElementById('injectProgressFill');
-  const text = document.getElementById('injectProgressText');
+    // Update next IDs for incremental polling
+    if (data.tool_next !== undefined) toolLogNextId = data.tool_next;
+    if (data.raw_next !== undefined) rawLogNextId = data.raw_next;
 
-  if (progress) {
-    progress.style.display = 'block';
-    bar.style.width = '10%';
-    text.innerText = 'Compiling...';
+    // Tool logs (Python output) -> OUTPUT terminal
+    if (data.tool_logs && Array.isArray(data.tool_logs) && data.tool_logs.length > 0) {
+      data.tool_logs.forEach(log => {
+        writeToOutput(log, 'info');
+      });
+    }
+
+    // Raw serial data -> SERIAL PORT terminal
+    if (data.raw_data && data.raw_data.length > 0) {
+      writeToSerial(data.raw_data);
+    }
+  } catch (e) {
+    // Silently fail on polling errors (network issues, etc.)
+  }
+}
+
+/* ===========================
+   FPB COMMANDS
+   =========================== */
+async function fpbPing() {
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
   }
 
   try {
-    const result = await api('/fpb/inject', 'POST', {
-      source_content: source,
-      target_func: targetFunc
-    });
-
-    if (progress) bar.style.width = '100%';
-
-    if (result.success) {
-      if (text) text.innerText = 'Success!';
-      // Update injected func display
-      const disp = document.getElementById('injectFuncDisplay');
-      if (disp) disp.innerText = targetFunc;
-
-      // Switch to terminal to see output
-      switchTerminalTab('tool');
-    } else {
-      if (text) text.innerText = 'Failed';
-      alert('Injection Failed:\n' + result.error || result.message);
-    }
+    const res = await fetch('/api/fpb/ping', { method: 'POST' });
+    const data = await res.json();
+    writeToOutput(`[PING] ${data.message}`, data.success ? 'success' : 'error');
   } catch (e) {
-    console.error(e);
-    alert('Error: ' + e);
-  } finally {
-    setTimeout(() => {
-      if (progress) progress.style.display = 'none';
-    }, 2000);
-  }
-}
-
-async function fpbPing() {
-  const res = await api('/fpb/ping', 'POST');
-  if (res.success) {
-    term.writeln('\r\n[Ping] Pong from device.');
-  } else {
-    term.writeln('\r\n[Ping] Failed: ' + res.message);
+    writeToOutput(`[ERROR] Ping failed: ${e}`, 'error');
   }
 }
 
 async function fpbInfo() {
-  const res = await api('/fpb/info');
-  if (res.success) {
-    term.write('\r\n' + JSON.stringify(res.info, null, 2) + '\r\n');
-  }
-}
-
-async function fpbUnpatch() {
-  await api('/fpb/unpatch', 'POST');
-  document.getElementById('injectFuncDisplay').innerText = '-';
-  term.writeln('\r\n[Unpatch] Request sent.');
-}
-
-function toggleWatcher() {
-  // We don't have a direct watcher toggle endpoint in mapped routes
-  // But saving config triggers it if watch_dirs is set.
-  // For now, we will toggle the UI and save config
-  saveConfig();
-}
-
-// ===================== File Browser =====================
-
-function browseFile(targetId, filter) {
-  browserCallback = (path) => {
-    document.getElementById(targetId).value = path;
-    saveConfig();
-    closeFileBrowser();
-  };
-  browserFilter = filter || '';
-  openFileBrowser();
-}
-
-function browseDir(targetId) {
-  browserCallback = (path) => {
-    document.getElementById(targetId).value = path;
-    saveConfig();
-    closeFileBrowser();
-  };
-  browserFilter = 'DIR';
-  openFileBrowser();
-}
-
-function openFileBrowser() {
-  document.getElementById('fileBrowserModal').style.display = 'flex';
-  navigateTo('/');
-}
-
-function closeFileBrowser() {
-  document.getElementById('fileBrowserModal').style.display = 'none';
-}
-
-async function navigateTo(path) {
-  // Use /api/browse
-  let endpoint = '/browse?path=' + encodeURIComponent(path || '');
-  if (browserFilter && browserFilter !== 'DIR') {
-    endpoint += '&filter=' + encodeURIComponent(browserFilter);
-  }
-
-  const result = await api(endpoint);
-
-  if (!result || !result.success) {
-    console.warn('File browser listing failed');
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
     return;
   }
 
-  const list = document.getElementById('fileList');
-  const pathInput = document.getElementById('browserPath');
-  pathInput.value = result.path;
-  list.innerHTML = '';
+  try {
+    const res = await fetch('/api/fpb/info');
+    const data = await res.json();
 
-  // Parent
-  if (result.parent) {
-    const parent = document.createElement('div');
-    parent.className = 'file-item';
-    parent.innerHTML = '<i class="codicon codicon-folder"></i> <span>..</span>';
-    parent.onclick = () => navigateTo(result.parent);
-    list.appendChild(parent);
-  }
-
-  if (result.items) {
-    result.items.forEach(item => {
-      const el = document.createElement('div');
-      el.className = 'file-item';
-
-      if (item.is_dir) {
-        el.innerHTML = `<i class="codicon codicon-folder" style="color: #c69b6d;"></i> <span>${item.name}</span>`;
-        el.onclick = () => navigateTo(item.path);
-      } else {
-        if (browserFilter === 'DIR') {
-          // Dim files if selecting dir
-          el.style.opacity = '0.5';
-          el.innerHTML = `<i class="codicon codicon-file"></i> <span>${item.name}</span>`;
-        } else {
-          el.innerHTML = `<i class="codicon codicon-file"></i> <span>${item.name}</span>`;
-          el.onclick = () => selectFileItem(el, item.path);
+    if (data.success && data.slots) {
+      // Update slot states from device
+      data.slots.forEach((slot, i) => {
+        if (i < 6) {
+          slotStates[i] = {
+            occupied: slot.occupied || false,
+            func: slot.func || 'Empty',
+            addr: slot.addr || ''
+          };
         }
-      }
-      list.appendChild(el);
-    });
+      });
+      updateSlotUI();
+      writeToOutput('[INFO] Slot info updated from device', 'success');
+    } else {
+      writeToOutput(`[INFO] ${data.message || 'Device info retrieved'}`, 'info');
+    }
+  } catch (e) {
+    writeToOutput(`[ERROR] Info failed: ${e}`, 'error');
   }
 }
-function selectFileItem(el, path) {
-  document.querySelectorAll('.file-item').forEach(e => e.classList.remove('selected'));
-  el.classList.add('selected');
-  browserSelectedPath = path;
+
+/* ===========================
+   PATCH OPERATIONS
+   =========================== */
+async function generatePatch() {
+  const targetFunc = document.getElementById('targetFunc').value;
+  if (!targetFunc) {
+    writeToOutput('[ERROR] Please enter target function name', 'error');
+    return;
+  }
+
+  writeToOutput(`[GENERATE] Creating patch template for ${targetFunc}...`, 'system');
+
+  const template = `// Auto-generated patch for: ${targetFunc}
+// Slot: ${selectedSlot}
+
+#include <stdint.h>
+#include <stdio.h>
+
+// Original function prototype (adjust as needed)
+// extern int ${targetFunc}(void);
+
+// Inject function - will replace ${targetFunc}
+int inject_${targetFunc}(void) {
+    // Your patch code here
+    printf("Patched ${targetFunc} executed!\\n");
+    
+    // Call original if needed:
+    // return ${targetFunc}_original();
+    
+    return 0;
 }
-function selectBrowserItem() {
-  if (browserSelectedPath && browserCallback) browserCallback(browserSelectedPath);
-  // if dir, handle current path
+`;
+
+  document.getElementById('patchSource').value = template;
+  writeToOutput(`[SUCCESS] Patch template generated`, 'success');
 }
 
-// ===================== Symbols =====================
+async function performInject() {
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
 
+  const source = document.getElementById('patchSource').value;
+  const targetFunc = document.getElementById('targetFunc').value;
+
+  if (!source.trim()) {
+    writeToOutput('[ERROR] No patch source code', 'error');
+    return;
+  }
+
+  if (!targetFunc) {
+    writeToOutput('[ERROR] Please specify target function', 'error');
+    return;
+  }
+
+  const progressEl = document.getElementById('injectProgress');
+  const progressText = document.getElementById('injectProgressText');
+  const progressFill = document.getElementById('injectProgressFill');
+
+  progressEl.style.display = 'flex';
+  progressText.textContent = 'Compiling...';
+  progressFill.style.width = '20%';
+
+  writeToOutput(`[INJECT] Starting injection to slot ${selectedSlot}...`, 'system');
+
+  try {
+    const res = await fetch('/api/fpb/inject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_content: source,
+        target_func: targetFunc,
+        comp: selectedSlot,
+        patch_mode: document.getElementById('patchMode').value
+      })
+    });
+
+    progressText.textContent = 'Uploading...';
+    progressFill.style.width = '60%';
+
+    const data = await res.json();
+
+    if (data.success) {
+      progressText.textContent = 'Complete!';
+      progressFill.style.width = '100%';
+
+      slotStates[selectedSlot] = {
+        occupied: true,
+        func: targetFunc,
+        addr: data.target_addr || '0x????'
+      };
+      updateSlotUI();
+
+      // Display injection statistics
+      displayInjectionStats(data, targetFunc);
+
+      setTimeout(() => {
+        progressEl.style.display = 'none';
+        progressFill.style.width = '0%';
+      }, 2000);
+    } else {
+      throw new Error(data.error || data.message || 'Injection failed');
+    }
+  } catch (e) {
+    progressText.textContent = 'Failed!';
+    progressFill.style.background = '#f44336';
+    writeToOutput(`[ERROR] ${e}`, 'error');
+
+    setTimeout(() => {
+      progressEl.style.display = 'none';
+      progressFill.style.width = '0%';
+      progressFill.style.background = '';
+    }, 2000);
+  }
+}
+
+function displayInjectionStats(data, targetFunc) {
+  const compileTime = data.compile_time || 0;
+  const uploadTime = data.upload_time || 0;
+  const codeSize = data.code_size || 0;
+  const totalTime = data.total_time || (compileTime + uploadTime);
+  const uploadSpeed = uploadTime > 0 ? Math.round(codeSize / uploadTime) : 0;
+  const patchMode = data.patch_mode || document.getElementById('patchMode').value;
+  
+  writeToOutput(`[SUCCESS] Injection complete!`, 'success');
+  writeToOutput(`--- Injection Statistics ---`, 'system');
+  writeToOutput(`Target:        ${targetFunc} @ ${data.target_addr || 'unknown'}`, 'info');
+  writeToOutput(`Inject func:   ${data.inject_func || 'unknown'} @ ${data.inject_addr || 'unknown'}`, 'info');
+  writeToOutput(`Compile time:  ${compileTime.toFixed(2)}s`, 'info');
+  writeToOutput(`Upload time:   ${uploadTime.toFixed(2)}s (${uploadSpeed} B/s)`, 'info');
+  writeToOutput(`Code size:     ${codeSize} bytes`, 'info');
+  writeToOutput(`Total time:    ${totalTime.toFixed(2)}s`, 'info');
+  writeToOutput(`Injection active! (mode: ${patchMode})`, 'success');
+}
+
+/* ===========================
+   SYMBOL SEARCH
+   =========================== */
 async function searchSymbols() {
   const query = document.getElementById('symbolSearch').value;
   const list = document.getElementById('symbolList');
 
+  if (query.length < 2) {
+    list.innerHTML = '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">Enter at least 2 characters</div>';
+    return;
+  }
+
   try {
-    const res = await api(`/symbols?q=${encodeURIComponent(query)}&limit=50`);
-    list.innerHTML = '';
-    if (res.success && res.symbols) {
-      res.symbols.forEach(sym => {
-        const div = document.createElement('div');
-        div.style.padding = '4px 8px';
-        div.style.cursor = 'pointer';
-        div.style.fontSize = '11px';
-        div.className = 'symbol-item';
-        div.innerHTML = `<i class="codicon codicon-symbol-method" style="margin-right:4px;"></i> ${sym.name}`;
-        div.addEventListener('click', () => {
-          document.getElementById('targetFunc').value = sym.name;
-        });
-        list.appendChild(div);
+    const res = await fetch(`/api/symbols/search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+
+    if (data.symbols && data.symbols.length > 0) {
+      list.innerHTML = data.symbols.map(sym => `
+        <div class="symbol-item" onclick="selectSymbol('${sym.name}')" ondblclick="openDisassembly('${sym.name}', '${sym.addr}')">
+          <i class="codicon codicon-symbol-method symbol-icon"></i>
+          <span class="symbol-name">${sym.name}</span>
+          <span class="symbol-addr">${sym.addr}</span>
+        </div>
+      `).join('');
+    } else if (data.error) {
+      list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7; color: #f44336;">${data.error}</div>`;
+    } else {
+      list.innerHTML = '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">No symbols found</div>';
+    }
+  } catch (e) {
+    list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7; color: #f44336;">Error: ${e.message}</div>`;
+  }
+}
+
+function selectSymbol(name) {
+  document.getElementById('targetFunc').value = name;
+  writeToOutput(`[INFO] Selected symbol: ${name}`, 'info');
+}
+
+async function openDisassembly(funcName, addr) {
+  const tabId = `disasm_${funcName}`;
+
+  // Check if tab already exists
+  if (editorTabs.find(t => t.id === tabId)) {
+    switchEditorTab(tabId);
+    return;
+  }
+
+  writeToOutput(`[DISASM] Loading disassembly for ${funcName}...`, 'system');
+
+  try {
+    const res = await fetch(`/api/symbols/disasm?func=${encodeURIComponent(funcName)}`);
+    const data = await res.json();
+
+    // Create new tab
+    editorTabs.push({
+      id: tabId,
+      title: `${funcName}.asm`,
+      type: 'asm',
+      closable: true
+    });
+
+    // Add tab button
+    const tabsHeader = document.getElementById('editorTabsHeader');
+    const tabDiv = document.createElement('div');
+    tabDiv.className = 'tab';
+    tabDiv.setAttribute('data-tab', tabId);
+    tabDiv.innerHTML = `
+      <i class="codicon codicon-file-binary tab-icon" style="color: #75beff;"></i>
+      <span>${funcName}.asm</span>
+      <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
+    `;
+    tabDiv.onclick = () => switchEditorTab(tabId);
+    tabsHeader.appendChild(tabDiv);
+
+    // Add tab content
+    const tabsContent = document.querySelector('.editor-tabs-content');
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'tab-content';
+    contentDiv.id = `tabContent_${tabId}`;
+
+    const disasmCode = data.disasm || `; Disassembly for ${funcName} @ ${addr}\n; (Disassembly data not available)`;
+
+    contentDiv.innerHTML = `
+      <div class="code-display">
+        <pre><code class="language-x86asm">${escapeHtml(disasmCode)}</code></pre>
+      </div>
+    `;
+    tabsContent.appendChild(contentDiv);
+
+    // Apply syntax highlighting (try multiple methods)
+    if (typeof hljs !== 'undefined') {
+      contentDiv.querySelectorAll('pre code').forEach(block => {
+        // Try auto-detection if language not recognized
+        try {
+          hljs.highlightElement(block);
+        } catch (e) {
+          // Fallback: highlight as plain text with assembly-like coloring
+          block.classList.add('hljs');
+        }
       });
     }
-  } catch (e) { }
+
+    switchEditorTab(tabId);
+    writeToOutput(`[SUCCESS] Disassembly loaded for ${funcName}`, 'success');
+
+  } catch (e) {
+    writeToOutput(`[ERROR] Failed to load disassembly: ${e}`, 'error');
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function switchEditorTab(tabId) {
+  activeEditorTab = tabId;
+
+  // Update tab buttons
+  document.querySelectorAll('.editor-tabs-header .tab').forEach(tab => {
+    tab.classList.toggle('active', tab.getAttribute('data-tab') === tabId);
+  });
+
+  // Update tab content
+  document.querySelectorAll('.tab-content').forEach(content => {
+    content.classList.toggle('active', content.id === `tabContent_${tabId}`);
+  });
+}
+
+function closeTab(tabId, event) {
+  if (event) event.stopPropagation();
+
+  const tabInfo = editorTabs.find(t => t.id === tabId);
+  if (!tabInfo || !tabInfo.closable) return;
+
+  // Remove from tabs array
+  editorTabs = editorTabs.filter(t => t.id !== tabId);
+
+  // Remove DOM elements
+  document.querySelector(`.tab[data-tab="${tabId}"]`)?.remove();
+  document.getElementById(`tabContent_${tabId}`)?.remove();
+
+  // Switch to first tab if current was closed
+  if (activeEditorTab === tabId && editorTabs.length > 0) {
+    switchEditorTab(editorTabs[0].id);
+  }
+}
+
+/* ===========================
+   CONFIGURATION
+   =========================== */
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    
+    // Check if response is OK
+    if (!res.ok) {
+      // Config endpoint not available, use defaults
+      return;
+    }
+    
+    // Check content type to ensure it's JSON
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      // Not a JSON response, skip config loading
+      return;
+    }
+    
+    const data = await res.json();
+
+    // Load serial port settings
+    if (data.port) {
+      const portSelect = document.getElementById('portSelect');
+      // Check if port exists in options, if not add it
+      let portExists = false;
+      for (let opt of portSelect.options) {
+        if (opt.value === data.port) {
+          portExists = true;
+          break;
+        }
+      }
+      if (!portExists && data.port) {
+        const opt = document.createElement('option');
+        opt.value = data.port;
+        opt.textContent = data.port;
+        portSelect.appendChild(opt);
+      }
+      portSelect.value = data.port;
+    }
+    if (data.baudrate) document.getElementById('baudrate').value = data.baudrate;
+
+    if (data.elf_path) document.getElementById('elfPath').value = data.elf_path;
+    if (data.compile_commands) document.getElementById('compileCommandsPath').value = data.compile_commands;
+    if (data.toolchain_path) document.getElementById('toolchainPath').value = data.toolchain_path;
+    if (data.patch_mode) document.getElementById('patchMode').value = data.patch_mode;
+    if (data.watcher_enabled) document.getElementById('watcherEnable').checked = data.watcher_enabled;
+    if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
+    if (data.auto_compile !== undefined) document.getElementById('autoCompile').checked = data.auto_compile;
+    if (data.nuttx_mode !== undefined) document.getElementById('nuttxMode').checked = data.nuttx_mode;
+
+    updateWatcherStatus(data.watcher_enabled);
+    
+    // Start auto-inject polling if auto_compile is enabled
+    if (data.auto_compile) {
+      startAutoInjectPolling();
+    }
+  } catch (e) {
+    // Silently ignore config load errors on startup
+    console.warn('Config load skipped:', e.message);
+  }
+}
+
+async function saveConfig(silent = false) {
+  const config = {
+    elf_path: document.getElementById('elfPath').value,
+    compile_commands: document.getElementById('compileCommandsPath').value,
+    toolchain_path: document.getElementById('toolchainPath').value,
+    patch_mode: document.getElementById('patchMode').value,
+    watcher_enabled: document.getElementById('watcherEnable').checked,
+    watch_dirs: getWatchDirs(),
+    auto_compile: document.getElementById('autoCompile').checked,
+    nuttx_mode: document.getElementById('nuttxMode').checked
+  };
+
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      if (!silent) writeToOutput('[SUCCESS] Configuration saved', 'success');
+    } else {
+      throw new Error(data.message || 'Save failed');
+    }
+  } catch (e) {
+    writeToOutput(`[ERROR] Save failed: ${e}`, 'error');
+  }
+}
+
+function onNuttxModeChange() {
+  saveConfig(true);
+}
+
+// Setup auto-save for all config inputs
+function setupAutoSave() {
+  // Text inputs - save on blur
+  const textInputs = ['elfPath', 'compileCommandsPath', 'toolchainPath'];
+  textInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => saveConfig(true));
+    }
+  });
+
+  // Select inputs - save on change
+  const selectInputs = ['patchMode'];
+  selectInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => saveConfig(true));
+    }
+  });
+}
+
+/* ===========================
+   WATCH DIRS MANAGEMENT
+   =========================== */
+function updateWatchDirsList(dirs) {
+  const list = document.getElementById('watchDirsList');
+  list.innerHTML = '';
+  
+  if (!dirs || dirs.length === 0) {
+    return;
+  }
+  
+  dirs.forEach((dir, index) => {
+    addWatchDirItem(dir, index);
+  });
+}
+
+function getWatchDirs() {
+  const items = document.querySelectorAll('#watchDirsList .watch-dir-item input');
+  return Array.from(items).map(input => input.value.trim()).filter(v => v);
+}
+
+function addWatchDir() {
+  // Open file browser to select directory
+  fileBrowserCallback = (path) => {
+    addWatchDirItem(path);
+    saveConfig(true); // Auto-save after adding
+  };
+  fileBrowserFilter = '';
+  fileBrowserMode = 'dir';
+  openFileBrowser(HOME_PATH);
+}
+
+function addWatchDirItem(path, index = null) {
+  const list = document.getElementById('watchDirsList');
+  const itemIndex = index !== null ? index : list.children.length;
+  
+  const item = document.createElement('div');
+  item.className = 'watch-dir-item';
+  item.innerHTML = `
+    <input type="text" value="${path}" placeholder="/path/to/dir" onchange="saveConfig(true)" />
+    <div class="dir-actions">
+      <button class="dir-btn" onclick="browseWatchDir(this)" title="Browse">
+        <i class="codicon codicon-folder-opened" style="font-size: 12px;"></i>
+      </button>
+      <button class="dir-btn" onclick="removeWatchDir(this)" title="Remove">
+        <i class="codicon codicon-close" style="font-size: 12px;"></i>
+      </button>
+    </div>
+  `;
+  list.appendChild(item);
+}
+
+function browseWatchDir(btn) {
+  const input = btn.closest('.watch-dir-item').querySelector('input');
+  fileBrowserCallback = (path) => {
+    input.value = path;
+    saveConfig(true); // Auto-save after browse
+  };
+  fileBrowserFilter = '';
+  fileBrowserMode = 'dir';
+  openFileBrowser(input.value || HOME_PATH);
+}
+
+function removeWatchDir(btn) {
+  btn.closest('.watch-dir-item').remove();
+  saveConfig(true); // Auto-save after removing
+}
+
+function toggleWatcher() {
+  const enabled = document.getElementById('watcherEnable').checked;
+  updateWatcherStatus(enabled);
+  // Sync to backend
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ watcher_enabled: enabled })
+  });
+}
+
+function updateWatcherStatus(enabled) {
+  const statusEl = document.getElementById('watcherStatus');
+  statusEl.textContent = `Watcher: ${enabled ? 'On' : 'Off'}`;
+}
+
+function onAutoCompileChange() {
+  const enabled = document.getElementById('autoCompile').checked;
+  writeToOutput(`[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`, 'info');
+  // Sync to backend
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auto_compile: enabled })
+  });
+  
+  // Start or stop auto-inject status polling
+  if (enabled) {
+    startAutoInjectPolling();
+  } else {
+    stopAutoInjectPolling();
+  }
+}
+
+/* ===========================
+   AUTO-INJECT STATUS POLLING
+   =========================== */
+function startAutoInjectPolling() {
+  if (autoInjectPollInterval) return; // Already polling
+  
+  autoInjectPollInterval = setInterval(pollAutoInjectStatus, 500);
+  writeToOutput('[INFO] Auto-inject status monitoring started', 'system');
+}
+
+function stopAutoInjectPolling() {
+  if (autoInjectPollInterval) {
+    clearInterval(autoInjectPollInterval);
+    autoInjectPollInterval = null;
+    writeToOutput('[INFO] Auto-inject status monitoring stopped', 'system');
+  }
+}
+
+async function pollAutoInjectStatus() {
+  try {
+    const res = await fetch('/api/watch/auto_inject_status');
+    const data = await res.json();
+    
+    if (!data.success) return;
+    
+    const status = data.status;
+    const message = data.message;
+    const progress = data.progress || 0;
+    const modifiedFuncs = data.modified_funcs || [];
+    const result = data.result || {};
+    
+    // Only output if status changed
+    if (status !== lastAutoInjectStatus) {
+      lastAutoInjectStatus = status;
+      
+      // Log status changes
+      switch (status) {
+        case 'detecting':
+          writeToOutput(`[AUTO-INJECT] ${message}`, 'system');
+          break;
+        case 'generating':
+          writeToOutput(`[AUTO-INJECT] ${message}`, 'info');
+          // Update target function when modified functions are detected
+          if (modifiedFuncs.length > 0) {
+            document.getElementById('targetFunc').value = modifiedFuncs[0];
+          }
+          break;
+        case 'compiling':
+          writeToOutput(`[AUTO-INJECT] ${message}`, 'info');
+          break;
+        case 'injecting':
+          writeToOutput(`[AUTO-INJECT] ${message}`, 'info');
+          break;
+        case 'success':
+          writeToOutput(`[AUTO-INJECT] ${message}`, 'success');
+          // Display injection statistics if available
+          if (result && Object.keys(result).length > 0) {
+            displayAutoInjectStats(result, modifiedFuncs[0] || 'unknown');
+          }
+          // Refresh slot UI after successful injection
+          updateSlotUI();
+          fetchFPBInfo(); // Refresh device info to show new slot state
+          break;
+        case 'failed':
+          writeToOutput(`[AUTO-INJECT] ${message}`, 'error');
+          break;
+        case 'idle':
+          // Silent for idle status changes
+          break;
+      }
+    }
+    
+    // Update progress bar only when status changes
+    if (status !== 'idle') {
+      updateAutoInjectProgress(progress, status, status !== lastAutoInjectStatus);
+    }
+    
+    // If patch content was updated, load it into the editor
+    if ((status === 'generating' || status === 'success') && status !== lastAutoInjectStatus) {
+      await loadPatchSourceFromBackend();
+    }
+    
+  } catch (e) {
+    // Silent error - don't spam console
+  }
+}
+
+function displayAutoInjectStats(result, targetFunc) {
+  const compileTime = result.compile_time || 0;
+  const uploadTime = result.upload_time || 0;
+  const codeSize = result.code_size || 0;
+  const totalTime = result.total_time || (compileTime + uploadTime);
+  const uploadSpeed = uploadTime > 0 ? Math.round(codeSize / uploadTime) : 0;
+  const patchMode = result.patch_mode || 'unknown';
+  
+  writeToOutput(`--- Auto-Injection Statistics ---`, 'system');
+  writeToOutput(`Target:        ${targetFunc} @ ${result.target_addr || 'unknown'}`, 'info');
+  writeToOutput(`Inject func:   ${result.inject_func || 'unknown'} @ ${result.inject_addr || 'unknown'}`, 'info');
+  writeToOutput(`Compile time:  ${compileTime.toFixed(2)}s`, 'info');
+  writeToOutput(`Upload time:   ${uploadTime.toFixed(2)}s (${uploadSpeed} B/s)`, 'info');
+  writeToOutput(`Code size:     ${codeSize} bytes`, 'info');
+  writeToOutput(`Total time:    ${totalTime.toFixed(2)}s`, 'info');
+  writeToOutput(`Injection mode: ${patchMode}`, 'success');
+}
+
+async function loadPatchSourceFromBackend() {
+  try {
+    const res = await fetch('/api/patch/source');
+    const data = await res.json();
+    if (data.success && data.content) {
+      const patchSourceEl = document.getElementById('patchSource');
+      if (patchSourceEl && patchSourceEl.value !== data.content) {
+        patchSourceEl.value = data.content;
+        writeToOutput('[AUTO-INJECT] Patch source updated in editor', 'info');
+      }
+    }
+  } catch (e) {
+    // Silent error
+  }
+}
+
+function updateAutoInjectProgress(progress, status, statusChanged = false) {
+  const progressEl = document.getElementById('injectProgress');
+  const progressText = document.getElementById('injectProgressText');
+  const progressFill = document.getElementById('injectProgressFill');
+  
+  if (!progressEl) return;
+  
+  if (status === 'idle') {
+    progressEl.style.display = 'none';
+    progressFill.style.background = '';
+    return;
+  }
+  
+  progressEl.style.display = 'flex';
+  progressFill.style.width = `${progress}%`;
+  
+  if (status === 'success') {
+    progressText.textContent = 'Auto-inject complete!';
+    progressFill.style.background = '#4caf50';
+    // Only set timeout when status just changed to success
+    if (statusChanged) {
+      if (autoInjectProgressHideTimer) clearTimeout(autoInjectProgressHideTimer);
+      autoInjectProgressHideTimer = setTimeout(() => {
+        progressEl.style.display = 'none';
+        progressFill.style.width = '0%';
+        progressFill.style.background = '';
+        autoInjectProgressHideTimer = null;
+      }, 3000);
+    }
+  } else if (status === 'failed') {
+    progressText.textContent = 'Auto-inject failed!';
+    progressFill.style.background = '#f44336';
+    // Only set timeout when status just changed to failed
+    if (statusChanged) {
+      if (autoInjectProgressHideTimer) clearTimeout(autoInjectProgressHideTimer);
+      autoInjectProgressHideTimer = setTimeout(() => {
+        progressEl.style.display = 'none';
+        progressFill.style.width = '0%';
+        progressFill.style.background = '';
+        autoInjectProgressHideTimer = null;
+      }, 3000);
+    }
+  } else {
+    // Map status to display text
+    const statusTexts = {
+      'detecting': 'Detecting changes...',
+      'generating': 'Generating patch...',
+      'compiling': 'Compiling...',
+      'injecting': 'Injecting...'
+    };
+    progressText.textContent = statusTexts[status] || status;
+    progressFill.style.background = '';
+  }
+}
+
+/* ===========================
+   FILE BROWSER
+   =========================== */
+const HOME_PATH = '~';  // Will be expanded by backend
+
+function browseFile(inputId, filter = '') {
+  fileBrowserCallback = (path) => {
+    document.getElementById(inputId).value = path;
+    // Auto-save config after file selection
+    saveConfig(true);
+    // Auto-refresh symbols when ELF is selected
+    if (inputId === 'elfPath' && path.endsWith('.elf')) {
+      refreshSymbolsFromELF(path);
+    }
+  };
+  fileBrowserFilter = filter;
+  fileBrowserMode = 'file';
+  openFileBrowser(HOME_PATH);
+}
+
+// Refresh symbols after ELF is loaded
+async function refreshSymbolsFromELF(elfPath) {
+  writeToOutput(`[INFO] Loading symbols from ${elfPath}...`, 'system');
+  try {
+    // Notify backend about the new ELF
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ elf_path: elfPath })
+    });
+    // Clear and show loading
+    const list = document.getElementById('symbolList');
+    list.innerHTML = '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">Symbols ready. Search above...</div>';
+    writeToOutput(`[SUCCESS] ELF loaded: ${elfPath}`, 'success');
+  } catch (e) {
+    writeToOutput(`[ERROR] Failed to load ELF: ${e}`, 'error');
+  }
+}
+
+function browseDir(inputId) {
+  fileBrowserCallback = (path) => {
+    document.getElementById(inputId).value = path;
+    // Auto-save config after directory selection
+    saveConfig(true);
+  };
+  fileBrowserFilter = '';
+  fileBrowserMode = 'dir';
+  openFileBrowser(HOME_PATH);
+}
+
+async function openFileBrowser(path) {
+  currentBrowserPath = path;
+  document.getElementById('browserPath').value = path;
+  document.getElementById('fileBrowserModal').classList.add('show');
+  selectedBrowserItem = null;
+
+  try {
+    const res = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+
+    const list = document.getElementById('fileList');
+    list.innerHTML = '';
+
+    // Get actual path from response (backend expands ~)
+    const actualPath = data.current_path || path;
+    currentBrowserPath = actualPath;
+    document.getElementById('browserPath').value = actualPath;
+
+    // Parent directory navigation
+    if (actualPath !== '/') {
+      const parentPath = actualPath.split('/').slice(0, -1).join('/') || '/';
+      const parentDiv = document.createElement('div');
+      parentDiv.className = 'file-item folder';
+      parentDiv.innerHTML = `<i class="codicon codicon-folder"></i><span>..</span>`;
+      parentDiv.onclick = () => navigateTo(parentPath);
+      list.appendChild(parentDiv);
+    }
+
+    data.items.forEach(item => {
+      const itemPath = actualPath === '/' ? `/${item.name}` : `${actualPath}/${item.name}`;
+      const isDir = item.type === 'dir';
+
+      // Filter files if needed (in file mode)
+      if (!isDir && fileBrowserMode === 'file' && fileBrowserFilter && !item.name.endsWith(fileBrowserFilter)) {
+        return;
+      }
+
+      const div = document.createElement('div');
+      div.className = `file-item ${isDir ? 'folder' : 'file'}`;
+      div.innerHTML = `
+        <i class="codicon codicon-${isDir ? 'folder' : 'file'}"></i>
+        <span>${item.name}</span>
+      `;
+
+      div.onclick = () => {
+        if (isDir) {
+          if (fileBrowserMode === 'dir') {
+            // In dir mode, single click selects, double click enters
+            selectFileBrowserItem(div, itemPath);
+          } else {
+            // In file mode, click enters directory
+            navigateTo(itemPath);
+          }
+        } else {
+          selectFileBrowserItem(div, itemPath);
+        }
+      };
+
+      div.ondblclick = () => {
+        if (isDir) {
+          navigateTo(itemPath);
+        } else {
+          // Double click on file selects and closes
+          selectFileBrowserItem(div, itemPath);
+          selectBrowserItem();
+        }
+      };
+
+      list.appendChild(div);
+    });
+  } catch (e) {
+    writeToOutput(`[ERROR] Browse failed: ${e}`, 'error');
+  }
+}
+
+function navigateTo(path) {
+  openFileBrowser(path);
+}
+
+function onBrowserPathKeyup(e) {
+  if (e.key === 'Enter') {
+    navigateTo(document.getElementById('browserPath').value);
+  }
+}
+
+function selectFileBrowserItem(element, path) {
+  document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
+  element.classList.add('selected');
+  selectedBrowserItem = path;
+}
+
+function selectBrowserItem() {
+  if (fileBrowserMode === 'dir') {
+    // In dir mode, use selected dir if any, otherwise current path
+    const path = selectedBrowserItem || currentBrowserPath;
+    if (fileBrowserCallback) fileBrowserCallback(path);
+  } else if (selectedBrowserItem) {
+    if (fileBrowserCallback) fileBrowserCallback(selectedBrowserItem);
+  }
+  closeFileBrowser();
+}
+
+function closeFileBrowser() {
+  document.getElementById('fileBrowserModal').classList.remove('show');
+  selectedBrowserItem = null;
+}
+
+/* ===========================
+   SERIAL PORT COMMAND
+   =========================== */
+async function sendTerminalCommand(data) {
+  if (!isConnected) return;
+
+  try {
+    await fetch('/api/serial/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: data })
+    });
+  } catch (e) {
+    // Silent fail for send errors
+  }
 }

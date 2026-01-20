@@ -80,15 +80,20 @@ class DeviceState:
         # NuttX interactive mode
         self.nuttx_mode = False  # NuttX fl shell pass-through mode
 
-        # Serial log (tool messages)
+        # Serial log (RX/TX direction log)
         self.serial_log = []
         self.log_max_size = 5000
         self.log_next_id = 0
 
-        # Raw serial log (TX/RX)
+        # Raw serial log (for terminal display)
         self.raw_serial_log = []
         self.raw_log_max_size = 5000
         self.raw_log_next_id = 0
+
+        # Tool output log (for OUTPUT terminal)
+        self.tool_log = []
+        self.tool_log_max_size = 1000
+        self.tool_log_next_id = 0
 
         # Worker thread reference
         self.worker = None
@@ -102,6 +107,7 @@ class DeviceState:
         self.auto_inject_modified_funcs = []
         self.auto_inject_progress = 0
         self.auto_inject_last_update = 0
+        self.auto_inject_result = {}  # Injection statistics result
 
     def to_dict(self):
         """Export persistent config as dict."""

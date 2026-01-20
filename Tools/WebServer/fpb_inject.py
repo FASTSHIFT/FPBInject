@@ -700,6 +700,76 @@ class FPBInject:
             logger.error(f"Error reading symbols: {e}")
         return symbols
 
+    def disassemble_function(self, elf_path: str, func_name: str) -> Tuple[bool, str]:
+        """Disassemble a specific function from ELF file."""
+        try:
+            objdump_tool = self.get_tool_path("arm-none-eabi-objdump")
+            env = self._get_subprocess_env()
+
+            # Use objdump to disassemble only the specified function
+            result = subprocess.run(
+                [objdump_tool, "-d", "-C", f"--disassemble={func_name}", elf_path],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+
+            output = result.stdout
+
+            # If no output, try without demangling
+            if not output or f"<{func_name}>" not in output:
+                result = subprocess.run(
+                    [objdump_tool, "-d", f"--disassemble={func_name}", elf_path],
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=30,
+                )
+                output = result.stdout
+
+            if not output.strip():
+                return False, f"Function '{func_name}' not found in ELF"
+
+            # Clean up the output - extract just the function disassembly
+            lines = output.splitlines()
+            in_function = False
+            disasm_lines = []
+
+            for line in lines:
+                # Detect function start
+                if f"<{func_name}" in line and ">:" in line:
+                    in_function = True
+                    disasm_lines.append(line)
+                elif in_function:
+                    # Empty line or new function starts
+                    if not line.strip():
+                        if disasm_lines:  # End of function
+                            break
+                    elif (
+                        line.strip()
+                        and not line.startswith(" ")
+                        and ":" in line
+                        and "<" in line
+                    ):
+                        # New function started
+                        break
+                    else:
+                        disasm_lines.append(line)
+
+            if not disasm_lines:
+                return False, f"Could not extract disassembly for '{func_name}'"
+
+            return True, "\n".join(disasm_lines)
+
+        except subprocess.TimeoutExpired:
+            return False, "Disassembly timed out"
+        except FileNotFoundError:
+            return False, "objdump tool not found - check toolchain path"
+        except Exception as e:
+            logger.error(f"Error disassembling function: {e}")
+            return False, str(e)
+
     def parse_compile_commands(
         self, compile_commands_path: str, verbose: bool = False
     ) -> Optional[Dict]:

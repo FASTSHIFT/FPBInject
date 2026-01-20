@@ -13,6 +13,9 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <!-- highlight.js for syntax highlighting (full build includes most languages) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/vs2015.min.css" />
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 </head>
 
 <body>
@@ -27,14 +30,12 @@
       <span class="workspace-title" id="clockDisplay"></span>
     </div>
     <div class="title-bar-right">
-      <div class="author-link">
-        <i class="codicon codicon-github-action"></i>
-        <a href="https://github.com/FASTSHIFT" target="_blank" style="color: inherit; text-decoration: none;">VIFEX</a>
+      <div class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
+        <i class="codicon codicon-color-mode" id="themeIcon"></i>
       </div>
-      <div class="window-controls">
-        <div class="window-control minimize"><i class="codicon codicon-chrome-minimize"></i></div>
-        <div class="window-control maximize"><i class="codicon codicon-chrome-restore"></i></div>
-        <div class="window-control close"><i class="codicon codicon-chrome-close"></i></div>
+      <div class="author-link">
+        <i class="codicon codicon-github"></i>
+        <a href="https://github.com/FASTSHIFT" target="_blank" style="color: inherit; text-decoration: none;">VIFEX</a>
       </div>
     </div>
   </div>
@@ -60,7 +61,7 @@
   </div>
 
   <!-- SIDEBAR -->
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-title">
       <span>EXPLORER</span>
       <i class="codicon codicon-ellipsis"></i>
@@ -82,7 +83,20 @@
               </button>
             </div>
             <div class="flex-row">
-              <input type="number" id="baudrate" class="vscode-input" value="115200" placeholder="Baudrate" />
+              <input type="text" id="baudrate" class="vscode-input" value="115200" placeholder="Baudrate" list="baudrateList" />
+              <datalist id="baudrateList">
+                <option value="9600">
+                <option value="19200">
+                <option value="38400">
+                <option value="57600">
+                <option value="115200">
+                <option value="230400">
+                <option value="460800">
+                <option value="921600">
+                <option value="1000000">
+                <option value="1500000">
+                <option value="2000000">
+              </datalist>
               <button id="connectBtn" class="vscode-btn" onclick="toggleConnect()" style="flex: 1">Connect</button>
             </div>
           </div>
@@ -90,27 +104,88 @@
       </details>
     </div>
 
-    <!-- Device Info -->
+    <!-- Device Info - Enhanced with 6 Slots -->
     <div class="sidebar-section">
       <details open>
         <summary class="sidebar-header">
           <i class="codicon codicon-chevron-right"></i>
           <span>DEVICE INFO</span>
+          <span class="badge" id="activeSlotCount">0/6</span>
         </summary>
         <div class="sidebar-content">
-          <div class="flex-row" style="font-size: 11px; justify-content: space-between;">
-            <span>Function:</span>
-            <span id="targetFuncDisplay" style="color: var(--vscode-descriptionForeground)">-</span>
-          </div>
-          <div class="flex-row" style="font-size: 11px; justify-content: space-between;">
-            <span>Injected:</span>
-            <span id="injectFuncDisplay" style="color: var(--vscode-descriptionForeground)">-</span>
-          </div>
-          <div class="flex-row" style="margin-top: 8px;">
+          <div class="flex-row" style="margin-bottom: 8px;">
             <button onclick="fpbPing()" class="vscode-btn secondary" style="flex:1; font-size: 10px;">Ping</button>
             <button onclick="fpbInfo()" class="vscode-btn secondary" style="flex:1; font-size: 10px;">Info</button>
-            <button onclick="fpbUnpatch()" class="vscode-btn secondary"
-              style="flex:1; font-size: 10px;">Unpatch</button>
+            <button onclick="fpbUnpatchAll()" class="vscode-btn secondary" style="flex:1; font-size: 10px;">Clear All</button>
+          </div>
+          <!-- 6 FPB Slots -->
+          <div class="slot-container" id="slotContainer">
+            <div class="slot-item" data-slot="0">
+              <div class="slot-header">
+                <span class="slot-indicator"></span>
+                <span class="slot-id">Slot 0</span>
+                <span class="slot-func" id="slot0Func">Empty</span>
+              </div>
+              <div class="slot-actions">
+                <button class="slot-btn" onclick="selectSlot(0)" title="Use this slot"><i class="codicon codicon-check"></i></button>
+                <button class="slot-btn" onclick="fpbUnpatch(0)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+              </div>
+            </div>
+            <div class="slot-item" data-slot="1">
+              <div class="slot-header">
+                <span class="slot-indicator"></span>
+                <span class="slot-id">Slot 1</span>
+                <span class="slot-func" id="slot1Func">Empty</span>
+              </div>
+              <div class="slot-actions">
+                <button class="slot-btn" onclick="selectSlot(1)" title="Use this slot"><i class="codicon codicon-check"></i></button>
+                <button class="slot-btn" onclick="fpbUnpatch(1)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+              </div>
+            </div>
+            <div class="slot-item" data-slot="2">
+              <div class="slot-header">
+                <span class="slot-indicator"></span>
+                <span class="slot-id">Slot 2</span>
+                <span class="slot-func" id="slot2Func">Empty</span>
+              </div>
+              <div class="slot-actions">
+                <button class="slot-btn" onclick="selectSlot(2)" title="Use this slot"><i class="codicon codicon-check"></i></button>
+                <button class="slot-btn" onclick="fpbUnpatch(2)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+              </div>
+            </div>
+            <div class="slot-item" data-slot="3">
+              <div class="slot-header">
+                <span class="slot-indicator"></span>
+                <span class="slot-id">Slot 3</span>
+                <span class="slot-func" id="slot3Func">Empty</span>
+              </div>
+              <div class="slot-actions">
+                <button class="slot-btn" onclick="selectSlot(3)" title="Use this slot"><i class="codicon codicon-check"></i></button>
+                <button class="slot-btn" onclick="fpbUnpatch(3)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+              </div>
+            </div>
+            <div class="slot-item" data-slot="4">
+              <div class="slot-header">
+                <span class="slot-indicator"></span>
+                <span class="slot-id">Slot 4</span>
+                <span class="slot-func" id="slot4Func">Empty</span>
+              </div>
+              <div class="slot-actions">
+                <button class="slot-btn" onclick="selectSlot(4)" title="Use this slot"><i class="codicon codicon-check"></i></button>
+                <button class="slot-btn" onclick="fpbUnpatch(4)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+              </div>
+            </div>
+            <div class="slot-item" data-slot="5">
+              <div class="slot-header">
+                <span class="slot-indicator"></span>
+                <span class="slot-id">Slot 5</span>
+                <span class="slot-func" id="slot5Func">Empty</span>
+              </div>
+              <div class="slot-actions">
+                <button class="slot-btn" onclick="selectSlot(5)" title="Use this slot"><i class="codicon codicon-check"></i></button>
+                <button class="slot-btn" onclick="fpbUnpatch(5)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+              </div>
+            </div>
           </div>
         </div>
       </details>
@@ -154,9 +229,25 @@
               <input type="checkbox" id="watcherEnable" onchange="toggleWatcher()" />
               <label for="watcherEnable" style="font-size: 11px;">Enable File Watcher</label>
             </div>
-            <textarea id="watchDirs" class="vscode-input" rows="3" placeholder="Watch Dirs"
-              style="height: auto;"></textarea>
-            <button onclick="saveConfig()" class="vscode-btn secondary" style="width: 100%">Save Config</button>
+            <div class="flex-row">
+              <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
+              <label for="autoCompile" style="font-size: 11px;">Auto Inject on Save</label>
+            </div>
+            <div class="flex-row">
+              <input type="checkbox" id="nuttxMode" onchange="onNuttxModeChange()" />
+              <label for="nuttxMode" style="font-size: 11px;">NuttX Mode</label>
+            </div>
+            <div class="watch-dirs-section">
+              <div class="flex-row" style="margin-bottom: 4px;">
+                <span style="font-size: 10px; opacity: 0.7; flex: 1;">Watch Directories</span>
+                <button class="vscode-btn icon-only secondary" onclick="addWatchDir()" title="Add Directory" style="width: 20px; height: 20px; padding: 0;">
+                  <i class="codicon codicon-add" style="font-size: 12px;"></i>
+                </button>
+              </div>
+              <div id="watchDirsList" class="watch-dirs-list">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
           </div>
         </div>
       </details>
@@ -174,7 +265,7 @@
             <input type="text" id="symbolSearch" class="vscode-input" placeholder="Search Symbols..."
               oninput="searchSymbols()" style="height: 22px; font-size: 11px;" />
           </div>
-          <div id="symbolList">
+          <div id="symbolList" class="symbol-list">
             <!-- Populated by JS -->
             <div style="padding: 8px; font-size: 11px; opacity: 0.7;">No symbols loaded</div>
           </div>
@@ -183,13 +274,15 @@
     </div>
   </div>
 
+  <!-- Sidebar Resize Sash -->
+  <div class="sash sash-vertical" id="sashSidebar"></div>
+
   <!-- MAIN EDITOR AREA -->
-  <div class="editor-container">
-    <div class="editor-tabs-header">
-      <div class="tab active">
+  <div class="editor-container" id="editorContainer">
+    <div class="editor-tabs-header" id="editorTabsHeader">
+      <div class="tab active" data-tab="patch_source" onclick="switchEditorTab('patch_source')">
         <i class="codicon codicon-file-code tab-icon" style="color: #e37933;"></i>
         <span>patch_source.c</span>
-        <div class="tab-close"><i class="codicon codicon-close"></i></div>
       </div>
     </div>
 
@@ -199,13 +292,22 @@
         <input type="text" id="targetFunc" class="vscode-input" style="width: 200px;" placeholder="main" />
       </div>
 
+      <div class="flex-col" style="gap: 2px;">
+        <label style="font-size: 10px; opacity: 0.7;">SLOT</label>
+        <select id="slotSelect" class="vscode-select" style="width: 80px;" onchange="onSlotSelectChange()">
+          <option value="0">Slot 0</option>
+          <option value="1">Slot 1</option>
+          <option value="2">Slot 2</option>
+          <option value="3">Slot 3</option>
+          <option value="4">Slot 4</option>
+          <option value="5">Slot 5</option>
+        </select>
+      </div>
+
       <div class="spacer"></div>
 
       <button class="vscode-btn secondary" onclick="generatePatch()">
-        <i class="codicon codicon-file-add" style="margin-right: 4px;"></i> Generate Template
-      </button>
-      <button class="vscode-btn secondary" onclick="autoGeneratePatch()">
-        <i class="codicon codicon-wand" style="margin-right: 4px;"></i> Auto Gen
+        <i class="codicon codicon-file-add" style="margin-right: 4px;"></i> Generate
       </button>
 
       <div style="width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 4px;"></div>
@@ -215,32 +317,26 @@
       </button>
     </div>
 
-    <div class="editor-main">
-      <!-- Using simple textarea for now, but styled like an editor -->
-      <!-- Hidden inputs for logic compatibility -->
-      <input type="hidden" id="autoPatchSource" /> <!-- Compatibility for auto patch logic -->
-
-      <textarea id="patchSource" class="code-editor" spellcheck="false" style="
-                width: 100%; height: 100%; border: none; resize: none; outline: none;
-                background: var(--vscode-editor-background);
-                color: var(--vscode-foreground);
-                padding: 10px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 14px;
-             "></textarea>
-
-      <!-- Overlay progress indicator -->
-      <div id="injectProgress"
-        style="display: none; position: absolute; bottom: 10px; right: 10px; background: var(--vscode-activityBar-background); padding: 5px 10px; border-radius: 3px; border: 1px solid var(--vscode-panel-border); font-size: 11px;">
-        <span id="injectProgressText">Injecting...</span>
-        <div id="injectProgressFill"
-          style="height: 2px; background: var(--success-color); width: 0%; transition: width 0.3s;"></div>
+    <div class="editor-tabs-content">
+      <!-- Patch Source Tab -->
+      <div class="tab-content active" id="tabContent_patch_source">
+        <div class="editor-main">
+          <textarea id="patchSource" class="code-editor" spellcheck="false"></textarea>
+          <!-- Overlay progress indicator -->
+          <div id="injectProgress" class="inject-progress" style="display: none;">
+            <span id="injectProgressText">Injecting...</span>
+            <div id="injectProgressFill" class="progress-fill"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- Panel Resize Sash -->
+  <div class="sash sash-horizontal" id="sashPanel"></div>
+
   <!-- TERMINAL PANEL -->
-  <div class="panel-container">
+  <div class="panel-container" id="panelContainer">
     <div class="panel-header">
       <div class="panel-tab active" onclick="switchTerminalTab('tool')" id="tabBtnTool">OUTPUT</div>
       <div class="panel-tab" onclick="switchTerminalTab('raw')" id="tabBtnRaw">SERIAL PORT</div>
@@ -248,19 +344,15 @@
         <button class="vscode-btn icon-only secondary" onclick="clearCurrentTerminal()" title="Clear">
           <i class="codicon codicon-clear-all"></i>
         </button>
-        <div class="flex-row">
-          <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
-          <label for="autoCompile" style="font-size: 11px;">Auto Inject on Save</label>
-        </div>
       </div>
     </div>
     <div class="panel-content">
-      <!-- Tool Terminal -->
-      <div id="terminalPanelTool" style="width: 100%; height: 100%;">
+      <!-- Tool Terminal (Python logs) -->
+      <div id="terminalPanelTool" class="terminal-panel">
         <div id="terminal-container" style="width: 100%; height: 100%;"></div>
       </div>
-      <!-- Raw Terminal -->
-      <div id="terminalPanelRaw" style="width: 100%; height: 100%; display: none;">
+      <!-- Raw Terminal (Serial Port - interactive) -->
+      <div id="terminalPanelRaw" class="terminal-panel" style="display: none;">
         <div id="raw-terminal-container" style="width: 100%; height: 100%;"></div>
       </div>
     </div>
@@ -280,47 +372,40 @@
       </div>
     </div>
     <div class="status-right">
+      <div class="status-item" id="currentSlotDisplay">Slot: 0</div>
       <div class="status-item">UTF-8</div>
       <div class="status-item">C</div>
       <div class="status-item"><i class="codicon codicon-bell"></i></div>
     </div>
   </div>
 
-  <!-- File Browser Modal (retained but styled) -->
-  <div class="modal-overlay" id="fileBrowserModal"
-    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center;">
-    <div class="modal"
-      style="background: var(--vscode-sideBar-background); padding: 20px; border: 1px solid var(--vscode-panel-border); width: 600px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-      <div class="modal-header" style="margin-bottom: 10px; display: flex; justify-content: space-between;">
+  <!-- File Browser Modal -->
+  <div class="modal-overlay" id="fileBrowserModal">
+    <div class="modal">
+      <div class="modal-header">
         <h3 style="margin: 0;">File Browser</h3>
-        <button class="vscode-btn icon-only secondary" onclick="closeFileBrowser()"><i
-            class="codicon codicon-close"></i></button>
+        <button class="vscode-btn icon-only secondary" onclick="closeFileBrowser()"><i class="codicon codicon-close"></i></button>
       </div>
       <div class="modal-body">
         <div class="flex-row" style="margin-bottom: 10px;">
           <input type="text" id="browserPath" class="vscode-input" onkeyup="onBrowserPathKeyup(event)" />
-          <button class="vscode-btn secondary"
-            onclick="navigateTo(document.getElementById('browserPath').value)">Go</button>
+          <button class="vscode-btn secondary" onclick="navigateTo(document.getElementById('browserPath').value)">Go</button>
         </div>
-        <div class="file-list" id="fileList"
-          style="height: 300px; overflow-y: auto; border: 1px solid var(--vscode-input-border); background: var(--vscode-input-background);">
-          <!-- File list -->
-        </div>
+        <div class="file-list" id="fileList"></div>
       </div>
-      <div class="modal-footer" style="margin-top: 10px; display: flex; justify-content: flex-end; gap: 10px;">
+      <div class="modal-footer">
         <button class="vscode-btn secondary" onclick="closeFileBrowser()">Cancel</button>
         <button class="vscode-btn" onclick="selectBrowserItem()">Select</button>
       </div>
     </div>
   </div>
 
-  <!-- Legacy JS -->
+  <!-- Scripts -->
   <script src="/static/js/app.js"></script>
   <script>
-    // Additional UI logic for new Workbench
+    // Clock Update
     function updateClock() {
       const now = new Date();
-      // Format: YYYY-MM-DD HH:mm:ss
       const timeString = now.getFullYear() + '-' +
         String(now.getMonth() + 1).padStart(2, '0') + '-' +
         String(now.getDate()).padStart(2, '0') + ' ' +
@@ -333,16 +418,9 @@
     document.addEventListener('DOMContentLoaded', () => {
       setInterval(updateClock, 1000);
       updateClock();
-
-      // Hack to make sure terminal resizes
-      window.addEventListener('resize', () => {
-        // If using xterm-addon-fit, trigger it
-      });
-
-      // Adjust terminal size on load
-      setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-      }, 500);
+      initSashResize();
+      loadLayoutPreferences();
+      loadThemePreference();
     });
   </script>
 </body>

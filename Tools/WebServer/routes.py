@@ -43,6 +43,17 @@ def get_fpb_inject():
     return _fpb_inject
 
 
+def add_tool_log(message):
+    """Add a message to tool output log (shown in OUTPUT terminal)."""
+    device = state.device
+    log_id = device.tool_log_next_id
+    device.tool_log_next_id += 1
+    entry = {"id": log_id, "message": message}
+    device.tool_log.append(entry)
+    if len(device.tool_log) > device.tool_log_max_size:
+        device.tool_log = device.tool_log[-device.tool_log_max_size :]
+
+
 def register_routes(app):
     """Register all routes with the Flask app."""
 
@@ -98,6 +109,7 @@ def register_routes(app):
             return jsonify({"success": False, "error": "Connect timeout"})
 
         if result["error"]:
+            add_tool_log(f"[ERROR] Connection failed: {result['error']}")
             return jsonify({"success": False, "error": result["error"]})
 
         device.auto_connect = True
@@ -108,6 +120,7 @@ def register_routes(app):
         if device.toolchain_path:
             fpb.set_toolchain_path(device.toolchain_path)
 
+        add_tool_log(f"[SUCCESS] Connected to {port} @ {baudrate}")
         return jsonify({"success": True, "port": port})
 
     @app.route("/api/disconnect", methods=["POST"])
@@ -130,6 +143,7 @@ def register_routes(app):
         device.inject_active = False
         state.save_config()
 
+        add_tool_log("[INFO] Disconnected from serial port")
         return jsonify({"success": True})
 
     @app.route("/api/status", methods=["GET"])
@@ -165,6 +179,25 @@ def register_routes(app):
                 "last_inject_func": device.last_inject_func,
                 "last_inject_time": device.last_inject_time,
                 "device_info": device.device_info,
+            }
+        )
+
+    @app.route("/api/config", methods=["GET"])
+    def api_get_config():
+        """Get current device configuration."""
+        device = state.device
+        return jsonify(
+            {
+                "port": device.port,
+                "baudrate": device.baudrate,
+                "elf_path": device.elf_path,
+                "toolchain_path": device.toolchain_path,
+                "compile_commands": device.compile_commands_path,
+                "watch_dirs": device.watch_dirs,
+                "patch_mode": device.patch_mode,
+                "watcher_enabled": device.watcher_enabled,
+                "auto_compile": device.auto_compile,
+                "nuttx_mode": device.nuttx_mode,
             }
         )
 
@@ -209,6 +242,14 @@ def register_routes(app):
 
         if "auto_compile" in data:
             device.auto_compile = data["auto_compile"]
+
+        if "watcher_enabled" in data:
+            device.watcher_enabled = data["watcher_enabled"]
+            # Start or stop file watcher based on setting
+            if device.watcher_enabled:
+                _restart_file_watcher()
+            else:
+                _stop_file_watcher()
 
         if "patch_source_path" in data:
             device.patch_source_path = data["patch_source_path"]
@@ -281,6 +322,10 @@ def register_routes(app):
 
         fpb = get_fpb_inject()
 
+        add_tool_log(
+            f"[INJECT] Starting injection for {target_func} (mode: {patch_mode})"
+        )
+
         # Enter fl interactive mode before injection
         fpb.enter_fl_mode()
 
@@ -295,6 +340,15 @@ def register_routes(app):
         finally:
             # Exit fl interactive mode after injection
             fpb.exit_fl_mode()
+
+        if success:
+            add_tool_log(
+                f"[SUCCESS] Injection complete: {target_func} @ {result.get('addr', 'unknown')}"
+            )
+        else:
+            add_tool_log(
+                f"[ERROR] Injection failed: {result.get('error', 'unknown error')}"
+            )
 
         return jsonify({"success": success, **result})
 
@@ -333,6 +387,58 @@ def register_routes(app):
             }
         )
 
+    @app.route("/api/symbols/search", methods=["GET"])
+    def api_search_symbols():
+        """Search symbols from ELF file."""
+        # Load symbols if not loaded
+        if not state.symbols_loaded:
+            device = state.device
+            if device.elf_path and os.path.exists(device.elf_path):
+                try:
+                    fpb = get_fpb_inject()
+                    state.symbols = fpb.get_symbols(device.elf_path)
+                    state.symbols_loaded = True
+                except Exception as e:
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": f"Failed to load symbols: {e}",
+                            "symbols": [],
+                        }
+                    )
+            else:
+                elf_path = device.elf_path if device.elf_path else "(not set)"
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"ELF file not found: {elf_path}",
+                        "symbols": [],
+                    }
+                )
+
+        # Filter symbols if search query provided
+        query = request.args.get("q", "").lower()
+        limit = int(request.args.get("limit", 100))
+
+        symbols = state.symbols
+        if query:
+            symbols = {k: v for k, v in symbols.items() if query in k.lower()}
+
+        # Convert to list and limit
+        symbol_list = [
+            {"name": name, "addr": f"0x{addr:08X}"}
+            for name, addr in sorted(symbols.items(), key=lambda x: x[0])
+        ][:limit]
+
+        return jsonify(
+            {
+                "success": True,
+                "symbols": symbol_list,
+                "total": len(state.symbols),
+                "filtered": len(symbols),
+            }
+        )
+
     @app.route("/api/symbols/reload", methods=["POST"])
     def api_reload_symbols():
         """Reload symbols from ELF file."""
@@ -340,11 +446,44 @@ def register_routes(app):
         if not device.elf_path or not os.path.exists(device.elf_path):
             return jsonify({"success": False, "error": "ELF file not found"})
 
-        fpb = get_fpb_inject()
-        state.symbols = fpb.get_symbols(device.elf_path)
-        state.symbols_loaded = True
+        try:
+            fpb = get_fpb_inject()
+            state.symbols = fpb.get_symbols(device.elf_path)
+            state.symbols_loaded = True
+        except Exception as e:
+            return jsonify(
+                {"success": False, "error": f"Failed to reload symbols: {e}"}
+            )
 
         return jsonify({"success": True, "count": len(state.symbols)})
+
+    @app.route("/api/symbols/disasm", methods=["GET"])
+    def api_disasm_symbol():
+        """Disassemble a specific function."""
+        func_name = request.args.get("func", "")
+        if not func_name:
+            return jsonify({"success": False, "error": "Function name not specified"})
+
+        device = state.device
+        if not device.elf_path or not os.path.exists(device.elf_path):
+            return jsonify(
+                {"success": False, "error": "ELF file not configured or not found"}
+            )
+
+        try:
+            fpb = get_fpb_inject()
+            success, result = fpb.disassemble_function(device.elf_path, func_name)
+
+            if success:
+                return jsonify({"success": True, "disasm": result})
+            else:
+                return jsonify(
+                    {"success": False, "error": result, "disasm": f"; Error: {result}"}
+                )
+        except Exception as e:
+            return jsonify(
+                {"success": False, "error": str(e), "disasm": f"; Error: {e}"}
+            )
 
     # ============== Patch Source Management ==============
 
@@ -635,6 +774,7 @@ Base Address: 0x{base_addr:08X}
                 "modified_funcs": device.auto_inject_modified_funcs,
                 "progress": device.auto_inject_progress,
                 "last_update": device.auto_inject_last_update,
+                "result": device.auto_inject_result,  # Include injection statistics
             }
         )
 
@@ -677,6 +817,61 @@ Base Address: 0x{base_addr:08X}
             do_clear()
 
         return jsonify({"success": True})
+
+    # ============== Combined Logs API (for frontend compatibility) ==============
+
+    @app.route("/api/logs", methods=["GET"])
+    def api_logs():
+        """Get combined tool logs and raw serial data for frontend."""
+        tool_since = request.args.get("tool_since", 0, type=int)
+        raw_since = request.args.get("raw_since", 0, type=int)
+        device = state.device
+
+        # Get tool logs (format: {id, message})
+        tool_snapshot = list(device.tool_log)
+        tool_logs = []
+        for entry in tool_snapshot:
+            if entry["id"] >= tool_since:
+                tool_logs.append(entry.get("message", ""))
+        tool_next = device.tool_log_next_id
+
+        # Get raw serial data
+        raw_snapshot = list(device.raw_serial_log)
+        raw_entries = [entry for entry in raw_snapshot if entry["id"] >= raw_since]
+        # Combine raw data into a single string
+        raw_data = "".join(entry.get("data", "") for entry in raw_entries)
+        raw_next = device.raw_log_next_id
+
+        return jsonify(
+            {
+                "success": True,
+                "tool_logs": tool_logs,
+                "tool_next": tool_next,
+                "raw_data": raw_data,
+                "raw_next": raw_next,
+            }
+        )
+
+    @app.route("/api/serial/send", methods=["POST"])
+    def api_serial_send():
+        """Send raw data to serial port (for interactive terminal)."""
+        data = request.json or {}
+        raw_data = data.get("data", "")
+
+        if not raw_data:
+            return jsonify({"success": False, "error": "No data provided"})
+
+        device = state.device
+        if device.ser is None:
+            return jsonify({"success": False, "error": "Serial port not opened"})
+
+        worker = device.worker
+        if worker and worker.is_running():
+            # Write raw data directly
+            worker.enqueue("write", raw_data)
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": False, "error": "Worker not running"})
 
     # ============== Raw Serial Log (TX/RX) ==============
 
@@ -739,8 +934,14 @@ Base Address: 0x{base_addr:08X}
         path = request.args.get("path", os.path.expanduser("~"))
         filter_ext = request.args.get("filter", "").split(",")
 
+        # Expand ~ to home directory
+        if path.startswith("~"):
+            path = os.path.expanduser(path)
+
         if not os.path.exists(path):
-            return jsonify({"success": False, "error": "Path not found"})
+            return jsonify(
+                {"success": False, "error": "Path not found", "current_path": path}
+            )
 
         if os.path.isfile(path):
             return jsonify(
@@ -748,12 +949,16 @@ Base Address: 0x{base_addr:08X}
                     "success": True,
                     "type": "file",
                     "path": path,
+                    "current_path": os.path.dirname(path),
                 }
             )
 
         items = []
         try:
             for name in sorted(os.listdir(path)):
+                # Skip hidden files
+                if name.startswith("."):
+                    continue
                 full_path = os.path.join(path, name)
                 is_dir = os.path.isdir(full_path)
 
@@ -766,17 +971,22 @@ Base Address: 0x{base_addr:08X}
                     {
                         "name": name,
                         "path": full_path,
-                        "is_dir": is_dir,
+                        "type": "dir" if is_dir else "file",
                     }
                 )
         except PermissionError:
-            return jsonify({"success": False, "error": "Permission denied"})
+            return jsonify(
+                {"success": False, "error": "Permission denied", "current_path": path}
+            )
+
+        # Sort: directories first, then files
+        items.sort(key=lambda x: (0 if x["type"] == "dir" else 1, x["name"].lower()))
 
         return jsonify(
             {
                 "success": True,
                 "type": "directory",
-                "path": path,
+                "current_path": path,
                 "parent": os.path.dirname(path),
                 "items": items,
             }
@@ -981,6 +1191,7 @@ def _trigger_auto_inject(file_path):
                     device.auto_inject_status = "success"
                     device.auto_inject_message = f"注入成功: {inject_func}"
                     device.auto_inject_progress = 100
+                    device.auto_inject_result = result  # Save injection statistics
                     device.inject_active = True
                     device.last_inject_target = target_func
                     device.last_inject_func = inject_func
