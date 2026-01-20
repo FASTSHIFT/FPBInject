@@ -865,14 +865,11 @@ async function performInject() {
       progressText.textContent = 'Complete!';
       progressFill.style.width = '100%';
 
-      // Don't update local state, let fpbInfo refresh from device
-      updateSlotUI();
-
       // Display injection statistics
       displayInjectionStats(finalResult, targetFunc);
 
-      // Refresh device info to get actual slot states from device
-      fpbInfo();
+      // Refresh device info to get actual slot states from device (await to ensure UI updates)
+      await fpbInfo();
 
       setTimeout(() => {
         progressEl.style.display = 'none';

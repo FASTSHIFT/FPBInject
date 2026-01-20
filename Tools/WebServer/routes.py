@@ -283,6 +283,12 @@ def register_routes(app):
             return jsonify({"success": False, "error": error})
         state.device.device_info = info
 
+        # Ensure symbols are loaded for address lookup
+        device = state.device
+        if not state.symbols_loaded and device.elf_path and os.path.exists(device.elf_path):
+            state.symbols = fpb.get_symbols(device.elf_path)
+            state.symbols_loaded = True
+
         # Get symbols for address lookup
         symbols_reverse = {}
         if state.symbols:
@@ -297,8 +303,10 @@ def register_routes(app):
                 orig_addr = slot_data.get("orig_addr", 0)
                 target_addr = slot_data.get("target_addr", 0)
                 code_size = slot_data.get("code_size", 0)
-                # Lookup function name from symbols
+                # Lookup function name from symbols (try both original and Thumb-cleared address)
                 func_name = symbols_reverse.get(orig_addr, "")
+                if not func_name:
+                    func_name = symbols_reverse.get(orig_addr & ~1, "")
                 slots.append(
                     {
                         "id": i,
