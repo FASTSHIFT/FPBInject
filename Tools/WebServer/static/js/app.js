@@ -39,10 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   initSashResize();
   loadLayoutPreferences();
+  loadSidebarState(); // Load sidebar collapse state
   updateSlotUI();
   initSlotSelectListener();
   updateDisabledState(); // Initial disabled state
   setupAutoSave(); // Setup auto-save for config inputs
+  setupSidebarStateListeners(); // Setup listeners for sidebar state persistence
 });
 
 // Initialize slot select dropdown listener
@@ -236,6 +238,49 @@ function saveLayoutPreferences() {
 }
 
 /* ===========================
+   SIDEBAR STATE PERSISTENCE
+   =========================== */
+const SIDEBAR_STATE_KEY = 'fpbinject-sidebar-state';
+
+function loadSidebarState() {
+  try {
+    const savedState = localStorage.getItem(SIDEBAR_STATE_KEY);
+    if (savedState) {
+      const state = JSON.parse(savedState);
+      // Apply saved open/closed state to each details element
+      for (const [id, isOpen] of Object.entries(state)) {
+        const details = document.getElementById(id);
+        if (details && details.tagName === 'DETAILS') {
+          details.open = isOpen;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load sidebar state:', e);
+  }
+}
+
+function saveSidebarState() {
+  try {
+    const state = {};
+    // Find all details elements with IDs that start with 'details-'
+    document.querySelectorAll('details[id^="details-"]').forEach(details => {
+      state[details.id] = details.open;
+    });
+    localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn('Failed to save sidebar state:', e);
+  }
+}
+
+function setupSidebarStateListeners() {
+  // Listen for toggle events on all sidebar details elements
+  document.querySelectorAll('details[id^="details-"]').forEach(details => {
+    details.addEventListener('toggle', saveSidebarState);
+  });
+}
+
+/* ===========================
    TERMINAL MANAGEMENT
    =========================== */
 function getTerminalTheme() {
@@ -425,6 +470,15 @@ function selectSlot(slotId) {
   selectedSlot = parseInt(slotId);
   updateSlotUI();
   writeToOutput(`[INFO] Selected Slot ${slotId}`, 'info');
+  
+  // If slot has a function, open its disassembly view
+  const slotState = slotStates[slotId];
+  if (slotState && slotState.func) {
+    const funcName = slotState.func;
+    const addr = slotState.addr || '0x00000000';
+    // Open disassembly tab for this function
+    openDisassembly(funcName, addr);
+  }
 }
 
 // Handle slot selection from dropdown
@@ -841,31 +895,155 @@ async function generatePatch() {
     return;
   }
 
-  writeToOutput(`[GENERATE] Creating patch template for ${targetFunc}...`, 'system');
+  writeToOutput(`[GENERATE] Analyzing function signature for ${targetFunc}...`, 'system');
 
-  const template = `// Auto-generated patch for: ${targetFunc}
-// Slot: ${selectedSlot}
+  let signature = null;
+  let sourceFile = null;
+  let returnType = 'void';
+  let params = '';
+
+  // Try to get function signature from backend
+  try {
+    const res = await fetch(`/api/symbols/signature?func=${encodeURIComponent(targetFunc)}`);
+    const data = await res.json();
+
+    if (data.success && data.signature) {
+      signature = data.signature;
+      sourceFile = data.source_file;
+      writeToOutput(`[INFO] Found signature: ${signature}`, 'info');
+      if (sourceFile) {
+        writeToOutput(`[INFO] Source file: ${sourceFile}`, 'info');
+      }
+
+      // Parse the signature to extract return type and parameters
+      const parsed = parseSignature(signature, targetFunc);
+      returnType = parsed.returnType;
+      params = parsed.params;
+    } else {
+      writeToOutput(`[WARN] Could not find function signature, using default template`, 'warning');
+    }
+  } catch (e) {
+    writeToOutput(`[WARN] Failed to fetch signature: ${e}`, 'warning');
+  }
+
+  // Generate inject function name
+  const injectFuncName = `inject_${targetFunc}`;
+
+  // Build parameter list for calling original function
+  const paramNames = extractParamNames(params);
+  const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
+
+  // Generate template
+  const template = `/*
+ * Auto-generated patch for: ${targetFunc}
+ * Slot: ${selectedSlot}
+${sourceFile ? ` * Source: ${sourceFile}` : ''}
+ */
 
 #include <stdint.h>
 #include <stdio.h>
 
-// Original function prototype (adjust as needed)
-// extern int ${targetFunc}(void);
+${signature ? `// Original function signature:\n// ${signature}` : '// Original function prototype (adjust as needed)\n// extern ' + returnType + ' ' + targetFunc + '(' + (params || 'void') + ');'}
 
 // Inject function - will replace ${targetFunc}
-int inject_${targetFunc}(void) {
+__attribute__((used, section(".text.inject")))
+${returnType} ${injectFuncName}(${params || 'void'}) {
     // Your patch code here
     printf("Patched ${targetFunc} executed!\\n");
-    
-    // Call original if needed:
-    // return ${targetFunc}_original();
-    
-    return 0;
+
+${returnType !== 'void' ? `    // TODO: return appropriate value` : `    // Call original if needed:\n    // ${targetFunc}_original(${callParams});`}
 }
 `;
 
   document.getElementById('patchSource').value = template;
-  writeToOutput(`[SUCCESS] Patch template generated`, 'success');
+  writeToOutput(`[SUCCESS] Patch template generated with ${signature ? 'analyzed' : 'default'} signature`, 'success');
+}
+
+// Parse function signature to extract return type and parameters
+function parseSignature(signature, funcName) {
+  let returnType = 'void';
+  let params = '';
+
+  // Remove leading static/inline/extern keywords
+  let sig = signature.replace(/^(static|inline|extern|__attribute__\s*\([^)]*\))\s+/g, '').trim();
+
+  // Find function name position
+  const funcNameMatch = sig.match(new RegExp(`\\b${funcName}\\s*\\(`));
+  if (funcNameMatch) {
+    const funcNamePos = sig.indexOf(funcNameMatch[0]);
+
+    // Everything before function name is return type
+    returnType = sig.substring(0, funcNamePos).trim() || 'void';
+
+    // Extract parameters from parentheses
+    const paramsStart = sig.indexOf('(', funcNamePos);
+    const paramsEnd = sig.lastIndexOf(')');
+    if (paramsStart !== -1 && paramsEnd !== -1) {
+      params = sig.substring(paramsStart + 1, paramsEnd).trim();
+      // Normalize void parameters
+      if (params.toLowerCase() === 'void') {
+        params = '';
+      }
+    }
+  }
+
+  return { returnType, params };
+}
+
+// Extract parameter names from parameter list
+function extractParamNames(params) {
+  if (!params || params.trim() === '' || params.toLowerCase() === 'void') {
+    return [];
+  }
+
+  const names = [];
+  // Split by comma, handling nested parentheses (for function pointers)
+  const parts = [];
+  let depth = 0;
+  let current = '';
+
+  for (const ch of params) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
+  for (const part of parts) {
+    // Extract the last identifier as parameter name
+    // Handle arrays like "int arr[]" or "int arr[10]"
+    const arrayMatch = part.match(/(\w+)\s*\[/);
+    if (arrayMatch) {
+      names.push(arrayMatch[1]);
+      continue;
+    }
+
+    // Handle function pointers like "void (*callback)(int)"
+    const funcPtrMatch = part.match(/\(\s*\*\s*(\w+)\s*\)/);
+    if (funcPtrMatch) {
+      names.push(funcPtrMatch[1]);
+      continue;
+    }
+
+    // Handle normal parameters - last word is the name
+    const words = part.replace(/[*&]/g, ' ').trim().split(/\s+/);
+    if (words.length > 0) {
+      const lastWord = words[words.length - 1];
+      // Skip if it's a type keyword
+      if (!['int', 'char', 'void', 'float', 'double', 'long', 'short', 'unsigned', 'signed', 'const', 'volatile', 'struct', 'enum', 'union'].includes(lastWord)) {
+        names.push(lastWord);
+      }
+    }
+  }
+
+  return names;
 }
 
 async function performInject() {
@@ -1131,6 +1309,14 @@ function switchEditorTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(content => {
     content.classList.toggle('active', content.id === `tabContent_${tabId}`);
   });
+  
+  // Show/hide manual inject controls based on tab type
+  // Only show for patch_source (manual edit), hide for preview tabs
+  const editorToolbar = document.querySelector('.editor-toolbar');
+  if (editorToolbar) {
+    const isManualTab = tabId === 'patch_source';
+    editorToolbar.style.display = isManualTab ? 'flex' : 'none';
+  }
 }
 
 function closeTab(tabId, event) {
@@ -1397,6 +1583,7 @@ async function pollAutoInjectStatus() {
     const progress = data.progress || 0;
     const modifiedFuncs = data.modified_funcs || [];
     const result = data.result || {};
+    const sourceFile = data.source_file || null;
     
     // Check if status changed
     const statusChanged = status !== lastAutoInjectStatus;
@@ -1612,62 +1799,63 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
 }
 
 function updateAutoInjectProgress(progress, status, statusChanged = false) {
-  const progressEl = document.getElementById('injectProgress');
-  const progressText = document.getElementById('injectProgressText');
-  const progressFill = document.getElementById('injectProgressFill');
+  // Get all progress elements (in patch_source and any preview tabs)
+  const allProgressEls = document.querySelectorAll('.inject-progress');
   
-  if (!progressEl) return;
-  
-  // For idle status, hide progress bar
+  // For idle status, hide all progress bars
   if (status === 'idle') {
     // Don't immediately hide - let any existing timer finish
     return;
   }
   
-  progressEl.style.display = 'flex';
-  progressFill.style.width = `${progress}%`;
-  
-  if (status === 'success') {
-    progressText.textContent = 'Auto-inject complete!';
-    progressFill.style.background = '#4caf50';
-    // Only set timeout when status just changed to success
-    if (statusChanged) {
-      if (autoInjectProgressHideTimer) clearTimeout(autoInjectProgressHideTimer);
-      autoInjectProgressHideTimer = setTimeout(() => {
-        progressEl.style.display = 'none';
-        progressFill.style.width = '0%';
-        progressFill.style.background = '';
-        autoInjectProgressHideTimer = null;
-      }, 3000);
+  allProgressEls.forEach(progressEl => {
+    const progressText = progressEl.querySelector('#injectProgressText, .progress-text');
+    const progressFill = progressEl.querySelector('#injectProgressFill, .progress-fill');
+    
+    if (!progressEl || !progressFill) return;
+    
+    progressEl.style.display = 'flex';
+    progressFill.style.width = `${progress}%`;
+    
+    if (status === 'success') {
+      if (progressText) progressText.textContent = 'Auto-inject complete!';
+      progressFill.style.background = '#4caf50';
+    } else if (status === 'failed') {
+      if (progressText) progressText.textContent = 'Auto-inject failed!';
+      progressFill.style.background = '#f44336';
+    } else {
+      const statusTexts = {
+        'detecting': 'Detecting changes...',
+        'generating': 'Generating patch...',
+        'compiling': 'Compiling...',
+        'injecting': 'Injecting...'
+      };
+      if (progressText) progressText.textContent = statusTexts[status] || status;
+      progressFill.style.background = '';
     }
-  } else if (status === 'failed') {
-    progressText.textContent = 'Auto-inject failed!';
-    progressFill.style.background = '#f44336';
-    // Only set timeout when status just changed to failed
+  });
+  
+  // Handle hide timer
+  if (status === 'success' || status === 'failed') {
     if (statusChanged) {
       if (autoInjectProgressHideTimer) clearTimeout(autoInjectProgressHideTimer);
       autoInjectProgressHideTimer = setTimeout(() => {
-        progressEl.style.display = 'none';
-        progressFill.style.width = '0%';
-        progressFill.style.background = '';
+        allProgressEls.forEach(el => {
+          el.style.display = 'none';
+          const fill = el.querySelector('#injectProgressFill, .progress-fill');
+          if (fill) {
+            fill.style.width = '0%';
+            fill.style.background = '';
+          }
+        });
         autoInjectProgressHideTimer = null;
       }, 3000);
     }
   } else {
-    // Clear any existing hide timer for ongoing operations
     if (autoInjectProgressHideTimer) {
       clearTimeout(autoInjectProgressHideTimer);
       autoInjectProgressHideTimer = null;
     }
-    // Map status to display text
-    const statusTexts = {
-      'detecting': 'Detecting changes...',
-      'generating': 'Generating patch...',
-      'compiling': 'Compiling...',
-      'injecting': 'Injecting...'
-    };
-    progressText.textContent = statusTexts[status] || status;
-    progressFill.style.background = '';
   }
 }
 

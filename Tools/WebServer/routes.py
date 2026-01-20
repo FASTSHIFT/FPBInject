@@ -660,6 +660,94 @@ def register_routes(app):
 
         return jsonify({"success": True, "count": len(state.symbols)})
 
+    @app.route("/api/symbols/signature", methods=["GET"])
+    def api_get_function_signature():
+        """Get function signature by searching source files."""
+        func_name = request.args.get("func", "")
+        if not func_name:
+            return jsonify({"success": False, "error": "Function name not specified"})
+
+        device = state.device
+
+        # Try to find function signature from watch directories
+        signature = None
+        source_file = None
+
+        # Search in watch directories
+        watch_dirs = device.watch_dirs if device.watch_dirs else []
+
+        # Also add parent directories of ELF path as potential source locations
+        if device.elf_path and os.path.exists(device.elf_path):
+            elf_dir = os.path.dirname(device.elf_path)
+            # Look for common source directories relative to build dir
+            for parent in [".", "..", "../..", "../../.."]:
+                src_dir = os.path.normpath(os.path.join(elf_dir, parent))
+                if os.path.isdir(src_dir) and src_dir not in watch_dirs:
+                    watch_dirs.append(src_dir)
+
+        from patch_generator import CParser
+
+        parser = CParser()
+
+        for watch_dir in watch_dirs:
+            if not os.path.isdir(watch_dir):
+                continue
+
+            # Search for C/C++ files
+            for root, dirs, files in os.walk(watch_dir):
+                # Skip common non-source directories
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if d not in [".git", "build", "out", "__pycache__", "node_modules"]
+                ]
+
+                for filename in files:
+                    if not filename.endswith((".c", ".cpp", ".h", ".hpp")):
+                        continue
+
+                    filepath = os.path.join(root, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+
+                        # Quick check if function name exists in file
+                        if func_name not in content:
+                            continue
+
+                        # Parse functions from file
+                        functions = parser.parse_functions(content)
+                        if func_name in functions:
+                            func_info = functions[func_name]
+                            signature = func_info.signature
+                            source_file = filepath
+                            break
+                    except Exception:
+                        continue
+
+                if signature:
+                    break
+            if signature:
+                break
+
+        if signature:
+            return jsonify(
+                {
+                    "success": True,
+                    "func": func_name,
+                    "signature": signature,
+                    "source_file": source_file,
+                }
+            )
+        else:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Function '{func_name}' not found in source files",
+                    "func": func_name,
+                }
+            )
+
     @app.route("/api/symbols/disasm", methods=["GET"])
     def api_disasm_symbol():
         """Disassemble a specific function."""

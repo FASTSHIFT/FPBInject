@@ -69,7 +69,7 @@
 
     <!-- Connection Section -->
     <div class="sidebar-section">
-      <details open>
+      <details id="details-connection" open>
         <summary class="sidebar-header">
           <i class="codicon codicon-chevron-right"></i>
           <span>CONNECTION</span>
@@ -106,7 +106,7 @@
 
     <!-- Device Info - Enhanced with 6 Slots -->
     <div class="sidebar-section">
-      <details open>
+      <details id="details-device" open>
         <summary class="sidebar-header">
           <i class="codicon codicon-chevron-right"></i>
           <span>DEVICE INFO</span>
@@ -124,70 +124,70 @@
           </div>
           <!-- 6 FPB Slots -->
           <div class="slot-container" id="slotContainer">
-            <div class="slot-item" data-slot="0">
+            <div class="slot-item" data-slot="0" onclick="selectSlot(0)">
               <div class="slot-header">
                 <span class="slot-indicator"></span>
                 <span class="slot-id">Slot 0</span>
                 <span class="slot-func" id="slot0Func">Empty</span>
               </div>
               <div class="slot-actions">
-                <button class="slot-btn" onclick="fpbReinject(0)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="fpbUnpatch(0)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(0)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(0)" title="Clear slot"><i class="codicon codicon-close"></i></button>
               </div>
             </div>
-            <div class="slot-item" data-slot="1">
+            <div class="slot-item" data-slot="1" onclick="selectSlot(1)">
               <div class="slot-header">
                 <span class="slot-indicator"></span>
                 <span class="slot-id">Slot 1</span>
                 <span class="slot-func" id="slot1Func">Empty</span>
               </div>
               <div class="slot-actions">
-                <button class="slot-btn" onclick="fpbReinject(1)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="fpbUnpatch(1)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(1)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(1)" title="Clear slot"><i class="codicon codicon-close"></i></button>
               </div>
             </div>
-            <div class="slot-item" data-slot="2">
+            <div class="slot-item" data-slot="2" onclick="selectSlot(2)">
               <div class="slot-header">
                 <span class="slot-indicator"></span>
                 <span class="slot-id">Slot 2</span>
                 <span class="slot-func" id="slot2Func">Empty</span>
               </div>
               <div class="slot-actions">
-                <button class="slot-btn" onclick="fpbReinject(2)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="fpbUnpatch(2)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(2)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(2)" title="Clear slot"><i class="codicon codicon-close"></i></button>
               </div>
             </div>
-            <div class="slot-item" data-slot="3">
+            <div class="slot-item" data-slot="3" onclick="selectSlot(3)">
               <div class="slot-header">
                 <span class="slot-indicator"></span>
                 <span class="slot-id">Slot 3</span>
                 <span class="slot-func" id="slot3Func">Empty</span>
               </div>
               <div class="slot-actions">
-                <button class="slot-btn" onclick="fpbReinject(3)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="fpbUnpatch(3)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(3)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(3)" title="Clear slot"><i class="codicon codicon-close"></i></button>
               </div>
             </div>
-            <div class="slot-item" data-slot="4">
+            <div class="slot-item" data-slot="4" onclick="selectSlot(4)">
               <div class="slot-header">
                 <span class="slot-indicator"></span>
                 <span class="slot-id">Slot 4</span>
                 <span class="slot-func" id="slot4Func">Empty</span>
               </div>
               <div class="slot-actions">
-                <button class="slot-btn" onclick="fpbReinject(4)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="fpbUnpatch(4)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(4)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(4)" title="Clear slot"><i class="codicon codicon-close"></i></button>
               </div>
             </div>
-            <div class="slot-item" data-slot="5">
+            <div class="slot-item" data-slot="5" onclick="selectSlot(5)">
               <div class="slot-header">
                 <span class="slot-indicator"></span>
                 <span class="slot-id">Slot 5</span>
                 <span class="slot-func" id="slot5Func">Empty</span>
               </div>
               <div class="slot-actions">
-                <button class="slot-btn" onclick="fpbReinject(5)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="fpbUnpatch(5)" title="Clear slot"><i class="codicon codicon-close"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(5)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
+                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(5)" title="Clear slot"><i class="codicon codicon-close"></i></button>
               </div>
             </div>
           </div>
@@ -197,7 +197,7 @@
 
     <!-- Configuration -->
     <div class="sidebar-section">
-      <details>
+      <details id="details-configuration">
         <summary class="sidebar-header">
           <i class="codicon codicon-chevron-right"></i>
           <span>CONFIGURATION</span>
@@ -255,7 +255,7 @@
 
     <!-- Symbols -->
     <div class="sidebar-section">
-      <details open>
+      <details id="details-symbols" open>
         <summary class="sidebar-header">
           <i class="codicon codicon-chevron-right"></i>
           <span>SYMBOLS</span>
@@ -278,7 +278,7 @@
   <div class="sash sash-vertical" id="sashSidebar"></div>
 
   <!-- MAIN EDITOR AREA -->
-  <div class="editor-container" id="editorContainer">
+  <div class="editor-container" id="editorContainer" style="position: relative;">
     <div class="editor-tabs-header" id="editorTabsHeader">
       <div class="tab active" data-tab="patch_source" onclick="switchEditorTab('patch_source')">
         <i class="codicon codicon-file-code tab-icon" style="color: #e37933;"></i>
@@ -322,13 +322,14 @@
       <div class="tab-content active" id="tabContent_patch_source">
         <div class="editor-main">
           <textarea id="patchSource" class="code-editor" spellcheck="false"></textarea>
-          <!-- Overlay progress indicator -->
-          <div id="injectProgress" class="inject-progress" style="display: none;">
-            <span id="injectProgressText">Injecting...</span>
-            <div id="injectProgressFill" class="progress-fill"></div>
-          </div>
         </div>
       </div>
+    </div>
+    
+    <!-- Global progress indicator -->
+    <div id="injectProgress" class="inject-progress" style="display: none;">
+      <span id="injectProgressText">Injecting...</span>
+      <div id="injectProgressFill" class="progress-fill"></div>
     </div>
   </div>
 
