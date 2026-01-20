@@ -714,12 +714,14 @@ body.resizing-panel .sash {
   background: var(--vscode-editor-bg);
   padding: 0;
   margin: 0;
+  user-select: text;  /* Allow text selection */
 }
 
 .code-display pre {
   margin: 0;
   padding: 10px;
   background: transparent !important;
+  user-select: text;  /* Allow text selection */
 }
 
 .code-display code {
@@ -727,6 +729,7 @@ body.resizing-panel .sash {
   font-size: 13px;
   line-height: 1.6;
   background: transparent !important;
+  user-select: text;  /* Allow text selection */
 }
 
 /* Inject Progress Indicator */

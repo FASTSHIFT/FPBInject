@@ -806,24 +806,43 @@ class FPBInject:
             lines = output.splitlines()
             in_function = False
             disasm_lines = []
+            empty_line_count = 0
 
             for line in lines:
-                # Detect function start
+                # Detect function start - look for address followed by function name
+                # Format: "0000000 <func_name>:" at the start of line
                 if f"<{func_name}" in line and ">:" in line:
-                    in_function = True
-                    disasm_lines.append(line)
-                elif in_function:
-                    # Empty line or new function starts
+                    # Make sure it's actually a function definition, not a call target
+                    # Function definitions start with address at beginning of line
+                    stripped = line.strip()
+                    if stripped and stripped[0].isalnum():
+                        in_function = True
+                        disasm_lines.append(line)
+                        empty_line_count = 0
+                        continue
+
+                if in_function:
+                    # Track consecutive empty lines
                     if not line.strip():
-                        if disasm_lines:  # End of function
+                        empty_line_count += 1
+                        # Two consecutive empty lines usually means end of function
+                        if empty_line_count >= 2:
                             break
-                    elif (
-                        line.strip()
-                        and not line.startswith(" ")
-                        and ":" in line
-                        and "<" in line
+                        continue
+
+                    # Reset empty line counter on non-empty line
+                    empty_line_count = 0
+
+                    # Check if a new function started (line starts with address and has <>:)
+                    stripped = line.strip()
+                    if (
+                        stripped
+                        and stripped[0].isalnum()
+                        and ":" in stripped
+                        and "<" in stripped
+                        and ">:" in stripped
                     ):
-                        # New function started
+                        # New function definition started
                         break
                     else:
                         disasm_lines.append(line)
