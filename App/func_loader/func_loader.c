@@ -222,10 +222,7 @@ static size_t fl_get_size(fl_context_t* ctx) {
 }
 
 void fl_init(fl_context_t* ctx) {
-    ctx->static_used = 0;
-    ctx->last_alloc = 0;
-    ctx->last_alloc_size = 0;
-    memset(ctx->slots, 0, sizeof(ctx->slots));
+    memset(ctx, 0, sizeof(fl_context_t));
     fpb_init();
     ctx->is_inited = true;
 }
