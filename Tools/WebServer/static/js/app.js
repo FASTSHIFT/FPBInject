@@ -616,6 +616,11 @@ async function fpbUnpatchAll() {
     return;
   }
 
+  // Confirm before clearing all slots
+  if (!confirm('Are you sure you want to clear all FPB slots? This will unpatch all injected functions.')) {
+    return;
+  }
+
   try {
     const res = await fetch('/api/fpb/unpatch', {
       method: 'POST',
@@ -1436,15 +1441,16 @@ function switchEditorTab(tabId) {
   });
   
   // Show/hide manual inject controls based on tab type
-  // Show for patch_xxx.c tabs (manual edit mode), hide for asm tabs
+  // Show for manual patch tabs (type 'c'), hide for asm tabs and preview tabs
   const editorToolbar = document.querySelector('.editor-toolbar');
   if (editorToolbar) {
     const tabInfo = editorTabs.find(t => t.id === tabId);
-    const isPatchTab = tabInfo && tabInfo.type === 'c';
-    editorToolbar.style.display = isPatchTab ? 'flex' : 'none';
+    // Only show toolbar for manual patch tabs (type 'c'), not preview tabs
+    const isManualPatchTab = tabInfo && tabInfo.type === 'c';
+    editorToolbar.style.display = isManualPatchTab ? 'flex' : 'none';
     
     // Update currentPatchTab if switching to a patch tab
-    if (isPatchTab && tabInfo.funcName) {
+    if (isManualPatchTab && tabInfo.funcName) {
       currentPatchTab = { id: tabId, funcName: tabInfo.funcName };
     }
   }
@@ -1845,6 +1851,10 @@ async function pollAutoInjectStatus() {
           break;
         case 'compiling':
           writeToOutput(`[AUTO-INJECT] ${message}`, 'info');
+          // Create preview tab when patch generation is complete (compiling starts)
+          if (modifiedFuncs.length > 0) {
+            createPatchPreviewTab(modifiedFuncs[0], sourceFile);
+          }
           break;
         case 'injecting':
           writeToOutput(`[AUTO-INJECT] ${message}`, 'info');
@@ -1855,7 +1865,7 @@ async function pollAutoInjectStatus() {
           if (result && Object.keys(result).length > 0) {
             displayAutoInjectStats(result, modifiedFuncs[0] || 'unknown');
           }
-          // Create preview tab for the patch (use source file name)
+          // Refresh preview tab content after successful injection
           if (modifiedFuncs.length > 0) {
             createPatchPreviewTab(modifiedFuncs[0], sourceFile);
           }
@@ -1987,7 +1997,7 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
   editorTabs.push({
     id: tabId,
     title: tabTitle,
-    type: 'c',
+    type: 'preview',  // Mark as auto-generated preview (read-only, no toolbar)
     closable: true
   });
   
