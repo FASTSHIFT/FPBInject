@@ -148,9 +148,7 @@ class AppState:
  * original functions with matching names.
  */
 
-#include <syslog.h>
-#include <string.h>
-#include <stdlib.h>
+#include <stdio.h>
 
 /*
  * Example: Replace a function named "target_function"
@@ -158,9 +156,8 @@ class AppState:
  *
  * __attribute__((used, section(".text.inject")))
  * void inject_target_function(int arg1, int arg2) {
- *     syslog(LOG_INFO, "Injected: arg1=%d, arg2=%d\\n", arg1, arg2);
- *     // Call original function if needed (declare extern first)
- *     // target_function_original(arg1, arg2);
+ *     printf("Injected: arg1=%d, arg2=%d\\n", arg1, arg2);
+ *     /* Custom behavior here */
  * }
  */
 
