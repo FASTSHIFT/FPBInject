@@ -7,11 +7,14 @@
 Flask API routes for FPBInject Web Server.
 """
 
+import json
 import logging
 import os
 import time
+import queue
+import threading
 
-from flask import jsonify, request, render_template
+from flask import jsonify, request, render_template, Response
 
 from state import state
 from device_worker import (
@@ -192,7 +195,7 @@ def register_routes(app):
                 "baudrate": device.baudrate,
                 "elf_path": device.elf_path,
                 "toolchain_path": device.toolchain_path,
-                "compile_commands": device.compile_commands_path,
+                "compile_commands_path": device.compile_commands_path,
                 "watch_dirs": device.watch_dirs,
                 "patch_mode": device.patch_mode,
                 "watcher_enabled": device.watcher_enabled,
@@ -278,13 +281,45 @@ def register_routes(app):
 
     @app.route("/api/fpb/info", methods=["GET"])
     def api_fpb_info():
-        """Get device info."""
+        """Get device info including slot states."""
         fpb = get_fpb_inject()
         info, error = fpb.info()
         if error:
             return jsonify({"success": False, "error": error})
         state.device.device_info = info
-        return jsonify({"success": True, "info": info})
+
+        # Build slot states from device state
+        slots = []
+        for i in range(6):
+            slot_info = {
+                "occupied": False,
+                "func": "Empty",
+                "addr": "",
+                "inject_addr": "",
+                "code_size": 0,
+            }
+            # Check if this slot has an active injection
+            if i == 0 and state.device.inject_active:
+                slot_info["occupied"] = True
+                slot_info["func"] = state.device.last_inject_target or "Unknown"
+                slot_info["inject_func"] = state.device.last_inject_func or ""
+            slots.append(slot_info)
+
+        # Memory info
+        memory_info = {
+            "base": info.get("base", 0) if info else 0,
+            "size": info.get("size", 0) if info else 0,
+            "used": info.get("used", 0) if info else 0,
+        }
+
+        return jsonify(
+            {
+                "success": True,
+                "info": info,
+                "slots": slots,
+                "memory": memory_info,
+            }
+        )
 
     @app.route("/api/fpb/unpatch", methods=["POST"])
     def api_fpb_unpatch():
@@ -310,6 +345,7 @@ def register_routes(app):
         patch_mode = data.get("patch_mode", state.device.patch_mode)
         comp = data.get("comp", 0)
         nuttx_mode = data.get("nuttx_mode", state.device.nuttx_mode)
+        source_ext = data.get("source_ext", ".c")  # Default to .c
 
         if not source_content:
             return jsonify({"success": False, "error": "Source content not provided"})
@@ -336,6 +372,7 @@ def register_routes(app):
                 inject_func=inject_func,
                 patch_mode=patch_mode,
                 comp=comp,
+                source_ext=source_ext,
             )
         finally:
             # Exit fl interactive mode after injection
@@ -351,6 +388,98 @@ def register_routes(app):
             )
 
         return jsonify({"success": success, **result})
+
+    @app.route("/api/fpb/inject/stream", methods=["POST"])
+    def api_fpb_inject_stream():
+        """Perform code injection with streaming progress via SSE."""
+        data = request.json or {}
+        source_content = data.get("source_content")
+        target_func = data.get("target_func")
+        inject_func = data.get("inject_func")
+        patch_mode = data.get("patch_mode", state.device.patch_mode)
+        comp = data.get("comp", 0)
+        nuttx_mode = data.get("nuttx_mode", state.device.nuttx_mode)
+        source_ext = data.get("source_ext", ".c")
+
+        if not source_content:
+            return jsonify({"success": False, "error": "Source content not provided"})
+
+        if not target_func:
+            return jsonify({"success": False, "error": "Target function not specified"})
+
+        # Store request data for streaming
+        state.device.nuttx_mode = nuttx_mode
+        progress_queue = queue.Queue()
+
+        def progress_callback(uploaded, total):
+            progress_queue.put(
+                {
+                    "type": "progress",
+                    "uploaded": uploaded,
+                    "total": total,
+                    "percent": round((uploaded / total) * 100, 1) if total > 0 else 0,
+                }
+            )
+
+        def inject_task():
+            fpb = get_fpb_inject()
+            add_tool_log(
+                f"[INJECT] Starting injection for {target_func} (mode: {patch_mode})"
+            )
+
+            # Enter fl interactive mode before injection
+            fpb.enter_fl_mode()
+
+            try:
+                # Send compiling status
+                progress_queue.put({"type": "status", "stage": "compiling"})
+
+                success, result = fpb.inject(
+                    source_content=source_content,
+                    target_func=target_func,
+                    inject_func=inject_func,
+                    patch_mode=patch_mode,
+                    comp=comp,
+                    source_ext=source_ext,
+                    progress_callback=progress_callback,
+                )
+
+                if success:
+                    add_tool_log(f"[SUCCESS] Injection complete: {target_func}")
+                    progress_queue.put({"type": "result", "success": True, **result})
+                else:
+                    add_tool_log(
+                        f"[ERROR] Injection failed: {result.get('error', 'unknown')}"
+                    )
+                    progress_queue.put({"type": "result", "success": False, **result})
+            finally:
+                fpb.exit_fl_mode()
+                progress_queue.put(None)  # Signal end of stream
+
+        # Start injection in background thread
+        thread = threading.Thread(target=inject_task, daemon=True)
+        thread.start()
+
+        def generate():
+            while True:
+                try:
+                    item = progress_queue.get(timeout=30)
+                    if item is None:
+                        break
+                    yield f"data: {json.dumps(item)}\n\n"
+                except queue.Empty:
+                    # Send heartbeat
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # ============== Symbols ==============
 
@@ -1027,6 +1156,12 @@ def _restart_file_watcher():
         _start_file_watcher(state.device.watch_dirs)
 
 
+def restore_file_watcher():
+    """Restore file watcher on startup if watcher_enabled is True."""
+    if state.device.watcher_enabled and state.device.watch_dirs:
+        _start_file_watcher(state.device.watch_dirs)
+
+
 def _on_file_change(path, change_type):
     """Callback when a watched file changes."""
     logger.info(f"File changed: {path} ({change_type})")
@@ -1174,6 +1309,9 @@ def _trigger_auto_inject(file_path):
                 target_func = modified[0]
                 inject_func = f"inject_{target_func}"
 
+                # Get source file extension from the original file
+                source_ext = os.path.splitext(file_path)[1] or ".c"
+
                 device.auto_inject_status = "injecting"
                 device.auto_inject_message = f"正在注入: {target_func} → {inject_func}"
                 device.auto_inject_progress = 80
@@ -1185,6 +1323,7 @@ def _trigger_auto_inject(file_path):
                     inject_func=inject_func,
                     patch_mode=device.patch_mode,
                     comp=0,
+                    source_ext=source_ext,
                 )
 
                 if success:

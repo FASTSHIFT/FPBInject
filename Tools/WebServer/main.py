@@ -27,7 +27,7 @@ import sys
 from flask import Flask
 from flask_cors import CORS
 
-from routes import register_routes
+from routes import register_routes, restore_file_watcher
 from state import state
 from fpb_inject import serial_open
 from device_worker import start_worker
@@ -90,8 +90,16 @@ def parse_args():
 
 
 def restore_state():
-    """Restore serial connection state."""
+    """Restore serial connection state and file watcher."""
     device = state.device
+
+    # Restore file watcher if enabled
+    if device.watcher_enabled and device.watch_dirs:
+        logger.info(
+            f"Restoring file watcher for {len(device.watch_dirs)} directories..."
+        )
+        restore_file_watcher()
+        logger.info("File watcher restored")
 
     # Check auto-connect conditions
     if not device.auto_connect or not device.port:

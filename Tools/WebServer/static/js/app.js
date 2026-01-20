@@ -370,7 +370,12 @@ function writeToOutput(message, type = 'info') {
     system: '\x1b[36m'
   };
   const color = colors[type] || colors.info;
-  toolTerminal.writeln(`${color}${message}\x1b[0m`);
+  
+  // Split message by newlines and write each line separately
+  const lines = message.split('\n');
+  lines.forEach(line => {
+    toolTerminal.writeln(`${color}${line}\x1b[0m`);
+  });
 }
 
 function writeToSerial(data) {
@@ -396,8 +401,15 @@ function updateSlotUI() {
     }
 
     if (funcSpan) {
-      funcSpan.textContent = state.occupied ? state.func : 'Empty';
-      funcSpan.title = state.occupied ? `${state.func} @ ${state.addr}` : '';
+      if (state.occupied) {
+        const injectInfo = state.inject_func ? ` → ${state.inject_func}` : '';
+        const sizeInfo = state.code_size ? ` (${state.code_size}B)` : '';
+        funcSpan.textContent = `${state.func}${injectInfo}${sizeInfo}`;
+        funcSpan.title = `Original: ${state.func} @ ${state.addr}\nInjected: ${state.inject_func || 'N/A'}\nCode size: ${state.code_size || 0} bytes`;
+      } else {
+        funcSpan.textContent = 'Empty';
+        funcSpan.title = '';
+      }
     }
 
     if (state.occupied) activeCount++;
@@ -649,25 +661,53 @@ async function fpbInfo() {
     const res = await fetch('/api/fpb/info');
     const data = await res.json();
 
-    if (data.success && data.slots) {
+    if (data.success) {
       // Update slot states from device
-      data.slots.forEach((slot, i) => {
-        if (i < 6) {
-          slotStates[i] = {
-            occupied: slot.occupied || false,
-            func: slot.func || 'Empty',
-            addr: slot.addr || ''
-          };
-        }
-      });
+      if (data.slots) {
+        data.slots.forEach((slot, i) => {
+          if (i < 6) {
+            slotStates[i] = {
+              occupied: slot.occupied || false,
+              func: slot.func || 'Empty',
+              addr: slot.addr || '',
+              inject_func: slot.inject_func || '',
+              code_size: slot.code_size || 0
+            };
+          }
+        });
+      }
       updateSlotUI();
-      writeToOutput('[INFO] Slot info updated from device', 'success');
+
+      // Update memory info display
+      if (data.memory) {
+        updateMemoryInfo(data.memory);
+      }
+
+      writeToOutput('[INFO] Device info updated', 'success');
     } else {
-      writeToOutput(`[INFO] ${data.message || 'Device info retrieved'}`, 'info');
+      writeToOutput(`[ERROR] ${data.error || 'Failed to get device info'}`, 'error');
     }
   } catch (e) {
     writeToOutput(`[ERROR] Info failed: ${e}`, 'error');
   }
+}
+
+function updateMemoryInfo(memory) {
+  const memoryEl = document.getElementById('memoryInfo');
+  if (!memoryEl) return;
+
+  const base = memory.base || 0;
+  const size = memory.size || 0;
+  const used = memory.used || 0;
+  const free = size - used;
+  const usedPercent = size > 0 ? Math.round((used / size) * 100) : 0;
+
+  memoryEl.innerHTML = `
+    <div style="font-size: 10px; color: var(--vscode-descriptionForeground);">
+      Base: 0x${base.toString(16).toUpperCase().padStart(8, '0')} | 
+      Used: ${used}/${size} bytes (${usedPercent}%)
+    </div>
+  `;
 }
 
 /* ===========================
@@ -731,13 +771,14 @@ async function performInject() {
   const progressFill = document.getElementById('injectProgressFill');
 
   progressEl.style.display = 'flex';
-  progressText.textContent = 'Compiling...';
-  progressFill.style.width = '20%';
+  progressText.textContent = 'Starting...';
+  progressFill.style.width = '5%';
 
   writeToOutput(`[INJECT] Starting injection to slot ${selectedSlot}...`, 'system');
 
   try {
-    const res = await fetch('/api/fpb/inject', {
+    // Use streaming API for real-time progress
+    const response = await fetch('/api/fpb/inject/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -748,31 +789,71 @@ async function performInject() {
       })
     });
 
-    progressText.textContent = 'Uploading...';
-    progressFill.style.width = '60%';
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
+    }
 
-    const data = await res.json();
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult = null;
 
-    if (data.success) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === 'status') {
+              if (data.stage === 'compiling') {
+                progressText.textContent = 'Compiling...';
+                progressFill.style.width = '20%';
+              }
+            } else if (data.type === 'progress') {
+              const uploadPercent = data.percent || 0;
+              // Map upload progress (0-100) to overall progress (30-90)
+              const overallPercent = 30 + (uploadPercent * 0.6);
+              progressText.textContent = `Uploading... ${data.uploaded}/${data.total} bytes (${uploadPercent}%)`;
+              progressFill.style.width = `${overallPercent}%`;
+            } else if (data.type === 'result') {
+              finalResult = data;
+            }
+          } catch (e) {
+            console.warn('Failed to parse SSE data:', e);
+          }
+        }
+      }
+    }
+
+    if (finalResult && finalResult.success) {
       progressText.textContent = 'Complete!';
       progressFill.style.width = '100%';
 
       slotStates[selectedSlot] = {
         occupied: true,
         func: targetFunc,
-        addr: data.target_addr || '0x????'
+        addr: finalResult.target_addr || '0x????',
+        inject_func: finalResult.inject_func || '',
+        code_size: finalResult.code_size || 0
       };
       updateSlotUI();
 
       // Display injection statistics
-      displayInjectionStats(data, targetFunc);
+      displayInjectionStats(finalResult, targetFunc);
 
       setTimeout(() => {
         progressEl.style.display = 'none';
         progressFill.style.width = '0%';
       }, 2000);
     } else {
-      throw new Error(data.error || data.message || 'Injection failed');
+      throw new Error(finalResult?.error || 'Injection failed');
     }
   } catch (e) {
     progressText.textContent = 'Failed!';
@@ -1000,7 +1081,7 @@ async function loadConfig() {
     if (data.baudrate) document.getElementById('baudrate').value = data.baudrate;
 
     if (data.elf_path) document.getElementById('elfPath').value = data.elf_path;
-    if (data.compile_commands) document.getElementById('compileCommandsPath').value = data.compile_commands;
+    if (data.compile_commands_path) document.getElementById('compileCommandsPath').value = data.compile_commands_path;
     if (data.toolchain_path) document.getElementById('toolchainPath').value = data.toolchain_path;
     if (data.patch_mode) document.getElementById('patchMode').value = data.patch_mode;
     if (data.watcher_enabled) document.getElementById('watcherEnable').checked = data.watcher_enabled;
@@ -1023,7 +1104,7 @@ async function loadConfig() {
 async function saveConfig(silent = false) {
   const config = {
     elf_path: document.getElementById('elfPath').value,
-    compile_commands: document.getElementById('compileCommandsPath').value,
+    compile_commands_path: document.getElementById('compileCommandsPath').value,
     toolchain_path: document.getElementById('toolchainPath').value,
     patch_mode: document.getElementById('patchMode').value,
     watcher_enabled: document.getElementById('watcherEnable').checked,
@@ -1208,8 +1289,11 @@ async function pollAutoInjectStatus() {
     const modifiedFuncs = data.modified_funcs || [];
     const result = data.result || {};
     
+    // Check if status changed
+    const statusChanged = status !== lastAutoInjectStatus;
+    
     // Only output if status changed
-    if (status !== lastAutoInjectStatus) {
+    if (statusChanged) {
       lastAutoInjectStatus = status;
       
       // Log status changes
@@ -1236,6 +1320,10 @@ async function pollAutoInjectStatus() {
           if (result && Object.keys(result).length > 0) {
             displayAutoInjectStats(result, modifiedFuncs[0] || 'unknown');
           }
+          // Create preview tab for the patch
+          if (modifiedFuncs.length > 0) {
+            createPatchPreviewTab(modifiedFuncs[0]);
+          }
           // Refresh slot UI after successful injection
           updateSlotUI();
           fetchFPBInfo(); // Refresh device info to show new slot state
@@ -1247,17 +1335,15 @@ async function pollAutoInjectStatus() {
           // Silent for idle status changes
           break;
       }
+      
+      // Load patch source when generating or success
+      if (status === 'generating' || status === 'success') {
+        await loadPatchSourceFromBackend();
+      }
     }
     
-    // Update progress bar only when status changes
-    if (status !== 'idle') {
-      updateAutoInjectProgress(progress, status, status !== lastAutoInjectStatus);
-    }
-    
-    // If patch content was updated, load it into the editor
-    if ((status === 'generating' || status === 'success') && status !== lastAutoInjectStatus) {
-      await loadPatchSourceFromBackend();
-    }
+    // Update progress bar (always update progress, pass statusChanged for hide logic)
+    updateAutoInjectProgress(progress, status, statusChanged);
     
   } catch (e) {
     // Silent error - don't spam console
@@ -1292,10 +1378,101 @@ async function loadPatchSourceFromBackend() {
         patchSourceEl.value = data.content;
         writeToOutput('[AUTO-INJECT] Patch source updated in editor', 'info');
       }
+      return data.content;
     }
   } catch (e) {
     // Silent error
   }
+  return null;
+}
+
+async function createPatchPreviewTab(funcName) {
+  const tabId = `patch_${funcName}`;
+  const tabTitle = `patch_${funcName}.c`;
+  
+  // Load patch content from backend
+  let patchContent = '';
+  try {
+    const res = await fetch('/api/patch/source');
+    const data = await res.json();
+    if (data.success && data.content) {
+      patchContent = data.content;
+    }
+  } catch (e) {
+    patchContent = `// Failed to load patch content for ${funcName}`;
+  }
+  
+  // Check if tab already exists - update content if so
+  const existingTab = editorTabs.find(t => t.id === tabId);
+  if (existingTab) {
+    // Update existing tab content
+    const existingContent = document.getElementById(`tabContent_${tabId}`);
+    if (existingContent) {
+      const codeEl = existingContent.querySelector('code');
+      if (codeEl) {
+        codeEl.textContent = patchContent;
+        // Re-apply syntax highlighting
+        if (typeof hljs !== 'undefined') {
+          hljs.highlightElement(codeEl);
+        }
+      }
+    }
+    switchEditorTab(tabId);
+    return;
+  }
+  
+  // Create new tab
+  editorTabs.push({
+    id: tabId,
+    title: tabTitle,
+    type: 'c',
+    closable: true
+  });
+  
+  // Add tab button
+  const tabsHeader = document.getElementById('editorTabsHeader');
+  const tabDiv = document.createElement('div');
+  tabDiv.className = 'tab';
+  tabDiv.setAttribute('data-tab', tabId);
+  tabDiv.innerHTML = `
+    <i class="codicon codicon-file-code tab-icon" style="color: #519aba;"></i>
+    <span>${tabTitle}</span>
+    <span class="tab-badge" style="background: #4caf50; color: white; font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">Preview</span>
+    <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
+  `;
+  tabDiv.onclick = () => switchEditorTab(tabId);
+  tabsHeader.appendChild(tabDiv);
+  
+  // Add tab content (read-only code display)
+  const tabsContent = document.querySelector('.editor-tabs-content');
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'tab-content';
+  contentDiv.id = `tabContent_${tabId}`;
+  
+  contentDiv.innerHTML = `
+    <div class="code-display" style="height: 100%; overflow: auto;">
+      <div style="padding: 4px 8px; background: #2d2d2d; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #888;">
+        <i class="codicon codicon-lock" style="margin-right: 4px;"></i>
+        Auto-generated patch (read-only preview)
+      </div>
+      <pre style="margin: 0; padding: 8px; height: calc(100% - 30px); overflow: auto;"><code class="language-c">${escapeHtml(patchContent)}</code></pre>
+    </div>
+  `;
+  tabsContent.appendChild(contentDiv);
+  
+  // Apply syntax highlighting
+  if (typeof hljs !== 'undefined') {
+    contentDiv.querySelectorAll('pre code').forEach(block => {
+      try {
+        hljs.highlightElement(block);
+      } catch (e) {
+        block.classList.add('hljs');
+      }
+    });
+  }
+  
+  switchEditorTab(tabId);
+  writeToOutput(`[AUTO-INJECT] Created preview tab: ${tabTitle}`, 'info');
 }
 
 function updateAutoInjectProgress(progress, status, statusChanged = false) {
@@ -1305,9 +1482,9 @@ function updateAutoInjectProgress(progress, status, statusChanged = false) {
   
   if (!progressEl) return;
   
+  // For idle status, hide progress bar
   if (status === 'idle') {
-    progressEl.style.display = 'none';
-    progressFill.style.background = '';
+    // Don't immediately hide - let any existing timer finish
     return;
   }
   
@@ -1341,6 +1518,11 @@ function updateAutoInjectProgress(progress, status, statusChanged = false) {
       }, 3000);
     }
   } else {
+    // Clear any existing hide timer for ongoing operations
+    if (autoInjectProgressHideTimer) {
+      clearTimeout(autoInjectProgressHideTimer);
+      autoInjectProgressHideTimer = null;
+    }
     // Map status to display text
     const statusTexts = {
       'detecting': 'Detecting changes...',

@@ -15,6 +15,7 @@ FPBInject WebServer 测试运行器
 
 import argparse
 import os
+import shutil
 import sys
 import unittest
 
@@ -25,6 +26,27 @@ sys.path.insert(0, PARENT_DIR)
 
 # 默认覆盖率目标
 DEFAULT_COVERAGE_TARGET = 80
+
+# 配置文件路径
+CONFIG_FILE = os.path.join(PARENT_DIR, "config.json")
+CONFIG_BACKUP = os.path.join(PARENT_DIR, "config.json.bak")
+
+
+def backup_config():
+    """备份原始配置文件"""
+    if os.path.exists(CONFIG_FILE):
+        shutil.copy2(CONFIG_FILE, CONFIG_BACKUP)
+        return True
+    return False
+
+
+def restore_config():
+    """恢复原始配置文件"""
+    if os.path.exists(CONFIG_BACKUP):
+        shutil.copy2(CONFIG_BACKUP, CONFIG_FILE)
+        os.remove(CONFIG_BACKUP)
+        return True
+    return False
 
 
 def run_tests(
@@ -45,57 +67,68 @@ def run_tests(
     Returns:
         bool: 测试是否全部通过
     """
-    if with_coverage:
-        try:
-            import coverage
-        except ImportError:
-            print("错误: 需要安装 coverage 包")
-            print("请运行: pip install coverage")
-            sys.exit(1)
+    # 备份配置文件
+    config_backed_up = backup_config()
+    if config_backed_up:
+        print("📦 配置文件已备份")
 
-        # 创建覆盖率对象
-        cov = coverage.Coverage(
-            source=[PARENT_DIR],
-            omit=[
-                "*/test/*",
-                "*/__pycache__/*",
-                "*/static/*",
-                "*/templates/*",
-            ],
-        )
-        cov.start()
+    try:
+        if with_coverage:
+            try:
+                import coverage
+            except ImportError:
+                print("错误: 需要安装 coverage 包")
+                print("请运行: pip install coverage")
+                sys.exit(1)
 
-    # 发现并加载测试
-    loader = unittest.TestLoader()
-    suite = loader.discover(SCRIPT_DIR, pattern="test_*.py")
+            # 创建覆盖率对象
+            cov = coverage.Coverage(
+                source=[PARENT_DIR],
+                omit=[
+                    "*/test/*",
+                    "*/__pycache__/*",
+                    "*/static/*",
+                    "*/templates/*",
+                ],
+            )
+            cov.start()
 
-    # 运行测试
-    runner = unittest.TextTestRunner(verbosity=verbosity)
-    result = runner.run(suite)
+        # 发现并加载测试
+        loader = unittest.TestLoader()
+        suite = loader.discover(SCRIPT_DIR, pattern="test_*.py")
 
-    if with_coverage:
-        cov.stop()
-        cov.save()
+        # 运行测试
+        runner = unittest.TextTestRunner(verbosity=verbosity)
+        result = runner.run(suite)
 
-        print("\n" + "=" * 70)
-        print("覆盖率报告")
-        print("=" * 70)
+        if with_coverage:
+            cov.stop()
+            cov.save()
 
-        # 只调用一次 report()，获取返回的总覆盖率
-        total = cov.report()
+            print("\n" + "=" * 70)
+            print("覆盖率报告")
+            print("=" * 70)
 
-        if html_report:
-            html_dir = os.path.join(SCRIPT_DIR, "htmlcov")
-            cov.html_report(directory=html_dir)
-            print(f"\nHTML 报告已生成: {html_dir}/index.html")
+            # 只调用一次 report()，获取返回的总覆盖率
+            total = cov.report()
 
-        # 检查覆盖率是否达标
-        if total < coverage_target:
-            print(f"\n⚠️  警告: 覆盖率 {total:.1f}% 低于 {coverage_target}% 目标")
-        else:
-            print(f"\n✅ 覆盖率 {total:.1f}% 达到目标 (≥{coverage_target}%)")
+            if html_report:
+                html_dir = os.path.join(SCRIPT_DIR, "htmlcov")
+                cov.html_report(directory=html_dir)
+                print(f"\nHTML 报告已生成: {html_dir}/index.html")
 
-    return result.wasSuccessful()
+            # 检查覆盖率是否达标
+            if total < coverage_target:
+                print(f"\n⚠️  警告: 覆盖率 {total:.1f}% 低于 {coverage_target}% 目标")
+            else:
+                print(f"\n✅ 覆盖率 {total:.1f}% 达到目标 (≥{coverage_target}%)")
+
+        return result.wasSuccessful()
+    finally:
+        # 恢复配置文件
+        if config_backed_up:
+            restore_config()
+            print("📦 配置文件已恢复")
 
 
 def main():

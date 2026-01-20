@@ -912,6 +912,7 @@ class FPBInject:
         elf_path: str = None,
         compile_commands_path: str = None,
         verbose: bool = False,
+        source_ext: str = None,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, int]], str]:
         """
         Compile injection code from source content to binary.
@@ -922,6 +923,7 @@ class FPBInject:
             elf_path: Path to main ELF for symbol resolution
             compile_commands_path: Path to compile_commands.json
             verbose: Enable verbose output
+            source_ext: Source file extension (.c or .cpp), auto-detect if None
 
         Returns:
             Tuple of (binary_data, symbols, error_message)
@@ -950,8 +952,13 @@ class FPBInject:
         cflags = config.get("cflags", [])
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Determine file extension: use provided or default to .c
+            ext = source_ext if source_ext else ".c"
+            if not ext.startswith("."):
+                ext = "." + ext
+
             # Write source to file
-            source_file = os.path.join(tmpdir, "inject.cpp")
+            source_file = os.path.join(tmpdir, f"inject{ext}")
             with open(source_file, "w") as f:
                 f.write(source_content)
 
@@ -1106,6 +1113,7 @@ SECTIONS
         patch_mode: str = "trampoline",
         comp: int = 0,
         progress_callback=None,
+        source_ext: str = None,
     ) -> Tuple[bool, dict]:
         """
         Perform full injection workflow.
@@ -1117,6 +1125,7 @@ SECTIONS
             patch_mode: Patch mode (trampoline, debugmon, direct)
             comp: FPB comparator index
             progress_callback: Progress callback function
+            source_ext: Source file extension (.c or .cpp)
 
         Returns:
             Tuple of (success, result_dict)
@@ -1161,6 +1170,7 @@ SECTIONS
                 0x20000000,
                 elf_path,
                 self.device.compile_commands_path,
+                source_ext=source_ext,
             )
             if error:
                 return False, {"error": error}
@@ -1184,6 +1194,7 @@ SECTIONS
                 base_addr,
                 elf_path,
                 self.device.compile_commands_path,
+                source_ext=source_ext,
             )
             if error:
                 return False, {"error": error}
@@ -1196,6 +1207,7 @@ SECTIONS
                 base_addr,
                 elf_path,
                 self.device.compile_commands_path,
+                source_ext=source_ext,
             )
             if error:
                 return False, {"error": error}

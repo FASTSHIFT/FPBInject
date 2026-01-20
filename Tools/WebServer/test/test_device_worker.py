@@ -224,7 +224,7 @@ class TestSerialOperations(unittest.TestCase):
         # Mock in_waiting to return 10 bytes available
         type(self.mock_ser).in_waiting = PropertyMock(return_value=10)
         self.mock_ser.read.return_value = b"test data\n"
-        
+
         # Also need to mock raw_serial_log for raw log
         self.device.raw_serial_log = []
         self.device.raw_log_next_id = 0
