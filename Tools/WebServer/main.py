@@ -134,9 +134,11 @@ def main():
 
     # Check if port is already in use
     if not check_port_available(args.host, args.port):
-        logger.warning(f"⚠️ 警告: 端口 {args.port} 已被占用！")
-        logger.warning("   可能已有另一个 FPBInject 服务器在运行。")
-        logger.warning("   请先关闭占用该端口的程序，或使用 --port 指定其他端口。")
+        logger.error(f"❌ 错误: 端口 {args.port} 已被占用！")
+        logger.error("   可能已有另一个 FPBInject 服务器在运行。")
+        logger.error("   请先关闭占用该端口的程序，或使用 --port 指定其他端口。")
+        logger.error(f"   例如: ./main.py --port {args.port + 1}")
+        sys.exit(1)
 
     app = create_app()
 
