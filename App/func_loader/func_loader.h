@@ -64,7 +64,7 @@ typedef struct {
  *
  * All fields set by porting layer before fl_init()
  */
-typedef struct {
+typedef struct fl_context_s {
     /* Output callback (required) */
     fl_output_cb_t output_cb;
     void* output_user;

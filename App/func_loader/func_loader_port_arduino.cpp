@@ -79,7 +79,7 @@ static void alloc_init(void) {
 }
 
 static void print_alloc_info(void) {
-    println("Allocator: LIBC malloc/free");
+    printf("Allocator: LIBC malloc/free");
 }
 
 #elif defined(FL_ALLOC_UMM)
@@ -121,12 +121,6 @@ static int serial_write_cb(const uint8_t* buf, size_t len) {
 
 static int serial_available_cb(void) {
     return Serial.available();
-}
-
-/* Output helper for banner */
-static void banner_output(void* user, const char* str) {
-    HardwareSerial* serial = (HardwareSerial*)user;
-    serial->print(str);
 }
 
 static void blink_led() {
@@ -172,10 +166,6 @@ void func_loader_run(void) {
     static char s_line_buf[512];
     fl_stream_init(&s_stream, &s_ctx, &s_serial, s_line_buf, sizeof(s_line_buf));
 
-    /* Print banner */
-    s_ctx.output_cb = banner_output;
-    s_ctx.output_user = &Serial;
-
     Serial.println("=====================================");
     Serial.println("FPBInject Function Loader v1.0");
     Serial.println("=====================================");
@@ -186,10 +176,6 @@ void func_loader_run(void) {
     Serial.printf("Alloc mode: %s\n", ALLOC_MODE_NAME);
     print_alloc_info();
     Serial.println("");
-
-    /* Restore stream output */
-    s_ctx.output_cb = NULL;
-    fl_stream_init(&s_stream, &s_ctx, &s_serial, s_line_buf, sizeof(s_line_buf));
 
     for (;;) {
         fl_stream_process(&s_stream);

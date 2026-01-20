@@ -33,15 +33,8 @@
 extern "C" {
 #endif
 
-#include "func_loader.h"
-
-#ifndef FL_LINE_SIZE
-#define FL_LINE_SIZE 512
-#endif
-
-#ifndef FL_MAX_ARGC
-#define FL_MAX_ARGC 16
-#endif
+#include <stdint.h>
+#include <stddef.h>
 
 /* Serial callbacks */
 typedef int (*fl_serial_read_cb_t)(uint8_t* buf, size_t len);
@@ -54,8 +47,10 @@ typedef struct {
     fl_serial_available_cb_t available_cb;
 } fl_serial_t;
 
+struct fl_context_s;
+
 typedef struct {
-    fl_context_t* ctx;
+    struct fl_context_s* ctx;
     const fl_serial_t* serial;
     char* line_buf;
     size_t line_size;
@@ -65,7 +60,8 @@ typedef struct {
 /**
  * @brief Initialize stream processor
  */
-void fl_stream_init(fl_stream_t* s, fl_context_t* ctx, const fl_serial_t* serial, char* line_buf, size_t line_size);
+void fl_stream_init(fl_stream_t* s, struct fl_context_s* ctx, const fl_serial_t* serial, char* line_buf,
+                    size_t line_size);
 
 /**
  * @brief Process incoming serial data

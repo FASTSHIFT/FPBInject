@@ -27,7 +27,12 @@
  */
 
 #include "func_loader_stream.h"
+#include "func_loader.h"
 #include <string.h>
+
+#ifndef FL_MAX_ARGC
+#define FL_MAX_ARGC 16
+#endif
 
 static void stream_output(void* user, const char* str) {
     fl_stream_t* s = (fl_stream_t*)user;
@@ -36,7 +41,8 @@ static void stream_output(void* user, const char* str) {
     }
 }
 
-void fl_stream_init(fl_stream_t* s, fl_context_t* ctx, const fl_serial_t* serial, char* line_buf, size_t line_size) {
+void fl_stream_init(fl_stream_t* s, struct fl_context_s* ctx, const fl_serial_t* serial, char* line_buf,
+                    size_t line_size) {
     s->ctx = ctx;
     s->serial = serial;
     s->line_buf = line_buf;
