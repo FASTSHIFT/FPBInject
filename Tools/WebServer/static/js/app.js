@@ -19,8 +19,11 @@ let selectedSlot = 0;
 let slotStates = Array(6).fill().map(() => ({ occupied: false, func: '', orig_addr: '', target_addr: '', code_size: 0 }));
 
 // Tabs state
-let editorTabs = [{ id: 'patch_source', title: 'patch_source.c', type: 'c', closable: false }];
-let activeEditorTab = 'patch_source';
+let editorTabs = [];
+let activeEditorTab = null;
+
+// Current patch tab info for manual mode
+let currentPatchTab = null;
 
 // File browser state
 let fileBrowserCallback = null;
@@ -58,7 +61,7 @@ function initSlotSelectListener() {
 // Update UI disabled state based on connection
 function updateDisabledState() {
   const disableWhenDisconnected = [
-    'targetFunc', 'slotSelect', 'patchSource', 'injectBtn'
+    'slotSelect', 'injectBtn'
   ];
   const opacityElements = [
     'editorContainer', 'slotContainer'
@@ -1052,16 +1055,25 @@ async function performInject() {
     return;
   }
 
-  const source = document.getElementById('patchSource').value;
-  const targetFunc = document.getElementById('targetFunc').value;
-
-  if (!source.trim()) {
-    writeToOutput('[ERROR] No patch source code', 'error');
+  // Get source from current patch tab
+  if (!currentPatchTab || !currentPatchTab.funcName) {
+    writeToOutput('[ERROR] No patch tab selected', 'error');
     return;
   }
 
-  if (!targetFunc) {
-    writeToOutput('[ERROR] Please specify target function', 'error');
+  const tabId = currentPatchTab.id;
+  const targetFunc = currentPatchTab.funcName;
+  const textarea = document.getElementById(`editor_${tabId}`);
+  
+  if (!textarea) {
+    writeToOutput('[ERROR] Editor not found', 'error');
+    return;
+  }
+
+  const source = textarea.value;
+
+  if (!source.trim()) {
+    writeToOutput('[ERROR] No patch source code', 'error');
     return;
   }
 
@@ -1073,7 +1085,7 @@ async function performInject() {
   progressText.textContent = 'Starting...';
   progressFill.style.width = '5%';
 
-  writeToOutput(`[INJECT] Starting injection to slot ${selectedSlot}...`, 'system');
+  writeToOutput(`[INJECT] Starting injection of ${targetFunc} to slot ${selectedSlot}...`, 'system');
 
   try {
     // Use streaming API for real-time progress
@@ -1198,7 +1210,7 @@ async function searchSymbols() {
 
     if (data.symbols && data.symbols.length > 0) {
       list.innerHTML = data.symbols.map(sym => `
-        <div class="symbol-item" onclick="selectSymbol('${sym.name}')" ondblclick="openDisassembly('${sym.name}', '${sym.addr}')">
+        <div class="symbol-item" onclick="openDisassembly('${sym.name}', '${sym.addr}')" ondblclick="openManualPatchTab('${sym.name}')">
           <i class="codicon codicon-symbol-method symbol-icon"></i>
           <span class="symbol-name">${sym.name}</span>
           <span class="symbol-addr">${sym.addr}</span>
@@ -1215,8 +1227,117 @@ async function searchSymbols() {
 }
 
 function selectSymbol(name) {
-  document.getElementById('targetFunc').value = name;
   writeToOutput(`[INFO] Selected symbol: ${name}`, 'info');
+}
+
+// Open a manual patch tab for the given function
+async function openManualPatchTab(funcName) {
+  const tabId = `patch_${funcName}`;
+  const tabTitle = `patch_${funcName}.c`;
+
+  // Check if tab already exists
+  if (editorTabs.find(t => t.id === tabId)) {
+    switchEditorTab(tabId);
+    return;
+  }
+
+  writeToOutput(`[PATCH] Creating manual patch tab for ${funcName}...`, 'system');
+
+  // Fetch function signature and generate template
+  let template = '';
+  try {
+    const res = await fetch(`/api/symbols/signature?func=${encodeURIComponent(funcName)}`);
+    const data = await res.json();
+
+    let signature = null;
+    let sourceFile = null;
+    let returnType = 'void';
+    let params = '';
+
+    if (data.success && data.signature) {
+      signature = data.signature;
+      sourceFile = data.source_file;
+      const parsed = parseSignature(signature, funcName);
+      returnType = parsed.returnType;
+      params = parsed.params;
+    }
+
+    const injectFuncName = `inject_${funcName}`;
+    const paramNames = extractParamNames(params);
+    const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
+
+    template = `/*
+ * Manual patch for: ${funcName}
+ * Slot: ${selectedSlot}
+${sourceFile ? ` * Source: ${sourceFile}` : ''}
+ */
+
+#include <stdint.h>
+#include <stdio.h>
+
+${signature ? `// Original function signature:\n// ${signature}` : '// Original function prototype (adjust as needed)\n// extern ' + returnType + ' ' + funcName + '(' + (params || 'void') + ');'}
+
+// Inject function - will replace ${funcName}
+__attribute__((used, section(".text.inject")))
+${returnType} ${injectFuncName}(${params || 'void'}) {
+    printf("Patched ${funcName} executed!\\n");
+
+    // Your patch code here
+
+${returnType !== 'void' ? `    // TODO: return appropriate value\n    return 0;` : `    // Call original if needed:\n    // ${funcName}_original(${callParams});`}
+}
+`;
+  } catch (e) {
+    template = `/*\n * Manual patch for: ${funcName}\n */\n\n#include <stdint.h>\n\nvoid inject_${funcName}(void) {\n    // Your patch code here\n}\n`;
+  }
+
+  // Create new tab
+  editorTabs.push({
+    id: tabId,
+    title: tabTitle,
+    type: 'c',
+    closable: true,
+    funcName: funcName,
+    content: template
+  });
+
+  // Add tab button
+  const tabsHeader = document.getElementById('editorTabsHeader');
+  const tabDiv = document.createElement('div');
+  tabDiv.className = 'tab';
+  tabDiv.setAttribute('data-tab', tabId);
+  tabDiv.innerHTML = `
+    <i class="codicon codicon-file-code tab-icon" style="color: #e37933;"></i>
+    <span>${tabTitle}</span>
+    <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
+  `;
+  tabDiv.onclick = () => switchEditorTab(tabId);
+  tabsHeader.appendChild(tabDiv);
+
+  // Add tab content with CodeMirror editor
+  const tabsContent = document.querySelector('.editor-tabs-content');
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'tab-content';
+  contentDiv.id = `tabContent_${tabId}`;
+
+  contentDiv.innerHTML = `
+    <div class="editor-main" style="height: 100%;">
+      <textarea id="editor_${tabId}" class="code-editor" spellcheck="false">${escapeHtml(template)}</textarea>
+    </div>
+  `;
+  tabsContent.appendChild(contentDiv);
+
+  // Apply syntax highlighting using highlight.js for display
+  const textarea = document.getElementById(`editor_${tabId}`);
+  if (textarea) {
+    // Store reference to current tab
+    textarea.dataset.funcName = funcName;
+    textarea.dataset.tabId = tabId;
+  }
+
+  switchEditorTab(tabId);
+  currentPatchTab = { id: tabId, funcName: funcName };
+  writeToOutput(`[SUCCESS] Created patch tab: ${tabTitle}`, 'success');
 }
 
 async function openDisassembly(funcName, addr) {
@@ -1305,18 +1426,144 @@ function switchEditorTab(tabId) {
     tab.classList.toggle('active', tab.getAttribute('data-tab') === tabId);
   });
 
-  // Update tab content
+  // Update tab content - handle empty state
   document.querySelectorAll('.tab-content').forEach(content => {
-    content.classList.toggle('active', content.id === `tabContent_${tabId}`);
+    if (content.id === 'tabContent_empty') {
+      content.classList.toggle('active', editorTabs.length === 0);
+    } else {
+      content.classList.toggle('active', content.id === `tabContent_${tabId}`);
+    }
   });
   
   // Show/hide manual inject controls based on tab type
-  // Only show for patch_source (manual edit), hide for preview tabs
+  // Show for patch_xxx.c tabs (manual edit mode), hide for asm tabs
   const editorToolbar = document.querySelector('.editor-toolbar');
   if (editorToolbar) {
-    const isManualTab = tabId === 'patch_source';
-    editorToolbar.style.display = isManualTab ? 'flex' : 'none';
+    const tabInfo = editorTabs.find(t => t.id === tabId);
+    const isPatchTab = tabInfo && tabInfo.type === 'c';
+    editorToolbar.style.display = isPatchTab ? 'flex' : 'none';
+    
+    // Update currentPatchTab if switching to a patch tab
+    if (isPatchTab && tabInfo.funcName) {
+      currentPatchTab = { id: tabId, funcName: tabInfo.funcName };
+    }
   }
+}
+
+// Generate patch for current tab
+async function generatePatchForCurrentTab() {
+  if (!currentPatchTab || !currentPatchTab.funcName) {
+    writeToOutput('[ERROR] No patch tab selected', 'error');
+    return;
+  }
+
+  const funcName = currentPatchTab.funcName;
+  const tabId = currentPatchTab.id;
+  const textarea = document.getElementById(`editor_${tabId}`);
+  
+  if (!textarea) {
+    writeToOutput('[ERROR] Editor not found', 'error');
+    return;
+  }
+
+  writeToOutput(`[GENERATE] Regenerating patch template for ${funcName}...`, 'system');
+
+  // Fetch function signature and regenerate template
+  try {
+    const res = await fetch(`/api/symbols/signature?func=${encodeURIComponent(funcName)}`);
+    const data = await res.json();
+
+    let signature = null;
+    let sourceFile = null;
+    let returnType = 'void';
+    let params = '';
+
+    if (data.success && data.signature) {
+      signature = data.signature;
+      sourceFile = data.source_file;
+      const parsed = parseSignature(signature, funcName);
+      returnType = parsed.returnType;
+      params = parsed.params;
+    }
+
+    const injectFuncName = `inject_${funcName}`;
+    const paramNames = extractParamNames(params);
+    const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
+
+    const template = `/*
+ * Manual patch for: ${funcName}
+ * Slot: ${selectedSlot}
+${sourceFile ? ` * Source: ${sourceFile}` : ''}
+ */
+
+#include <stdint.h>
+#include <syslog.h>
+
+${signature ? `// Original function signature:\\n// ${signature}` : '// Original function prototype (adjust as needed)\\n// extern ' + returnType + ' ' + funcName + '(' + (params || 'void') + ');'}
+
+// Inject function - will replace ${funcName}
+__attribute__((used, section(".text.inject")))
+${returnType} ${injectFuncName}(${params || 'void'}) {
+    syslog(LOG_INFO, "Patched ${funcName} executed!\\n");
+
+    // Your patch code here
+
+${returnType !== 'void' ? `    // TODO: return appropriate value\\n    return 0;` : `    // Call original if needed:\\n    // ${funcName}_original(${callParams});`}
+}
+`;
+
+    textarea.value = template;
+    writeToOutput(`[SUCCESS] Patch template regenerated`, 'success');
+  } catch (e) {
+    writeToOutput(`[ERROR] Failed to regenerate template: ${e}`, 'error');
+  }
+}
+
+// Save patch file
+async function savePatchFile() {
+  if (!currentPatchTab || !currentPatchTab.funcName) {
+    writeToOutput('[ERROR] No patch tab selected', 'error');
+    return;
+  }
+
+  const funcName = currentPatchTab.funcName;
+  const tabId = currentPatchTab.id;
+  const textarea = document.getElementById(`editor_${tabId}`);
+  
+  if (!textarea) {
+    writeToOutput('[ERROR] Editor not found', 'error');
+    return;
+  }
+
+  const content = textarea.value;
+  const fileName = `patch_${funcName}.c`;
+
+  // Open file browser to select save location
+  fileBrowserCallback = async (selectedPath) => {
+    if (!selectedPath) return;
+
+    const fullPath = selectedPath.endsWith('/') ? selectedPath + fileName : selectedPath + '/' + fileName;
+
+    try {
+      const res = await fetch('/api/file/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: fullPath, content: content })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        writeToOutput(`[SUCCESS] Saved patch to: ${fullPath}`, 'success');
+      } else {
+        writeToOutput(`[ERROR] Failed to save: ${data.error}`, 'error');
+      }
+    } catch (e) {
+      writeToOutput(`[ERROR] Failed to save file: ${e}`, 'error');
+    }
+  };
+  fileBrowserFilter = '';
+  fileBrowserMode = 'dir';
+  openFileBrowser(HOME_PATH);
 }
 
 function closeTab(tabId, event) {
@@ -1332,9 +1579,21 @@ function closeTab(tabId, event) {
   document.querySelector(`.tab[data-tab="${tabId}"]`)?.remove();
   document.getElementById(`tabContent_${tabId}`)?.remove();
 
-  // Switch to first tab if current was closed
-  if (activeEditorTab === tabId && editorTabs.length > 0) {
-    switchEditorTab(editorTabs[0].id);
+  // Clear currentPatchTab if it was the closed tab
+  if (currentPatchTab && currentPatchTab.id === tabId) {
+    currentPatchTab = null;
+  }
+
+  // Switch to first tab if current was closed, or show empty state
+  if (activeEditorTab === tabId) {
+    if (editorTabs.length > 0) {
+      switchEditorTab(editorTabs[0].id);
+    } else {
+      // Show empty state
+      activeEditorTab = null;
+      document.getElementById('tabContent_empty')?.classList.add('active');
+      document.querySelector('.editor-toolbar').style.display = 'none';
+    }
   }
 }
 

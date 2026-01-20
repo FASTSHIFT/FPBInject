@@ -35,7 +35,7 @@
       </div>
       <div class="author-link">
         <i class="codicon codicon-github"></i>
-        <a href="https://github.com/FASTSHIFT" target="_blank" style="color: inherit; text-decoration: none;">VIFEX</a>
+        <a href="https://github.com/FASTSHIFT" target="_blank" style="color: inherit; text-decoration: none;">FASTSHIFT (VIFEX)</a>
       </div>
     </div>
   </div>
@@ -280,18 +280,10 @@
   <!-- MAIN EDITOR AREA -->
   <div class="editor-container" id="editorContainer" style="position: relative;">
     <div class="editor-tabs-header" id="editorTabsHeader">
-      <div class="tab active" data-tab="patch_source" onclick="switchEditorTab('patch_source')">
-        <i class="codicon codicon-file-code tab-icon" style="color: #e37933;"></i>
-        <span>patch_source.c</span>
-      </div>
+      <!-- Tabs will be dynamically created -->
     </div>
 
-    <div class="editor-toolbar">
-      <div class="flex-col" style="gap: 2px;">
-        <label style="font-size: 10px; opacity: 0.7;">TARGET FUNCTION</label>
-        <input type="text" id="targetFunc" class="vscode-input" style="width: 200px;" placeholder="main" />
-      </div>
-
+    <div class="editor-toolbar" style="display: none;">
       <div class="flex-col" style="gap: 2px;">
         <label style="font-size: 10px; opacity: 0.7;">SLOT</label>
         <select id="slotSelect" class="vscode-select" style="width: 80px;" onchange="onSlotSelectChange()">
@@ -306,8 +298,12 @@
 
       <div class="spacer"></div>
 
-      <button class="vscode-btn secondary" onclick="generatePatch()">
+      <button class="vscode-btn secondary" onclick="generatePatchForCurrentTab()">
         <i class="codicon codicon-file-add" style="margin-right: 4px;"></i> Generate
+      </button>
+
+      <button class="vscode-btn secondary" onclick="savePatchFile()">
+        <i class="codicon codicon-save" style="margin-right: 4px;"></i> Save
       </button>
 
       <div style="width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 4px;"></div>
@@ -318,10 +314,13 @@
     </div>
 
     <div class="editor-tabs-content">
-      <!-- Patch Source Tab -->
-      <div class="tab-content active" id="tabContent_patch_source">
-        <div class="editor-main">
-          <textarea id="patchSource" class="code-editor" spellcheck="false"></textarea>
+      <!-- Empty state when no tabs are open -->
+      <div class="tab-content active" id="tabContent_empty">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--vscode-descriptionForeground);">
+          <i class="codicon codicon-code" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+          <div style="font-size: 14px; margin-bottom: 8px;">No file open</div>
+          <div style="font-size: 12px; opacity: 0.7;">Single-click a symbol to view disassembly</div>
+          <div style="font-size: 12px; opacity: 0.7;">Double-click a symbol to create a patch</div>
         </div>
       </div>
     </div>

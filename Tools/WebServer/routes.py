@@ -708,7 +708,9 @@ def register_routes(app):
 
                     filepath = os.path.join(root, filename)
                     try:
-                        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                        with open(
+                            filepath, "r", encoding="utf-8", errors="ignore"
+                        ) as f:
                             content = f.read()
 
                         # Quick check if function name exists in file
@@ -1282,6 +1284,72 @@ Base Address: 0x{base_addr:08X}
                 "items": items,
             }
         )
+
+    @app.route("/api/file/write", methods=["POST"])
+    def api_file_write():
+        """Write content to a file."""
+        data = request.json or {}
+        path = data.get("path", "")
+        content = data.get("content", "")
+
+        if not path:
+            return jsonify({"success": False, "error": "Path not specified"})
+
+        # Expand ~ to home directory
+        if path.startswith("~"):
+            path = os.path.expanduser(path)
+
+        # Security check: prevent writing outside of allowed directories
+        # Allow writing to watch directories or common development paths
+        allowed = False
+        device = state.device
+        watch_dirs = device.watch_dirs if device.watch_dirs else []
+
+        # Also allow home directory and common project paths
+        home_dir = os.path.expanduser("~")
+        allowed_paths = watch_dirs + [home_dir]
+
+        for allowed_path in allowed_paths:
+            try:
+                if os.path.commonpath([path, allowed_path]) == allowed_path:
+                    allowed = True
+                    break
+            except ValueError:
+                continue
+
+        if not allowed:
+            # Allow if path is under any parent directory of watch dirs
+            for watch_dir in watch_dirs:
+                parent = os.path.dirname(watch_dir)
+                while parent and parent != "/":
+                    if path.startswith(parent):
+                        allowed = True
+                        break
+                    parent = os.path.dirname(parent)
+                if allowed:
+                    break
+
+        # For safety, always allow if under home directory
+        if path.startswith(home_dir):
+            allowed = True
+
+        if not allowed:
+            return jsonify(
+                {"success": False, "error": "Path not in allowed directories"}
+            )
+
+        try:
+            # Create directory if it doesn't exist
+            dir_path = os.path.dirname(path)
+            if dir_path and not os.path.exists(dir_path):
+                os.makedirs(dir_path)
+
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            return jsonify({"success": True, "path": path})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
 
 
 # ============== File Watcher Helpers ==============

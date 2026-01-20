@@ -679,6 +679,8 @@ body.resizing-panel .sash {
 
 .tab-content.active {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .editor-main {
