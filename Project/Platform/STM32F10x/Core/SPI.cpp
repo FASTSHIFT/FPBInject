@@ -59,6 +59,8 @@ void SPIClass::SPI_Settings(SPI_TypeDef* SPIx,
         SPI_CPOL_x = SPI_CPOL_High;
         SPI_CPHA_x = SPI_CPHA_2Edge;
         break;
+    default:
+        return;
     }
 
     SPI_InitStructure.SPI_Direction = SPI_Direction_2Lines_FullDuplex; // ����SPI�������˫�������ģʽ
@@ -250,6 +252,8 @@ void SPIClass::setDataMode(uint8_t dataMode)
         SPI_CPOL_x = SPI_CPOL_High;
         SPI_CPHA_x = SPI_CPHA_2Edge;
         break;
+    default:
+        return;
     }
 
     SPI_InitStructure.SPI_CPOL = SPI_CPOL_x;
