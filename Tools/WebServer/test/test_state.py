@@ -40,9 +40,6 @@ class TestDeviceState(unittest.TestCase):
         self.assertFalse(state.auto_connect)
         self.assertFalse(state.auto_compile)
 
-        # NuttX 模式
-        self.assertFalse(state.nuttx_mode)
-
         # 注入状态
         self.assertIsNone(state.last_inject_target)
         self.assertIsNone(state.last_inject_func)
@@ -61,7 +58,6 @@ class TestDeviceState(unittest.TestCase):
         state.patch_mode = "debugmon"
         state.baudrate = 921600
         state.watch_dirs = ["/dir1", "/dir2"]
-        state.nuttx_mode = True
 
         d = state.to_dict()
 
@@ -75,7 +71,6 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(d["patch_mode"], "debugmon")
         self.assertEqual(d["baudrate"], 921600)
         self.assertEqual(d["watch_dirs"], ["/dir1", "/dir2"])
-        self.assertTrue(d["nuttx_mode"])
 
     def test_from_dict(self):
         """测试从字典导入"""
@@ -93,7 +88,6 @@ class TestDeviceState(unittest.TestCase):
             "auto_connect": True,
             "auto_compile": True,
             "patch_source_path": "/src/patch.c",
-            "nuttx_mode": True,
         }
 
         state.from_dict(data)
@@ -106,7 +100,6 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.chunk_size, 256)
         self.assertTrue(state.auto_connect)
         self.assertTrue(state.auto_compile)
-        self.assertTrue(state.nuttx_mode)
 
     def test_from_dict_partial(self):
         """测试部分导入"""
@@ -252,7 +245,6 @@ class TestConfigPersistence(unittest.TestCase):
             app_state.device.elf_path = "/test/elf.elf"
             app_state.device.toolchain_path = "/test/toolchain"
             app_state.device.patch_mode = "debugmon"
-            app_state.device.nuttx_mode = True
 
             # 保存
             app_state.save_config()
@@ -267,7 +259,6 @@ class TestConfigPersistence(unittest.TestCase):
             self.assertEqual(config["elf_path"], "/test/elf.elf")
             self.assertEqual(config["toolchain_path"], "/test/toolchain")
             self.assertEqual(config["patch_mode"], "debugmon")
-            self.assertTrue(config["nuttx_mode"])
             self.assertEqual(config["version"], CONFIG_VERSION)
 
             # 创建新状态并加载
@@ -275,7 +266,6 @@ class TestConfigPersistence(unittest.TestCase):
 
             self.assertEqual(new_state.device.elf_path, "/test/elf.elf")
             self.assertEqual(new_state.device.patch_mode, "debugmon")
-            self.assertTrue(new_state.device.nuttx_mode)
 
         finally:
             state_module.CONFIG_FILE = original_config_file

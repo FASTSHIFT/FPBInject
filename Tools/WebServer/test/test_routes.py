@@ -444,13 +444,33 @@ class TestFPBUnpatchAPI(TestRoutesBase):
 
         response = self.client.post(
             "/api/fpb/unpatch",
-            data=json.dumps({"comp": 0}),
+            data=json.dumps({"all": True}),
             content_type="application/json",
         )
         data = json.loads(response.data)
 
         self.assertTrue(data["success"])
         self.assertFalse(state.device.inject_active)
+
+    @patch("routes.get_fpb_inject")
+    def test_unpatch_single_slot(self, mock_get_fpb):
+        """测试取消单个slot补丁"""
+        mock_fpb = Mock()
+        mock_fpb.unpatch.return_value = (True, "OK")
+        mock_get_fpb.return_value = mock_fpb
+
+        state.device.inject_active = True
+
+        response = self.client.post(
+            "/api/fpb/unpatch",
+            data=json.dumps({"comp": 0}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        # Single slot unpatch should not clear inject_active
+        self.assertTrue(state.device.inject_active)
 
     @patch("routes.get_fpb_inject")
     def test_unpatch_failure(self, mock_get_fpb):

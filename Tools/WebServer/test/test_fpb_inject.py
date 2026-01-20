@@ -255,19 +255,11 @@ fl>"""
 
         self.assertIsNone(addr)
 
-    def test_free_not_connected(self):
-        """测试未连接时 free"""
+    def test_unpatch_all_not_connected(self):
+        """测试未连接时 unpatch all"""
         self.device.ser = None
 
-        success, msg = self.fpb.free()
-
-        self.assertFalse(success)
-
-    def test_clear_not_connected(self):
-        """测试未连接时 clear"""
-        self.device.ser = None
-
-        success, msg = self.fpb.clear()
+        success, msg = self.fpb.unpatch(all=True)
 
         self.assertFalse(success)
 
@@ -605,10 +597,16 @@ class TestFPBInjectCoverage(unittest.TestCase):
         try:
             with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
                 self.fpb, "info"
-            ) as mock_info:
+            ) as mock_info, patch.object(
+                self.fpb, "find_slot_for_target"
+            ) as mock_find_slot:
 
                 mock_syms.return_value = {"target_func": 0x08000000}
                 mock_info.return_value = ({"base": 0x20000000}, "")
+                mock_find_slot.return_value = (
+                    0,
+                    False,
+                )  # Return slot 0, no unpatch needed
 
                 mock_compile.return_value = (None, None, "Compile Error")
 
@@ -621,11 +619,11 @@ class TestFPBInjectCoverage(unittest.TestCase):
                 os.remove(self.device.elf_path)
 
     @patch("fpb_inject.FPBInject.compile_inject")
-    @patch("fpb_inject.FPBInject.clear")
+    @patch("fpb_inject.FPBInject.unpatch")
     @patch("fpb_inject.FPBInject.upload")
     @patch("fpb_inject.FPBInject.tpatch")
     def test_inject_success_flow(
-        self, mock_tpatch, mock_upload, mock_clear, mock_compile
+        self, mock_tpatch, mock_upload, mock_unpatch, mock_compile
     ):
         """测试注入成功流程"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -634,10 +632,16 @@ class TestFPBInjectCoverage(unittest.TestCase):
         try:
             with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
                 self.fpb, "info"
-            ) as mock_info:
+            ) as mock_info, patch.object(
+                self.fpb, "find_slot_for_target"
+            ) as mock_find_slot:
 
                 mock_syms.return_value = {"target_func": 0x08000000}
                 mock_info.return_value = ({"base": 0x20000000}, "")
+                mock_find_slot.return_value = (
+                    0,
+                    False,
+                )  # Return slot 0, no unpatch needed
 
                 # compile_inject returns (data, symbols, error)
                 mock_compile.return_value = (
@@ -657,7 +661,6 @@ class TestFPBInjectCoverage(unittest.TestCase):
                 )
 
                 self.assertTrue(success)
-                mock_clear.assert_called()
                 mock_upload.assert_called()
                 mock_tpatch.assert_called()
         finally:
@@ -674,16 +677,23 @@ class TestFPBInjectCoverage(unittest.TestCase):
             with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
                 self.fpb, "info"
             ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
-                self.fpb, "clear"
-            ), patch.object(
+                self.fpb, "find_slot_for_target"
+            ) as mock_find_slot, patch.object(
                 self.fpb, "upload"
             ) as mock_upload, patch.object(
                 self.fpb, "tpatch"
             ) as mock_tpatch:
 
                 mock_syms.return_value = {"target_func": 0x08000000}
-                # info returns empty/zero base/size to trigger dynamic alloc
-                mock_info.return_value = ({"base": 0, "size": 0}, "")
+                # info returns is_dynamic=True to trigger dynamic alloc
+                mock_info.return_value = (
+                    {"base": 0, "size": 0, "is_dynamic": True},
+                    "",
+                )
+                mock_find_slot.return_value = (
+                    0,
+                    False,
+                )  # Return slot 0, no unpatch needed
 
                 mock_alloc.return_value = (0x20001000, "")
                 mock_upload.return_value = (True, {})
@@ -772,19 +782,11 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         self.assertIsNone(addr)
 
-    def test_free_success(self):
-        """测试 free 成功"""
-        self.fpb._send_cmd = Mock(return_value="[OK] Freed")
-
-        success, msg = self.fpb.free()
-
-        self.assertTrue(success)
-
-    def test_clear_success(self):
-        """测试 clear 成功"""
+    def test_unpatch_all_success(self):
+        """测试 unpatch all 成功"""
         self.fpb._send_cmd = Mock(return_value="[OK] Cleared")
 
-        success, msg = self.fpb.clear()
+        success, msg = self.fpb.unpatch(all=True)
 
         self.assertTrue(success)
 
