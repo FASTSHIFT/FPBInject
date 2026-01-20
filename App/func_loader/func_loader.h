@@ -37,11 +37,26 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
+/* Maximum slot count */
+#ifndef FL_MAX_SLOTS
+#define FL_MAX_SLOTS 6
+#endif
+
 /* Callback types */
 typedef void (*fl_output_cb_t)(void* user, const char* str);
 typedef void* (*fl_malloc_cb_t)(size_t size);
 typedef void (*fl_free_cb_t)(void* ptr);
 typedef void (*fl_flush_dcache_cb_t)(uintptr_t start, uintptr_t end);
+
+/**
+ * @brief Slot state for tracking injection info
+ */
+typedef struct {
+    bool active;          /* Slot is in use */
+    uint32_t orig_addr;   /* Original function address */
+    uint32_t target_addr; /* Injected code address */
+    uint32_t code_size;   /* Injected code size */
+} fl_slot_state_t;
 
 /**
  * @brief Function loader context
@@ -69,6 +84,9 @@ typedef struct {
     uintptr_t dyn_base;
     size_t dyn_size;
     size_t dyn_used;
+
+    /* Slot tracking */
+    fl_slot_state_t slots[FL_MAX_SLOTS];
 } fl_context_t;
 
 /**

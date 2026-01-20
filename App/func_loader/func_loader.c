@@ -245,6 +245,7 @@ void fl_init(fl_context_t* ctx) {
     ctx->dyn_base = 0;
     ctx->dyn_size = 0;
     ctx->dyn_used = 0;
+    memset(ctx->slots, 0, sizeof(ctx->slots));
     fpb_init();
 }
 
@@ -279,13 +280,35 @@ static void cmd_ping(fl_context_t* ctx) {
 
 static void cmd_info(fl_context_t* ctx) {
     const char* mode = ctx->malloc_cb ? "dynamic" : "static";
+    const fpb_state_t* fpb = fpb_get_state();
+    uint32_t num_comps = fpb->num_code_comp;
+    uint32_t active_count = 0;
+
+    /* Count active slots */
+    for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS; i++) {
+        if (ctx->slots[i].active) {
+            active_count++;
+        }
+    }
 
     fl_print(ctx, "FPBInject v1.0");
     fl_print(ctx, "Alloc: %s", mode);
     fl_print(ctx, "Base: 0x%08lX", (unsigned long)fl_get_base(ctx));
     fl_print(ctx, "Size: %u", (unsigned)fl_get_size(ctx));
     fl_print(ctx, "Used: %u", (unsigned)*get_used_ptr(ctx));
-    fl_print(ctx, "FPB: %u comps", (unsigned)fpb_get_state()->num_code_comp);
+    fl_print(ctx, "Slots: %u/%u", (unsigned)active_count, (unsigned)num_comps);
+
+    /* Print each slot status */
+    for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS; i++) {
+        fl_slot_state_t* slot = &ctx->slots[i];
+        if (slot->active) {
+            fl_print(ctx, "Slot[%u]: 0x%08lX -> 0x%08lX, %u bytes", (unsigned)i, (unsigned long)slot->orig_addr,
+                     (unsigned long)slot->target_addr, (unsigned)slot->code_size);
+        } else {
+            fl_print(ctx, "Slot[%u]: empty", (unsigned)i);
+        }
+    }
+
     fl_response(ctx, true, "Info complete");
 }
 
@@ -312,20 +335,6 @@ static void cmd_alloc(fl_context_t* ctx, size_t size) {
     ctx->dyn_size = size;
     ctx->dyn_used = 0;
     fl_response(ctx, true, "Allocated %u at 0x%08lX", (unsigned)size, (unsigned long)p);
-}
-
-static void cmd_free(fl_context_t* ctx) {
-    if (ctx->dyn_base == 0) {
-        fl_response(ctx, false, "Nothing allocated");
-        return;
-    }
-    if (ctx->free_cb) {
-        ctx->free_cb((void*)ctx->dyn_base);
-    }
-    ctx->dyn_base = 0;
-    ctx->dyn_size = 0;
-    ctx->dyn_used = 0;
-    fl_response(ctx, true, "Freed");
 }
 
 static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, uintptr_t crc, bool verify) {
@@ -386,12 +395,6 @@ static void cmd_upload(fl_context_t* ctx, uint32_t off, const char* data_str, ui
     }
 
     fl_response(ctx, true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)off);
-}
-
-static void cmd_clear(fl_context_t* ctx) {
-    memset(get_buf(ctx), 0, get_buf_size(ctx));
-    *get_used_ptr(ctx) = 0;
-    fl_response(ctx, true, "Cleared");
 }
 
 static int parse_args(const char* str, char* buf, size_t sz, char** av, int max) {
@@ -479,7 +482,7 @@ static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* hex, uintpt
 }
 
 static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
-    if (comp >= fpb_get_state()->num_code_comp) {
+    if (comp >= fpb_get_state()->num_code_comp || comp >= FL_MAX_SLOTS) {
         fl_response(ctx, false, "Invalid comp %lu", (unsigned long)comp);
         return;
     }
@@ -490,13 +493,19 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
         return;
     }
 
+    /* Record slot state */
+    ctx->slots[comp].active = true;
+    ctx->slots[comp].orig_addr = orig;
+    ctx->slots[comp].target_addr = target;
+    ctx->slots[comp].code_size = *get_used_ptr(ctx);
+
     fl_response(ctx, true, "Patch %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
                 (unsigned long)target);
 }
 
 static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
 #ifndef FPB_NO_TRAMPOLINE
-    if (comp >= FPB_TRAMPOLINE_COUNT) {
+    if (comp >= FPB_TRAMPOLINE_COUNT || comp >= FL_MAX_SLOTS) {
         fl_response(ctx, false, "Invalid comp %lu (max %d)", (unsigned long)comp, FPB_TRAMPOLINE_COUNT - 1);
         return;
     }
@@ -515,6 +524,12 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
         return;
     }
 
+    /* Record slot state */
+    ctx->slots[comp].active = true;
+    ctx->slots[comp].orig_addr = orig;
+    ctx->slots[comp].target_addr = target;
+    ctx->slots[comp].code_size = *get_used_ptr(ctx);
+
     fl_response(ctx, true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX", (unsigned long)comp,
                 (unsigned long)orig, (unsigned long)tramp_addr, (unsigned long)target);
 #else
@@ -527,7 +542,7 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
 
 static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
 #ifndef FPB_NO_DEBUGMON
-    if (comp >= FPB_DEBUGMON_MAX_REDIRECTS) {
+    if (comp >= FPB_DEBUGMON_MAX_REDIRECTS || comp >= FL_MAX_SLOTS) {
         fl_response(ctx, false, "Invalid comp %lu (max %d)", (unsigned long)comp, FPB_DEBUGMON_MAX_REDIRECTS - 1);
         return;
     }
@@ -547,6 +562,12 @@ static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
         return;
     }
 
+    /* Record slot state */
+    ctx->slots[comp].active = true;
+    ctx->slots[comp].orig_addr = orig;
+    ctx->slots[comp].target_addr = target;
+    ctx->slots[comp].code_size = *get_used_ptr(ctx);
+
     fl_response(ctx, true, "DebugMon %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
                 (unsigned long)target);
 #else
@@ -557,20 +578,53 @@ static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
 #endif
 }
 
-static void cmd_unpatch(fl_context_t* ctx, uint32_t comp) {
-    if (comp >= fpb_get_state()->num_code_comp) {
+static void cmd_unpatch(fl_context_t* ctx, uint32_t comp, bool all) {
+    uint32_t num_comps = fpb_get_state()->num_code_comp;
+    uint32_t start = all ? 0 : comp;
+    uint32_t end = all ? num_comps : comp + 1;
+
+    if (!all && (comp >= num_comps || comp >= FL_MAX_SLOTS)) {
         fl_response(ctx, false, "Invalid comp %lu", (unsigned long)comp);
         return;
     }
 
+    uint32_t cleared = 0;
+    for (uint32_t i = start; i < end && i < FL_MAX_SLOTS; i++) {
+        if (ctx->slots[i].active || all) {
 #ifndef FPB_NO_TRAMPOLINE
-    fpb_trampoline_clear_target(comp);
+            fpb_trampoline_clear_target(i);
 #endif
 #ifndef FPB_NO_DEBUGMON
-    fpb_debugmon_clear_redirect(comp);
+            fpb_debugmon_clear_redirect(i);
 #endif
-    fpb_clear_patch(comp);
-    fl_response(ctx, true, "Cleared %lu", (unsigned long)comp);
+            fpb_clear_patch(i);
+
+            /* Clear slot state */
+            ctx->slots[i].active = false;
+            ctx->slots[i].orig_addr = 0;
+            ctx->slots[i].target_addr = 0;
+            ctx->slots[i].code_size = 0;
+            cleared++;
+        }
+    }
+
+    /* If unpatch all, also clear/free memory */
+    if (all) {
+        /* Clear buffer */
+        memset(get_buf(ctx), 0, get_buf_size(ctx));
+        *get_used_ptr(ctx) = 0;
+
+        /* Free dynamic memory if allocated */
+        if (ctx->dyn_base != 0 && ctx->free_cb) {
+            ctx->free_cb((void*)ctx->dyn_base);
+            ctx->dyn_base = 0;
+            ctx->dyn_size = 0;
+            ctx->dyn_used = 0;
+        }
+        fl_response(ctx, true, "Cleared all %u slots, memory freed", (unsigned)cleared);
+    } else {
+        fl_response(ctx, true, "Cleared slot %lu", (unsigned long)comp);
+    }
 }
 
 int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
@@ -581,27 +635,29 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     const char* data = NULL;
     const char* args = NULL;
     uintptr_t addr = 0;
-    uintptr_t crc = 0xFFFFFFFF; /* Invalid CRC marker */
-    uintptr_t len = 64;
-    uintptr_t size = 0;
-    uintptr_t comp = 0;
     uintptr_t orig = 0;
     uintptr_t target = 0;
-    uintptr_t entry = 0;
+    int crc = -1; /* -1 = no CRC provided */
+    int len = 64;
+    int size = 0;
+    int comp = 0;
+    int entry = 0;
+    int all = 0;
 
     struct argparse_option opts[] = {
         OPT_HELP(),
         OPT_STRING('c', "cmd", &cmd, "Command", NULL, 0, 0),
-        OPT_POINTER(0, "size", &size, "Alloc size", NULL, 0, 0),
+        OPT_INTEGER(0, "size", &size, "Alloc size", NULL, 0, 0),
         OPT_POINTER('a', "addr", &addr, "Address/offset (hex)", NULL, 0, 0),
         OPT_STRING('d', "data", &data, "Hex data", NULL, 0, 0),
-        OPT_POINTER(0, "crc", &crc, "CRC-16 (hex)", NULL, 0, 0),
-        OPT_POINTER('e', "entry", &entry, "Entry offset", NULL, 0, 0),
+        OPT_INTEGER(0, "crc", &crc, "CRC-16 (hex)", NULL, 0, 0),
+        OPT_INTEGER('e', "entry", &entry, "Entry offset", NULL, 0, 0),
         OPT_STRING(0, "args", &args, "Arguments", NULL, 0, 0),
-        OPT_POINTER('l', "len", &len, "Read length", NULL, 0, 0),
-        OPT_POINTER(0, "comp", &comp, "Comparator ID", NULL, 0, 0),
+        OPT_INTEGER('l', "len", &len, "Read length", NULL, 0, 0),
+        OPT_INTEGER(0, "comp", &comp, "Comparator ID", NULL, 0, 0),
         OPT_POINTER(0, "orig", &orig, "Original addr", NULL, 0, 0),
         OPT_POINTER(0, "target", &target, "Target addr", NULL, 0, 0),
+        OPT_INTEGER(0, "all", &all, "Clear all (1=yes)", NULL, 0, 0),
         OPT_END(),
     };
 
@@ -630,16 +686,12 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             return -1;
         }
         cmd_alloc(ctx, size);
-    } else if (strcmp(cmd, "free") == 0) {
-        cmd_free(ctx);
     } else if (strcmp(cmd, "upload") == 0) {
         if (!data) {
             fl_response(ctx, false, "Missing --data");
             return -1;
         }
-        cmd_upload(ctx, addr, data, crc, crc != 0xFFFFFFFF);
-    } else if (strcmp(cmd, "clear") == 0) {
-        cmd_clear(ctx);
+        cmd_upload(ctx, addr, data, crc, crc >= 0);
     } else if (strcmp(cmd, "exec") == 0) {
         cmd_exec(ctx, entry, args);
     } else if (strcmp(cmd, "call") == 0) {
@@ -659,7 +711,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             fl_response(ctx, false, "Missing --addr/--data");
             return -1;
         }
-        cmd_write(ctx, addr, data, crc, crc != 0xFFFFFFFF);
+        cmd_write(ctx, addr, data, crc, crc >= 0);
     } else if (strcmp(cmd, "patch") == 0) {
         if (orig == 0 || target == 0) {
             fl_response(ctx, false, "Missing --orig/--target");
@@ -679,7 +731,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         }
         cmd_dpatch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
-        cmd_unpatch(ctx, comp);
+        cmd_unpatch(ctx, comp, all != 0);
     } else {
         fl_response(ctx, false, "Unknown: %s", cmd);
         return -1;
