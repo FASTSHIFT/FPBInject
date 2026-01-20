@@ -494,8 +494,7 @@ def load_inject_config(config_path: str = None) -> Optional[Dict]:
 def parse_compile_commands(compile_commands_path: str, source_filter: str = None,
                           verbose: bool = False) -> Optional[Dict]:
     """
-    Parse compile_commands.json to extract compiler flags.
-    This reuses the NuttX build system's includes and defines.
+    Parse standard CMake compile_commands.json to extract compiler flags.
 
     Args:
         compile_commands_path: Path to compile_commands.json
@@ -515,17 +514,28 @@ def parse_compile_commands(compile_commands_path: str, source_filter: str = None
     try:
         with open(compile_commands_path, 'r') as f:
             commands = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in compile_commands.json: {e}")
+        return None
     except Exception as e:
-        print(f"Error loading compile_commands.json: {e}")
+        print(f"Error: Failed to load compile_commands.json: {e}")
         return None
 
     if not commands:
         print("Error: compile_commands.json is empty")
         return None
 
+    # Standard CMake compile_commands.json format: [{directory, command, file}, ...]
+    if not isinstance(commands, list):
+        print(f"Error: Invalid compile_commands.json format: expected array, got {type(commands).__name__}")
+        print("       Please use standard CMake compile_commands.json (set CMAKE_EXPORT_COMPILE_COMMANDS=ON)")
+        return None
+
     # Find a suitable entry (prefer .c files, not .S assembly)
     selected_entry = None
     for entry in commands:
+        if not isinstance(entry, dict):
+            continue
         file_path = entry.get('file', '')
         if source_filter:
             if source_filter in file_path:
@@ -537,7 +547,7 @@ def parse_compile_commands(compile_commands_path: str, source_filter: str = None
 
     if not selected_entry:
         for entry in commands:
-            if entry.get('file', '').endswith('.c'):
+            if isinstance(entry, dict) and entry.get('file', '').endswith('.c'):
                 selected_entry = entry
                 break
 
@@ -550,13 +560,13 @@ def parse_compile_commands(compile_commands_path: str, source_filter: str = None
 
     command_str = selected_entry.get('command', '')
     if not command_str:
-        print("Error: No command found in entry")
+        print("Error: No command found in compile_commands.json entry")
         return None
 
     try:
         tokens = shlex.split(command_str)
     except Exception as e:
-        print(f"Error parsing command: {e}")
+        print(f"Error: Failed to parse command in compile_commands.json: {e}")
         return None
 
     compiler = tokens[0] if tokens else 'arm-none-eabi-gcc'

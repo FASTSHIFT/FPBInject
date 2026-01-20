@@ -334,9 +334,14 @@ class FPBInject:
         return env
 
     def enter_fl_mode(self, timeout: float = 1.0) -> bool:
-        """Enter fl interactive mode by sending 'fl' command."""
+        """Enter fl interactive mode by sending 'fl' command.
+        
+        Returns True if we entered fl interactive mode (fl> prompt detected),
+        False if not needed (bare-metal mode or no response).
+        """
         ser = self.device.ser
         if not ser:
+            self._in_fl_mode = False
             return False
 
         try:
@@ -358,13 +363,25 @@ class FPBInject:
 
             self._log_raw("RX", response.strip())
             logger.debug(f"Entered fl mode: {response.strip()}")
-            return True
+            
+            # Check if we actually entered fl interactive mode (has fl> prompt)
+            self._in_fl_mode = "fl>" in response
+            return self._in_fl_mode
         except Exception as e:
             logger.error(f"Error entering fl mode: {e}")
+            self._in_fl_mode = False
             return False
 
     def exit_fl_mode(self, timeout: float = 1.0) -> bool:
-        """Exit fl interactive mode by sending 'exit' command."""
+        """Exit fl interactive mode by sending 'exit' command.
+        
+        Only sends 'exit' if we previously entered fl interactive mode.
+        """
+        # Only exit if we actually entered fl mode
+        if not getattr(self, '_in_fl_mode', False):
+            logger.debug("Not in fl mode, skipping exit")
+            return True
+        
         ser = self.device.ser
         if not ser:
             return False
@@ -386,6 +403,7 @@ class FPBInject:
 
             self._log_raw("RX", response.strip())
             logger.debug(f"Exited fl mode: {response.strip()}")
+            self._in_fl_mode = False
             return True
         except Exception as e:
             logger.error(f"Error exiting fl mode: {e}")
@@ -863,26 +881,41 @@ class FPBInject:
     def parse_compile_commands(
         self, compile_commands_path: str, verbose: bool = False
     ) -> Optional[Dict]:
-        """Parse compile_commands.json to extract compiler flags."""
+        """Parse standard CMake compile_commands.json to extract compiler flags."""
         import json
         import shlex
 
         if not os.path.exists(compile_commands_path):
+            logger.error(f"compile_commands.json not found: {compile_commands_path}")
             return None
 
         try:
             with open(compile_commands_path, "r") as f:
                 commands = json.load(f)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in compile_commands.json: {e}")
+            return None
         except Exception as e:
             logger.error(f"Error loading compile_commands.json: {e}")
             return None
 
         if not commands:
+            logger.error("compile_commands.json is empty")
+            return None
+
+        # Standard CMake compile_commands.json format: [{directory, command, file}, ...]
+        if not isinstance(commands, list):
+            logger.error(
+                f"Invalid compile_commands.json format: expected array, got {type(commands).__name__}. "
+                "Please use standard CMake compile_commands.json (set CMAKE_EXPORT_COMPILE_COMMANDS=ON)"
+            )
             return None
 
         # Find a suitable entry
         selected_entry = None
         for entry in commands:
+            if not isinstance(entry, dict):
+                continue
             file_path = entry.get("file", "")
             if file_path.endswith(".c") and "__ASSEMBLY__" not in entry.get(
                 "command", ""
@@ -891,15 +924,18 @@ class FPBInject:
                 break
 
         if not selected_entry:
+            logger.error("No suitable C file entry found in compile_commands.json")
             return None
 
         command_str = selected_entry.get("command", "")
         if not command_str:
+            logger.error("No command found in compile_commands.json entry")
             return None
 
         try:
             tokens = shlex.split(command_str)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error parsing command in compile_commands.json: {e}")
             return None
 
         compiler = tokens[0] if tokens else "arm-none-eabi-gcc"

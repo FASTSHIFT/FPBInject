@@ -22,6 +22,9 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# Enable standard CMake compile_commands.json generation (must be before project())
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Project name
 project(FPBInject C CXX ASM)
 
@@ -248,8 +251,9 @@ foreach(dir ${INCLUDE_DIRS})
     endif()
 endforeach()
 
-# Generate compile_commands.json
-file(WRITE ${CMAKE_BINARY_DIR}/compile_commands.json
+# Generate our custom inject_config.json with additional info (objcopy, main_elf, etc.)
+# The standard compile_commands.json is generated automatically by CMake
+file(WRITE ${CMAKE_BINARY_DIR}/inject_config.json
 "{
   \"compiler\": \"${CMAKE_C_COMPILER}\",
   \"objcopy\": \"${CMAKE_OBJCOPY}\",
@@ -269,4 +273,5 @@ file(WRITE ${CMAKE_BINARY_DIR}/compile_commands.json
 }
 ")
 
-message(STATUS "Generated: ${CMAKE_BINARY_DIR}/compile_commands.json")
+message(STATUS "Generated: ${CMAKE_BINARY_DIR}/inject_config.json")
+message(STATUS "CMake will generate: ${CMAKE_BINARY_DIR}/compile_commands.json")
