@@ -278,6 +278,40 @@ class PatchGenerator:
         return output_path, injected
 
 
+def find_function_signature(content: str, func_name: str) -> Optional[str]:
+    """
+    Find function signature in source code.
+
+    Args:
+        content: Source file content
+        func_name: Function name to find
+
+    Returns:
+        Function signature string or None if not found
+    """
+    # Pattern to match function definition
+    # Handles: return_type func_name(params)
+    # Including: static, inline, const, volatile, pointers, etc.
+    pattern = (
+        r"(?:^|\n)"  # Start of line
+        r"((?:\s*(?:static|inline|extern|const|volatile|__attribute__\s*\([^)]*\))\s+)*"  # Modifiers
+        r"[\w\s\*]+?)"  # Return type
+        rf"\s+({re.escape(func_name)})\s*"  # Function name
+        r"(\([^)]*\))"  # Parameters
+        r"\s*(?:\{|;)"  # Opening brace or semicolon
+    )
+
+    match = re.search(pattern, content, re.MULTILINE)
+    if match:
+        # Build clean signature
+        return_type = match.group(1).strip()
+        name = match.group(2)
+        params = match.group(3)
+        return f"{return_type} {name}{params}"
+
+    return None
+
+
 def check_dependencies() -> dict:
     """Check if required dependencies are available."""
     status = {

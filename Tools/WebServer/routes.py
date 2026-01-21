@@ -712,9 +712,7 @@ def register_routes(app):
                 if os.path.isdir(src_dir) and src_dir not in watch_dirs:
                     watch_dirs.append(src_dir)
 
-        from patch_generator import CParser
-
-        parser = CParser()
+        from patch_generator import find_function_signature
 
         for watch_dir in watch_dirs:
             if not os.path.isdir(watch_dir):
@@ -744,11 +742,10 @@ def register_routes(app):
                         if func_name not in content:
                             continue
 
-                        # Parse functions from file
-                        functions = parser.parse_functions(content)
-                        if func_name in functions:
-                            func_info = functions[func_name]
-                            signature = func_info.signature
+                        # Find function signature
+                        sig = find_function_signature(content, func_name)
+                        if sig:
+                            signature = sig
                             source_file = filepath
                             break
                     except Exception:
