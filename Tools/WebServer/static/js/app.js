@@ -2396,7 +2396,7 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
 
   contentDiv.innerHTML = `
     <div class="code-display" style="height: 100%; overflow: auto;">
-      <div style="padding: 4px 8px; background: #2d2d2d; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #888;">
+      <div style="padding: 4px 8px; background: var(--vscode-editorWidget-background); border-bottom: 1px solid var(--vscode-panel-border); font-size: 11px; color: var(--vscode-descriptionForeground);">
         <i class="codicon codicon-lock" style="margin-right: 4px;"></i>
         Auto-generated patch (read-only preview)
       </div>
