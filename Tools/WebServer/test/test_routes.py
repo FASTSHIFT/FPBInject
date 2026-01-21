@@ -249,7 +249,6 @@ class TestRoutesFPB(TestRoutesBase):
             "chunk_size",
             "auto_connect",
             "auto_compile",
-            "patch_source_path",
             "inject_active",
         ]
 
@@ -834,62 +833,6 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertEqual(
             state.device.compile_commands_path, "/tmp/compile_commands.json"
         )
-
-    def test_config_update_patch_source_path_exists(self):
-        """测试更新存在的补丁源码路径"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
-            f.write("// test source")
-            source_path = f.name
-
-        try:
-            response = self.client.post(
-                "/api/config", json={"patch_source_path": source_path}
-            )
-            data = json.loads(response.data)
-
-            self.assertTrue(data["success"])
-            self.assertIn("test source", state.device.patch_source_content)
-        finally:
-            os.unlink(source_path)
-
-    def test_patch_source_get_from_file(self):
-        """测试从文件获取补丁源码"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
-            f.write("// file content")
-            source_path = f.name
-
-        try:
-            state.device.patch_source_path = source_path
-
-            response = self.client.get("/api/patch/source")
-            data = json.loads(response.data)
-
-            self.assertTrue(data["success"])
-            self.assertIn("file content", data["content"])
-        finally:
-            os.unlink(source_path)
-
-    def test_patch_source_save_to_file(self):
-        """测试保存补丁源码到文件"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
-            source_path = f.name
-
-        try:
-            state.device.patch_source_path = source_path
-
-            response = self.client.post(
-                "/api/patch/source",
-                json={"content": "// saved content", "save_to_file": True},
-            )
-            data = json.loads(response.data)
-
-            self.assertTrue(data["success"])
-
-            with open(source_path, "r") as f:
-                saved = f.read()
-            self.assertIn("saved content", saved)
-        finally:
-            os.unlink(source_path)
 
 
 if __name__ == "__main__":

@@ -643,7 +643,7 @@ class FPBInject:
         """Upload binary data in chunks using base64 encoding."""
         total = len(data)
         data_offset = 0
-        bytes_per_chunk = 48
+        bytes_per_chunk = self.device.chunk_size if self.device.chunk_size > 0 else 128
 
         upload_start = time.time()
         chunk_count = 0

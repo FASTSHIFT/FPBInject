@@ -32,7 +32,6 @@ PERSISTENT_KEYS = [
     "chunk_size",
     "auto_connect",
     "auto_compile",
-    "patch_source_path",
 ]
 
 

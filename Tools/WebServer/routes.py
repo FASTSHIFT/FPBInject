@@ -196,6 +196,7 @@ def register_routes(app):
                 "compile_commands_path": device.compile_commands_path,
                 "watch_dirs": device.watch_dirs,
                 "patch_mode": device.patch_mode,
+                "chunk_size": device.chunk_size,
                 "auto_compile": device.auto_compile,
             }
         )
@@ -668,8 +669,8 @@ def register_routes(app):
         signature = None
         source_file = None
 
-        # Search in watch directories
-        watch_dirs = device.watch_dirs if device.watch_dirs else []
+        # Search in watch directories (make a copy to avoid modifying original)
+        watch_dirs = list(device.watch_dirs) if device.watch_dirs else []
 
         # Also add parent directories of ELF path as potential source locations
         if device.elf_path and os.path.exists(device.elf_path):

@@ -87,7 +87,6 @@ class TestDeviceState(unittest.TestCase):
             "chunk_size": 256,
             "auto_connect": True,
             "auto_compile": True,
-            "patch_source_path": "/src/patch.c",
         }
 
         state.from_dict(data)

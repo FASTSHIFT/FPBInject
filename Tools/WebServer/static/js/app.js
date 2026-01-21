@@ -754,9 +754,37 @@ async function refreshPorts() {
   }
 }
 
-async function toggleConnect() {
+// Handle successful connection - shared by manual connect and auto-connect
+function handleConnected(port, message = null) {
   const btn = document.getElementById('connectBtn');
   const statusEl = document.getElementById('connectionStatus');
+
+  isConnected = true;
+  btn.textContent = 'Disconnect';
+  btn.classList.add('connected');
+  statusEl.textContent = port;
+  writeToOutput(message || `[CONNECTED] ${port}`, 'success');
+  startLogPolling();
+  fpbInfo();
+  updateDisabledState();
+}
+
+// Handle disconnection
+function handleDisconnected() {
+  const btn = document.getElementById('connectBtn');
+  const statusEl = document.getElementById('connectionStatus');
+
+  isConnected = false;
+  btn.textContent = 'Connect';
+  btn.classList.remove('connected');
+  statusEl.textContent = 'Disconnected';
+  writeToOutput('[DISCONNECTED]', 'warning');
+  stopLogPolling();
+  updateDisabledState();
+}
+
+async function toggleConnect() {
+  const btn = document.getElementById('connectBtn');
 
   if (!isConnected) {
     const port = document.getElementById('portSelect').value;
@@ -774,14 +802,7 @@ async function toggleConnect() {
       const data = await res.json();
 
       if (data.success) {
-        isConnected = true;
-        btn.textContent = 'Disconnect';
-        btn.classList.add('connected');
-        statusEl.textContent = `${port}`;
-        writeToOutput(`[CONNECTED] ${port} @ ${baud} baud`, 'success');
-        startLogPolling();
-        fpbInfo();
-        updateDisabledState(); // Enable UI
+        handleConnected(port, `[CONNECTED] ${port} @ ${baud} baud`);
       } else {
         throw new Error(data.message || 'Connection failed');
       }
@@ -794,13 +815,7 @@ async function toggleConnect() {
   } else {
     try {
       await fetch('/api/disconnect', { method: 'POST' });
-      isConnected = false;
-      btn.textContent = 'Connect';
-      btn.classList.remove('connected');
-      statusEl.textContent = 'Disconnected';
-      writeToOutput('[DISCONNECTED]', 'warning');
-      stopLogPolling();
-      updateDisabledState(); // Disable UI
+      handleDisconnected();
     } catch (e) {
       writeToOutput(`[ERROR] Disconnect failed: ${e}`, 'error');
     }
@@ -1729,6 +1744,8 @@ async function loadConfig() {
       document.getElementById('toolchainPath').value = data.toolchain_path;
     if (data.patch_mode)
       document.getElementById('patchMode').value = data.patch_mode;
+    if (data.chunk_size)
+      document.getElementById('chunkSize').value = data.chunk_size;
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
     if (data.auto_compile !== undefined)
       document.getElementById('autoCompile').checked = data.auto_compile;
@@ -1754,17 +1771,11 @@ async function checkConnectionStatus() {
 
     const data = await res.json();
     if (data.connected) {
-      // Backend is already connected, update UI
-      isConnected = true;
-      const btn = document.getElementById('connectBtn');
-      const statusEl = document.getElementById('statusText');
-      btn.textContent = 'Disconnect';
-      btn.classList.add('connected');
-      statusEl.textContent = data.port || 'Connected';
-      startLogPolling();
-      fpbInfo();
-      updateDisabledState();
-      writeToOutput(`[AUTO-CONNECTED] ${data.port}`, 'success');
+      // Backend is already connected, reuse the same connection handling
+      handleConnected(
+        data.port || 'Connected',
+        `[AUTO-CONNECTED] ${data.port}`,
+      );
     }
   } catch (e) {
     console.warn('Status check failed:', e.message);
@@ -1777,6 +1788,7 @@ async function saveConfig(silent = false) {
     compile_commands_path: document.getElementById('compileCommandsPath').value,
     toolchain_path: document.getElementById('toolchainPath').value,
     patch_mode: document.getElementById('patchMode').value,
+    chunk_size: parseInt(document.getElementById('chunkSize').value) || 128,
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile').checked,
   };
@@ -1811,7 +1823,7 @@ function setupAutoSave() {
   });
 
   // Select inputs - save on change
-  const selectInputs = ['patchMode'];
+  const selectInputs = ['patchMode', 'chunkSize'];
   selectInputs.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
