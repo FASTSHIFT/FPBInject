@@ -1,158 +1,184 @@
 # FPBInject WebServer
 
-FPB (Flash Patch and Breakpoint) 运行时代码注入 Web 服务。
+基于 FPB (Flash Patch and Breakpoint) 单元的热补丁注入工具，支持在不重新烧录固件的情况下动态修改运行中的函数。
 
 ## 功能特性
 
-- 🔌 串口设备连接管理
-- 📁 ELF 文件符号解析
-- ✏️ Patch 代码编辑与编译
-- 📤 二进制上传与注入
-- 👁️ 文件变更监控 (自动/手动模式)
-- 📺 串口日志实时显示 (xterm.js)
+- 🔥 **热补丁注入**：实时修改目标函数，无需重新编译烧录
+- 📝 **标记式开发**：在源码中添加 `/* FPB_INJECT */` 标记即可自动检测
+- 🔄 **文件监控**：自动监控源文件变化，保存即注入
+- 🖥️ **Web 界面**：VS Code 风格的现代化 UI
+- 📟 **串口终端**：内置串口监控和交互终端
 
-## 目录结构
+## 快速开始
 
-```
-WebServer/
-├── main.py              # Flask 应用入口
-├── routes.py            # API 路由定义
-├── state.py             # 应用状态管理
-├── device_worker.py     # 设备通信工作线程
-├── fpb_inject.py        # FPB 注入操作
-├── file_watcher.py      # 文件系统监控
-├── templates/
-│   └── index.html       # Web UI 模板
-├── static/
-│   ├── css/
-│   │   └── style.css    # 样式文件
-│   └── js/
-│       └── app.js       # 前端逻辑
-├── test/
-│   └── test_api.py      # API 测试用例
-└── README.md
-```
+### 1. 下位机部署 (NuttX)
 
-## 依赖安装
+#### 克隆仓库
 
 ```bash
-pip install flask flask-cors pyserial watchdog
+cd apps/examples
+git clone https://github.com/FASTSHIFT/FPBInject.git
 ```
 
-## 启动服务
+#### 配置编译
+
+```bash
+# 进入 NuttX 根目录
+cd nuttx
+
+# 打开 menuconfig
+make menuconfig
+```
+
+在 menuconfig 中启用 FPBInject：
+
+```
+Application Configuration  --->
+    Examples  --->
+        [*] FPBInject - FPB based function injection
+```
+
+#### 编译烧录
+
+```bash
+make -j$(nproc)
+# 使用你的烧录工具烧录固件
+```
+
+### 2. 上位机部署 (WebServer)
+
+#### 安装依赖
 
 ```bash
 cd apps/examples/FPBInject/Tools/WebServer
-python main.py
+pip install -r requirements.txt
 ```
 
-默认在 `http://localhost:5000` 启动服务。
+#### 启动服务
 
-## API 端点
+```bash
+./main.py
+# 或
+python3 main.py
+```
 
-### 设备连接
+服务默认运行在 `http://127.0.0.1:5500`
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/ports` | GET | 获取可用串口列表 |
-| `/api/connect` | POST | 连接串口设备 |
-| `/api/disconnect` | POST | 断开设备连接 |
-| `/api/status` | GET | 获取连接状态 |
+### 3. 使用流程
 
-### 配置管理
+#### 3.1 配置连接
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/config` | GET | 获取当前配置 |
-| `/api/config` | POST | 更新配置 |
+1. 打开浏览器访问 `http://127.0.0.1:5500`
+2. 在 **Settings** 面板中配置：
+   - **Serial Port**：选择设备串口（如 `/dev/ttyACM0`）
+   - **ELF Path**：选择编译生成的 ELF 文件路径
+   - **Toolchain Path**：配置交叉编译工具链路径（如 `arm-none-eabi-`）
+   - **Compile Commands**：选择 `compile_commands.json` 路径（用于获取编译参数）
 
-### FPB 操作
+3. 点击 **Connect** 连接设备
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/fpb/ping` | POST | Ping 设备 |
-| `/api/fpb/info` | GET | 获取 FPB 信息 |
-| `/api/fpb/upload` | POST | 上传二进制数据 |
-| `/api/fpb/patch` | POST | 执行 patch 操作 |
-| `/api/fpb/tpatch` | POST | Trampoline patch |
-| `/api/fpb/dpatch` | POST | DebugMon patch |
+#### 3.2 标记函数
 
-### 符号管理
-
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/symbols` | GET | 获取所有符号 |
-| `/api/symbols/search` | GET | 搜索符号 |
-
-### Patch 编译
-
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/patch/generate` | POST | 生成 patch 模板 |
-| `/api/patch/compile` | POST | 编译 patch 代码 |
-| `/api/patch/inject` | POST | 编译并注入 |
-
-### 文件监控
-
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/watch/status` | GET | 获取监控状态 |
-| `/api/watch/start` | POST | 启动监控 |
-| `/api/watch/stop` | POST | 停止监控 |
-| `/api/watch/changes` | GET | 获取变更列表 |
-
-### 日志
-
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/log` | GET | 获取日志内容 |
-| `/api/log` | DELETE | 清空日志 |
-
-### 文件浏览
-
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/browse` | GET | 浏览目录 |
-
-## Patch 模式
-
-### Trampoline (FPB REMAP)
-
-使用 Cortex-M FPB 单元将目标函数重映射到 patch 代码。
+在需要热补丁的函数前添加标记注释：
 
 ```c
-__attribute__((used, section(".text.inject")))
-void target_func_patch(void) {
-    // 新的实现
+/* FPB_INJECT */
+void my_function(int arg)
+{
+    // 你的代码
 }
 ```
 
-### DebugMon (ARMv8-M)
+支持的标记格式：
+- `/* FPB_INJECT */`
+- `/* FPB-INJECT */`
+- `// FPB_INJECT`
+- `/*FPB_INJECT*/`（大小写不敏感）
 
-使用 DebugMon 异常处理断点事件执行 patch。
+#### 3.3 自动注入
 
-### Direct
+1. 在 **Settings** 中启用 **Auto Compile**
+2. 在 **Watch Dirs** 中添加源码目录
+3. 修改带标记的源文件并保存
+4. WebServer 会自动检测变化、编译并注入
 
-直接修改目标函数地址。
+#### 3.4 手动注入
 
-## 运行测试
+1. 在左侧 **SYMBOLS** 列表中搜索双击目标函数
+2. 在编辑器中修改代码
+3. 点击 **Inject** 按钮执行注入
 
-```bash
-cd apps/examples/FPBInject/Tools/WebServer
-python -m pytest test/ -v
+## 界面说明
+
+### 主要区域
+
+| 区域 | 说明 |
+|------|------|
+| **Device Info** | 显示设备连接状态、FPB Slot 使用情况 |
+| **Functions** | 从 ELF 解析的函数列表，支持搜索 |
+| **Editor** | 代码编辑区，支持语法高亮 |
+| **OUTPUT** | 工具输出日志 |
+| **SERIAL PORT** | 串口原始数据终端 |
+
+### Slot 管理
+
+FPB 硬件支持 6 个比较器（Slot），每个 Slot 可以拦截一个函数：
+
+- 🟢 **绿色**：Slot 已占用
+- ⚫ **灰色**：Slot 空闲
+- 点击 **🔄** 重新注入
+- 点击 **🗑️** 清除 Slot
+
+## 配置文件
+
+配置自动保存到 `~/.fpbinject_config.json`，包含：
+
+```json
+{
+  "port": "/dev/ttyACM0",
+  "baudrate": 115200,
+  "elf_path": "/path/to/firmware.elf",
+  "toolchain_path": "/path/to/toolchain/bin",
+  "compile_commands_path": "/path/to/compile_commands.json",
+  "watch_dirs": ["/path/to/source"],
+  "auto_connect": true,
+  "auto_compile": true
+}
 ```
 
-或使用 unittest:
+## 工作原理
+
+1. **标记检测**：扫描源文件中的 `FPB_INJECT` 标记
+2. **补丁生成**：复制源文件，将标记函数重命名为 `inject_xxx`
+3. **交叉编译**：使用原始编译参数编译补丁代码
+4. **代码上传**：通过串口将机器码上传到设备 RAM
+5. **FPB 配置**：配置 FPB 单元将原函数调用重定向到新代码
+
+## 故障排除
+
+### 编译错误：找不到头文件
+
+确保 `compile_commands.json` 路径正确，它包含了完整的编译参数和头文件路径。
+
+### 注入失败：No available FPB slots
+
+6 个 Slot 已全部占用，点击 **Clear All** 清除所有 Slot 后重试。
+
+### 串口响应被日志打断
+
+系统会自动重试，如果频繁失败，可以尝试降低其他模块的日志输出。
+
+## 开发测试
 
 ```bash
-python test/test_api.py
+# 运行所有测试
+./test/run_tests.py
+
+# 代码格式化
+./format.sh
 ```
 
-## 相关项目
-
-- [fpb_loader.py](../fpb_loader.py) - FPB CLI 加载工具
-- [inject.cpp](../inject.cpp) - Patch 代码示例
-
-## 许可证
+## License
 
 MIT License
