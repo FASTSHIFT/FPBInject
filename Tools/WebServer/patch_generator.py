@@ -315,7 +315,11 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
         decl_parts = []
         for line in reversed(lines):
             stripped = line.strip()
-            if stripped and not stripped.startswith("//") and not stripped.startswith("*"):
+            if (
+                stripped
+                and not stripped.startswith("//")
+                and not stripped.startswith("*")
+            ):
                 decl_parts.insert(0, stripped)
                 # Stop if we hit a line that looks like the start of declaration
                 if re.match(
@@ -341,7 +345,9 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
             continue
 
         # Skip if return_type starts with keywords that indicate a statement
-        if re.match(r"^(if|else|while|for|switch|case|return|break|continue)\b", return_type):
+        if re.match(
+            r"^(if|else|while|for|switch|case|return|break|continue)\b", return_type
+        ):
             continue
 
         # Find parameters
@@ -356,7 +362,7 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
             i += 1
 
         if depth == 0:
-            params = content[paren_start : i]
+            params = content[paren_start:i]
 
             # Check if this is followed by { or ; (definition or declaration)
             rest = content[i:].lstrip()
