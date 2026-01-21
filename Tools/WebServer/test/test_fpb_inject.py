@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FPB Inject 模块测试
+FPB Inject module tests
 """
 
 import os
@@ -25,29 +25,29 @@ from state import DeviceState
 
 
 class TestCRC16(unittest.TestCase):
-    """CRC16 测试"""
+    """CRC16 tests"""
 
     def test_crc16_empty(self):
-        """测试空数据"""
+        """Test empty data"""
         result = crc16(b"")
         self.assertIsInstance(result, int)
 
     def test_crc16_known_value(self):
-        """测试已知值"""
-        # CRC16-CCITT 的 "123456789" 应该是 0x29B1
+        """Test known value"""
+        # CRC16-CCITT for "123456789" should be 0x29B1
         data = b"123456789"
         result = crc16(data)
         self.assertEqual(result, 0x29B1)
 
     def test_crc16_single_byte(self):
-        """测试单字节"""
+        """Test single byte"""
         result = crc16(b"\x00")
         self.assertIsInstance(result, int)
         self.assertGreaterEqual(result, 0)
         self.assertLessEqual(result, 0xFFFF)
 
     def test_crc16_consistency(self):
-        """测试一致性"""
+        """Test consistency"""
         data = b"test data for crc"
         result1 = crc16(data)
         result2 = crc16(data)
@@ -55,15 +55,15 @@ class TestCRC16(unittest.TestCase):
 
 
 class TestScanSerialPorts(unittest.TestCase):
-    """扫描串口测试"""
+    """Scan serial ports tests"""
 
     def test_scan_returns_list(self):
-        """测试返回列表"""
+        """Test returns list"""
         ports = scan_serial_ports()
         self.assertIsInstance(ports, list)
 
     def test_scan_port_format(self):
-        """测试端口格式"""
+        """Test port format"""
         ports = scan_serial_ports()
         for port in ports:
             self.assertIn("device", port)
@@ -71,10 +71,10 @@ class TestScanSerialPorts(unittest.TestCase):
 
 
 class TestSerialOpen(unittest.TestCase):
-    """串口打开测试"""
+    """Serial port open tests"""
 
     def test_open_invalid_port(self):
-        """测试打开无效端口"""
+        """Test opening invalid port"""
         ser, error = serial_open("/dev/nonexistent_port_12345", 115200, 1)
 
         self.assertIsNone(ser)
@@ -82,7 +82,7 @@ class TestSerialOpen(unittest.TestCase):
 
     @patch("fpb_inject.serial.Serial")
     def test_open_success(self, mock_serial):
-        """测试成功打开"""
+        """Test successful open"""
         mock_instance = Mock()
         mock_serial.return_value = mock_instance
 
@@ -93,44 +93,44 @@ class TestSerialOpen(unittest.TestCase):
 
 
 class TestFPBInject(unittest.TestCase):
-    """FPBInject 类测试"""
+    """FPBInject class tests"""
 
     def setUp(self):
         self.device = DeviceState()
         self.fpb = FPBInject(self.device)
 
     def test_init(self):
-        """测试初始化"""
+        """Test initialization"""
         self.assertEqual(self.fpb.device, self.device)
         self.assertIsNone(self.fpb._toolchain_path)
 
     def test_set_toolchain_path_valid(self):
-        """测试设置有效工具链路径"""
-        # 使用一个存在的目录
+        """Test setting valid toolchain path"""
+        # Use an existing directory
         path = "/tmp"
         self.fpb.set_toolchain_path(path)
 
         self.assertEqual(self.fpb._toolchain_path, path)
 
     def test_set_toolchain_path_invalid(self):
-        """测试设置无效工具链路径"""
+        """Test setting invalid toolchain path"""
         self.fpb.set_toolchain_path("/nonexistent/path")
 
         self.assertIsNone(self.fpb._toolchain_path)
 
     def test_set_toolchain_path_empty(self):
-        """测试设置空路径"""
+        """Test setting empty path"""
         self.fpb._toolchain_path = "/some/path"
         self.fpb.set_toolchain_path("")
 
         self.assertIsNone(self.fpb._toolchain_path)
 
     def test_get_tool_path_with_toolchain(self):
-        """测试使用工具链路径获取工具"""
+        """Test getting tool path with toolchain"""
         import tempfile
         import os
 
-        # 创建临时目录和假工具
+        # Create temporary directory and fake tool
         with tempfile.TemporaryDirectory() as tmpdir:
             tool_path = os.path.join(tmpdir, "arm-none-eabi-gcc")
             with open(tool_path, "w") as f:
@@ -142,7 +142,7 @@ class TestFPBInject(unittest.TestCase):
             self.assertEqual(result, tool_path)
 
     def test_get_tool_path_without_toolchain(self):
-        """测试没有工具链路径时返回工具名"""
+        """Test returning tool name when no toolchain path"""
         self.fpb._toolchain_path = None
 
         result = self.fpb.get_tool_path("arm-none-eabi-gcc")
@@ -150,7 +150,7 @@ class TestFPBInject(unittest.TestCase):
         self.assertEqual(result, "arm-none-eabi-gcc")
 
     def test_get_subprocess_env_with_toolchain(self):
-        """测试获取带工具链的子进程环境"""
+        """Test getting subprocess environment with toolchain"""
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -162,7 +162,7 @@ class TestFPBInject(unittest.TestCase):
             self.assertTrue(env["PATH"].startswith(tmpdir + ":"))
 
     def test_get_subprocess_env_without_toolchain(self):
-        """测试获取不带工具链的子进程环境"""
+        """Test getting subprocess environment without toolchain"""
         self.fpb._toolchain_path = None
 
         env = self.fpb._get_subprocess_env()
@@ -170,7 +170,7 @@ class TestFPBInject(unittest.TestCase):
         self.assertIn("PATH", env)
 
     def test_parse_response_ok(self):
-        """测试解析 OK 响应"""
+        """Test parsing OK response"""
         resp = "[OK] Operation successful"
 
         result = self.fpb._parse_response(resp)
@@ -179,7 +179,7 @@ class TestFPBInject(unittest.TestCase):
         self.assertEqual(result["msg"], "Operation successful")
 
     def test_parse_response_err(self):
-        """测试解析 ERR 响应"""
+        """Test parsing ERR response"""
         resp = "[ERR] Something went wrong"
 
         result = self.fpb._parse_response(resp)
@@ -188,7 +188,7 @@ class TestFPBInject(unittest.TestCase):
         self.assertEqual(result["msg"], "Something went wrong")
 
     def test_parse_response_multiline(self):
-        """测试解析多行响应"""
+        """Test parsing multiline response"""
         resp = """Info line 1
 Info line 2
 [OK] Done
@@ -200,7 +200,7 @@ fl>"""
         self.assertEqual(result["msg"], "Done")
 
     def test_parse_response_with_ansi(self):
-        """测试解析带 ANSI 转义的响应"""
+        """Test parsing response with ANSI escape sequences"""
         resp = "\x1b[0m[OK] Success\x1b[K"
 
         result = self.fpb._parse_response(resp)
@@ -208,7 +208,7 @@ fl>"""
         self.assertTrue(result["ok"])
 
     def test_parse_response_with_prompt(self):
-        """测试解析带提示符的响应"""
+        """Test parsing response with prompt"""
         resp = """[OK] Success
 fl>"""
 
@@ -217,7 +217,7 @@ fl>"""
         self.assertTrue(result["ok"])
 
     def test_parse_response_error_keyword(self):
-        """测试解析包含 error 关键字的响应"""
+        """Test parsing response containing error keyword"""
         resp = "An error occurred during processing"
 
         result = self.fpb._parse_response(resp)
@@ -225,13 +225,13 @@ fl>"""
         self.assertFalse(result["ok"])
 
     def test_parse_response_empty(self):
-        """测试解析空响应"""
+        """Test parsing empty response"""
         result = self.fpb._parse_response("")
 
-        self.assertTrue(result["ok"])  # 空响应视为成功
+        self.assertTrue(result["ok"])  # Empty response is considered success
 
     def test_ping_not_connected(self):
-        """测试未连接时 ping"""
+        """Test ping when not connected"""
         self.device.ser = None
 
         success, msg = self.fpb.ping()
@@ -239,7 +239,7 @@ fl>"""
         self.assertFalse(success)
 
     def test_info_not_connected(self):
-        """测试未连接时获取 info"""
+        """Test getting info when not connected"""
         self.device.ser = None
 
         info, error = self.fpb.info()
@@ -248,7 +248,7 @@ fl>"""
         self.assertIsNotNone(error)
 
     def test_alloc_not_connected(self):
-        """测试未连接时 alloc"""
+        """Test alloc when not connected"""
         self.device.ser = None
 
         addr, error = self.fpb.alloc(1024)
@@ -256,7 +256,7 @@ fl>"""
         self.assertIsNone(addr)
 
     def test_unpatch_all_not_connected(self):
-        """测试未连接时 unpatch all"""
+        """Test unpatch all when not connected"""
         self.device.ser = None
 
         success, msg = self.fpb.unpatch(all=True)
@@ -264,7 +264,7 @@ fl>"""
         self.assertFalse(success)
 
     def test_patch_not_connected(self):
-        """测试未连接时 patch"""
+        """Test patch when not connected"""
         self.device.ser = None
 
         success, msg = self.fpb.patch(0, 0x20000000, 0x20001000)
@@ -272,7 +272,7 @@ fl>"""
         self.assertFalse(success)
 
     def test_tpatch_not_connected(self):
-        """测试未连接时 tpatch"""
+        """Test tpatch when not connected"""
         self.device.ser = None
 
         success, msg = self.fpb.tpatch(0, 0x20000000, 0x20001000)
@@ -280,7 +280,7 @@ fl>"""
         self.assertFalse(success)
 
     def test_dpatch_not_connected(self):
-        """测试未连接时 dpatch"""
+        """Test dpatch when not connected"""
         self.device.ser = None
 
         success, msg = self.fpb.dpatch(0, 0x20000000, 0x20001000)
@@ -288,7 +288,7 @@ fl>"""
         self.assertFalse(success)
 
     def test_unpatch_not_connected(self):
-        """测试未连接时 unpatch"""
+        """Test unpatch when not connected"""
         self.device.ser = None
 
         success, msg = self.fpb.unpatch(0)
@@ -296,7 +296,7 @@ fl>"""
         self.assertFalse(success)
 
     def test_log_raw(self):
-        """测试原始日志记录"""
+        """Test raw log recording"""
         self.fpb._log_raw("TX", "test command")
 
         self.assertEqual(len(self.device.raw_serial_log), 1)
@@ -304,13 +304,13 @@ fl>"""
         self.assertEqual(self.device.raw_serial_log[0]["data"], "test command")
 
     def test_log_raw_empty(self):
-        """测试空数据不记录"""
+        """Test empty data not recorded"""
         self.fpb._log_raw("TX", "")
 
         self.assertEqual(len(self.device.raw_serial_log), 0)
 
     def test_log_raw_limit(self):
-        """测试日志大小限制"""
+        """Test log size limit"""
         self.device.raw_log_max_size = 10
 
         for i in range(20):
@@ -320,7 +320,7 @@ fl>"""
 
 
 class TestFPBInjectWithMockSerial(unittest.TestCase):
-    """带模拟串口的 FPBInject 测试"""
+    """FPBInject tests with mock serial port"""
 
     def setUp(self):
         self.device = DeviceState()
@@ -330,7 +330,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.fpb = FPBInject(self.device)
 
     def test_enter_fl_mode(self):
-        """测试进入 fl 模式"""
+        """Test entering fl mode"""
         self.device.ser.read.return_value = b"fl>"
         self.device.ser.in_waiting = 3
 
@@ -340,7 +340,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.write.assert_called()
 
     def test_exit_fl_mode(self):
-        """测试退出 fl 模式"""
+        """Test exiting fl mode"""
         self.device.ser.read.return_value = b"[OK]\nap>"
         self.device.ser.in_waiting = 8
 
@@ -349,7 +349,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.assertTrue(result)
 
     def test_send_cmd(self):
-        """测试发送命令"""
+        """Test sending command"""
 
         def mock_read(n):
             self.device.ser.in_waiting = 0
@@ -358,33 +358,33 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 10
 
-        # 直接调用内部方法
+        # Directly call internal method
         result = self.fpb._send_cmd("--cmd ping", timeout=0.1)
 
         self.assertIn("OK", result)
 
 
 class TestFPBInjectCompile(unittest.TestCase):
-    """FPBInject 编译相关测试"""
+    """FPBInject compilation related tests"""
 
     def setUp(self):
         self.device = DeviceState()
         self.fpb = FPBInject(self.device)
 
     def test_parse_compile_commands_not_found(self):
-        """测试解析不存在的 compile_commands.json"""
+        """Test parsing nonexistent compile_commands.json"""
         result = self.fpb.parse_compile_commands("/nonexistent/path.json")
 
         self.assertIsNone(result)
 
     def test_get_symbols_not_found(self):
-        """测试获取不存在的 ELF 符号"""
+        """Test getting symbols from nonexistent ELF"""
         result = self.fpb.get_symbols("/nonexistent/elf.elf")
 
         self.assertEqual(result, {})
 
     def test_inject_no_elf(self):
-        """测试没有 ELF 文件时注入"""
+        """Test injection when no ELF file"""
         self.device.elf_path = ""
 
         success, result = self.fpb.inject("void foo() {}", "target")
@@ -394,39 +394,39 @@ class TestFPBInjectCompile(unittest.TestCase):
 
 
 class TestFPBInjectError(unittest.TestCase):
-    """FPBInjectError 异常测试"""
+    """FPBInjectError exception tests"""
 
     def test_exception_message(self):
-        """测试异常消息"""
+        """Test exception message"""
         try:
             raise FPBInjectError("Test error message")
         except FPBInjectError as e:
             self.assertEqual(str(e), "Test error message")
 
     def test_exception_inheritance(self):
-        """测试异常继承"""
+        """Test exception inheritance"""
         self.assertTrue(issubclass(FPBInjectError, Exception))
 
 
 class TestFPBInjectCoverage(unittest.TestCase):
-    """FPBInject 类测试 (扩展覆盖率)"""
+    """FPBInject class tests (extended coverage)"""
 
     def setUp(self):
         self.device = DeviceState()
         self.device.ser = Mock()
         self.device.ser.isOpen.return_value = True
-        self.device.chunk_size = 48  # 设置固定的 chunk_size 用于测试
+        self.device.chunk_size = 48  # Set fixed chunk_size for testing
         self.fpb = FPBInject(self.device)
 
     def test_send_cmd_write_error(self):
-        """测试发送命令写入错误"""
+        """Test send command write error"""
         self.device.ser.write.side_effect = Exception("Write Error")
 
         with self.assertRaises(Exception):  # _send_cmd doesn't catch exception
             self.fpb._send_cmd("test")
 
     def test_send_cmd_read_error(self):
-        """测试发送命令读取错误"""
+        """Test send command read error"""
         # send_cmd calls write then read
         # Mock ser.read to raise exception
         self.device.ser.in_waiting = 5
@@ -436,7 +436,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.fpb._send_cmd("test")
 
     def test_parse_compile_commands(self):
-        """测试解析 compile_commands.json"""
+        """Test parsing compile_commands.json"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(
                 [
@@ -461,7 +461,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             os.remove(cmd_path)
 
     def test_parse_compile_commands_complex(self):
-        """测试解析复杂的编译命令"""
+        """Test parsing complex compile commands"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(
                 [
@@ -490,7 +490,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             os.remove(cmd_path)
 
     def test_parse_compile_commands_malformed(self):
-        """测试解析格式错误的 json"""
+        """Test parsing malformed json"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("Not JSON")
             cmd_path = f.name
@@ -502,7 +502,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             os.remove(cmd_path)
 
     def test_parse_compile_commands_empty(self):
-        """测试空JSON列表"""
+        """Test empty JSON list"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump([], f)
             cmd_path = f.name
@@ -515,7 +515,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_get_symbols(self, mock_run):
-        """测试获取符号表"""
+        """Test getting symbol table"""
         mock_output = MagicMock()
         mock_output.stdout = """
 08000000 T main
@@ -533,7 +533,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_get_symbols_error(self, mock_run):
-        """测试获取符号表失败"""
+        """Test getting symbol table failure"""
         mock_run.side_effect = Exception("nm failed")
 
         symbols = self.fpb.get_symbols("/path/to/elf")
@@ -541,7 +541,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
         self.assertEqual(symbols, {})
 
     def test_upload_success(self):
-        """测试 upload 成功"""
+        """Test upload success"""
         self.fpb._send_cmd = Mock(return_value="[OK]")
 
         data = b"\x01" * 100
@@ -549,11 +549,11 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
         self.assertTrue(success)
         self.assertEqual(result["bytes"], 100)
-        # 100 bytes / 48 bytes per chunk = 2.08, 向上取整 = 3 chunks
+        # 100 bytes / 48 bytes per chunk = 2.08, rounded up = 3 chunks
         self.assertEqual(result["chunks"], 3)
 
     def test_upload_fail(self):
-        """测试 upload 失败"""
+        """Test upload failure"""
         self.fpb._send_cmd = Mock(return_value="[ERR] Write error")
 
         data = b"\x01" * 10
@@ -563,7 +563,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
         self.assertIn("Write error", result["error"])
 
     def test_upload_callback(self):
-        """测试 upload 回调"""
+        """Test upload callback"""
         self.fpb._send_cmd = Mock(return_value="[OK]")
         callback = Mock()
 
@@ -573,7 +573,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
         self.assertEqual(callback.call_count, 3)
 
     def test_inject_no_symbols(self):
-        """测试注入时找不到目标符号"""
+        """Test injection when target symbol not found"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
             self.device.elf_path = f.name
 
@@ -591,7 +591,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     @patch("fpb_inject.FPBInject.compile_inject")
     def test_inject_compile_fail(self, mock_compile):
-        """测试注入时编译步骤失败"""
+        """Test injection when compilation step fails"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
             self.device.elf_path = f.name
 
@@ -626,7 +626,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
     def test_inject_success_flow(
         self, mock_tpatch, mock_upload, mock_unpatch, mock_compile
     ):
-        """测试注入成功流程"""
+        """Test injection success flow"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
             self.device.elf_path = f.name
 
@@ -670,7 +670,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     @patch("fpb_inject.FPBInject.compile_inject")
     def test_inject_dynamic_allocation(self, mock_compile):
-        """测试动态分配注入"""
+        """Test dynamic allocation injection"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
             self.device.elf_path = f.name
 
@@ -718,7 +718,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
 
 class TestFPBInjectCommands(unittest.TestCase):
-    """FPBInject 命令测试 (扩展覆盖率)"""
+    """FPBInject command tests (extended coverage)"""
 
     def setUp(self):
         self.device = DeviceState()
@@ -728,7 +728,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.fpb = FPBInject(self.device)
 
     def test_ping_success(self):
-        """测试 ping 成功"""
+        """Test ping success"""
         self.fpb._send_cmd = Mock(return_value="[OK] Pong")
 
         success, msg = self.fpb.ping()
@@ -736,7 +736,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(success)
 
     def test_ping_failure(self):
-        """测试 ping 失败"""
+        """Test ping failure"""
         self.fpb._send_cmd = Mock(return_value="[ERR] No response")
 
         success, msg = self.fpb.ping()
@@ -744,7 +744,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertFalse(success)
 
     def test_info_success(self):
-        """测试 info 成功"""
+        """Test info success"""
         self.fpb._send_cmd = Mock(
             return_value="Base: 0x20000000\nSize: 1024\nUsed: 100\n[OK]"
         )
@@ -757,7 +757,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertEqual(info["used"], 100)
 
     def test_info_failure(self):
-        """测试 info 失败"""
+        """Test info failure"""
         self.fpb._send_cmd = Mock(return_value="[ERR] Device not ready")
 
         info, error = self.fpb.info()
@@ -766,7 +766,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertIn("Device not ready", error)
 
     def test_alloc_success(self):
-        """测试 alloc 成功"""
+        """Test alloc success"""
         # alloc response format: "[OK] Allocated buffer at 0x20001000"
         self.fpb._send_cmd = Mock(return_value="[OK] Allocated buffer at 0x20001000")
 
@@ -776,7 +776,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertEqual(error, "")
 
     def test_alloc_failure(self):
-        """测试 alloc 失败"""
+        """Test alloc failure"""
         self.fpb._send_cmd = Mock(return_value="[ERR] Out of memory")
 
         addr, error = self.fpb.alloc(1024)
@@ -784,7 +784,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertIsNone(addr)
 
     def test_unpatch_all_success(self):
-        """测试 unpatch all 成功"""
+        """Test unpatch all success"""
         self.fpb._send_cmd = Mock(return_value="[OK] Cleared")
 
         success, msg = self.fpb.unpatch(all=True)
@@ -792,7 +792,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(success)
 
     def test_patch_success(self):
-        """测试 patch 成功"""
+        """Test patch success"""
         self.fpb._send_cmd = Mock(return_value="[OK] Patched")
 
         success, msg = self.fpb.patch(0, 0x08000000, 0x20001000)
@@ -800,7 +800,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(success)
 
     def test_tpatch_success(self):
-        """测试 tpatch 成功"""
+        """Test tpatch success"""
         self.fpb._send_cmd = Mock(return_value="[OK] Trampoline patched")
 
         success, msg = self.fpb.tpatch(0, 0x08000000, 0x20001000)
@@ -808,7 +808,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(success)
 
     def test_dpatch_success(self):
-        """测试 dpatch 成功"""
+        """Test dpatch success"""
         self.fpb._send_cmd = Mock(return_value="[OK] DebugMonitor patched")
 
         success, msg = self.fpb.dpatch(0, 0x08000000, 0x20001000)
@@ -816,7 +816,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(success)
 
     def test_unpatch_success(self):
-        """测试 unpatch 成功"""
+        """Test unpatch success"""
         self.fpb._send_cmd = Mock(return_value="[OK] Unpatched")
 
         success, msg = self.fpb.unpatch(0)
@@ -824,7 +824,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(success)
 
     def test_exit_fl_mode(self):
-        """测试退出 fl 模式"""
+        """Test exiting fl mode"""
         self.device.ser.read.return_value = b"[OK]\nap>"
         self.device.ser.in_waiting = 10
 
@@ -833,7 +833,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(result)
 
     def test_exit_fl_mode_error(self):
-        """测试退出 fl 模式异常"""
+        """Test exiting fl mode exception"""
         # Set the fl mode flag to ensure exit is attempted
         self.fpb._in_fl_mode = True
         self.device.ser.write.side_effect = Exception("Write error")

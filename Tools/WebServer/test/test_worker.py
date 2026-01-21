@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Worker 模块测试
+Worker module tests
 """
 
 import os
@@ -17,20 +17,20 @@ import worker
 
 
 class TestWorkerModule(unittest.TestCase):
-    """Worker 模块测试"""
+    """Worker module tests"""
 
     def setUp(self):
-        """每个测试前停止 worker"""
+        """Stop worker before each test"""
         worker.stop()
         worker.configure(None, None)
 
     def tearDown(self):
-        """每个测试后停止 worker"""
+        """Stop worker after each test"""
         worker.stop()
         worker.configure(None, None)
 
     def test_start_stop(self):
-        """测试启动和停止"""
+        """Test start and stop"""
         self.assertFalse(worker.is_running())
 
         worker.start()
@@ -42,44 +42,44 @@ class TestWorkerModule(unittest.TestCase):
         self.assertFalse(worker.is_running())
 
     def test_start_twice(self):
-        """测试重复启动"""
+        """Test starting twice"""
         worker.start()
-        worker.start()  # 不应该报错
+        worker.start()  # Should not error
 
         self.assertTrue(worker.is_running())
 
     def test_stop_without_start(self):
-        """测试未启动时停止"""
-        worker.stop()  # 不应该报错
+        """Test stopping without starting"""
+        worker.stop()  # Should not error
         self.assertFalse(worker.is_running())
 
     def test_enqueue_when_not_running(self):
-        """测试未运行时入队"""
+        """Test enqueue when not running"""
         result = worker.enqueue("test", {})
         self.assertFalse(result)
 
     def test_enqueue_when_running(self):
-        """测试运行时入队"""
+        """Test enqueue when running"""
         worker.start()
 
         result = worker.enqueue("test", {"key": "value"})
         self.assertTrue(result)
 
     def test_enqueue_and_wait(self):
-        """测试入队并等待"""
+        """Test enqueue and wait"""
         worker.start()
 
         result = worker.enqueue_and_wait("test", {}, timeout=1.0)
-        # 没有处理器，但应该完成
+        # No handler, but should complete
         self.assertTrue(result)
 
     def test_enqueue_and_wait_not_running(self):
-        """测试未运行时入队并等待"""
+        """Test enqueue and wait when not running"""
         result = worker.enqueue_and_wait("test", {}, timeout=0.1)
         self.assertFalse(result)
 
     def test_run_in_worker(self):
-        """测试在 worker 中运行函数"""
+        """Test running function in worker"""
         worker.start()
 
         executed = []
@@ -93,18 +93,18 @@ class TestWorkerModule(unittest.TestCase):
         self.assertEqual(executed, [True])
 
     def test_run_in_worker_exception(self):
-        """测试在 worker 中运行抛出异常的函数"""
+        """Test running exception-throwing function in worker"""
         worker.start()
 
         def bad_task():
             raise ValueError("Test error")
 
-        # 不应该抛出异常到调用者
+        # Should not throw exception to caller
         result = worker.run_in_worker(bad_task, timeout=1.0)
         self.assertTrue(result)
 
     def test_configure_process_queue_item(self):
-        """测试配置队列处理回调"""
+        """Test configuring queue processing callback"""
         handler = Mock()
         worker.configure(process_queue_item=handler, process_rx=None)
 
@@ -115,18 +115,18 @@ class TestWorkerModule(unittest.TestCase):
         handler.assert_called_with("custom_cmd", {"data": 123})
 
     def test_configure_process_rx(self):
-        """测试配置接收处理回调"""
+        """Test configuring receive processing callback"""
         rx_handler = Mock()
         worker.configure(process_queue_item=None, process_rx=rx_handler)
 
         worker.start()
         time.sleep(0.2)
 
-        # RX 处理器应该被调用
+        # RX handler should be called
         self.assertTrue(rx_handler.called)
 
     def test_get_timer_manager(self):
-        """测试获取定时器管理器"""
+        """Test getting timer manager"""
         self.assertIsNone(worker.get_timer_manager())
 
         worker.start()
@@ -135,7 +135,7 @@ class TestWorkerModule(unittest.TestCase):
         self.assertIsNotNone(tm)
 
     def test_timer_integration(self):
-        """测试定时器集成"""
+        """Test timer integration"""
         worker.start()
 
         executed = []
@@ -145,31 +145,31 @@ class TestWorkerModule(unittest.TestCase):
 
         tm = worker.get_timer_manager()
         timer = tm.add(0.1, timer_callback, "test_timer")
-        # 重置定时器以确保从现在开始计时
+        # Reset timer to ensure timing from now
         timer.reset()
 
-        # 唤醒 worker 来立即处理
+        # Wake worker to process immediately
         for _ in range(5):
             worker.wake()
             time.sleep(0.12)
 
-        # 应该执行多次
+        # Should execute multiple times
         self.assertGreaterEqual(len(executed), 2)
 
     def test_wake(self):
-        """测试唤醒 worker"""
+        """Test waking worker"""
         worker.start()
 
-        # 不应该报错
+        # Should not error
         worker.wake()
         worker.wake()
 
     def test_wake_when_not_running(self):
-        """测试未运行时唤醒"""
-        worker.wake()  # 不应该报错
+        """Test waking when not running"""
+        worker.wake()  # Should not error
 
     def test_process_queue_item_exception(self):
-        """测试队列处理器异常"""
+        """Test queue handler exception"""
 
         def bad_handler(cmd_type, cmd_data):
             raise RuntimeError("Handler error")
@@ -177,14 +177,14 @@ class TestWorkerModule(unittest.TestCase):
         worker.configure(process_queue_item=bad_handler, process_rx=None)
         worker.start()
 
-        # 不应该崩溃
+        # Should not crash
         worker.enqueue("test", {})
         time.sleep(0.2)
 
         self.assertTrue(worker.is_running())
 
     def test_process_rx_exception(self):
-        """测试接收处理器异常"""
+        """Test receive handler exception"""
 
         def bad_rx():
             raise RuntimeError("RX error")
@@ -194,22 +194,22 @@ class TestWorkerModule(unittest.TestCase):
 
         time.sleep(0.2)
 
-        # Worker 应该继续运行
+        # Worker should continue running
         self.assertTrue(worker.is_running())
 
     def test_enqueue_with_done_event(self):
-        """测试带 done_event 的入队"""
+        """Test enqueue with done_event"""
         worker.start()
 
         done_event = threading.Event()
         worker.enqueue("test", {}, done_event)
 
-        # 等待完成
+        # Wait for completion
         result = done_event.wait(timeout=1.0)
         self.assertTrue(result)
 
     def test_multiple_enqueue(self):
-        """测试多次入队"""
+        """Test multiple enqueues"""
         results = []
 
         def handler(cmd_type, cmd_data):
@@ -228,7 +228,7 @@ class TestWorkerModule(unittest.TestCase):
 
 
 class TestWorkerStates(unittest.TestCase):
-    """Worker 状态测试"""
+    """Worker state tests"""
 
     def setUp(self):
         worker.stop()
@@ -239,7 +239,7 @@ class TestWorkerStates(unittest.TestCase):
         worker.configure(None, None)
 
     def test_restart(self):
-        """测试重启"""
+        """Test restart"""
         worker.start()
         self.assertTrue(worker.is_running())
 
@@ -252,25 +252,25 @@ class TestWorkerStates(unittest.TestCase):
         self.assertTrue(worker.is_running())
 
     def test_timer_cleared_on_stop(self):
-        """测试停止时清除定时器"""
+        """Test timer cleared on stop"""
         worker.start()
         tm = worker.get_timer_manager()
         tm.add(1.0, lambda: None, "test")
 
         worker.stop()
 
-        # 停止后定时器管理器应该是 None
+        # Timer manager should be None after stop
         self.assertIsNone(worker.get_timer_manager())
 
     def test_run_in_worker_timeout(self):
-        """测试 run_in_worker 超时"""
+        """Test run_in_worker timeout"""
         worker.start()
 
         def slow_task():
             time.sleep(2)
 
-        # 由于 task 执行慢，但 enqueue_and_wait 有 timeout
-        # 这里我们用一个正常完成的任务
+        # Since task is slow but enqueue_and_wait has timeout
+        # Here we use a task that completes normally
         def fast_task():
             pass
 

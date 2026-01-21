@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Device Worker 模块测试
+Device Worker module tests
 """
 
 import os
@@ -25,10 +25,10 @@ from device_worker import (
 
 
 class TestDeviceWorker(unittest.TestCase):
-    """DeviceWorker 类测试"""
+    """DeviceWorker class tests"""
 
     def setUp(self):
-        """设置测试环境"""
+        """Set up test environment"""
         self.device = Mock()
         self.device.ser = None
         self.device.serial_log = []
@@ -37,24 +37,24 @@ class TestDeviceWorker(unittest.TestCase):
         self.worker = DeviceWorker(self.device)
 
     def tearDown(self):
-        """清理测试环境"""
+        """Clean up test environment"""
         if self.worker.is_running():
             self.worker.stop()
 
     def test_init(self):
-        """测试初始化"""
+        """Test initialization"""
         self.assertEqual(self.worker.device, self.device)
         self.assertFalse(self.worker.is_running())
 
     def test_start(self):
-        """测试启动"""
+        """Test start"""
         self.worker.start()
         time.sleep(0.1)
 
         self.assertTrue(self.worker.is_running())
 
     def test_stop(self):
-        """测试停止"""
+        """Test stop"""
         self.worker.start()
         time.sleep(0.1)
 
@@ -64,43 +64,43 @@ class TestDeviceWorker(unittest.TestCase):
         self.assertFalse(self.worker.is_running())
 
     def test_start_twice(self):
-        """测试重复启动"""
+        """Test starting twice"""
         self.worker.start()
-        self.worker.start()  # 不应该报错
+        self.worker.start()  # Should not error
 
         self.assertTrue(self.worker.is_running())
 
     def test_stop_without_start(self):
-        """测试未启动时停止"""
-        self.worker.stop()  # 不应该报错
+        """Test stopping without starting"""
+        self.worker.stop()  # Should not error
         self.assertFalse(self.worker.is_running())
 
     def test_enqueue_not_running(self):
-        """测试未运行时入队"""
+        """Test enqueue when not running"""
         result = self.worker.enqueue("test", {})
         self.assertFalse(result)
 
     def test_enqueue_running(self):
-        """测试运行时入队"""
+        """Test enqueue when running"""
         self.worker.start()
 
         result = self.worker.enqueue("test", {})
         self.assertTrue(result)
 
     def test_enqueue_and_wait(self):
-        """测试入队并等待"""
+        """Test enqueue and wait"""
         self.worker.start()
 
         result = self.worker.enqueue_and_wait("test", {}, timeout=1.0)
         self.assertTrue(result)
 
     def test_enqueue_and_wait_not_running(self):
-        """测试未运行时入队并等待"""
+        """Test enqueue and wait when not running"""
         result = self.worker.enqueue_and_wait("test", {}, timeout=0.1)
         self.assertFalse(result)
 
     def test_run_in_worker(self):
-        """测试在 worker 中运行函数"""
+        """Test running function in worker"""
         self.worker.start()
 
         executed = []
@@ -114,18 +114,18 @@ class TestDeviceWorker(unittest.TestCase):
         self.assertEqual(executed, [True])
 
     def test_run_in_worker_exception(self):
-        """测试在 worker 中运行抛出异常的函数"""
+        """Test running exception-throwing function in worker"""
         self.worker.start()
 
         def bad_task():
             raise ValueError("Test error")
 
-        # 不应该抛出异常
+        # Should not throw exception
         result = self.worker.run_in_worker(bad_task, timeout=1.0)
         self.assertTrue(result)
 
     def test_get_timer_manager(self):
-        """测试获取定时器管理器"""
+        """Test getting timer manager"""
         self.assertIsNone(self.worker.get_timer_manager())
 
         self.worker.start()
@@ -134,18 +134,18 @@ class TestDeviceWorker(unittest.TestCase):
         self.assertIsNotNone(tm)
 
     def test_wake(self):
-        """测试唤醒"""
+        """Test wake"""
         self.worker.start()
 
-        # 不应该报错
+        # Should not error
         self.worker.wake()
 
     def test_wake_not_running(self):
-        """测试未运行时唤醒"""
-        self.worker.wake()  # 不应该报错
+        """Test wake when not running"""
+        self.worker.wake()  # Should not error
 
     def test_timer_integration(self):
-        """测试定时器集成"""
+        """Test timer integration"""
         self.worker.start()
 
         executed = []
@@ -162,10 +162,10 @@ class TestDeviceWorker(unittest.TestCase):
 
 
 class TestSerialOperations(unittest.TestCase):
-    """串口操作测试"""
+    """Serial operation test"""
 
     def setUp(self):
-        """设置测试环境"""
+        """Set up test environment"""
         self.device = Mock()
         self.device.serial_log = []
         self.device.log_next_id = 0
@@ -176,12 +176,12 @@ class TestSerialOperations(unittest.TestCase):
         self.worker = DeviceWorker(self.device)
 
     def tearDown(self):
-        """清理测试环境"""
+        """Clean up test environment"""
         if self.worker.is_running():
             self.worker.stop()
 
     def test_serial_write_cmd(self):
-        """测试串口写入命令"""
+        """Test serial write command"""
         self.worker.start()
 
         self.worker.enqueue("write", "test command\n")
@@ -191,7 +191,7 @@ class TestSerialOperations(unittest.TestCase):
         self.mock_ser.flush.assert_called()
 
     def test_serial_write_bytes(self):
-        """测试串口写入字节"""
+        """Test serial write bytes"""
         self.worker.start()
 
         self.worker.enqueue("write", b"binary data")
@@ -200,27 +200,27 @@ class TestSerialOperations(unittest.TestCase):
         self.mock_ser.write.assert_called()
 
     def test_serial_write_no_serial(self):
-        """测试无串口时写入"""
+        """Test write when no serial"""
         self.device.ser = None
         self.worker.start()
 
-        # 不应该报错
+        # Should not error
         self.worker.enqueue("write", "test")
         time.sleep(0.2)
 
     def test_serial_write_closed(self):
-        """测试串口关闭时写入"""
+        """Test write when serial closed"""
         self.mock_ser.isOpen.return_value = False
         self.worker.start()
 
-        # 不应该报错
+        # Should not error
         self.worker.enqueue("write", "test")
         time.sleep(0.2)
 
         self.mock_ser.write.assert_not_called()
 
     def test_serial_read(self):
-        """测试串口读取"""
+        """Test serial read"""
         # Mock in_waiting to return 10 bytes available
         type(self.mock_ser).in_waiting = PropertyMock(return_value=10)
         self.mock_ser.read.return_value = b"test data\n"
@@ -233,14 +233,14 @@ class TestSerialOperations(unittest.TestCase):
         self.worker.start()
         time.sleep(0.5)  # Give more time for worker to process
 
-        # 应该有日志记录
+        # Should have log records
         self.assertTrue(len(self.device.serial_log) > 0)
 
     def test_serial_log_overflow(self):
-        """测试串口日志溢出"""
+        """Test serial log overflow"""
         self.device.log_max_size = 5
 
-        # 手动添加日志
+        # Manually add logs
         for i in range(10):
             self.device.serial_log.append({"id": i})
             if len(self.device.serial_log) > self.device.log_max_size:
@@ -252,10 +252,10 @@ class TestSerialOperations(unittest.TestCase):
 
 
 class TestModuleFunctions(unittest.TestCase):
-    """模块级函数测试"""
+    """Module functions test"""
 
     def setUp(self):
-        """设置测试环境"""
+        """Set up test environment"""
         device_worker._worker = None
         self.device = Mock()
         self.device.ser = None
@@ -265,27 +265,27 @@ class TestModuleFunctions(unittest.TestCase):
         self.device.worker = None
 
     def tearDown(self):
-        """清理测试环境"""
+        """Clean up test environment"""
         if device_worker._worker is not None:
             device_worker._worker.stop()
             device_worker._worker = None
 
     def test_get_worker(self):
-        """测试获取 worker"""
+        """Test get worker"""
         worker = get_worker(self.device)
 
         self.assertIsNotNone(worker)
         self.assertIsInstance(worker, DeviceWorker)
 
     def test_get_worker_returns_same(self):
-        """测试获取相同的 worker"""
+        """Test get same worker"""
         worker1 = get_worker(self.device)
         worker2 = get_worker(self.device)
 
         self.assertEqual(worker1, worker2)
 
     def test_start_worker(self):
-        """测试启动 worker"""
+        """Test start worker"""
         worker = start_worker(self.device)
         time.sleep(0.1)
 
@@ -293,7 +293,7 @@ class TestModuleFunctions(unittest.TestCase):
         self.assertEqual(self.device.worker, worker)
 
     def test_stop_worker(self):
-        """测试停止 worker"""
+        """Test stop worker"""
         start_worker(self.device)
         time.sleep(0.1)
 
@@ -304,12 +304,12 @@ class TestModuleFunctions(unittest.TestCase):
         self.assertIsNone(device_worker._worker)
 
     def test_run_in_device_worker_no_worker(self):
-        """测试无 worker 时运行函数"""
+        """Test run function with no worker"""
         result = run_in_device_worker(self.device, lambda: None)
         self.assertFalse(result)
 
     def test_run_in_device_worker_not_running(self):
-        """测试 worker 未运行时运行函数"""
+        """Test run function when worker not running"""
         self.device.worker = Mock()
         self.device.worker.is_running.return_value = False
 
@@ -317,7 +317,7 @@ class TestModuleFunctions(unittest.TestCase):
         self.assertFalse(result)
 
     def test_run_in_device_worker_success(self):
-        """测试运行函数成功"""
+        """Test run function success"""
         start_worker(self.device)
         time.sleep(0.1)
 
@@ -332,12 +332,12 @@ class TestModuleFunctions(unittest.TestCase):
         self.assertEqual(executed, [True])
 
     def test_get_device_timer_manager_no_worker(self):
-        """测试无 worker 时获取定时器管理器"""
+        """Test get timer manager with no worker"""
         result = get_device_timer_manager(self.device)
         self.assertIsNone(result)
 
     def test_get_device_timer_manager_with_worker(self):
-        """测试有 worker 时获取定时器管理器"""
+        """Test get timer manager with worker"""
         start_worker(self.device)
         time.sleep(0.1)
 
@@ -347,7 +347,7 @@ class TestModuleFunctions(unittest.TestCase):
 
 
 class TestDeviceWorkerExtended(unittest.TestCase):
-    """DeviceWorker 扩展测试"""
+    """DeviceWorker extended test"""
 
     def setUp(self):
         self.device = Mock()
@@ -362,19 +362,19 @@ class TestDeviceWorkerExtended(unittest.TestCase):
             self.worker.stop()
 
     def test_queue_overflow_handling(self):
-        """测试队列溢出处理"""
+        """Test queue overflow handling"""
         self.worker.start()
         time.sleep(0.1)
 
-        # 快速入队多个任务
+        # Quickly enqueue multiple tasks
         for i in range(10):
             self.worker.enqueue("test", {"index": i})
 
         time.sleep(0.5)
-        # 应该正常完成，不应崩溃
+        # Should complete normally, not crash
 
     def test_enqueue_with_handler(self):
-        """测试带处理器的入队"""
+        """Test enqueue with handler"""
         self.worker.start()
         time.sleep(0.1)
 
@@ -382,7 +382,7 @@ class TestDeviceWorkerExtended(unittest.TestCase):
         self.assertTrue(result)
 
     def test_multiple_start_stop_cycles(self):
-        """测试多次启动停止循环"""
+        """Test multiple start stop cycles"""
         for _ in range(3):
             self.worker.start()
             time.sleep(0.1)

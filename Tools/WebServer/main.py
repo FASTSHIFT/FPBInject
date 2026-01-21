@@ -134,10 +134,12 @@ def main():
 
     # Check if port is already in use
     if not check_port_available(args.host, args.port):
-        logger.error(f"❌ 错误: 端口 {args.port} 已被占用！")
-        logger.error("   可能已有另一个 FPBInject 服务器在运行。")
-        logger.error("   请先关闭占用该端口的程序，或使用 --port 指定其他端口。")
-        logger.error(f"   例如: ./main.py --port {args.port + 1}")
+        logger.error(f"❌ Error: Port {args.port} is already in use!")
+        logger.error("   Another FPBInject server may already be running.")
+        logger.error(
+            "   Please close the program occupying this port, or use --port to specify another port."
+        )
+        logger.error(f"   Example: ./main.py --port {args.port + 1}")
         sys.exit(1)
 
     app = create_app()
@@ -147,7 +149,7 @@ def main():
 
     logger.info(f"Starting FPBInject Web Server on http://127.0.0.1:{args.port}")
     logger.info(
-        f"⚠️  建议使用 http://127.0.0.1:{args.port} 访问（避免 localhost IPv6 延迟）"
+        f"⚠️  Recommended to use http://127.0.0.1:{args.port} for access (to avoid localhost IPv6 delay)"
     )
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 

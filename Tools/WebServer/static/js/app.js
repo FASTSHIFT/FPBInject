@@ -900,7 +900,10 @@ async function fetchLogs() {
     }
 
     // Slot update push notification (decoupled from request logic)
-    if (data.slot_update_id !== undefined && data.slot_update_id > slotUpdateId) {
+    if (
+      data.slot_update_id !== undefined &&
+      data.slot_update_id > slotUpdateId
+    ) {
       slotUpdateId = data.slot_update_id;
       // Update slot states from pushed data
       if (data.slot_data && data.slot_data.slots) {

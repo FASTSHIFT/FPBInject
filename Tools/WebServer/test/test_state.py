@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-State 模块测试
+State module tests
 """
 
 import json
@@ -16,19 +16,19 @@ from state import DeviceState, AppState, PERSISTENT_KEYS, CONFIG_VERSION
 
 
 class TestDeviceState(unittest.TestCase):
-    """DeviceState 测试用例"""
+    """DeviceState test cases"""
 
     def test_init_default_values(self):
-        """测试初始化默认值"""
+        """Test initializing default values"""
         state = DeviceState()
 
-        # 串口相关
+        # Serial related
         self.assertIsNone(state.ser)
         self.assertIsNone(state.port)
         self.assertEqual(state.baudrate, 115200)
         self.assertEqual(state.timeout, 2)
 
-        # 配置相关
+        # Configuration related
         self.assertEqual(state.elf_path, "")
         self.assertEqual(state.toolchain_path, "")
         self.assertEqual(state.compile_commands_path, "")
@@ -36,22 +36,22 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.patch_mode, "trampoline")
         self.assertEqual(state.chunk_size, 128)
 
-        # 自动设置
+        # Auto settings
         self.assertFalse(state.auto_connect)
         self.assertFalse(state.auto_compile)
 
-        # 注入状态
+        # Injection status
         self.assertIsNone(state.last_inject_target)
         self.assertIsNone(state.last_inject_func)
         self.assertFalse(state.inject_active)
 
-        # 日志
+        # Logs
         self.assertEqual(state.serial_log, [])
         self.assertEqual(state.raw_serial_log, [])
         self.assertEqual(state.log_max_size, 5000)
 
     def test_to_dict(self):
-        """测试转换为字典"""
+        """Test converting to dictionary"""
         state = DeviceState()
         state.elf_path = "/test/path.elf"
         state.toolchain_path = "/usr/bin"
@@ -61,11 +61,11 @@ class TestDeviceState(unittest.TestCase):
 
         d = state.to_dict()
 
-        # 验证所有持久化键都存在
+        # Verify all persistent keys exist
         for key in PERSISTENT_KEYS:
             self.assertIn(key, d)
 
-        # 验证值
+        # Verify values
         self.assertEqual(d["elf_path"], "/test/path.elf")
         self.assertEqual(d["toolchain_path"], "/usr/bin")
         self.assertEqual(d["patch_mode"], "debugmon")
@@ -73,7 +73,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(d["watch_dirs"], ["/dir1", "/dir2"])
 
     def test_from_dict(self):
-        """测试从字典导入"""
+        """Test importing from dictionary"""
         state = DeviceState()
 
         data = {
@@ -101,29 +101,29 @@ class TestDeviceState(unittest.TestCase):
         self.assertTrue(state.auto_compile)
 
     def test_from_dict_partial(self):
-        """测试部分导入"""
+        """Test partial import"""
         state = DeviceState()
-        state.baudrate = 115200  # 默认值
-        state.patch_mode = "trampoline"  # 默认值
+        state.baudrate = 115200  # Default value
+        state.patch_mode = "trampoline"  # Default value
 
-        # 只更新部分字段
+        # Only update partial fields
         state.from_dict({"baudrate": 921600})
 
         self.assertEqual(state.baudrate, 921600)
-        self.assertEqual(state.patch_mode, "trampoline")  # 未改变
+        self.assertEqual(state.patch_mode, "trampoline")  # Unchanged
 
     def test_from_dict_ignore_unknown(self):
-        """测试忽略未知键"""
+        """Test ignoring unknown keys"""
         state = DeviceState()
 
-        # 包含未知键
+        # Contains unknown keys
         state.from_dict({"unknown_key": "value", "baudrate": 9600})
 
         self.assertEqual(state.baudrate, 9600)
         self.assertFalse(hasattr(state, "unknown_key") and state.unknown_key == "value")
 
     def test_auto_inject_state(self):
-        """测试自动注入状态字段"""
+        """Test auto injection status fields"""
         state = DeviceState()
 
         self.assertEqual(state.auto_inject_status, "idle")
@@ -134,11 +134,11 @@ class TestDeviceState(unittest.TestCase):
 
 
 class TestAppState(unittest.TestCase):
-    """AppState 测试用例"""
+    """AppState test cases"""
 
     def test_init(self):
-        """测试初始化"""
-        # 使用临时配置文件
+        """Test initialization"""
+        # Use temporary config file
         app_state = AppState()
 
         self.assertIsNotNone(app_state.device)
@@ -150,7 +150,7 @@ class TestAppState(unittest.TestCase):
         self.assertFalse(app_state.symbols_loaded)
 
     def test_add_pending_change(self):
-        """测试添加待处理变化"""
+        """Test adding pending changes"""
         app_state = AppState()
 
         app_state.add_pending_change("/path/to/file.c", "modified")
@@ -163,7 +163,7 @@ class TestAppState(unittest.TestCase):
         self.assertIsNotNone(app_state.last_change_time)
 
     def test_add_pending_change_multiple(self):
-        """测试添加多个变化"""
+        """Test adding multiple changes"""
         app_state = AppState()
 
         app_state.add_pending_change("/file1.c", "modified")
@@ -173,20 +173,20 @@ class TestAppState(unittest.TestCase):
         self.assertEqual(len(app_state.pending_changes), 3)
 
     def test_add_pending_change_limit(self):
-        """测试变化数量限制"""
+        """Test changes quantity limit"""
         app_state = AppState()
 
-        # 添加超过100个变化
+        # Add more than 100 changes
         for i in range(150):
             app_state.add_pending_change(f"/file{i}.c", "modified")
 
-        # 应该只保留最后100个
+        # Should only keep last 100
         self.assertEqual(len(app_state.pending_changes), 100)
-        # 第一个应该是 file50.c
+        # First one should be file50.c
         self.assertEqual(app_state.pending_changes[0]["path"], "/file50.c")
 
     def test_clear_pending_changes(self):
-        """测试清除待处理变化"""
+        """Test clearing pending changes"""
         app_state = AppState()
 
         app_state.add_pending_change("/file.c", "modified")
@@ -195,19 +195,19 @@ class TestAppState(unittest.TestCase):
         self.assertEqual(app_state.pending_changes, [])
 
     def test_get_pending_changes(self):
-        """测试获取待处理变化"""
+        """Test getting pending changes"""
         app_state = AppState()
 
         app_state.add_pending_change("/file.c", "modified")
 
         changes = app_state.get_pending_changes()
 
-        # 应该返回副本
+        # Should return copy
         self.assertEqual(len(changes), 1)
         self.assertIsNot(changes, app_state.pending_changes)
 
     def test_default_patch_template(self):
-        """测试默认 patch 模板"""
+        """Test default patch template"""
         app_state = AppState()
 
         template = app_state.patch_template
@@ -218,24 +218,24 @@ class TestAppState(unittest.TestCase):
 
 
 class TestConfigPersistence(unittest.TestCase):
-    """配置持久化测试"""
+    """Configuration persistence test"""
 
     def setUp(self):
-        """创建临时配置文件"""
+        """Create temporary config file"""
         self.temp_dir = tempfile.mkdtemp()
         self.config_file = os.path.join(self.temp_dir, "test_config.json")
 
     def tearDown(self):
-        """清理临时文件"""
+        """Clean up temporary files"""
         if os.path.exists(self.config_file):
             os.remove(self.config_file)
         os.rmdir(self.temp_dir)
 
     def test_save_and_load_config(self):
-        """测试保存和加载配置"""
+        """Test saving and loading configuration"""
         import state as state_module
 
-        # 临时替换配置文件路径
+        # Temporarily replace config file path
         original_config_file = state_module.CONFIG_FILE
         state_module.CONFIG_FILE = self.config_file
 
@@ -245,13 +245,13 @@ class TestConfigPersistence(unittest.TestCase):
             app_state.device.toolchain_path = "/test/toolchain"
             app_state.device.patch_mode = "debugmon"
 
-            # 保存
+            # Save
             app_state.save_config()
 
-            # 验证文件已创建
+            # Verify file was created
             self.assertTrue(os.path.exists(self.config_file))
 
-            # 读取并验证
+            # Read and verify
             with open(self.config_file, "r") as f:
                 config = json.load(f)
 
@@ -260,7 +260,7 @@ class TestConfigPersistence(unittest.TestCase):
             self.assertEqual(config["patch_mode"], "debugmon")
             self.assertEqual(config["version"], CONFIG_VERSION)
 
-            # 创建新状态并加载
+            # Create new state and load
             new_state = AppState()
 
             self.assertEqual(new_state.device.elf_path, "/test/elf.elf")
@@ -270,17 +270,17 @@ class TestConfigPersistence(unittest.TestCase):
             state_module.CONFIG_FILE = original_config_file
 
     def test_load_nonexistent_config(self):
-        """测试加载不存在的配置文件"""
+        """Test loading non-existent config file"""
         import state as state_module
 
         original_config_file = state_module.CONFIG_FILE
         state_module.CONFIG_FILE = "/nonexistent/path/config.json"
 
         try:
-            # 不应该抛出异常
+            # Should not raise exception
             app_state = AppState()
 
-            # 应该使用默认值
+            # Should use default values
             self.assertEqual(app_state.device.baudrate, 115200)
 
         finally:
@@ -288,10 +288,10 @@ class TestConfigPersistence(unittest.TestCase):
 
 
 class TestDeviceStateExtended(unittest.TestCase):
-    """DeviceState 扩展测试"""
+    """DeviceState extended tests"""
 
     def test_raw_serial_log_limit(self):
-        """测试原始串口日志限制"""
+        """Test raw serial log limit"""
         state = DeviceState()
         state.raw_log_max_size = 5
 
@@ -303,12 +303,12 @@ class TestDeviceStateExtended(unittest.TestCase):
         self.assertEqual(len(state.raw_serial_log), 5)
 
     def test_device_info_default(self):
-        """测试设备信息默认值"""
+        """Test device info default values"""
         state = DeviceState()
         self.assertIsNone(state.device_info)
 
     def test_patch_source_content(self):
-        """测试补丁源码内容"""
+        """Test patch source content"""
         state = DeviceState()
         self.assertEqual(state.patch_source_content, "")
 
@@ -317,25 +317,25 @@ class TestDeviceStateExtended(unittest.TestCase):
 
 
 class TestAppStateExtended(unittest.TestCase):
-    """AppState 扩展测试"""
+    """AppState extended tests"""
 
     def test_symbols_loaded_default(self):
-        """测试符号加载状态默认值"""
+        """Test symbol loading status default values"""
         app_state = AppState()
         self.assertFalse(app_state.symbols_loaded)
 
     def test_symbols_default(self):
-        """测试符号默认值"""
+        """Test symbols default values"""
         app_state = AppState()
         self.assertEqual(app_state.symbols, {})
 
     def test_file_watcher_default(self):
-        """测试文件监视器默认值"""
+        """Test file watcher default values"""
         app_state = AppState()
         self.assertIsNone(app_state.file_watcher)
 
     def test_get_pending_changes_empty(self):
-        """测试获取空的待处理变更"""
+        """Test getting empty pending changes"""
         app_state = AppState()
         changes = app_state.get_pending_changes()
         self.assertEqual(changes, [])

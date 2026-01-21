@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FPBInject WebServer API 测试
+FPBInject WebServer API tests
 """
 
 import unittest
@@ -9,7 +9,7 @@ import json
 import sys
 import os
 
-# 添加父目录到路径
+# Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main import create_app
@@ -20,17 +20,17 @@ app = create_app()
 
 
 class TestFPBInjectAPI(unittest.TestCase):
-    """FPBInject API 测试用例"""
+    """FPBInject API test cases"""
 
     @classmethod
     def setUpClass(cls):
-        """测试类初始化"""
+        """Test class initialization"""
         cls.client = app.test_client()
         cls.client.testing = True
 
     def setUp(self):
-        """每个测试前初始化"""
-        # 重置设备状态
+        """Initialize before each test"""
+        # Reset device state
         device = state.device
         device.ser = None
         device.port = None
@@ -40,13 +40,13 @@ class TestFPBInjectAPI(unittest.TestCase):
         device.patch_mode = "trampoline"
 
     def tearDown(self):
-        """每个测试后清理"""
+        """Clean up after each test"""
         pass
 
-    # ==================== 端口相关测试 ====================
+    # ==================== Port related tests ====================
 
     def test_list_ports(self):
-        """测试获取串口列表"""
+        """Test getting serial port list"""
         response = self.client.get("/api/ports")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -55,7 +55,7 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertTrue(data["success"])
 
     def test_connect_no_port(self):
-        """测试连接时未指定端口"""
+        """Test connect without specifying port"""
         response = self.client.post("/api/connect", json={})
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -63,25 +63,25 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("error", data)
 
     def test_disconnect_without_connection(self):
-        """测试未连接时断开"""
+        """Test disconnect when not connected"""
         response = self.client.post("/api/disconnect")
-        # 即使未连接也应返回成功
+        # Should return success even when not connected
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
     def test_status_disconnected(self):
-        """测试断开状态查询"""
+        """Test disconnect status query"""
         response = self.client.get("/api/status")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data["success"])
         self.assertFalse(data["connected"])
 
-    # ==================== 配置相关测试 ====================
+    # ==================== Configuration related tests ====================
 
     def test_update_config(self):
-        """测试更新配置"""
+        """Test updating configuration"""
         config = {
             "elf_path": "/path/to/test.elf",
             "toolchain_path": "/path/to/toolchain",
@@ -93,13 +93,13 @@ class TestFPBInjectAPI(unittest.TestCase):
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
-        # 验证状态已更新
+        # Verify state has been updated
         self.assertEqual(state.device.elf_path, config["elf_path"])
         self.assertEqual(state.device.toolchain_path, config["toolchain_path"])
         self.assertEqual(state.device.patch_mode, config["patch_mode"])
 
     def test_update_config_partial(self):
-        """测试部分更新配置"""
+        """Test partial configuration update"""
         response = self.client.post(
             "/api/config", json={"elf_path": "/new/path/to/test.elf"}
         )
@@ -107,66 +107,66 @@ class TestFPBInjectAPI(unittest.TestCase):
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
-        # 验证只有指定字段被更新
+        # Verify only specified fields are updated
         self.assertEqual(state.device.elf_path, "/new/path/to/test.elf")
 
     def test_update_config_port_baudrate(self):
-        """测试更新串口和波特率配置"""
+        """Test updating serial and baudrate configuration"""
         config = {"port": "/dev/ttyUSB0", "baudrate": 921600}
         response = self.client.post("/api/config", json=config)
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
-        # 验证串口和波特率已更新
+        # Verify serial and baudrate have been updated
         self.assertEqual(state.device.port, "/dev/ttyUSB0")
         self.assertEqual(state.device.baudrate, 921600)
 
-        # 验证状态 API 返回更新后的值
+        # Verify status API returns updated values
         response = self.client.get("/api/status")
         data = json.loads(response.data)
         self.assertEqual(data["port"], "/dev/ttyUSB0")
         self.assertEqual(data["baudrate"], 921600)
 
-    # ==================== FPB 操作测试 ====================
+    # ==================== FPB Operation Tests ====================
 
     def test_fpb_ping(self):
-        """测试 FPB ping"""
+        """Test FPB ping"""
         response = self.client.post("/api/fpb/ping")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
-        # 未连接时 ping 会失败，但 API 应该返回
+        # When not connected ping will fail, but API should return
         self.assertIn("success", data)
 
     def test_fpb_info(self):
-        """测试获取 FPB info"""
+        """Test getting FPB info"""
         response = self.client.get("/api/fpb/info")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
-        # 未连接时会返回错误
+        # When not connected will return error
         self.assertIn("success", data)
 
     def test_fpb_unpatch(self):
-        """测试 FPB unpatch"""
+        """Test FPB unpatch"""
         response = self.client.post("/api/fpb/unpatch", json={"comp": 0})
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertIn("success", data)
 
-    # ==================== 符号相关测试 ====================
+    # ==================== Symbol Related Tests ====================
 
     def test_symbols_list(self):
-        """测试获取符号列表"""
+        """Test getting symbol list"""
         response = self.client.get("/api/symbols")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertIn("success", data)
         self.assertIn("symbols", data)
 
-    # ==================== Patch 相关测试 ====================
+    # ==================== Patch Related Tests ====================
 
     def test_patch_template(self):
-        """测试获取 patch 模板"""
+        """Test getting patch template"""
         response = self.client.get(
             "/api/patch/template", json={"func_name": "test_func"}
         )
@@ -175,7 +175,7 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("success", data)
 
     def test_patch_detect_markers_no_file(self):
-        """测试检测标记 - 文件不存在"""
+        """Test detecting markers - file does not exist"""
         response = self.client.post(
             "/api/patch/detect_markers", json={"file_path": "/nonexistent/file.c"}
         )
@@ -185,7 +185,7 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("error", data)
 
     def test_patch_auto_generate_no_file(self):
-        """测试自动生成 patch - 文件不存在"""
+        """Test auto generating patch - file does not exist"""
         response = self.client.post(
             "/api/patch/auto_generate", json={"file_path": "/nonexistent/file.c"}
         )
@@ -194,10 +194,10 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertFalse(data["success"])
         self.assertIn("error", data)
 
-    # ==================== 文件监控测试 ====================
+    # ==================== File monitoring tests ====================
 
     def test_watch_status(self):
-        """测试获取监控状态"""
+        """Test getting monitoring status"""
         response = self.client.get("/api/watch/status")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -206,14 +206,14 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("watch_dirs", data)
 
     def test_watch_stop(self):
-        """测试停止监控"""
+        """Test stopping monitoring"""
         response = self.client.post("/api/watch/stop")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
     def test_watch_auto_inject_status(self):
-        """测试获取自动注入状态"""
+        """Test getting auto injection status"""
         response = self.client.get("/api/watch/auto_inject_status")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -224,16 +224,16 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("modified_funcs", data)
 
     def test_watch_auto_inject_reset(self):
-        """测试重置自动注入状态"""
+        """Test resetting auto injection status"""
         response = self.client.post("/api/watch/auto_inject_reset")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
-    # ==================== 日志测试 ====================
+    # ==================== Log tests ====================
 
     def test_log_get(self):
-        """测试获取日志"""
+        """Test getting logs"""
         response = self.client.get("/api/log")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -241,14 +241,14 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("logs", data)
 
     def test_log_clear(self):
-        """测试清除日志"""
+        """Test clearing logs"""
         response = self.client.post("/api/log/clear")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
     def test_raw_log_get(self):
-        """测试获取原始串口日志"""
+        """Test getting raw serial logs"""
         response = self.client.get("/api/raw_log")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -257,16 +257,16 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("next_index", data)
 
     def test_raw_log_clear(self):
-        """测试清除原始串口日志"""
+        """Test clearing raw serial logs"""
         response = self.client.post("/api/raw_log/clear")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data["success"])
 
-    # ==================== 文件浏览测试 ====================
+    # ==================== File browsing tests ====================
 
     def test_browse_root(self):
-        """测试浏览根目录"""
+        """Test browsing root directory"""
         response = self.client.get("/api/browse?path=/")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -275,7 +275,7 @@ class TestFPBInjectAPI(unittest.TestCase):
         self.assertIn("current_path", data)
 
     def test_browse_home(self):
-        """测试浏览 home 目录"""
+        """Test browsing home directory"""
         home = os.path.expanduser("~")
         response = self.client.get(f"/api/browse?path={home}")
         self.assertEqual(response.status_code, 200)
@@ -285,10 +285,10 @@ class TestFPBInjectAPI(unittest.TestCase):
 
 
 class TestStateManagement(unittest.TestCase):
-    """状态管理测试"""
+    """State management tests"""
 
     def test_state_initial_values(self):
-        """测试状态初始值"""
+        """Test state initial values"""
         from state import DeviceState
 
         test_state = DeviceState()
@@ -298,7 +298,7 @@ class TestStateManagement(unittest.TestCase):
         self.assertEqual(test_state.patch_mode, "trampoline")
 
     def test_state_to_dict(self):
-        """测试状态转字典"""
+        """Test state to dictionary"""
         from state import DeviceState
 
         test_state = DeviceState()
@@ -309,17 +309,17 @@ class TestStateManagement(unittest.TestCase):
 
 
 class TestFPBInjectModule(unittest.TestCase):
-    """FPB 注入模块测试"""
+    """FPB injection module tests"""
 
     def test_scan_serial_ports(self):
-        """测试扫描串口"""
+        """Test scanning serial ports"""
         from fpb_inject import scan_serial_ports
 
         ports = scan_serial_ports()
         self.assertIsInstance(ports, list)
 
     def test_fpb_inject_init(self):
-        """测试 FPBInject 初始化"""
+        """Test FPBInject initialization"""
         from fpb_inject import FPBInject
         from state import DeviceState
 
@@ -330,5 +330,5 @@ class TestFPBInjectModule(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # 运行测试
+    # Run tests
     unittest.main(verbosity=2)

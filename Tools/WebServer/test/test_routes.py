@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Routes API 测试
+Routes API tests
 """
 
 import json
@@ -19,37 +19,37 @@ from state import DeviceState, AppState, state
 
 
 class TestRoutesBase(unittest.TestCase):
-    """Routes 测试基类"""
+    """Routes test base class"""
 
     def setUp(self):
-        """设置测试环境"""
+        """Set up test environment"""
         self.app = Flask(__name__)
         self.app.config["TESTING"] = True
 
-        # 重置全局状态
+        # Reset global state
         routes._fpb_inject = None
 
-        # 创建测试用的 state
+        # Create test state
         self.original_device = state.device
         state.device = DeviceState()
 
-        # 注册路由
+        # Register routes
         routes.register_routes(self.app)
 
         self.client = self.app.test_client()
 
     def tearDown(self):
-        """清理测试环境"""
+        """Clean up test environment"""
         state.device = self.original_device
         routes._fpb_inject = None
 
 
 class TestIndexRoute(TestRoutesBase):
-    """首页路由测试"""
+    """Index route tests"""
 
     @patch("routes.render_template")
     def test_index(self, mock_render):
-        """测试首页"""
+        """Test index page"""
         mock_render.return_value = "<html>Test</html>"
 
         response = self.client.get("/")
@@ -59,11 +59,11 @@ class TestIndexRoute(TestRoutesBase):
 
 
 class TestPortsAPI(TestRoutesBase):
-    """端口 API 测试"""
+    """Ports API tests"""
 
     @patch("routes.scan_serial_ports")
     def test_get_ports(self, mock_scan):
-        """测试获取端口列表"""
+        """Test getting ports list"""
         mock_scan.return_value = [
             {"port": "/dev/ttyUSB0", "description": "USB Serial"},
             {"port": "/dev/ttyUSB1", "description": "USB Serial 2"},
@@ -77,7 +77,7 @@ class TestPortsAPI(TestRoutesBase):
 
     @patch("routes.scan_serial_ports")
     def test_get_ports_empty(self, mock_scan):
-        """测试无可用端口"""
+        """Test no available ports"""
         mock_scan.return_value = []
 
         response = self.client.get("/api/ports")
@@ -88,12 +88,12 @@ class TestPortsAPI(TestRoutesBase):
 
 
 class TestConnectAPI(TestRoutesBase):
-    """连接 API 测试"""
+    """Connect API tests"""
 
     @patch("routes.start_worker")
     @patch("routes.run_in_device_worker")
     def test_connect_no_port(self, mock_run, mock_start):
-        """测试连接时未指定端口"""
+        """Test connect without specifying port"""
         response = self.client.post(
             "/api/connect", data=json.dumps({}), content_type="application/json"
         )
@@ -105,7 +105,7 @@ class TestConnectAPI(TestRoutesBase):
     @patch("routes.start_worker")
     @patch("routes.run_in_device_worker")
     def test_connect_timeout(self, mock_run, mock_start):
-        """测试连接超时"""
+        """Test connection timeout"""
         mock_run.return_value = False
 
         response = self.client.post(
@@ -120,12 +120,12 @@ class TestConnectAPI(TestRoutesBase):
 
 
 class TestDisconnectAPI(TestRoutesBase):
-    """断开连接 API 测试"""
+    """Disconnect API tests"""
 
     @patch("routes.run_in_device_worker")
     @patch("routes.stop_worker")
     def test_disconnect(self, mock_stop, mock_run):
-        """测试断开连接"""
+        """Test disconnect"""
         mock_run.return_value = True
 
         response = self.client.post("/api/disconnect")
@@ -135,10 +135,10 @@ class TestDisconnectAPI(TestRoutesBase):
 
 
 class TestStatusAPI(TestRoutesBase):
-    """状态 API 测试"""
+    """Status API tests"""
 
     def test_get_status(self):
-        """测试获取状态"""
+        """Test getting status"""
         state.device.port = "/dev/ttyUSB0"
         state.device.baudrate = 115200
 
@@ -151,11 +151,11 @@ class TestStatusAPI(TestRoutesBase):
 
 
 class TestRoutesFPB(TestRoutesBase):
-    """FPB 相关路由测试"""
+    """FPB related route tests"""
 
     @patch("routes.get_fpb_inject")
     def test_fpb_ping(self, mock_get_fpb):
-        """测试 Ping"""
+        """Test Ping"""
         mock_fpb = Mock()
         mock_fpb.ping.return_value = (True, "pong")
         mock_get_fpb.return_value = mock_fpb
@@ -168,7 +168,7 @@ class TestRoutesFPB(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_fpb_info(self, mock_get_fpb):
-        """测试 Info"""
+        """Test Info"""
         mock_fpb = Mock()
         mock_fpb.info.return_value = ({"chip": "ESP32"}, "")
         mock_get_fpb.return_value = mock_fpb
@@ -181,7 +181,7 @@ class TestRoutesFPB(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_fpb_inject(self, mock_get_fpb):
-        """测试 Inject"""
+        """Test Inject"""
         mock_fpb = Mock()
         mock_fpb.inject.return_value = (True, {"time": 100})
         mock_get_fpb.return_value = mock_fpb
@@ -199,7 +199,7 @@ class TestRoutesFPB(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_fpb_inject_missing_params(self, mock_get_fpb):
-        """测试 Inject 缺少参数"""
+        """Test Inject missing parameters"""
         response = self.client.post("/api/fpb/inject", json={})
         data = json.loads(response.data)
 
@@ -207,7 +207,7 @@ class TestRoutesFPB(TestRoutesBase):
         self.assertIn("not provided", data["error"])
 
     def test_api_config(self):
-        """测试配置更新"""
+        """Test configuration update"""
         payload = {
             "port": "/dev/ttyTest",
             "baudrate": 9600,
@@ -224,18 +224,18 @@ class TestRoutesFPB(TestRoutesBase):
         self.assertEqual(state.device.chunk_size, 128)
 
     def test_patch_template(self):
-        """测试获取补丁模板"""
+        """Test getting patch template"""
         response = self.client.get("/api/patch/template")
         data = json.loads(response.data)
         self.assertTrue(data["success"])
         self.assertIn("content", data)
 
     def test_get_status_all_fields(self):
-        """测试获取所有状态字段"""
+        """Test getting all status fields"""
         response = self.client.get("/api/status")
         data = json.loads(response.data)
 
-        # 验证所有必需字段存在
+        # Verify all required fields exist
         required_fields = [
             "success",
             "connected",
@@ -257,10 +257,10 @@ class TestRoutesFPB(TestRoutesBase):
 
 
 class TestConfigAPI(TestRoutesBase):
-    """配置 API 测试"""
+    """Configuration API tests"""
 
     def test_update_port(self):
-        """测试更新端口"""
+        """Test updating port"""
         response = self.client.post(
             "/api/config",
             data=json.dumps({"port": "/dev/ttyUSB1"}),
@@ -272,7 +272,7 @@ class TestConfigAPI(TestRoutesBase):
         self.assertEqual(state.device.port, "/dev/ttyUSB1")
 
     def test_update_baudrate(self):
-        """测试更新波特率"""
+        """Test updating baudrate"""
         response = self.client.post(
             "/api/config",
             data=json.dumps({"baudrate": 921600}),
@@ -284,7 +284,7 @@ class TestConfigAPI(TestRoutesBase):
         self.assertEqual(state.device.baudrate, 921600)
 
     def test_update_patch_mode(self):
-        """测试更新补丁模式"""
+        """Test updating patch mode"""
         response = self.client.post(
             "/api/config",
             data=json.dumps({"patch_mode": "jump"}),
@@ -296,7 +296,7 @@ class TestConfigAPI(TestRoutesBase):
         self.assertEqual(state.device.patch_mode, "jump")
 
     def test_update_chunk_size(self):
-        """测试更新块大小"""
+        """Test updating chunk size"""
         response = self.client.post(
             "/api/config",
             data=json.dumps({"chunk_size": 512}),
@@ -308,7 +308,7 @@ class TestConfigAPI(TestRoutesBase):
         self.assertEqual(state.device.chunk_size, 512)
 
     def test_update_auto_compile(self):
-        """测试更新自动编译设置"""
+        """Test updating auto compile setting"""
         response = self.client.post(
             "/api/config",
             data=json.dumps({"auto_compile": True}),
@@ -321,7 +321,7 @@ class TestConfigAPI(TestRoutesBase):
 
     @patch("routes._restart_file_watcher")
     def test_update_watch_dirs(self, mock_restart):
-        """测试更新监控目录"""
+        """Test updating watch directories"""
         response = self.client.post(
             "/api/config",
             data=json.dumps({"watch_dirs": ["/tmp/test1", "/tmp/test2"]}),
@@ -334,7 +334,7 @@ class TestConfigAPI(TestRoutesBase):
         mock_restart.assert_called_once()
 
     def test_update_elf_path_nonexistent(self):
-        """测试更新不存在的 ELF 路径"""
+        """Test updating nonexistent ELF path"""
         response = self.client.post(
             "/api/config",
             data=json.dumps({"elf_path": "/nonexistent/file.elf"}),
@@ -347,7 +347,7 @@ class TestConfigAPI(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_update_toolchain_path(self, mock_get_fpb):
-        """测试更新工具链路径"""
+        """Test updating toolchain path"""
         mock_fpb = Mock()
         mock_get_fpb.return_value = mock_fpb
 
@@ -363,11 +363,11 @@ class TestConfigAPI(TestRoutesBase):
 
 
 class TestFPBPingAPI(TestRoutesBase):
-    """FPB Ping API 测试"""
+    """FPB Ping API tests"""
 
     @patch("routes.get_fpb_inject")
     def test_ping_success(self, mock_get_fpb):
-        """测试 ping 成功"""
+        """Test ping success"""
         mock_fpb = Mock()
         mock_fpb.ping.return_value = (True, "Pong!")
         mock_get_fpb.return_value = mock_fpb
@@ -380,7 +380,7 @@ class TestFPBPingAPI(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_ping_failure(self, mock_get_fpb):
-        """测试 ping 失败"""
+        """Test ping failure"""
         mock_fpb = Mock()
         mock_fpb.ping.return_value = (False, "Timeout")
         mock_get_fpb.return_value = mock_fpb
@@ -392,11 +392,11 @@ class TestFPBPingAPI(TestRoutesBase):
 
 
 class TestFPBInfoAPI(TestRoutesBase):
-    """FPB Info API 测试"""
+    """FPB Info API tests"""
 
     @patch("routes.get_fpb_inject")
     def test_info_success(self, mock_get_fpb):
-        """测试获取设备信息成功"""
+        """Test getting device info success"""
         mock_fpb = Mock()
         mock_fpb.info.return_value = ({"fpb": 4, "version": "1.0"}, None)
         mock_get_fpb.return_value = mock_fpb
@@ -409,7 +409,7 @@ class TestFPBInfoAPI(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_info_error(self, mock_get_fpb):
-        """测试获取设备信息失败"""
+        """Test getting device info failure"""
         mock_fpb = Mock()
         mock_fpb.info.return_value = (None, "Device not responding")
         mock_get_fpb.return_value = mock_fpb
@@ -422,11 +422,11 @@ class TestFPBInfoAPI(TestRoutesBase):
 
 
 class TestFPBUnpatchAPI(TestRoutesBase):
-    """FPB Unpatch API 测试"""
+    """FPB Unpatch API tests"""
 
     @patch("routes.get_fpb_inject")
     def test_unpatch_success(self, mock_get_fpb):
-        """测试取消补丁成功"""
+        """Test unpatch success"""
         mock_fpb = Mock()
         mock_fpb.unpatch.return_value = (True, "OK")
         mock_get_fpb.return_value = mock_fpb
@@ -445,7 +445,7 @@ class TestFPBUnpatchAPI(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_unpatch_single_slot(self, mock_get_fpb):
-        """测试取消单个slot补丁"""
+        """Test unpatch single slot"""
         mock_fpb = Mock()
         mock_fpb.unpatch.return_value = (True, "OK")
         mock_get_fpb.return_value = mock_fpb
@@ -465,7 +465,7 @@ class TestFPBUnpatchAPI(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_unpatch_failure(self, mock_get_fpb):
-        """测试取消补丁失败"""
+        """Test unpatch failure"""
         mock_fpb = Mock()
         mock_fpb.unpatch.return_value = (False, "Error")
         mock_get_fpb.return_value = mock_fpb
@@ -477,11 +477,11 @@ class TestFPBUnpatchAPI(TestRoutesBase):
 
 
 class TestFPBInjectAPI(TestRoutesBase):
-    """FPB Inject API 测试"""
+    """FPB Inject API tests"""
 
     @patch("routes.get_fpb_inject")
     def test_inject_no_source(self, mock_get_fpb):
-        """测试注入无源码"""
+        """Test inject without source"""
         response = self.client.post(
             "/api/fpb/inject",
             data=json.dumps({"target_func": "main"}),
@@ -494,7 +494,7 @@ class TestFPBInjectAPI(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_inject_no_target(self, mock_get_fpb):
-        """测试注入无目标函数"""
+        """Test inject without target function"""
         response = self.client.post(
             "/api/fpb/inject",
             data=json.dumps({"source_content": "int test() { return 1; }"}),
@@ -507,7 +507,7 @@ class TestFPBInjectAPI(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_inject_success(self, mock_get_fpb):
-        """测试注入成功"""
+        """Test inject success"""
         mock_fpb = Mock()
         mock_fpb.inject.return_value = (True, {"message": "Injection successful"})
         mock_fpb.enter_fl_mode = Mock()
@@ -533,7 +533,7 @@ class TestFPBInjectAPI(TestRoutesBase):
 
 
 class TestGetFPBInject(unittest.TestCase):
-    """get_fpb_inject 函数测试"""
+    """get_fpb_inject function tests"""
 
     def setUp(self):
         routes._fpb_inject = None
@@ -546,7 +546,7 @@ class TestGetFPBInject(unittest.TestCase):
 
     @patch("routes.FPBInject")
     def test_get_fpb_inject_creates_instance(self, mock_class):
-        """测试创建 FPBInject 实例"""
+        """Test creating FPBInject instance"""
         mock_instance = Mock()
         mock_class.return_value = mock_instance
 
@@ -557,7 +557,7 @@ class TestGetFPBInject(unittest.TestCase):
 
     @patch("routes.FPBInject")
     def test_get_fpb_inject_returns_existing(self, mock_class):
-        """测试返回已存在的实例"""
+        """Test returning existing instance"""
         mock_instance = Mock()
         mock_class.return_value = mock_instance
 
@@ -569,7 +569,7 @@ class TestGetFPBInject(unittest.TestCase):
 
     @patch("routes.FPBInject")
     def test_get_fpb_inject_with_toolchain(self, mock_class):
-        """测试带工具链路径的创建"""
+        """Test creating with toolchain path"""
         mock_instance = Mock()
         mock_class.return_value = mock_instance
         state.device.toolchain_path = "/opt/toolchain"
@@ -580,10 +580,10 @@ class TestGetFPBInject(unittest.TestCase):
 
 
 class TestRoutesExtended(TestRoutesBase):
-    """Routes 扩展测试"""
+    """Routes extended tests"""
 
     def test_symbols_reload(self):
-        """测试符号重新加载"""
+        """Test symbol reloading"""
         state.device.elf_path = "/tmp/test.elf"
 
         with patch("routes.get_fpb_inject") as mock_get_fpb:
@@ -599,7 +599,7 @@ class TestRoutesExtended(TestRoutesBase):
                 self.assertEqual(data["count"], 1)
 
     def test_symbols_reload_no_elf(self):
-        """测试无 ELF 文件时重新加载"""
+        """Test reloading without ELF file"""
         state.device.elf_path = ""
 
         response = self.client.post("/api/symbols/reload")
@@ -609,7 +609,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertIn("not found", data["error"])
 
     def test_get_symbols_with_query(self):
-        """测试带搜索条件获取符号"""
+        """Test getting symbols with search criteria"""
         state.symbols = {
             "main": 0x08000000,
             "test_func": 0x08001000,
@@ -624,7 +624,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertEqual(data["filtered"], 1)
 
     def test_patch_source_get(self):
-        """测试获取补丁源码"""
+        """Test getting patch source"""
         state.device.patch_source_content = "// test code"
 
         response = self.client.get("/api/patch/source")
@@ -634,7 +634,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertIn("test code", data["content"])
 
     def test_patch_source_set(self):
-        """测试设置补丁源码"""
+        """Test setting patch source"""
         response = self.client.post(
             "/api/patch/source",
             json={"content": "// new code"},
@@ -645,7 +645,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertEqual(state.device.patch_source_content, "// new code")
 
     def test_patch_source_set_no_content(self):
-        """测试设置空内容"""
+        """Test setting empty content"""
         response = self.client.post(
             "/api/patch/source",
             json={},
@@ -657,7 +657,7 @@ class TestRoutesExtended(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_fpb_info_error(self, mock_get_fpb):
-        """测试获取设备信息失败"""
+        """Test getting device info failure"""
         mock_fpb = Mock()
         mock_fpb.info.return_value = (None, "Device error")
         mock_get_fpb.return_value = mock_fpb
@@ -669,7 +669,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertIn("Device error", data["error"])
 
     def test_watch_status(self):
-        """测试获取文件监视状态"""
+        """Test getting file watcher status"""
         response = self.client.get("/api/watch/status")
         data = json.loads(response.data)
 
@@ -679,7 +679,7 @@ class TestRoutesExtended(TestRoutesBase):
 
     @patch("patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_file(self, mock_gen_class):
-        """测试自动生成补丁无文件路径"""
+        """Test auto generating patch without file path"""
         response = self.client.post("/api/patch/auto_generate", json={})
         data = json.loads(response.data)
 
@@ -688,7 +688,7 @@ class TestRoutesExtended(TestRoutesBase):
 
     @patch("patch_generator.PatchGenerator")
     def test_auto_generate_patch_file_not_found(self, mock_gen_class):
-        """测试自动生成补丁文件不存在"""
+        """Test auto generating patch when file not found"""
         response = self.client.post(
             "/api/patch/auto_generate", json={"file_path": "/nonexistent/file.c"}
         )
@@ -699,7 +699,7 @@ class TestRoutesExtended(TestRoutesBase):
 
     @patch("patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_markers(self, mock_gen_class):
-        """测试自动生成补丁无标记"""
+        """Test auto generating patch with no markers"""
         mock_gen = Mock()
         mock_gen.generate_patch.return_value = ("", [])
         mock_gen_class.return_value = mock_gen
@@ -715,7 +715,7 @@ class TestRoutesExtended(TestRoutesBase):
 
     @patch("patch_generator.PatchGenerator")
     def test_auto_generate_patch_success(self, mock_gen_class):
-        """测试自动生成补丁成功"""
+        """Test auto generating patch success"""
         mock_gen = Mock()
         mock_gen.generate_patch.return_value = ("// patch code", ["func1", "func2"])
         mock_gen_class.return_value = mock_gen
@@ -732,7 +732,7 @@ class TestRoutesExtended(TestRoutesBase):
 
     @patch("patch_generator.PatchGenerator")
     def test_detect_markers_no_file(self, mock_gen_class):
-        """测试检测标记无文件"""
+        """Test detecting markers without file"""
         response = self.client.post("/api/patch/detect_markers", json={})
         data = json.loads(response.data)
 
@@ -744,7 +744,7 @@ class TestRoutesExtended(TestRoutesBase):
         "builtins.open", mock_open(read_data="/* FPB_INJECT */\nvoid func1(void) {}")
     )
     def test_detect_markers_success(self, mock_gen_class):
-        """测试检测标记成功"""
+        """Test detecting markers success"""
         mock_gen = Mock()
         mock_gen.find_marked_functions.return_value = ["func1"]
         mock_gen_class.return_value = mock_gen
@@ -759,7 +759,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertEqual(data["marked_functions"], ["func1"])
 
     def test_status_with_connected_serial(self):
-        """测试有连接的串口状态"""
+        """Test status with connected serial"""
         mock_serial = Mock()
         mock_serial.isOpen.return_value = True
         state.device.ser = mock_serial
@@ -771,7 +771,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["connected"])
 
     def test_status_serial_exception(self):
-        """测试串口异常状态"""
+        """Test status with serial exception"""
         mock_serial = Mock()
         mock_serial.isOpen.side_effect = Exception("Port error")
         state.device.ser = mock_serial
@@ -786,7 +786,7 @@ class TestRoutesExtended(TestRoutesBase):
     @patch("routes.run_in_device_worker")
     @patch("routes.serial_open")
     def test_connect_success(self, mock_serial_open, mock_run, mock_start):
-        """测试连接成功"""
+        """Test connect success"""
         mock_serial = Mock()
         mock_serial_open.return_value = (mock_serial, None)
 
@@ -806,7 +806,7 @@ class TestRoutesExtended(TestRoutesBase):
 
     @patch("routes.get_fpb_inject")
     def test_config_update_elf_path_exists(self, mock_get_fpb):
-        """测试更新存在的 ELF 路径"""
+        """Test updating existing ELF path"""
         mock_fpb = Mock()
         mock_fpb.get_symbols.return_value = {"main": 0x08000000}
         mock_get_fpb.return_value = mock_fpb
@@ -825,7 +825,7 @@ class TestRoutesExtended(TestRoutesBase):
             os.unlink(elf_path)
 
     def test_config_update_compile_commands_path(self):
-        """测试更新 compile_commands 路径"""
+        """Test updating compile_commands path"""
         response = self.client.post(
             "/api/config", json={"compile_commands_path": "/tmp/compile_commands.json"}
         )

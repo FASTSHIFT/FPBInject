@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Coverage Analyzer Tool
-分析代码覆盖率详情，列出具体的未覆盖行号。
+Analyze code coverage details and list specific uncovered line numbers.
 """
 
 import sys
@@ -10,16 +10,16 @@ import os
 import unittest
 import coverage
 
-# 添加父目录到路径
+# Add parent directory to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PARENT_DIR)
 
 
 def main():
-    print("正在运行测试并分析覆盖率，请稍候...")
+    print("Running tests and analyzing coverage, please wait...")
 
-    # 初始化覆盖率统计
+    # Initialize coverage statistics
     cov = coverage.Coverage(
         source=[PARENT_DIR],
         omit=[
@@ -33,9 +33,9 @@ def main():
     )
     cov.start()
 
-    # 运行所有测试
+    # Run all tests
     loader = unittest.TestLoader()
-    # 屏蔽标准输出以获得清晰的报告
+    # Suppress standard output to get a clear report
     # stream = open(os.devnull, 'w')
     suite = loader.discover(SCRIPT_DIR, pattern="test_*.py")
     runner = unittest.TextTestRunner(verbosity=1)
@@ -45,10 +45,10 @@ def main():
     cov.save()
 
     print("\n" + "=" * 80)
-    print("详细覆盖率报告 (含未覆盖行号)")
+    print("Detailed coverage report (including uncovered line numbers)")
     print("=" * 80)
 
-    # show_missing=True 会在报告中显示 Miss 列对应的行号
+    # show_missing=True will display the line numbers corresponding to the Miss column in the report
     cov.report(show_missing=True)
 
     if not result.wasSuccessful():

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Timer 模块测试
+Timer module test
 """
 
 import os
@@ -15,10 +15,10 @@ from timer import Timer, TimerManager
 
 
 class TestTimer(unittest.TestCase):
-    """Timer 类测试用例"""
+    """Timer class test cases"""
 
     def test_init(self):
-        """测试初始化"""
+        """Test initialization"""
         callback = lambda: None
         timer = Timer(1.0, callback, name="test_timer")
 
@@ -29,20 +29,20 @@ class TestTimer(unittest.TestCase):
         self.assertTrue(timer.enabled)
 
     def test_init_default_name(self):
-        """测试默认名称"""
+        """Test default name"""
         timer = Timer(1.0, lambda: None)
 
         self.assertTrue(timer.name.startswith("timer_"))
 
     def test_check_fires_callback(self):
-        """测试 check 触发回调"""
+        """Test check fires callback"""
         called = [False]
 
         def callback():
             called[0] = True
 
         timer = Timer(0.1, callback)
-        timer.next_run = 0  # 设置为立即触发
+        timer.next_run = 0  # Set to fire immediately
 
         result = timer.check(time.time())
 
@@ -50,7 +50,7 @@ class TestTimer(unittest.TestCase):
         self.assertTrue(called[0])
 
     def test_check_updates_next_run(self):
-        """测试 check 更新 next_run"""
+        """Test check updates next_run"""
         timer = Timer(1.0, lambda: None)
         timer.next_run = 0
 
@@ -60,10 +60,10 @@ class TestTimer(unittest.TestCase):
         self.assertAlmostEqual(timer.next_run, now + 1.0, places=2)
 
     def test_check_not_yet_due(self):
-        """测试未到期不触发"""
+        """Test not yet due doesn't fire"""
         called = [False]
         timer = Timer(10.0, lambda: called.__setitem__(0, True))
-        timer.next_run = time.time() + 100  # 很久以后
+        timer.next_run = time.time() + 100  # Far in the future
 
         result = timer.check(time.time())
 
@@ -71,7 +71,7 @@ class TestTimer(unittest.TestCase):
         self.assertFalse(called[0])
 
     def test_check_disabled(self):
-        """测试禁用状态不触发"""
+        """Test disabled state doesn't fire"""
         called = [False]
         timer = Timer(0.1, lambda: called.__setitem__(0, True))
         timer.next_run = 0
@@ -83,7 +83,7 @@ class TestTimer(unittest.TestCase):
         self.assertFalse(called[0])
 
     def test_reset(self):
-        """测试重置"""
+        """Test reset"""
         timer = Timer(1.0, lambda: None)
         timer.next_run = 0
 
@@ -93,7 +93,7 @@ class TestTimer(unittest.TestCase):
         self.assertAlmostEqual(timer.next_run, now + 1.0, places=2)
 
     def test_reset_default_now(self):
-        """测试重置使用当前时间"""
+        """Test reset uses current time"""
         timer = Timer(1.0, lambda: None)
         timer.next_run = 0
 
@@ -105,7 +105,7 @@ class TestTimer(unittest.TestCase):
         self.assertLessEqual(timer.next_run, after + 1.0)
 
     def test_time_until_next(self):
-        """测试计算下次运行时间"""
+        """Test calculate next run time"""
         timer = Timer(1.0, lambda: None)
         now = time.time()
         timer.next_run = now + 5.0
@@ -115,16 +115,16 @@ class TestTimer(unittest.TestCase):
         self.assertAlmostEqual(remaining, 5.0, places=1)
 
     def test_time_until_next_past_due(self):
-        """测试已过期返回0"""
+        """Test returns 0 when past due"""
         timer = Timer(1.0, lambda: None)
-        timer.next_run = time.time() - 10  # 过去的时间
+        timer.next_run = time.time() - 10  # Past time
 
         remaining = timer.time_until_next(time.time())
 
         self.assertEqual(remaining, 0)
 
     def test_time_until_next_disabled(self):
-        """测试禁用时返回无穷大"""
+        """Test returns infinity when disabled"""
         timer = Timer(1.0, lambda: None)
         timer.enabled = False
 
@@ -133,7 +133,7 @@ class TestTimer(unittest.TestCase):
         self.assertEqual(remaining, float("inf"))
 
     def test_set_interval(self):
-        """测试设置间隔"""
+        """Test set interval"""
         timer = Timer(1.0, lambda: None)
 
         timer.set_interval(2.5)
@@ -142,16 +142,16 @@ class TestTimer(unittest.TestCase):
 
 
 class TestTimerManager(unittest.TestCase):
-    """TimerManager 类测试用例"""
+    """TimerManager class test cases"""
 
     def test_init(self):
-        """测试初始化"""
+        """Test initialization"""
         manager = TimerManager()
 
         self.assertEqual(manager.timers, [])
 
     def test_add_timer(self):
-        """测试添加定时器"""
+        """Test add timer"""
         manager = TimerManager()
 
         timer = manager.add(1.0, lambda: None, name="test")
@@ -162,7 +162,7 @@ class TestTimerManager(unittest.TestCase):
         self.assertEqual(timer.name, "test")
 
     def test_add_multiple_timers(self):
-        """测试添加多个定时器"""
+        """Test add multiple timers"""
         manager = TimerManager()
 
         t1 = manager.add(1.0, lambda: None, name="t1")
@@ -172,7 +172,7 @@ class TestTimerManager(unittest.TestCase):
         self.assertEqual(len(manager.timers), 3)
 
     def test_remove_timer(self):
-        """测试移除定时器"""
+        """Test remove timer"""
         manager = TimerManager()
 
         t1 = manager.add(1.0, lambda: None)
@@ -185,14 +185,14 @@ class TestTimerManager(unittest.TestCase):
         self.assertIn(t2, manager.timers)
 
     def test_tick(self):
-        """测试 tick 检查所有定时器"""
+        """Test tick checks all timers"""
         manager = TimerManager()
         called = [0]
 
         def callback():
             called[0] += 1
 
-        # 添加3个定时器，都设置为立即触发
+        # Add 3 timers, all set to fire immediately
         for i in range(3):
             t = manager.add(0.1, callback)
             t.next_run = 0
@@ -202,7 +202,7 @@ class TestTimerManager(unittest.TestCase):
         self.assertEqual(called[0], 3)
 
     def test_get_next_timeout(self):
-        """测试获取下次超时时间"""
+        """Test get next timeout time"""
         manager = TimerManager()
 
         now = time.time()
@@ -216,7 +216,7 @@ class TestTimerManager(unittest.TestCase):
         self.assertAlmostEqual(timeout, 2.0, places=1)
 
     def test_get_next_timeout_empty(self):
-        """测试空管理器返回 None"""
+        """Test empty manager returns None"""
         manager = TimerManager()
 
         timeout = manager.next_wake_time(time.time())
@@ -224,7 +224,7 @@ class TestTimerManager(unittest.TestCase):
         self.assertIsNone(timeout)
 
     def test_clear(self):
-        """测试清空所有定时器"""
+        """Test clear all timers"""
         manager = TimerManager()
         manager.add(1.0, lambda: None)
         manager.add(2.0, lambda: None)

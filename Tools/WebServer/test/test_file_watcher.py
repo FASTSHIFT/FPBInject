@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-File Watcher 模块测试
+File Watcher module test
 """
 
 import os
@@ -24,7 +24,7 @@ from file_watcher import (
 
 
 class TestFileChangeHandler(unittest.TestCase):
-    """FileChangeHandler 测试"""
+    """FileChangeHandler test"""
 
     def setUp(self):
         self.callback = Mock()
@@ -33,41 +33,41 @@ class TestFileChangeHandler(unittest.TestCase):
         )
 
     def test_init(self):
-        """测试初始化"""
+        """Test initialization"""
         self.assertEqual(self.handler.callback, self.callback)
         self.assertEqual(self.handler.extensions, [".c", ".h"])
 
     def test_init_default_extensions(self):
-        """测试默认扩展名"""
+        """Test default extensions"""
         handler = FileChangeHandler(callback=self.callback)
         self.assertIn(".c", handler.extensions)
         self.assertIn(".h", handler.extensions)
 
     def test_should_process_matching_file(self):
-        """测试匹配的文件应该处理"""
+        """Test matching file should be processed"""
         result = self.handler.should_process("/path/to/file.c")
         self.assertTrue(result)
 
     def test_should_process_header_file(self):
-        """测试头文件应该处理"""
+        """Test header file should be processed"""
         result = self.handler.should_process("/path/to/header.h")
         self.assertTrue(result)
 
     def test_should_not_process_non_matching(self):
-        """测试不匹配的文件不应该处理"""
+        """Test non-matching file should not be processed"""
         result = self.handler.should_process("/path/to/file.txt")
         self.assertFalse(result)
 
     def test_should_process_all_when_no_extensions(self):
-        """测试无扩展名限制时处理所有文件"""
+        """Test process all files when no extensions limit"""
         handler = FileChangeHandler(callback=self.callback, extensions=None)
-        # 当 extensions 为 None 时，默认会使用 ['.c', '.cpp', '.h', '.hpp']
+        # When extensions is None, default will use ['.c', '.cpp', '.h', '.hpp']
         result = handler.should_process("/path/to/file.c")
         self.assertTrue(result)
 
 
 class TestPollingWatcher(unittest.TestCase):
-    """PollingWatcher 测试"""
+    """PollingWatcher test"""
 
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
@@ -79,7 +79,7 @@ class TestPollingWatcher(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_init(self):
-        """测试初始化"""
+        """Test initialization"""
         watcher = PollingWatcher(
             directories=[self.temp_dir],
             callback=self.callback,
@@ -93,7 +93,7 @@ class TestPollingWatcher(unittest.TestCase):
         self.assertEqual(watcher.interval, 0.5)
 
     def test_start_stop(self):
-        """测试启动和停止"""
+        """Test start and stop"""
         watcher = PollingWatcher(
             directories=[self.temp_dir], callback=self.callback, interval=0.1
         )
@@ -105,7 +105,7 @@ class TestPollingWatcher(unittest.TestCase):
         self.assertFalse(watcher._running)
 
     def test_detect_new_file(self):
-        """测试检测新文件"""
+        """Test detect new file"""
         watcher = PollingWatcher(
             directories=[self.temp_dir], callback=self.callback, interval=0.1
         )
@@ -113,7 +113,7 @@ class TestPollingWatcher(unittest.TestCase):
         watcher.start()
         time.sleep(0.2)
 
-        # 创建新文件
+        # Create new file
         test_file = os.path.join(self.temp_dir, "test.c")
         with open(test_file, "w") as f:
             f.write("// test")
@@ -121,12 +121,12 @@ class TestPollingWatcher(unittest.TestCase):
         time.sleep(0.3)
         watcher.stop()
 
-        # 应该检测到创建
+        # Should detect creation
         self.callback.assert_called()
 
     def test_detect_modified_file(self):
-        """测试检测文件修改"""
-        # 先创建文件
+        """Test detect file modification"""
+        # Create file first
         test_file = os.path.join(self.temp_dir, "existing.c")
         with open(test_file, "w") as f:
             f.write("// original")
@@ -138,19 +138,19 @@ class TestPollingWatcher(unittest.TestCase):
         watcher.start()
         time.sleep(0.2)
 
-        # 修改文件
+        # Modify file
         with open(test_file, "w") as f:
             f.write("// modified")
 
         time.sleep(0.3)
         watcher.stop()
 
-        # 应该检测到修改
+        # Should detect modification
         self.callback.assert_called()
 
 
 class TestFileWatcher(unittest.TestCase):
-    """FileWatcher 测试"""
+    """FileWatcher test"""
 
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
@@ -162,7 +162,7 @@ class TestFileWatcher(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_init(self):
-        """测试初始化"""
+        """Test initialization"""
         watcher = FileWatcher(
             directories=[self.temp_dir], callback=self.callback, extensions=[".c"]
         )
@@ -171,7 +171,7 @@ class TestFileWatcher(unittest.TestCase):
         self.assertEqual(watcher.callback, self.callback)
 
     def test_init_filters_invalid_dirs(self):
-        """测试初始化时过滤无效目录"""
+        """Test filter invalid directories during initialization"""
         watcher = FileWatcher(
             directories=[self.temp_dir, "/nonexistent/12345"], callback=self.callback
         )
@@ -179,7 +179,7 @@ class TestFileWatcher(unittest.TestCase):
         self.assertEqual(watcher.directories, [self.temp_dir])
 
     def test_start_stop(self):
-        """测试启动和停止"""
+        """Test start and stop"""
         watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
 
         result = watcher.start()
@@ -191,14 +191,14 @@ class TestFileWatcher(unittest.TestCase):
         self.assertFalse(watcher.is_running())
 
     def test_start_no_directories(self):
-        """测试无目录时启动"""
+        """Test start when no directories"""
         watcher = FileWatcher(directories=[], callback=self.callback)
 
         result = watcher.start()
         self.assertFalse(result)
 
     def test_is_running(self):
-        """测试运行状态检查"""
+        """Test running status check"""
         watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
 
         self.assertFalse(watcher.is_running())
@@ -210,7 +210,7 @@ class TestFileWatcher(unittest.TestCase):
 
 
 class TestModuleFunctions(unittest.TestCase):
-    """模块级函数测试"""
+    """Module functions test"""
 
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
@@ -222,7 +222,7 @@ class TestModuleFunctions(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_start_watching(self):
-        """测试 start_watching 函数"""
+        """Test start_watching function"""
         watcher = start_watching(directories=[self.temp_dir], callback=self.callback)
 
         self.assertIsNotNone(watcher)
@@ -231,18 +231,18 @@ class TestModuleFunctions(unittest.TestCase):
         stop_watching(watcher)
 
     def test_start_watching_no_dirs(self):
-        """测试无目录时 start_watching"""
+        """Test start_watching when no directories"""
         watcher = start_watching(directories=[], callback=self.callback)
 
         self.assertIsNone(watcher)
 
     def test_stop_watching_none(self):
-        """测试停止 None"""
-        stop_watching(None)  # 不应该报错
+        """Test stop None"""
+        stop_watching(None)  # Should not error
 
 
 class TestPollingWatcherExtended(unittest.TestCase):
-    """PollingWatcher 扩展测试"""
+    """PollingWatcher extended test"""
 
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
@@ -254,7 +254,7 @@ class TestPollingWatcherExtended(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_should_process(self):
-        """测试文件扩展名检查"""
+        """Test file extension check"""
         watcher = PollingWatcher(
             directories=[self.temp_dir],
             callback=self.callback,
@@ -266,7 +266,7 @@ class TestPollingWatcherExtended(unittest.TestCase):
         self.assertFalse(watcher._should_process("/path/to/file.txt"))
 
     def test_scan_directory_empty(self):
-        """测试扫描空目录"""
+        """Test scan empty directory"""
         watcher = PollingWatcher(
             directories=[self.temp_dir],
             callback=self.callback,
@@ -276,8 +276,8 @@ class TestPollingWatcherExtended(unittest.TestCase):
         self.assertEqual(files, {})
 
     def test_scan_directory_with_files(self):
-        """测试扫描有文件的目录"""
-        # 创建测试文件
+        """Test scan directory with files"""
+        # Create test file
         test_file = os.path.join(self.temp_dir, "test.c")
         with open(test_file, "w") as f:
             f.write("// test")
@@ -291,7 +291,7 @@ class TestPollingWatcherExtended(unittest.TestCase):
         self.assertIn(test_file, files)
 
     def test_scan_directory_nonexistent(self):
-        """测试扫描不存在的目录"""
+        """Test scan nonexistent directory"""
         watcher = PollingWatcher(
             directories=["/nonexistent/12345"],
             callback=self.callback,
@@ -301,8 +301,8 @@ class TestPollingWatcherExtended(unittest.TestCase):
         self.assertEqual(files, {})
 
     def test_detect_deleted_file(self):
-        """测试检测文件删除"""
-        # 创建文件
+        """Test detect file deletion"""
+        # Create file
         test_file = os.path.join(self.temp_dir, "to_delete.c")
         with open(test_file, "w") as f:
             f.write("// to delete")
@@ -316,19 +316,19 @@ class TestPollingWatcherExtended(unittest.TestCase):
         watcher.start()
         time.sleep(0.2)
 
-        # 删除文件
+        # Delete file
         os.remove(test_file)
 
         time.sleep(0.3)
         watcher.stop()
 
-        # 应该检测到删除
+        # Should detect deletion
         calls = [c for c in self.callback.call_args_list if c[0][1] == "deleted"]
         self.assertTrue(len(calls) > 0)
 
 
 class TestFileWatcherExtended(unittest.TestCase):
-    """FileWatcher 扩展测试"""
+    """FileWatcher extended test"""
 
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
@@ -340,24 +340,24 @@ class TestFileWatcherExtended(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_double_start(self):
-        """测试重复启动"""
+        """Test double start"""
         watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
 
         result1 = watcher.start()
-        result2 = watcher.start()  # 第二次启动
+        result2 = watcher.start()  # Second start
 
         self.assertTrue(result1)
-        # 第二次启动可能返回 True (已在运行)
+        # Second start may return True (already running)
 
         watcher.stop()
 
     def test_double_stop(self):
-        """测试重复停止"""
+        """Test double stop"""
         watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
 
         watcher.start()
         watcher.stop()
-        watcher.stop()  # 第二次停止不应报错
+        watcher.stop()  # Second stop should not error
 
 
 if __name__ == "__main__":

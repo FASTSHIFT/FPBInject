@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FPBInject WebServer 测试运行器
+FPBInject WebServer Test Runner
 
-支持覆盖率统计和HTML报告生成。
+Supports coverage statistics and HTML report generation.
 
-使用方法:
-    ./test/run_tests.py              # 运行所有测试
-    ./test/run_tests.py -v           # 详细输出
-    ./test/run_tests.py --coverage   # 运行测试并生成覆盖率报告
-    ./test/run_tests.py --html       # 生成HTML覆盖率报告
-    ./test/run_tests.py --target 80  # 设置覆盖率目标为80%
+Usage:
+    ./test/run_tests.py              # Run all tests
+    ./test/run_tests.py -v           # Verbose output
+    ./test/run_tests.py --coverage   # Run tests and generate coverage report
+    ./test/run_tests.py --html       # Generate HTML coverage report
+    ./test/run_tests.py --target 80  # Set coverage target to 80%
 """
 
 import argparse
@@ -19,21 +19,21 @@ import shutil
 import sys
 import unittest
 
-# 添加父目录到路径
+# Add parent directory to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PARENT_DIR)
 
-# 默认覆盖率目标
+# Default coverage target
 DEFAULT_COVERAGE_TARGET = 80
 
-# 配置文件路径
+# Config file path
 CONFIG_FILE = os.path.join(PARENT_DIR, "config.json")
 CONFIG_BACKUP = os.path.join(PARENT_DIR, "config.json.bak")
 
 
 def backup_config():
-    """备份原始配置文件"""
+    """Backup original config file"""
     if os.path.exists(CONFIG_FILE):
         shutil.copy2(CONFIG_FILE, CONFIG_BACKUP)
         return True
@@ -41,7 +41,7 @@ def backup_config():
 
 
 def restore_config():
-    """恢复原始配置文件"""
+    """Restore original config file"""
     if os.path.exists(CONFIG_BACKUP):
         shutil.copy2(CONFIG_BACKUP, CONFIG_FILE)
         os.remove(CONFIG_BACKUP)
@@ -56,32 +56,32 @@ def run_tests(
     coverage_target=DEFAULT_COVERAGE_TARGET,
 ):
     """
-    运行所有测试。
+    Run all tests.
 
     Args:
-        verbosity: 输出详细程度 (0-2)
-        with_coverage: 是否启用覆盖率统计
-        html_report: 是否生成HTML报告
-        coverage_target: 覆盖率目标百分比
+        verbosity: Output verbosity level (0-2)
+        with_coverage: Whether to enable coverage statistics
+        html_report: Whether to generate HTML report
+        coverage_target: Coverage target percentage
 
     Returns:
-        bool: 测试是否全部通过
+        bool: Whether all tests passed
     """
-    # 备份配置文件
+    # Backup config file
     config_backed_up = backup_config()
     if config_backed_up:
-        print("📦 配置文件已备份")
+        print("📦 Config file backed up")
 
     try:
         if with_coverage:
             try:
                 import coverage
             except ImportError:
-                print("错误: 需要安装 coverage 包")
-                print("请运行: pip install coverage")
+                print("Error: Need to install coverage package")
+                print("Please run: pip install coverage")
                 sys.exit(1)
 
-            # 创建覆盖率对象
+            # Create coverage object
             cov = coverage.Coverage(
                 source=[PARENT_DIR],
                 omit=[
@@ -93,11 +93,11 @@ def run_tests(
             )
             cov.start()
 
-        # 发现并加载测试
+        # Discover and load tests
         loader = unittest.TestLoader()
         suite = loader.discover(SCRIPT_DIR, pattern="test_*.py")
 
-        # 运行测试
+        # Run tests
         runner = unittest.TextTestRunner(verbosity=verbosity)
         result = runner.run(suite)
 
@@ -106,43 +106,49 @@ def run_tests(
             cov.save()
 
             print("\n" + "=" * 70)
-            print("覆盖率报告")
+            print("Coverage Report")
             print("=" * 70)
 
-            # 只调用一次 report()，获取返回的总覆盖率
+            # Call report() only once to get total coverage
             total = cov.report()
 
             if html_report:
                 html_dir = os.path.join(SCRIPT_DIR, "htmlcov")
                 cov.html_report(directory=html_dir)
-                print(f"\nHTML 报告已生成: {html_dir}/index.html")
+                print(f"\nHTML report generated: {html_dir}/index.html")
 
-            # 检查覆盖率是否达标
+            # Check if coverage meets target
             if total < coverage_target:
-                print(f"\n⚠️  警告: 覆盖率 {total:.1f}% 低于 {coverage_target}% 目标")
+                print(
+                    f"\n⚠️  Warning: Coverage {total:.1f}% below {coverage_target}% target"
+                )
             else:
-                print(f"\n✅ 覆盖率 {total:.1f}% 达到目标 (≥{coverage_target}%)")
+                print(f"\n✅ Coverage {total:.1f}% meets target (≥{coverage_target}%)")
 
         return result.wasSuccessful()
     finally:
-        # 恢复配置文件
+        # Restore config file
         if config_backed_up:
             restore_config()
-            print("📦 配置文件已恢复")
+            print("📦 Config file restored")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FPBInject WebServer 测试运行器")
-    parser.add_argument("-v", "--verbose", action="store_true", help="详细输出")
-    parser.add_argument("--coverage", action="store_true", help="启用覆盖率统计")
+    parser = argparse.ArgumentParser(description="FPBInject WebServer Test Runner")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
-        "--html", action="store_true", help="生成HTML覆盖率报告 (自动启用 --coverage)"
+        "--coverage", action="store_true", help="Enable coverage statistics"
+    )
+    parser.add_argument(
+        "--html",
+        action="store_true",
+        help="Generate HTML coverage report (auto-enables --coverage)",
     )
     parser.add_argument(
         "--target",
         type=float,
         default=DEFAULT_COVERAGE_TARGET,
-        help=f"覆盖率目标百分比 (默认: {DEFAULT_COVERAGE_TARGET}%%)",
+        help=f"Coverage target percentage (default: {DEFAULT_COVERAGE_TARGET}%%)",
     )
 
     args = parser.parse_args()

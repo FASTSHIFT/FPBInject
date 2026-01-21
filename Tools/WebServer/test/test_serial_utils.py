@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Serial Utils 模块测试
+Serial Utils module tests
 """
 
 import os
@@ -15,12 +15,12 @@ import serial_utils
 
 
 class TestScanSerialPorts(unittest.TestCase):
-    """scan_serial_ports 测试"""
+    """scan_serial_ports test"""
 
     @patch("serial_utils.serial.tools.list_ports.comports")
     @patch("serial_utils.glob.glob")
     def test_scan_ports_basic(self, mock_glob, mock_comports):
-        """测试扫描基本端口"""
+        """Test scanning basic ports"""
         mock_port = Mock()
         mock_port.device = "/dev/ttyUSB0"
         mock_port.description = "USB Serial"
@@ -36,7 +36,7 @@ class TestScanSerialPorts(unittest.TestCase):
     @patch("serial_utils.serial.tools.list_ports.comports")
     @patch("serial_utils.glob.glob")
     def test_scan_ports_with_ch341(self, mock_glob, mock_comports):
-        """测试扫描包含 CH341 的端口"""
+        """Test scanning ports containing CH341"""
         mock_comports.return_value = []
         mock_glob.return_value = ["/dev/ttyCH341USB0", "/dev/ttyCH341USB1"]
 
@@ -48,22 +48,22 @@ class TestScanSerialPorts(unittest.TestCase):
     @patch("serial_utils.serial.tools.list_ports.comports")
     @patch("serial_utils.glob.glob")
     def test_scan_ports_no_duplicates(self, mock_glob, mock_comports):
-        """测试不会重复添加端口"""
+        """Test no duplicate ports added"""
         mock_port = Mock()
         mock_port.device = "/dev/ttyCH341USB0"
         mock_port.description = "USB Serial"
         mock_comports.return_value = [mock_port]
-        mock_glob.return_value = ["/dev/ttyCH341USB0"]  # 同一设备
+        mock_glob.return_value = ["/dev/ttyCH341USB0"]  # Same device
 
         result = serial_utils.scan_serial_ports()
 
-        # 应该只有一个
+        # Should have only one
         self.assertEqual(len(result), 1)
 
     @patch("serial_utils.serial.tools.list_ports.comports")
     @patch("serial_utils.glob.glob")
     def test_scan_ports_empty(self, mock_glob, mock_comports):
-        """测试无可用端口"""
+        """Test no available ports"""
         mock_comports.return_value = []
         mock_glob.return_value = []
 
@@ -73,11 +73,11 @@ class TestScanSerialPorts(unittest.TestCase):
 
 
 class TestSerialOpen(unittest.TestCase):
-    """serial_open 测试"""
+    """serial_open test"""
 
     @patch("serial_utils.serial.Serial")
     def test_open_success(self, mock_serial):
-        """测试成功打开端口"""
+        """Test successfully opening port"""
         mock_ser = Mock()
         mock_ser.isOpen.return_value = True
         mock_serial.return_value = mock_ser
@@ -90,7 +90,7 @@ class TestSerialOpen(unittest.TestCase):
 
     @patch("serial_utils.serial.Serial")
     def test_open_not_opened(self, mock_serial):
-        """测试端口未能打开"""
+        """Test port failed to open"""
         mock_ser = Mock()
         mock_ser.isOpen.return_value = False
         mock_serial.return_value = mock_ser
@@ -102,7 +102,7 @@ class TestSerialOpen(unittest.TestCase):
 
     @patch("serial_utils.serial.Serial")
     def test_open_serial_exception(self, mock_serial):
-        """测试串口异常"""
+        """Test serial exception"""
         import serial
 
         mock_serial.side_effect = serial.SerialException("Port busy")
@@ -114,7 +114,7 @@ class TestSerialOpen(unittest.TestCase):
 
     @patch("serial_utils.serial.Serial")
     def test_open_generic_exception(self, mock_serial):
-        """测试通用异常"""
+        """Test generic exception"""
         mock_serial.side_effect = Exception("Unknown error")
 
         ser, error = serial_utils.serial_open("/dev/ttyUSB0")
@@ -124,10 +124,10 @@ class TestSerialOpen(unittest.TestCase):
 
 
 class TestSerialWrite(unittest.TestCase):
-    """serial_write 测试"""
+    """serial_write test"""
 
     def test_write_no_serial(self):
-        """测试无串口对象"""
+        """Test no serial object"""
         device = Mock()
         device.ser = None
 
@@ -137,7 +137,7 @@ class TestSerialWrite(unittest.TestCase):
         self.assertIn("not opened", error)
 
     def test_write_no_worker(self):
-        """测试无 worker"""
+        """Test no worker"""
         device = Mock()
         device.ser = Mock()
         device.worker = None
@@ -148,7 +148,7 @@ class TestSerialWrite(unittest.TestCase):
         self.assertIn("worker not started", error)
 
     def test_write_worker_not_running(self):
-        """测试 worker 未运行"""
+        """Test worker not running"""
         device = Mock()
         device.ser = Mock()
         device.worker = Mock()
@@ -160,7 +160,7 @@ class TestSerialWrite(unittest.TestCase):
         self.assertIn("worker not started", error)
 
     def test_write_timeout(self):
-        """测试写入超时"""
+        """Test write timeout"""
         device = Mock()
         device.ser = Mock()
         device.worker = Mock()
@@ -173,7 +173,7 @@ class TestSerialWrite(unittest.TestCase):
         self.assertIn("timeout", error.lower())
 
     def test_write_success(self):
-        """测试写入成功"""
+        """Test write success"""
         device = Mock()
         device.ser = Mock()
         device.worker = Mock()
@@ -187,18 +187,18 @@ class TestSerialWrite(unittest.TestCase):
 
 
 class TestSerialWriteAsync(unittest.TestCase):
-    """serial_write_async 测试"""
+    """serial_write_async test"""
 
     def test_write_async_no_worker(self):
-        """测试无 worker 时异步写入"""
+        """Test async write without worker"""
         device = Mock()
         device.worker = None
 
-        # 不应该抛出异常
+        # Should not raise exception
         serial_utils.serial_write_async(device, "test")
 
     def test_write_async_with_worker(self):
-        """测试有 worker 时异步写入"""
+        """Test async write with worker"""
         device = Mock()
         device.worker = Mock()
 
@@ -208,29 +208,29 @@ class TestSerialWriteAsync(unittest.TestCase):
 
 
 class TestSerialWriteDirect(unittest.TestCase):
-    """serial_write_direct 测试"""
+    """serial_write_direct test"""
 
     def test_write_direct_no_serial(self):
-        """测试无串口时直接写入"""
+        """Test direct write without serial"""
         device = Mock()
         device.ser = None
 
-        # 不应该抛出异常
+        # Should not raise exception
         serial_utils.serial_write_direct(device, "test")
 
     def test_write_direct_not_open(self):
-        """测试串口未打开时直接写入"""
+        """Test direct write when serial not open"""
         device = Mock()
         device.ser = Mock()
         device.ser.isOpen.return_value = False
 
-        # 不应该抛出异常
+        # Should not raise exception
         serial_utils.serial_write_direct(device, "test")
 
         device.ser.write.assert_not_called()
 
     def test_write_direct_success(self):
-        """测试直接写入成功"""
+        """Test direct write success"""
         device = Mock()
         device.ser = Mock()
         device.ser.isOpen.return_value = True
@@ -241,22 +241,22 @@ class TestSerialWriteDirect(unittest.TestCase):
         device.ser.flush.assert_called_once()
 
     def test_write_direct_exception(self):
-        """测试直接写入异常"""
+        """Test direct write exception"""
         device = Mock()
         device.ser = Mock()
         device.ser.isOpen.return_value = True
         device.ser.write.side_effect = Exception("Write error")
 
-        # 不应该抛出异常
+        # Should not raise exception
         serial_utils.serial_write_direct(device, "test")
 
 
 class TestDeviceWorkerFunctions(unittest.TestCase):
-    """设备 Worker 相关函数测试"""
+    """Device Worker related functions test"""
 
     @patch("serial_utils.start_worker")
     def test_start_device_worker(self, mock_start):
-        """测试启动设备 worker"""
+        """Test starting device worker"""
         device = Mock()
         mock_start.return_value = True
 
@@ -267,7 +267,7 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
 
     @patch("serial_utils.stop_worker")
     def test_stop_device_worker(self, mock_stop):
-        """测试停止设备 worker"""
+        """Test stopping device worker"""
         device = Mock()
 
         serial_utils.stop_device_worker(device)
@@ -275,7 +275,7 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
         mock_stop.assert_called_with(device)
 
     def test_run_in_device_worker_no_worker(self):
-        """测试无 worker 时运行函数"""
+        """Test running function without worker"""
         device = Mock()
         device.worker = None
 
@@ -284,7 +284,7 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
         self.assertFalse(result)
 
     def test_run_in_device_worker_with_worker(self):
-        """测试有 worker 时运行函数"""
+        """Test running function with worker"""
         device = Mock()
         device.worker = Mock()
         device.worker.run_in_worker.return_value = True
@@ -296,7 +296,7 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
         self.assertTrue(result)
 
     def test_get_device_timer_manager_no_worker(self):
-        """测试无 worker 时获取定时器管理器"""
+        """Test getting timer manager without worker"""
         device = Mock()
         device.worker = None
 
@@ -305,7 +305,7 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_get_device_timer_manager_with_worker(self):
-        """测试有 worker 时获取定时器管理器"""
+        """Test getting timer manager with worker"""
         device = Mock()
         device.worker = Mock()
         mock_timer_manager = Mock()

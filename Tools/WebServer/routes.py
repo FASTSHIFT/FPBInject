@@ -1421,7 +1421,7 @@ def _trigger_auto_inject(file_path):
 
     # Update status
     device.auto_inject_status = "detecting"
-    device.auto_inject_message = f"检测到文件变化: {os.path.basename(file_path)}"
+    device.auto_inject_message = f"File change detected: {os.path.basename(file_path)}"
     device.auto_inject_source_file = file_path
     device.auto_inject_progress = 10
     device.auto_inject_last_update = time.time()
@@ -1434,7 +1434,7 @@ def _trigger_auto_inject(file_path):
 
             # Step 1: Find FPB_INJECT markers
             device.auto_inject_status = "detecting"
-            device.auto_inject_message = "正在查找 FPB_INJECT 标记..."
+            device.auto_inject_message = "Searching for FPB_INJECT markers..."
             device.auto_inject_progress = 20
             device.auto_inject_last_update = time.time()
 
@@ -1455,7 +1455,9 @@ def _trigger_auto_inject(file_path):
                     logger.info(
                         f"Target function '{device.last_inject_target}' marker removed, auto unpatch..."
                     )
-                    device.auto_inject_message = "标记已移除，正在清除注入..."
+                    device.auto_inject_message = (
+                        "Markers removed, clearing injection..."
+                    )
                     try:
                         fpb = get_fpb_inject()
                         fpb.enter_fl_mode()
@@ -1465,21 +1467,23 @@ def _trigger_auto_inject(file_path):
                                 device.inject_active = False
                                 device.auto_inject_status = "success"
                                 device.auto_inject_message = (
-                                    "标记已移除，已自动清除注入"
+                                    "Markers removed, injection automatically cleared"
                                 )
                                 device.auto_inject_progress = 100
                                 logger.info("Auto unpatch successful")
                             else:
-                                device.auto_inject_message = f"清除注入失败: {msg}"
+                                device.auto_inject_message = (
+                                    f"Failed to clear injection: {msg}"
+                                )
                                 logger.warning(f"Auto unpatch failed: {msg}")
                         finally:
                             fpb.exit_fl_mode()
                     except Exception as e:
-                        device.auto_inject_message = f"清除注入出错: {e}"
+                        device.auto_inject_message = f"Error clearing injection: {e}"
                         logger.warning(f"Auto unpatch error: {e}")
                     device.auto_inject_last_update = time.time()
                 else:
-                    device.auto_inject_message = "未找到 FPB_INJECT 标记"
+                    device.auto_inject_message = "No FPB_INJECT markers found"
 
                 return
 
@@ -1488,7 +1492,7 @@ def _trigger_auto_inject(file_path):
 
             # Step 2: Generate patch
             device.auto_inject_status = "generating"
-            device.auto_inject_message = f"正在生成 Patch: {', '.join(marked)}"
+            device.auto_inject_message = f"Generating Patch: {', '.join(marked)}"
             device.auto_inject_progress = 40
             device.auto_inject_last_update = time.time()
 
@@ -1496,7 +1500,7 @@ def _trigger_auto_inject(file_path):
 
             if not patch_content:
                 device.auto_inject_status = "failed"
-                device.auto_inject_message = "生成 Patch 失败"
+                device.auto_inject_message = "Failed to generate Patch"
                 device.auto_inject_progress = 0
                 device.auto_inject_last_update = time.time()
                 return
@@ -1527,7 +1531,9 @@ def _trigger_auto_inject(file_path):
             # Step 3: Check if device is connected
             if device.ser is None or not device.ser.isOpen():
                 device.auto_inject_status = "failed"
-                device.auto_inject_message = "设备未连接，Patch 已生成但未注入"
+                device.auto_inject_message = (
+                    "Device not connected, Patch generated but not injected"
+                )
                 device.auto_inject_progress = 50
                 device.auto_inject_last_update = time.time()
                 return
@@ -1536,7 +1542,7 @@ def _trigger_auto_inject(file_path):
             fpb = get_fpb_inject()
 
             device.auto_inject_status = "compiling"
-            device.auto_inject_message = "进入 fl 交互模式..."
+            device.auto_inject_message = "Entering fl interactive mode..."
             device.auto_inject_progress = 55
             device.auto_inject_last_update = time.time()
 
@@ -1544,7 +1550,7 @@ def _trigger_auto_inject(file_path):
 
             try:
                 # Step 5: Perform multi-function injection
-                device.auto_inject_message = "正在编译..."
+                device.auto_inject_message = "Compiling..."
                 device.auto_inject_progress = 60
                 device.auto_inject_last_update = time.time()
 
@@ -1554,8 +1560,8 @@ def _trigger_auto_inject(file_path):
                 device.auto_inject_status = "injecting"
                 func_list = ", ".join(marked[:3])
                 if len(marked) > 3:
-                    func_list += f" 等 {len(marked)} 个函数"
-                device.auto_inject_message = f"正在注入: {func_list}"
+                    func_list += f" etc. {len(marked)} functions"
+                device.auto_inject_message = f"Injecting: {func_list}"
                 device.auto_inject_progress = 80
                 device.auto_inject_last_update = time.time()
 
@@ -1575,11 +1581,11 @@ def _trigger_auto_inject(file_path):
 
                     # Build summary message
                     if successful_count == total_count:
-                        status_msg = f"注入成功: {successful_count} 个函数"
-                    else:
                         status_msg = (
-                            f"部分成功: {successful_count}/{total_count} 个函数"
+                            f"Injection successful: {successful_count} functions"
                         )
+                    else:
+                        status_msg = f"Partially successful: {successful_count}/{total_count} functions"
 
                     # Add injected function names
                     injected_names = [
@@ -1590,7 +1596,7 @@ def _trigger_auto_inject(file_path):
                     if injected_names:
                         status_msg += f" ({', '.join(injected_names[:3])})"
                         if len(injected_names) > 3:
-                            status_msg += f" 等"
+                            status_msg += f" etc."
 
                     device.auto_inject_status = "success"
                     device.auto_inject_message = status_msg
@@ -1624,13 +1630,13 @@ def _trigger_auto_inject(file_path):
                     errors = result.get("errors", [])
                     if errors:
                         error_msg = "; ".join(errors[:3])
-                    device.auto_inject_message = f"注入失败: {error_msg}"
+                    device.auto_inject_message = f"Injection failed: {error_msg}"
                     device.auto_inject_progress = 0
                     logger.error(f"Auto inject failed: {error_msg}")
 
             finally:
                 # Step 6: Exit fl interactive mode
-                device.auto_inject_message += " (退出 fl 模式)"
+                device.auto_inject_message += " (Exiting fl mode)"
                 device.auto_inject_last_update = time.time()
                 fpb.exit_fl_mode()
 
@@ -1638,7 +1644,7 @@ def _trigger_auto_inject(file_path):
 
         except Exception as e:
             device.auto_inject_status = "failed"
-            device.auto_inject_message = f"错误: {str(e)}"
+            device.auto_inject_message = f"Error: {str(e)}"
             device.auto_inject_progress = 0
             device.auto_inject_last_update = time.time()
             logger.exception(f"Auto inject error: {e}")

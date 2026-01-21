@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Patch Generator v2 (Marker Based) 模块测试
+Patch Generator v2 (Marker Based) Module Tests
 """
 
 import os
@@ -15,13 +15,13 @@ from patch_generator import PatchGenerator, check_dependencies, FPB_INJECT_MARKE
 
 
 class TestFindMarkedFunctions(unittest.TestCase):
-    """测试查找 FPB_INJECT 标记"""
+    """Test finding FPB_INJECT markers"""
 
     def setUp(self):
         self.gen = PatchGenerator()
 
     def test_find_single_marker(self):
-        """测试查找单个标记"""
+        """Test finding single marker"""
         content = """
 #include <stdio.h>
 
@@ -34,7 +34,7 @@ void my_function(void) {
         self.assertEqual(marked, ["my_function"])
 
     def test_find_multiple_markers(self):
-        """测试查找多个标记"""
+        """Test finding multiple markers"""
         content = """
 /* FPB_INJECT */
 int func1(int x) {
@@ -62,9 +62,9 @@ static int func3(int a, int b) {
         self.assertIn("func3", marked)
 
     def test_marker_with_description(self):
-        """测试带描述的标记"""
+        """Test marker with description"""
         content = """
-/* FPB_INJECT: 修复内存泄漏问题 */
+/* FPB_INJECT: Fix memory leak issue */
 void fix_memory_leak(void) {
     free(ptr);
 }
@@ -73,7 +73,7 @@ void fix_memory_leak(void) {
         self.assertEqual(marked, ["fix_memory_leak"])
 
     def test_no_markers(self):
-        """测试没有标记的文件"""
+        """Test file with no markers"""
         content = """
 void normal_func(void) {
     return;
@@ -83,7 +83,7 @@ void normal_func(void) {
         self.assertEqual(marked, [])
 
     def test_marker_with_static_inline(self):
-        """测试带 static inline 的函数"""
+        """Test function with static inline"""
         content = """
 /* FPB_INJECT */
 static inline int fast_func(int x) {
@@ -94,7 +94,7 @@ static inline int fast_func(int x) {
         self.assertEqual(marked, ["fast_func"])
 
     def test_marker_with_pointer_return(self):
-        """测试返回指针的函数"""
+        """Test function returning pointer"""
         content = """
 /* FPB_INJECT */
 void * allocate_memory(size_t size) {
@@ -105,7 +105,7 @@ void * allocate_memory(size_t size) {
         self.assertEqual(marked, ["allocate_memory"])
 
     def test_marker_multiline_signature(self):
-        """测试多行签名"""
+        """Test multiline signature"""
         content = """
 /* FPB_INJECT */
 int complex_function(
@@ -121,13 +121,13 @@ int complex_function(
 
 
 class TestGeneratePatch(unittest.TestCase):
-    """测试 patch 生成"""
+    """Test patch generation"""
 
     def setUp(self):
         self.gen = PatchGenerator()
 
     def test_generate_patch_renames_function(self):
-        """测试 patch 生成会重命名标记的函数"""
+        """Test that patch generation renames marked functions"""
         content = """
 #include <stdio.h>
 
@@ -142,14 +142,14 @@ void target_func(void) {
 
             patch_content, marked = self.gen.generate_patch(f.name)
 
-            # 验证函数被重命名
+            # Verify function is renamed
             self.assertIn("inject_target_func", patch_content)
             self.assertEqual(marked, ["target_func"])
 
             os.unlink(f.name)
 
     def test_generate_patch_preserves_other_code(self):
-        """测试 patch 保留其他代码"""
+        """Test that patch preserves other code"""
         content = """
 #include <stdio.h>
 #include <stdlib.h>
@@ -178,7 +178,7 @@ void target_func(void) {
 
             patch_content, marked = self.gen.generate_patch(f.name)
 
-            # 验证其他代码被保留
+            # Verify other code is preserved
             self.assertIn("#include <stdio.h>", patch_content)
             self.assertIn("#include <stdlib.h>", patch_content)
             self.assertIn("#define MY_MACRO 42", patch_content)
@@ -189,7 +189,7 @@ void target_func(void) {
             os.unlink(f.name)
 
     def test_generate_patch_no_markers(self):
-        """测试没有标记时返回空"""
+        """Test returns empty when no markers"""
         content = """
 void normal_func(void) {
     return;
@@ -207,7 +207,7 @@ void normal_func(void) {
             os.unlink(f.name)
 
     def test_generate_patch_adds_header(self):
-        """测试 patch 添加头部注释"""
+        """Test patch adds header comment"""
         content = """
 /* FPB_INJECT */
 void func(void) { }
@@ -225,15 +225,15 @@ void func(void) { }
             os.unlink(f.name)
 
     def test_generate_patch_converts_include_paths(self):
-        """测试相对 include 路径转换"""
-        # 创建一个临时目录结构
+        """Test relative include path conversion"""
+        # Create a temporary directory structure
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 创建头文件
+            # Create header file
             header_path = os.path.join(tmpdir, "my_header.h")
             with open(header_path, "w") as h:
                 h.write("#define TEST 1\n")
 
-            # 创建源文件
+            # Create source file
             source_path = os.path.join(tmpdir, "source.c")
             content = """
 #include "my_header.h"
@@ -246,59 +246,59 @@ void func(void) { }
 
             patch_content, _ = self.gen.generate_patch(source_path)
 
-            # 验证路径被转换为绝对路径
+            # Verify path is converted to absolute path
             self.assertIn(header_path, patch_content)
 
 
 class TestRenameFunctions(unittest.TestCase):
-    """测试函数重命名"""
+    """Test function renaming"""
 
     def setUp(self):
         self.gen = PatchGenerator()
 
     def test_rename_simple(self):
-        """测试简单函数重命名"""
+        """Test simple function renaming"""
         line = "void my_func(void) {"
         result = self.gen._rename_function(line, "my_func")
         self.assertEqual(result, "void inject_my_func(void) {")
 
     def test_rename_with_pointer(self):
-        """测试返回指针的函数重命名"""
+        """Test renaming function that returns pointer"""
         line = "void *my_func(size_t size) {"
         result = self.gen._rename_function(line, "my_func")
         self.assertIn("inject_my_func", result)
 
     def test_rename_static(self):
-        """测试 static 函数重命名"""
+        """Test static function renaming"""
         line = "static int my_func(int x) {"
         result = self.gen._rename_function(line, "my_func")
         self.assertEqual(result, "static int inject_my_func(int x) {")
 
     def test_no_double_rename(self):
-        """测试不重复重命名"""
+        """Test no double renaming"""
         line = "void inject_my_func(void) {"
         result = self.gen._rename_function(line, "my_func")
-        # 已经有 inject_ 前缀，不应再次重命名
+        # Already has inject_ prefix, should not rename again
         self.assertEqual(result, "void inject_my_func(void) {")
 
     def test_rename_function_call(self):
-        """测试函数调用也会被重命名（因为标记函数可能互相调用）"""
-        line = "    my_func();"  # 函数调用
+        """Test function call is also renamed (marked functions may call each other)"""
+        line = "    my_func();"  # Function call
         result = self.gen._rename_function(line, "my_func")
-        # 调用也应该被重命名
+        # Call should also be renamed
         self.assertIn("inject_my_func", result)
 
 
 class TestConvertIncludePath(unittest.TestCase):
-    """测试 include 路径转换"""
+    """Test include path conversion"""
 
     def setUp(self):
         self.gen = PatchGenerator()
 
     def test_convert_relative_path(self):
-        """测试转换相对路径"""
+        """Test converting relative path"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 创建头文件
+            # Create header file
             header = os.path.join(tmpdir, "header.h")
             with open(header, "w") as f:
                 f.write("")
@@ -308,38 +308,38 @@ class TestConvertIncludePath(unittest.TestCase):
             self.assertIn(header, result)
 
     def test_keep_system_include(self):
-        """测试保留系统 include"""
+        """Test keeping system include"""
         line = "#include <stdio.h>"
         result = self.gen._convert_include_path(line, "/tmp")
         self.assertEqual(result, line)
 
     def test_keep_absolute_path(self):
-        """测试保留已有的绝对路径"""
+        """Test keeping existing absolute path"""
         line = '#include "/abs/path/header.h"'
         result = self.gen._convert_include_path(line, "/tmp")
         self.assertEqual(result, line)
 
     def test_keep_nonexistent_relative(self):
-        """测试保留不存在的相对路径"""
+        """Test keeping nonexistent relative path"""
         line = '#include "nonexistent.h"'
         result = self.gen._convert_include_path(line, "/tmp")
         self.assertEqual(result, line)
 
 
 class TestGeneratePatchFromFile(unittest.TestCase):
-    """测试高级 API"""
+    """Test advanced API"""
 
     def setUp(self):
         self.gen = PatchGenerator()
 
     def test_file_not_found(self):
-        """测试文件不存在"""
+        """Test file not found"""
         result, marked = self.gen.generate_patch_from_file("/nonexistent/file.c")
         self.assertIsNone(result)
         self.assertEqual(marked, [])
 
     def test_with_output_dir(self):
-        """测试指定输出目录"""
+        """Test specifying output directory"""
         content = """
 /* FPB_INJECT */
 void func(void) { }
@@ -358,26 +358,26 @@ void func(void) { }
             self.assertTrue(os.path.exists(result_path))
             self.assertEqual(marked, ["func"])
 
-            # 验证输出文件名
+            # Verify output filename
             self.assertIn("patch_source.c", result_path)
 
 
 class TestCheckDependencies(unittest.TestCase):
-    """测试依赖检查"""
+    """Test dependency checking"""
 
     def test_check_dependencies(self):
-        """测试依赖检查"""
+        """Test dependency checking"""
         deps = check_dependencies()
         self.assertIn("git", deps)
-        # git 应该可用
+        # git should be available
         self.assertTrue(deps["git"])
 
 
 class TestMarkerConstant(unittest.TestCase):
-    """测试标记常量"""
+    """Test marker constant"""
 
     def test_marker_value(self):
-        """测试标记值"""
+        """Test marker value"""
         self.assertEqual(FPB_INJECT_MARKER, "FPB_INJECT")
 
 

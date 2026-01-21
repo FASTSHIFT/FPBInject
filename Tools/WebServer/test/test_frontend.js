@@ -1,8 +1,8 @@
 /**
  * FPBInject Frontend JavaScript Tests
  *
- * 使用 Node.js 运行，模拟 DOM 环境进行测试
- * 运行方式: node test/test_frontend.js
+ * Run with Node.js, simulate DOM environment for testing
+ * Run method: node test/test_frontend.js
  */
 
 // Mock DOM environment
@@ -204,15 +204,15 @@ function updateConnectionUI(connected) {
   if (connected) {
     indicator.className = 'status-indicator connected';
     status.className = 'status-text connected';
-    status.textContent = '已连接';
-    btn.innerHTML = '<span class="btn-icon-left">🔌</span> 断开';
+    status.textContent = 'Connected';
+    btn.innerHTML = '<span class="btn-icon-left">🔌</span> Disconnect';
     btn.classList.remove('btn-primary');
     btn.classList.add('btn-danger');
   } else {
     indicator.className = 'status-indicator disconnected';
     status.className = 'status-text disconnected';
-    status.textContent = '未连接';
-    btn.innerHTML = '<span class="btn-icon-left">⚡</span> 连接';
+    status.textContent = 'Not Connected';
+    btn.innerHTML = '<span class="btn-icon-left">⚡</span> Connect';
     btn.classList.remove('btn-danger');
     btn.classList.add('btn-primary');
   }
@@ -226,7 +226,7 @@ function updateInjectStatus(statusObj) {
   const timeDisplay = mockGetElementById('injectTimeDisplay');
 
   if (statusObj.inject_active) {
-    badge.textContent = '已激活';
+    badge.textContent = 'Active';
     badge.className = 'panel-badge active';
     targetDisplay.textContent = statusObj.last_inject_target || '-';
     funcDisplay.textContent = statusObj.last_inject_func || '-';
@@ -235,7 +235,7 @@ function updateInjectStatus(statusObj) {
       timeDisplay.textContent = date.toLocaleTimeString();
     }
   } else {
-    badge.textContent = '未激活';
+    badge.textContent = 'Inactive';
     badge.className = 'panel-badge';
     targetDisplay.textContent = '-';
     funcDisplay.textContent = '-';
@@ -247,7 +247,7 @@ function updateInjectStatus(statusObj) {
 function renderSymbolList(symbols) {
   const list = mockGetElementById('symbolList');
   if (!symbols || symbols.length === 0) {
-    list.innerHTML = '<div class="symbol-hint">未找到匹配的符号</div>';
+    list.innerHTML = '<div class="symbol-hint">No matching symbols found</div>';
     return;
   }
 
@@ -341,7 +341,7 @@ describe('Connection UI', () => {
     const status = mockGetElementById('connectionStatus');
 
     assertEqual(indicator.className, 'status-indicator connected');
-    assertEqual(status.textContent, '已连接');
+    assertEqual(status.textContent, 'Connected');
   });
 
   it('updateConnectionUI shows disconnected state', () => {
@@ -351,7 +351,7 @@ describe('Connection UI', () => {
     const status = mockGetElementById('connectionStatus');
 
     assertEqual(indicator.className, 'status-indicator disconnected');
-    assertEqual(status.textContent, '未连接');
+    assertEqual(status.textContent, 'Not Connected');
   });
 });
 
@@ -367,7 +367,7 @@ describe('Inject Status', () => {
     const badge = mockGetElementById('injectBadge');
     const targetDisplay = mockGetElementById('targetFuncDisplay');
 
-    assertEqual(badge.textContent, '已激活');
+    assertEqual(badge.textContent, 'Active');
     assertEqual(targetDisplay.textContent, 'main');
   });
 
@@ -377,7 +377,7 @@ describe('Inject Status', () => {
     const badge = mockGetElementById('injectBadge');
     const targetDisplay = mockGetElementById('targetFuncDisplay');
 
-    assertEqual(badge.textContent, '未激活');
+    assertEqual(badge.textContent, 'Inactive');
     assertEqual(targetDisplay.textContent, '-');
   });
 });
@@ -387,14 +387,14 @@ describe('Symbol List', () => {
     renderSymbolList([]);
 
     const list = mockGetElementById('symbolList');
-    assertContains(list.innerHTML, '未找到匹配的符号');
+    assertContains(list.innerHTML, 'No matching symbols found');
   });
 
   it('renderSymbolList shows hint for null', () => {
     renderSymbolList(null);
 
     const list = mockGetElementById('symbolList');
-    assertContains(list.innerHTML, '未找到匹配的符号');
+    assertContains(list.innerHTML, 'No matching symbols found');
   });
 
   it('renderSymbolList clears innerHTML for non-empty list', () => {
