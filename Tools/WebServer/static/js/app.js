@@ -562,15 +562,21 @@ function updateSlotUI() {
     if (slotItem) {
       slotItem.classList.toggle('occupied', state.occupied);
       slotItem.classList.toggle('active', i === selectedSlot);
+
+      // Hide/show action buttons based on occupied state
+      const actionsDiv = slotItem.querySelector('.slot-actions');
+      if (actionsDiv) {
+        actionsDiv.style.display = state.occupied ? 'flex' : 'none';
+      }
     }
 
     if (funcSpan) {
       if (state.occupied) {
         // Format: orig_addr (func_name) -> target_addr, size bytes
         const funcName = state.func ? ` (${state.func})` : '';
-        const sizeInfo = state.code_size ? `, ${state.code_size}B` : '';
+        const sizeInfo = state.code_size ? `, ${state.code_size} Bytes` : '';
         funcSpan.textContent = `${state.orig_addr}${funcName} → ${state.target_addr}${sizeInfo}`;
-        funcSpan.title = `Original: ${state.orig_addr}${funcName}\nTarget: ${state.target_addr}\nCode size: ${state.code_size || 0} bytes`;
+        funcSpan.title = `Original: ${state.orig_addr}${funcName}\nTarget: ${state.target_addr}\nCode size: ${state.code_size || 0} Bytes`;
       } else {
         funcSpan.textContent = 'Empty';
         funcSpan.title = '';
@@ -645,40 +651,40 @@ async function fpbUnpatch(slotId) {
 }
 
 async function fpbReinject(slotId) {
-  // Re-inject current patch source to the specified slot
+  // Re-inject using saved patch source from backend
   if (!isConnected) {
     writeToOutput('[ERROR] Not connected', 'error');
     return;
   }
 
-  // Get current patch source
-  const patchSource = document.getElementById('patchSource')?.value || '';
-  if (!patchSource.trim()) {
-    writeToOutput('[ERROR] No patch source code available', 'error');
-    return;
-  }
-
-  // Get target function from slot state
+  // Get the function name for this slot
   const slotState = slotStates[slotId];
-  if (!slotState || !slotState.func) {
-    writeToOutput(
-      `[INFO] Slot ${slotId} has no target function, using multi-inject`,
-      'info',
-    );
-    // Use multi-inject API
-    await fpbInjectMulti();
+  const targetFunc = slotState?.func;
+
+  if (!targetFunc) {
+    writeToOutput(`[ERROR] Slot ${slotId} is empty, nothing to re-inject`, 'error');
     return;
   }
 
-  const targetFunc = slotState.func;
-  writeToOutput(
-    `[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`,
-    'info',
-  );
+  writeToOutput(`[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`, 'info');
 
   try {
+    // Get the patch source from backend (auto-saved from last injection)
+    const sourceRes = await fetch('/api/patch/source');
+    const sourceData = await sourceRes.json();
+
+    if (!sourceData.success || !sourceData.content?.trim()) {
+      writeToOutput(
+        '[ERROR] No patch source available. Please use Auto Inject on Save first.',
+        'error',
+      );
+      return;
+    }
+
+    const patchSource = sourceData.content;
     const patchMode =
       document.getElementById('patchMode')?.value || 'trampoline';
+
     const res = await fetch('/api/fpb/inject', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
