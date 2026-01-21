@@ -340,25 +340,49 @@
           <div class="sidebar-content">
             <div class="flex-col">
               <div class="flex-row">
-                <input type="text" id="elfPath" class="vscode-input" placeholder="ELF Path" />
+                <label
+                  for="elfPath"
+                  style="font-size: 11px; width: 80px"
+                  title="Path to the compiled ELF file for symbol lookup and disassembly"
+                  >ELF Path</label
+                >
+                <input type="text" id="elfPath" class="vscode-input" style="flex: 1" />
                 <button class="vscode-btn icon-only secondary" onclick="browseFile('elfPath', '.elf')">
                   <i class="codicon codicon-folder-opened"></i>
                 </button>
               </div>
               <div class="flex-row">
-                <input type="text" id="compileCommandsPath" class="vscode-input" placeholder="compile_commands.json" />
+                <label
+                  for="compileCommandsPath"
+                  style="font-size: 11px; width: 80px"
+                  title="Path to compile_commands.json for accurate compile flags (include paths, defines, etc.)"
+                  >Compile DB</label
+                >
+                <input type="text" id="compileCommandsPath" class="vscode-input" style="flex: 1" />
                 <button class="vscode-btn icon-only secondary" onclick="browseFile('compileCommandsPath', '.json')">
                   <i class="codicon codicon-folder-opened"></i>
                 </button>
               </div>
               <div class="flex-row">
-                <input type="text" id="toolchainPath" class="vscode-input" placeholder="Toolchain Bin Path" />
+                <label
+                  for="toolchainPath"
+                  style="font-size: 11px; width: 80px"
+                  title="Path to cross-compiler toolchain bin directory (e.g., arm-none-eabi-gcc)"
+                  >Toolchain</label
+                >
+                <input type="text" id="toolchainPath" class="vscode-input" style="flex: 1" />
                 <button class="vscode-btn icon-only secondary" onclick="browseDir('toolchainPath')">
                   <i class="codicon codicon-folder-opened"></i>
                 </button>
               </div>
               <div class="flex-row">
-                <select id="patchMode" class="vscode-select">
+                <label
+                  for="patchMode"
+                  style="font-size: 11px; width: 80px"
+                  title="Trampoline: Use code trampoline (default)&#10;DebugMonitor: Use DebugMonitor exception&#10;Direct: Direct code replacement"
+                  >Inject Mode</label
+                >
+                <select id="patchMode" class="vscode-select" style="flex: 1">
                   <option value="trampoline">Trampoline</option>
                   <option value="debugmon">DebugMonitor</option>
                   <option value="direct">Direct</option>
@@ -379,14 +403,15 @@
                   min="16"
                   max="1024"
                   step="16"
-                  style="width: 80px"
+                  style="width: 60px"
                 />
+                <span style="font-size: 10px; opacity: 0.6; margin-left: 4px">Bytes</span>
               </div>
               <div class="flex-row">
                 <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
                 <label for="autoCompile" style="font-size: 11px">Auto Inject on Save</label>
               </div>
-              <div class="watch-dirs-section">
+              <div class="watch-dirs-section" id="watchDirsSection" style="display: none">
                 <div class="flex-row" style="margin-bottom: 4px">
                   <span style="font-size: 10px; opacity: 0.7; flex: 1">Watch Directories</span>
                   <button

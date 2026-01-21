@@ -1779,6 +1779,12 @@ async function loadConfig() {
     if (data.auto_compile !== undefined)
       document.getElementById('autoCompile').checked = data.auto_compile;
 
+    // Show/hide Watch Directories section based on auto_compile state
+    const watchDirsSection = document.getElementById('watchDirsSection');
+    if (watchDirsSection) {
+      watchDirsSection.style.display = data.auto_compile ? 'block' : 'none';
+    }
+
     // Start auto-inject polling if auto_compile is enabled
     if (data.auto_compile) {
       startAutoInjectPolling();
@@ -1935,6 +1941,13 @@ function removeWatchDir(btn) {
 
 function onAutoCompileChange() {
   const enabled = document.getElementById('autoCompile').checked;
+
+  // Show/hide Watch Directories section based on auto-compile state
+  const watchDirsSection = document.getElementById('watchDirsSection');
+  if (watchDirsSection) {
+    watchDirsSection.style.display = enabled ? 'block' : 'none';
+  }
+
   writeToOutput(
     `[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`,
     'info',
