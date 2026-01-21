@@ -490,8 +490,6 @@ class FPBInject:
         resp = resp.strip()
 
         # Remove ANSI escape sequences and shell prompts
-        import re
-
         # Remove ANSI escape codes: ESC[...X sequences only (must have ESC prefix)
         # Do NOT match [OK] or [ERR] which don't have ESC prefix
         clean_resp = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", resp)
@@ -936,14 +934,18 @@ class FPBInject:
         # First pass: try to match the exact source file
         if source_file:
             source_file_normalized = os.path.normpath(source_file)
-            logger.info(f"Looking for source file in compile_commands: {source_file_normalized}")
+            logger.info(
+                f"Looking for source file in compile_commands: {source_file_normalized}"
+            )
             for entry in commands:
                 if not isinstance(entry, dict):
                     continue
                 file_path = entry.get("file", "")
                 if os.path.normpath(file_path) == source_file_normalized:
                     selected_entry = entry
-                    logger.info(f"Found exact match in compile_commands.json: {file_path}")
+                    logger.info(
+                        f"Found exact match in compile_commands.json: {file_path}"
+                    )
                     break
 
         # Second pass: fallback to any C file
@@ -1091,7 +1093,9 @@ class FPBInject:
         Returns:
             Tuple of (binary_data, symbols, error_message)
         """
-        logger.info(f"compile_inject called with original_source_file={original_source_file}")
+        logger.info(
+            f"compile_inject called with original_source_file={original_source_file}"
+        )
         config = None
         if compile_commands_path:
             config = self.parse_compile_commands(
@@ -1134,8 +1138,8 @@ class FPBInject:
             elf_file = os.path.join(tmpdir, "inject.elf")
             bin_file = os.path.join(tmpdir, "inject.bin")
 
-            # Compile to object
-            cmd = [compiler] + cflags + ["-c"]
+            # Compile to object with -ffunction-sections for gc-sections to work
+            cmd = [compiler] + cflags + ["-c", "-ffunction-sections", "-fdata-sections"]
 
             for inc in includes:
                 if os.path.isdir(inc):
@@ -1174,10 +1178,17 @@ SECTIONS
             with open(ld_file, "w") as f:
                 f.write(ld_content)
 
-            # Link
+            # Link with --gc-sections to remove unused code
             link_cmd = (
                 [compiler] + cflags[:2] + ["-nostartfiles", "-nostdlib", f"-T{ld_file}"]
             )
+            link_cmd.append("-Wl,--gc-sections")
+
+            # Find inject_* function names from source to keep them with -u
+            inject_func_pattern = re.compile(r"\binject_(\w+)\s*\(")
+            inject_funcs = inject_func_pattern.findall(source_content)
+            for func in set(inject_funcs):
+                link_cmd.append(f"-Wl,-u,inject_{func}")
 
             if elf_path and os.path.exists(elf_path):
                 link_cmd.append(f"-Wl,--just-symbols={elf_path}")
@@ -1261,8 +1272,6 @@ SECTIONS
                     f"Source content preview (first 1000 chars):\n{source_content[:1000]}"
                 )
                 # Check if source contains inject_ pattern
-                import re
-
                 inject_pattern = re.findall(r"\binject_\w+", source_content)
                 if inject_pattern:
                     logger.warning(
@@ -1573,8 +1582,6 @@ SECTIONS
         Returns:
             Tuple of (success, result_dict)
         """
-        import re
-
         result = {
             "compile_time": 0,
             "upload_time": 0,

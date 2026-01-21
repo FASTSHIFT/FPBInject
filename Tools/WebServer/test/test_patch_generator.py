@@ -136,9 +136,7 @@ void target_func(void) {
     printf("patched");
 }
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".c", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
             f.write(content)
             f.flush()
 
@@ -174,9 +172,7 @@ void target_func(void) {
     s.y = helper_func(s.x);
 }
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".c", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
             f.write(content)
             f.flush()
 
@@ -199,9 +195,7 @@ void normal_func(void) {
     return;
 }
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".c", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
             f.write(content)
             f.flush()
 
@@ -218,9 +212,7 @@ void normal_func(void) {
 /* FPB_INJECT */
 void func(void) { }
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".c", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
             f.write(content)
             f.flush()
 
@@ -360,9 +352,7 @@ void func(void) { }
             output_dir = os.path.join(tmpdir, "output")
             os.makedirs(output_dir)
 
-            result_path, marked = self.gen.generate_patch_from_file(
-                source, output_dir
-            )
+            result_path, marked = self.gen.generate_patch_from_file(source, output_dir)
 
             self.assertIsNotNone(result_path)
             self.assertTrue(os.path.exists(result_path))

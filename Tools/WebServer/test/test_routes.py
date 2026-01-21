@@ -740,7 +740,9 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertIn("not provided", data["error"])
 
     @patch("patch_generator.PatchGenerator")
-    @patch("builtins.open", mock_open(read_data="/* FPB_INJECT */\nvoid func1(void) {}"))
+    @patch(
+        "builtins.open", mock_open(read_data="/* FPB_INJECT */\nvoid func1(void) {}")
+    )
     def test_detect_markers_success(self, mock_gen_class):
         """测试检测标记成功"""
         mock_gen = Mock()

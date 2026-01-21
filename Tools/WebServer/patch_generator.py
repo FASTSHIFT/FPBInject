@@ -48,7 +48,14 @@ class PatchGenerator:
 
     def find_marked_functions(self, content: str) -> List[str]:
         """
-        Find all functions marked with /* FPB_INJECT */ comment.
+        Find all functions marked with FPB_INJECT comment.
+
+        Supported formats (case-insensitive):
+        - /* FPB_INJECT */
+        - /* FPB-INJECT */
+        - // FPB_INJECT
+        - /* fpbinject */
+        - /* FPB_INJECT: description */
 
         Args:
             content: Source file content
@@ -58,16 +65,28 @@ class PatchGenerator:
         """
         marked_functions = []
 
-        # Pattern: /* FPB_INJECT */ or /* FPB_INJECT: description */
+        # Pattern supports:
+        # - Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ or /* fpbinject */
+        # - Line comment: // FPB_INJECT or // FPB-INJECT
+        # - Optional description after colon
+        # - Case-insensitive matching
         # followed by optional whitespace/newlines, then function signature
-        # Function signature: [static] [inline] [return_type] func_name(
-        pattern = (
-            r"/\*\s*FPB_INJECT(?:\s*:\s*[^*]*)?\s*\*/\s*\n?"
+        patterns = [
+            # Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ etc.
+            r"/\*\s*[Ff][Pp][Bb][_\-]?[Ii][Nn][Jj][Ee][Cc][Tt](?:\s*:\s*[^*]*)?\s*\*/",
+            # Line comment: // FPB_INJECT or // FPB-INJECT etc.
+            r"//\s*[Ff][Pp][Bb][_\-]?[Ii][Nn][Jj][Ee][Cc][Tt](?:\s*:.*)?$",
+        ]
+
+        combined_pattern = f"(?:{patterns[0]}|{patterns[1]})"
+        # Full pattern: marker + optional whitespace + function signature
+        full_pattern = (
+            f"(?:{combined_pattern})\s*\n?"
             r"(?:\s*(?:static|inline|extern|const|volatile|__attribute__\s*\([^)]*\))\s+)*"
             r"[\w\s\*]+?\s+(\w+)\s*\("
         )
 
-        for match in re.finditer(pattern, content):
+        for match in re.finditer(full_pattern, content, re.MULTILINE):
             func_name = match.group(1)
             # Skip common keywords that might be matched
             if func_name not in ("if", "while", "for", "switch", "return"):
