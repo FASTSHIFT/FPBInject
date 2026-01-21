@@ -335,7 +335,7 @@ class FPBInject:
 
     def enter_fl_mode(self, timeout: float = 1.0) -> bool:
         """Enter fl interactive mode by sending 'fl' command.
-        
+
         Returns True if we entered fl interactive mode (fl> prompt detected),
         False if not needed (bare-metal mode or no response).
         """
@@ -363,7 +363,7 @@ class FPBInject:
 
             self._log_raw("RX", response.strip())
             logger.debug(f"Entered fl mode: {response.strip()}")
-            
+
             # Check if we actually entered fl interactive mode (has fl> prompt)
             self._in_fl_mode = "fl>" in response
             return self._in_fl_mode
@@ -374,14 +374,14 @@ class FPBInject:
 
     def exit_fl_mode(self, timeout: float = 1.0) -> bool:
         """Exit fl interactive mode by sending 'exit' command.
-        
+
         Only sends 'exit' if we previously entered fl interactive mode.
         """
         # Only exit if we actually entered fl mode
-        if not getattr(self, '_in_fl_mode', False):
+        if not getattr(self, "_in_fl_mode", False):
             logger.debug("Not in fl mode, skipping exit")
             return True
-        
+
         ser = self.device.ser
         if not ser:
             return False

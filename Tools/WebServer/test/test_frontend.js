@@ -26,7 +26,8 @@ const mockLocalStorage = {
 const mockFetchResponses = {};
 async function mockFetch(url, options = {}) {
   const key = `${options.method || 'GET'}:${url}`;
-  const response = mockFetchResponses[key] || mockFetchResponses[url] || { success: true };
+  const response = mockFetchResponses[key] ||
+    mockFetchResponses[url] || { success: true };
   return {
     json: async () => response,
     ok: true,
@@ -46,9 +47,15 @@ function mockGetElementById(id) {
       style: { display: '' },
       classList: {
         classes: new Set(),
-        add(cls) { this.classes.add(cls); },
-        remove(cls) { this.classes.delete(cls); },
-        contains(cls) { return this.classes.has(cls); },
+        add(cls) {
+          this.classes.add(cls);
+        },
+        remove(cls) {
+          this.classes.delete(cls);
+        },
+        contains(cls) {
+          return this.classes.has(cls);
+        },
         toggle(cls) {
           if (this.classes.has(cls)) {
             this.classes.delete(cls);
@@ -57,8 +64,8 @@ function mockGetElementById(id) {
           }
         },
       },
-      addEventListener: function() {},
-      appendChild: function() {},
+      addEventListener: function () {},
+      appendChild: function () {},
       checked: false,
       disabled: false,
     };
@@ -77,12 +84,12 @@ global.document = {
     textContent: '',
     innerHTML: '',
     onclick: null,
-    appendChild: function() {},
+    appendChild: function () {},
   }),
-  addEventListener: function() {},
+  addEventListener: function () {},
 };
 global.window = {
-  addEventListener: function() {},
+  addEventListener: function () {},
 };
 
 // ===================== Test Framework =====================
@@ -262,9 +269,9 @@ describe('Section Toggle', () => {
     mockLocalStorage.clear();
     const section = mockGetElementById('testSection');
     section.classList.classes.clear();
-    
+
     toggleSection('testSection');
-    
+
     assertTrue(section.classList.contains('collapsed'));
     assertEqual(mockLocalStorage.getItem('section_testSection'), 'collapsed');
   });
@@ -273,9 +280,9 @@ describe('Section Toggle', () => {
     const section = mockGetElementById('testSection2');
     section.classList.classes.clear();
     section.classList.add('collapsed');
-    
+
     toggleSection('testSection2');
-    
+
     assertFalse(section.classList.contains('collapsed'));
     assertEqual(mockLocalStorage.getItem('section_testSection2'), 'expanded');
   });
@@ -285,25 +292,25 @@ describe('Card Toggle', () => {
   it('toggleCard adds collapsed class', () => {
     const card = mockGetElementById('testCard');
     card.classList.classes.clear();
-    
+
     toggleCard('testCard', null);
-    
+
     assertTrue(card.classList.contains('collapsed'));
   });
 
   it('toggleCard does not toggle when clicking button', () => {
     const card = mockGetElementById('testCard2');
     card.classList.classes.clear();
-    
+
     // Mock event with button target
     const mockEvent = {
       target: {
-        closest: (selector) => selector.includes('button') ? {} : null,
+        closest: (selector) => (selector.includes('button') ? {} : null),
       },
     };
-    
+
     toggleCard('testCard2', mockEvent);
-    
+
     assertFalse(card.classList.contains('collapsed'));
   });
 });
@@ -311,17 +318,17 @@ describe('Card Toggle', () => {
 describe('API Helper', () => {
   it('api makes GET request', async () => {
     mockFetchResponses['/api/test'] = { success: true, data: 'test' };
-    
+
     const result = await api('/test');
-    
+
     assertTrue(result.success);
   });
 
   it('api makes POST request with data', async () => {
     mockFetchResponses['POST:/api/test'] = { success: true };
-    
+
     const result = await api('/test', 'POST', { key: 'value' });
-    
+
     assertTrue(result.success);
   });
 });
@@ -329,20 +336,20 @@ describe('API Helper', () => {
 describe('Connection UI', () => {
   it('updateConnectionUI shows connected state', () => {
     updateConnectionUI(true);
-    
+
     const indicator = mockGetElementById('connectionIndicator');
     const status = mockGetElementById('connectionStatus');
-    
+
     assertEqual(indicator.className, 'status-indicator connected');
     assertEqual(status.textContent, '已连接');
   });
 
   it('updateConnectionUI shows disconnected state', () => {
     updateConnectionUI(false);
-    
+
     const indicator = mockGetElementById('connectionIndicator');
     const status = mockGetElementById('connectionStatus');
-    
+
     assertEqual(indicator.className, 'status-indicator disconnected');
     assertEqual(status.textContent, '未连接');
   });
@@ -356,20 +363,20 @@ describe('Inject Status', () => {
       last_inject_func: 'inject_main',
       last_inject_time: Date.now() / 1000,
     });
-    
+
     const badge = mockGetElementById('injectBadge');
     const targetDisplay = mockGetElementById('targetFuncDisplay');
-    
+
     assertEqual(badge.textContent, '已激活');
     assertEqual(targetDisplay.textContent, 'main');
   });
 
   it('updateInjectStatus shows inactive state', () => {
     updateInjectStatus({ inject_active: false });
-    
+
     const badge = mockGetElementById('injectBadge');
     const targetDisplay = mockGetElementById('targetFuncDisplay');
-    
+
     assertEqual(badge.textContent, '未激活');
     assertEqual(targetDisplay.textContent, '-');
   });
@@ -378,14 +385,14 @@ describe('Inject Status', () => {
 describe('Symbol List', () => {
   it('renderSymbolList shows hint for empty list', () => {
     renderSymbolList([]);
-    
+
     const list = mockGetElementById('symbolList');
     assertContains(list.innerHTML, '未找到匹配的符号');
   });
 
   it('renderSymbolList shows hint for null', () => {
     renderSymbolList(null);
-    
+
     const list = mockGetElementById('symbolList');
     assertContains(list.innerHTML, '未找到匹配的符号');
   });
@@ -393,9 +400,9 @@ describe('Symbol List', () => {
   it('renderSymbolList clears innerHTML for non-empty list', () => {
     const list = mockGetElementById('symbolList');
     list.innerHTML = 'old content';
-    
+
     renderSymbolList([{ name: 'main', addr: '0x08000000' }]);
-    
+
     assertEqual(list.innerHTML, '');
   });
 });
@@ -404,20 +411,20 @@ describe('LocalStorage Integration', () => {
   it('stores and retrieves values correctly', () => {
     mockLocalStorage.clear();
     mockLocalStorage.setItem('test_key', 'test_value');
-    
+
     assertEqual(mockLocalStorage.getItem('test_key'), 'test_value');
   });
 
   it('returns null for non-existent keys', () => {
     mockLocalStorage.clear();
-    
+
     assertEqual(mockLocalStorage.getItem('nonexistent'), null);
   });
 
   it('removes items correctly', () => {
     mockLocalStorage.setItem('to_remove', 'value');
     mockLocalStorage.removeItem('to_remove');
-    
+
     assertEqual(mockLocalStorage.getItem('to_remove'), null);
   });
 });
@@ -432,7 +439,7 @@ console.log('\x1b[1m========================================\x1b[0m');
 (async () => {
   // Wait for async tests to complete
   await sleep(100);
-  
+
   console.log('\n\x1b[1m========================================\x1b[0m');
   console.log(`\x1b[1m    Results: ${passCount}/${testCount} passed\x1b[0m`);
   if (failCount > 0) {

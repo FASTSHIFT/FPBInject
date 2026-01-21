@@ -833,6 +833,8 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_exit_fl_mode_error(self):
         """测试退出 fl 模式异常"""
+        # Set the fl mode flag to ensure exit is attempted
+        self.fpb._in_fl_mode = True
         self.device.ser.write.side_effect = Exception("Write error")
 
         result = self.fpb.exit_fl_mode(timeout=0.1)

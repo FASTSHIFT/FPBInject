@@ -154,7 +154,9 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
   font-size: 13px;
   background: var(--vscode-background);
   color: var(--vscode-foreground);
@@ -714,14 +716,14 @@ body.resizing-panel .sash {
   background: var(--vscode-editor-bg);
   padding: 0;
   margin: 0;
-  user-select: text;  /* Allow text selection */
+  user-select: text; /* Allow text selection */
 }
 
 .code-display pre {
   margin: 0;
   padding: 10px;
   background: transparent !important;
-  user-select: text;  /* Allow text selection */
+  user-select: text; /* Allow text selection */
 }
 
 .code-display code {
@@ -729,7 +731,7 @@ body.resizing-panel .sash {
   font-size: 13px;
   line-height: 1.6;
   background: transparent !important;
-  user-select: text;  /* Allow text selection */
+  user-select: text; /* Allow text selection */
 }
 
 /* Inject Progress Indicator */

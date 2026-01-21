@@ -1,424 +1,581 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FPBInject Workbench</title>
+    <!-- VS Code Design System -->
+    <link rel="stylesheet" href="/static/css/workbench.css" />
+    <!-- Codicons (using CDN for icons) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.32/dist/codicon.min.css" />
+    <!-- xterm.js -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <!-- highlight.js for syntax highlighting (full build includes most languages) -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/vs2015.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FPBInject Workbench</title>
-  <!-- VS Code Design System -->
-  <link rel="stylesheet" href="/static/css/workbench.css" />
-  <!-- Codicons (using CDN for icons) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.32/dist/codicon.min.css" />
-  <!-- xterm.js -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-  <!-- highlight.js for syntax highlighting (full build includes most languages) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/vs2015.min.css" />
-  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
-</head>
-
-<body>
-  <!-- TITLE BAR -->
-  <div class="title-bar">
-    <div class="title-bar-left">
-      <i class="codicon codicon-beaker" style="margin-right: 8px; color: #007acc;"></i>
-      <a href="https://github.com/FASTSHIFT/FPBInject" target="_blank" class="app-title"
-        style="color: inherit; text-decoration: none;">FPBInject Workbench</a>
-    </div>
-    <div class="title-bar-center">
-      <span class="workspace-title" id="clockDisplay"></span>
-    </div>
-    <div class="title-bar-right">
-      <div class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
-        <i class="codicon codicon-color-mode" id="themeIcon"></i>
+  <body>
+    <!-- TITLE BAR -->
+    <div class="title-bar">
+      <div class="title-bar-left">
+        <i class="codicon codicon-beaker" style="margin-right: 8px; color: #007acc"></i>
+        <a
+          href="https://github.com/FASTSHIFT/FPBInject"
+          target="_blank"
+          class="app-title"
+          style="color: inherit; text-decoration: none"
+          >FPBInject Workbench</a
+        >
       </div>
-      <div class="author-link">
-        <i class="codicon codicon-github"></i>
-        <a href="https://github.com/FASTSHIFT" target="_blank" style="color: inherit; text-decoration: none;">FASTSHIFT (VIFEX)</a>
+      <div class="title-bar-center">
+        <span class="workspace-title" id="clockDisplay"></span>
+      </div>
+      <div class="title-bar-right">
+        <div class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
+          <i class="codicon codicon-color-mode" id="themeIcon"></i>
+        </div>
+        <div class="author-link">
+          <i class="codicon codicon-github"></i>
+          <a href="https://github.com/FASTSHIFT" target="_blank" style="color: inherit; text-decoration: none"
+            >FASTSHIFT (VIFEX)</a
+          >
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- ACTIVITY BAR -->
-  <div class="activity-bar">
-    <div class="activity-item active" title="Explorer">
-      <i class="codicon codicon-files"></i>
-    </div>
-    <div class="activity-item" title="Search">
-      <i class="codicon codicon-search"></i>
-    </div>
-    <div class="activity-item" title="Source Control">
-      <i class="codicon codicon-source-control"></i>
-    </div>
-    <div class="activity-item" title="Debug">
-      <i class="codicon codicon-debug-alt"></i>
-    </div>
-    <div class="spacer"></div>
-    <div class="activity-item" title="Settings">
-      <i class="codicon codicon-settings-gear"></i>
-    </div>
-  </div>
-
-  <!-- SIDEBAR -->
-  <div class="sidebar" id="sidebar">
-    <div class="sidebar-title">
-      <span>EXPLORER</span>
-      <i class="codicon codicon-ellipsis"></i>
+    <!-- ACTIVITY BAR -->
+    <div class="activity-bar">
+      <div class="activity-item active" title="Explorer">
+        <i class="codicon codicon-files"></i>
+      </div>
+      <div class="activity-item" title="Search">
+        <i class="codicon codicon-search"></i>
+      </div>
+      <div class="activity-item" title="Source Control">
+        <i class="codicon codicon-source-control"></i>
+      </div>
+      <div class="activity-item" title="Debug">
+        <i class="codicon codicon-debug-alt"></i>
+      </div>
+      <div class="spacer"></div>
+      <div class="activity-item" title="Settings">
+        <i class="codicon codicon-settings-gear"></i>
+      </div>
     </div>
 
-    <!-- Connection Section -->
-    <div class="sidebar-section">
-      <details id="details-connection" open>
-        <summary class="sidebar-header">
-          <i class="codicon codicon-chevron-right"></i>
-          <span>CONNECTION</span>
-        </summary>
-        <div class="sidebar-content">
-          <div class="flex-col">
-            <div class="flex-row">
-              <select id="portSelect" class="vscode-select" title="Serial Port"></select>
-              <button class="vscode-btn icon-only secondary" onclick="refreshPorts()" title="Refresh Ports">
-                <i class="codicon codicon-refresh"></i>
-              </button>
-            </div>
-            <div class="flex-row">
-              <input type="text" id="baudrate" class="vscode-input" value="115200" placeholder="Baudrate" list="baudrateList" />
-              <datalist id="baudrateList">
-                <option value="9600">
-                <option value="19200">
-                <option value="38400">
-                <option value="57600">
-                <option value="115200">
-                <option value="230400">
-                <option value="460800">
-                <option value="921600">
-                <option value="1000000">
-                <option value="1500000">
-                <option value="2000000">
-              </datalist>
-              <button id="connectBtn" class="vscode-btn" onclick="toggleConnect()" style="flex: 1">Connect</button>
-            </div>
-          </div>
-        </div>
-      </details>
-    </div>
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-title">
+        <span>EXPLORER</span>
+        <i class="codicon codicon-ellipsis"></i>
+      </div>
 
-    <!-- Device Info - Enhanced with 6 Slots -->
-    <div class="sidebar-section">
-      <details id="details-device" open>
-        <summary class="sidebar-header">
-          <i class="codicon codicon-chevron-right"></i>
-          <span>DEVICE INFO</span>
-          <span class="badge" id="activeSlotCount">0/6</span>
-        </summary>
-        <div class="sidebar-content">
-          <div class="flex-row" style="margin-bottom: 8px;">
-            <button onclick="fpbPing()" class="vscode-btn secondary" style="flex:1; font-size: 10px;">Ping</button>
-            <button onclick="fpbInfo()" class="vscode-btn secondary" style="flex:1; font-size: 10px;">Info</button>
-            <button onclick="fpbUnpatchAll()" class="vscode-btn secondary" style="flex:1; font-size: 10px;">Clear All</button>
-          </div>
-          <!-- Memory Info -->
-          <div id="memoryInfo" style="margin-bottom: 8px; padding: 4px; background: var(--vscode-input-background); border-radius: 3px; text-align: center;">
-            <div style="font-size: 10px; color: var(--vscode-descriptionForeground);">Memory info not available</div>
-          </div>
-          <!-- 6 FPB Slots -->
-          <div class="slot-container" id="slotContainer">
-            <div class="slot-item" data-slot="0" onclick="selectSlot(0)">
-              <div class="slot-header">
-                <span class="slot-indicator"></span>
-                <span class="slot-id">Slot 0</span>
-                <span class="slot-func" id="slot0Func">Empty</span>
-              </div>
-              <div class="slot-actions">
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(0)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(0)" title="Clear slot"><i class="codicon codicon-close"></i></button>
-              </div>
-            </div>
-            <div class="slot-item" data-slot="1" onclick="selectSlot(1)">
-              <div class="slot-header">
-                <span class="slot-indicator"></span>
-                <span class="slot-id">Slot 1</span>
-                <span class="slot-func" id="slot1Func">Empty</span>
-              </div>
-              <div class="slot-actions">
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(1)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(1)" title="Clear slot"><i class="codicon codicon-close"></i></button>
-              </div>
-            </div>
-            <div class="slot-item" data-slot="2" onclick="selectSlot(2)">
-              <div class="slot-header">
-                <span class="slot-indicator"></span>
-                <span class="slot-id">Slot 2</span>
-                <span class="slot-func" id="slot2Func">Empty</span>
-              </div>
-              <div class="slot-actions">
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(2)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(2)" title="Clear slot"><i class="codicon codicon-close"></i></button>
-              </div>
-            </div>
-            <div class="slot-item" data-slot="3" onclick="selectSlot(3)">
-              <div class="slot-header">
-                <span class="slot-indicator"></span>
-                <span class="slot-id">Slot 3</span>
-                <span class="slot-func" id="slot3Func">Empty</span>
-              </div>
-              <div class="slot-actions">
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(3)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(3)" title="Clear slot"><i class="codicon codicon-close"></i></button>
-              </div>
-            </div>
-            <div class="slot-item" data-slot="4" onclick="selectSlot(4)">
-              <div class="slot-header">
-                <span class="slot-indicator"></span>
-                <span class="slot-id">Slot 4</span>
-                <span class="slot-func" id="slot4Func">Empty</span>
-              </div>
-              <div class="slot-actions">
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(4)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(4)" title="Clear slot"><i class="codicon codicon-close"></i></button>
-              </div>
-            </div>
-            <div class="slot-item" data-slot="5" onclick="selectSlot(5)">
-              <div class="slot-header">
-                <span class="slot-indicator"></span>
-                <span class="slot-id">Slot 5</span>
-                <span class="slot-func" id="slot5Func">Empty</span>
-              </div>
-              <div class="slot-actions">
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbReinject(5)" title="Re-inject this slot"><i class="codicon codicon-debug-restart"></i></button>
-                <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch(5)" title="Clear slot"><i class="codicon codicon-close"></i></button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </details>
-    </div>
-
-    <!-- Configuration -->
-    <div class="sidebar-section">
-      <details id="details-configuration">
-        <summary class="sidebar-header">
-          <i class="codicon codicon-chevron-right"></i>
-          <span>CONFIGURATION</span>
-        </summary>
-        <div class="sidebar-content">
-          <div class="flex-col">
-            <div class="flex-row">
-              <input type="text" id="elfPath" class="vscode-input" placeholder="ELF Path" />
-              <button class="vscode-btn icon-only secondary" onclick="browseFile('elfPath', '.elf')">
-                <i class="codicon codicon-folder-opened"></i>
-              </button>
-            </div>
-            <div class="flex-row">
-              <input type="text" id="compileCommandsPath" class="vscode-input" placeholder="compile_commands.json" />
-              <button class="vscode-btn icon-only secondary" onclick="browseFile('compileCommandsPath', '.json')">
-                <i class="codicon codicon-folder-opened"></i>
-              </button>
-            </div>
-            <div class="flex-row">
-              <input type="text" id="toolchainPath" class="vscode-input" placeholder="Toolchain Bin Path" />
-              <button class="vscode-btn icon-only secondary" onclick="browseDir('toolchainPath')">
-                <i class="codicon codicon-folder-opened"></i>
-              </button>
-            </div>
-            <div class="flex-row">
-              <select id="patchMode" class="vscode-select">
-                <option value="trampoline">Trampoline</option>
-                <option value="debugmon">DebugMonitor</option>
-                <option value="direct">Direct</option>
-              </select>
-            </div>
-            <div class="flex-row">
-              <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
-              <label for="autoCompile" style="font-size: 11px;">Auto Inject on Save</label>
-            </div>
-            <div class="watch-dirs-section">
-              <div class="flex-row" style="margin-bottom: 4px;">
-                <span style="font-size: 10px; opacity: 0.7; flex: 1;">Watch Directories</span>
-                <button class="vscode-btn icon-only secondary" onclick="addWatchDir()" title="Add Directory" style="width: 20px; height: 20px; padding: 0;">
-                  <i class="codicon codicon-add" style="font-size: 12px;"></i>
+      <!-- Connection Section -->
+      <div class="sidebar-section">
+        <details id="details-connection" open>
+          <summary class="sidebar-header">
+            <i class="codicon codicon-chevron-right"></i>
+            <span>CONNECTION</span>
+          </summary>
+          <div class="sidebar-content">
+            <div class="flex-col">
+              <div class="flex-row">
+                <select id="portSelect" class="vscode-select" title="Serial Port"></select>
+                <button class="vscode-btn icon-only secondary" onclick="refreshPorts()" title="Refresh Ports">
+                  <i class="codicon codicon-refresh"></i>
                 </button>
               </div>
-              <div id="watchDirsList" class="watch-dirs-list">
-                <!-- Dynamically populated -->
+              <div class="flex-row">
+                <input
+                  type="text"
+                  id="baudrate"
+                  class="vscode-input"
+                  value="115200"
+                  placeholder="Baudrate"
+                  list="baudrateList"
+                />
+                <datalist id="baudrateList">
+                  <option value="9600"></option>
+                  <option value="19200"></option>
+                  <option value="38400"></option>
+                  <option value="57600"></option>
+                  <option value="115200"></option>
+                  <option value="230400"></option>
+                  <option value="460800"></option>
+                  <option value="921600"></option>
+                  <option value="1000000"></option>
+                  <option value="1500000"></option>
+                  <option value="2000000"></option>
+                </datalist>
+                <button id="connectBtn" class="vscode-btn" onclick="toggleConnect()" style="flex: 1">Connect</button>
               </div>
             </div>
           </div>
-        </div>
-      </details>
-    </div>
-
-    <!-- Symbols -->
-    <div class="sidebar-section">
-      <details id="details-symbols" open>
-        <summary class="sidebar-header">
-          <i class="codicon codicon-chevron-right"></i>
-          <span>SYMBOLS</span>
-        </summary>
-        <div class="sidebar-content" style="padding: 0;">
-          <div style="padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-            <input type="text" id="symbolSearch" class="vscode-input" placeholder="Search Symbols..."
-              oninput="searchSymbols()" style="height: 22px; font-size: 11px;" />
-          </div>
-          <div id="symbolList" class="symbol-list">
-            <!-- Populated by JS -->
-            <div style="padding: 8px; font-size: 11px; opacity: 0.7;">No symbols loaded</div>
-          </div>
-        </div>
-      </details>
-    </div>
-  </div>
-
-  <!-- Sidebar Resize Sash -->
-  <div class="sash sash-vertical" id="sashSidebar"></div>
-
-  <!-- MAIN EDITOR AREA -->
-  <div class="editor-container" id="editorContainer" style="position: relative;">
-    <div class="editor-tabs-header" id="editorTabsHeader">
-      <!-- Tabs will be dynamically created -->
-    </div>
-
-    <div class="editor-toolbar" style="display: none;">
-      <div class="flex-col" style="gap: 2px;">
-        <label style="font-size: 10px; opacity: 0.7;">SLOT</label>
-        <select id="slotSelect" class="vscode-select" style="width: 80px;" onchange="onSlotSelectChange()">
-          <option value="0">Slot 0</option>
-          <option value="1">Slot 1</option>
-          <option value="2">Slot 2</option>
-          <option value="3">Slot 3</option>
-          <option value="4">Slot 4</option>
-          <option value="5">Slot 5</option>
-        </select>
+        </details>
       </div>
 
-      <div class="spacer"></div>
+      <!-- Device Info - Enhanced with 6 Slots -->
+      <div class="sidebar-section">
+        <details id="details-device" open>
+          <summary class="sidebar-header">
+            <i class="codicon codicon-chevron-right"></i>
+            <span>DEVICE INFO</span>
+            <span class="badge" id="activeSlotCount">0/6</span>
+          </summary>
+          <div class="sidebar-content" id="deviceInfoContent">
+            <div class="flex-row" style="margin-bottom: 8px">
+              <button onclick="fpbPing()" class="vscode-btn secondary" style="flex: 1; font-size: 10px">Ping</button>
+              <button onclick="fpbInfo()" class="vscode-btn secondary" style="flex: 1; font-size: 10px">Info</button>
+              <button onclick="fpbUnpatchAll()" class="vscode-btn secondary" style="flex: 1; font-size: 10px">
+                Clear All
+              </button>
+            </div>
+            <!-- Memory Info -->
+            <div
+              id="memoryInfo"
+              style="
+                margin-bottom: 8px;
+                padding: 4px;
+                background: var(--vscode-input-background);
+                border-radius: 3px;
+                text-align: center;
+              "
+            >
+              <div style="font-size: 10px; color: var(--vscode-descriptionForeground)">Memory info not available</div>
+            </div>
+            <!-- 6 FPB Slots -->
+            <div class="slot-container" id="slotContainer">
+              <div class="slot-item" data-slot="0" onclick="selectSlot(0)">
+                <div class="slot-header">
+                  <span class="slot-indicator"></span>
+                  <span class="slot-id">Slot 0</span>
+                  <span class="slot-func" id="slot0Func">Empty</span>
+                </div>
+                <div class="slot-actions">
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbReinject(0);
+                    "
+                    title="Re-inject this slot"
+                  >
+                    <i class="codicon codicon-debug-restart"></i>
+                  </button>
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbUnpatch(0);
+                    "
+                    title="Clear slot"
+                  >
+                    <i class="codicon codicon-close"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="slot-item" data-slot="1" onclick="selectSlot(1)">
+                <div class="slot-header">
+                  <span class="slot-indicator"></span>
+                  <span class="slot-id">Slot 1</span>
+                  <span class="slot-func" id="slot1Func">Empty</span>
+                </div>
+                <div class="slot-actions">
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbReinject(1);
+                    "
+                    title="Re-inject this slot"
+                  >
+                    <i class="codicon codicon-debug-restart"></i>
+                  </button>
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbUnpatch(1);
+                    "
+                    title="Clear slot"
+                  >
+                    <i class="codicon codicon-close"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="slot-item" data-slot="2" onclick="selectSlot(2)">
+                <div class="slot-header">
+                  <span class="slot-indicator"></span>
+                  <span class="slot-id">Slot 2</span>
+                  <span class="slot-func" id="slot2Func">Empty</span>
+                </div>
+                <div class="slot-actions">
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbReinject(2);
+                    "
+                    title="Re-inject this slot"
+                  >
+                    <i class="codicon codicon-debug-restart"></i>
+                  </button>
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbUnpatch(2);
+                    "
+                    title="Clear slot"
+                  >
+                    <i class="codicon codicon-close"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="slot-item" data-slot="3" onclick="selectSlot(3)">
+                <div class="slot-header">
+                  <span class="slot-indicator"></span>
+                  <span class="slot-id">Slot 3</span>
+                  <span class="slot-func" id="slot3Func">Empty</span>
+                </div>
+                <div class="slot-actions">
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbReinject(3);
+                    "
+                    title="Re-inject this slot"
+                  >
+                    <i class="codicon codicon-debug-restart"></i>
+                  </button>
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbUnpatch(3);
+                    "
+                    title="Clear slot"
+                  >
+                    <i class="codicon codicon-close"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="slot-item" data-slot="4" onclick="selectSlot(4)">
+                <div class="slot-header">
+                  <span class="slot-indicator"></span>
+                  <span class="slot-id">Slot 4</span>
+                  <span class="slot-func" id="slot4Func">Empty</span>
+                </div>
+                <div class="slot-actions">
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbReinject(4);
+                    "
+                    title="Re-inject this slot"
+                  >
+                    <i class="codicon codicon-debug-restart"></i>
+                  </button>
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbUnpatch(4);
+                    "
+                    title="Clear slot"
+                  >
+                    <i class="codicon codicon-close"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="slot-item" data-slot="5" onclick="selectSlot(5)">
+                <div class="slot-header">
+                  <span class="slot-indicator"></span>
+                  <span class="slot-id">Slot 5</span>
+                  <span class="slot-func" id="slot5Func">Empty</span>
+                </div>
+                <div class="slot-actions">
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbReinject(5);
+                    "
+                    title="Re-inject this slot"
+                  >
+                    <i class="codicon codicon-debug-restart"></i>
+                  </button>
+                  <button
+                    class="slot-btn"
+                    onclick="
+                      event.stopPropagation();
+                      fpbUnpatch(5);
+                    "
+                    title="Clear slot"
+                  >
+                    <i class="codicon codicon-close"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
 
-      <button class="vscode-btn secondary" onclick="generatePatchForCurrentTab()">
-        <i class="codicon codicon-file-add" style="margin-right: 4px;"></i> Generate
-      </button>
+      <!-- Configuration -->
+      <div class="sidebar-section">
+        <details id="details-configuration">
+          <summary class="sidebar-header">
+            <i class="codicon codicon-chevron-right"></i>
+            <span>CONFIGURATION</span>
+          </summary>
+          <div class="sidebar-content">
+            <div class="flex-col">
+              <div class="flex-row">
+                <input type="text" id="elfPath" class="vscode-input" placeholder="ELF Path" />
+                <button class="vscode-btn icon-only secondary" onclick="browseFile('elfPath', '.elf')">
+                  <i class="codicon codicon-folder-opened"></i>
+                </button>
+              </div>
+              <div class="flex-row">
+                <input type="text" id="compileCommandsPath" class="vscode-input" placeholder="compile_commands.json" />
+                <button class="vscode-btn icon-only secondary" onclick="browseFile('compileCommandsPath', '.json')">
+                  <i class="codicon codicon-folder-opened"></i>
+                </button>
+              </div>
+              <div class="flex-row">
+                <input type="text" id="toolchainPath" class="vscode-input" placeholder="Toolchain Bin Path" />
+                <button class="vscode-btn icon-only secondary" onclick="browseDir('toolchainPath')">
+                  <i class="codicon codicon-folder-opened"></i>
+                </button>
+              </div>
+              <div class="flex-row">
+                <select id="patchMode" class="vscode-select">
+                  <option value="trampoline">Trampoline</option>
+                  <option value="debugmon">DebugMonitor</option>
+                  <option value="direct">Direct</option>
+                </select>
+              </div>
+              <div class="flex-row">
+                <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
+                <label for="autoCompile" style="font-size: 11px">Auto Inject on Save</label>
+              </div>
+              <div class="watch-dirs-section">
+                <div class="flex-row" style="margin-bottom: 4px">
+                  <span style="font-size: 10px; opacity: 0.7; flex: 1">Watch Directories</span>
+                  <button
+                    class="vscode-btn icon-only secondary"
+                    onclick="addWatchDir()"
+                    title="Add Directory"
+                    style="width: 20px; height: 20px; padding: 0"
+                  >
+                    <i class="codicon codicon-add" style="font-size: 12px"></i>
+                  </button>
+                </div>
+                <div id="watchDirsList" class="watch-dirs-list">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
 
-      <button class="vscode-btn secondary" onclick="savePatchFile()">
-        <i class="codicon codicon-save" style="margin-right: 4px;"></i> Save
-      </button>
-
-      <div style="width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 4px;"></div>
-
-      <button id="injectBtn" onclick="performInject()" class="vscode-btn">
-        <i class="codicon codicon-play" style="margin-right: 4px;"></i> Inject
-      </button>
-    </div>
-
-    <div class="editor-tabs-content">
-      <!-- Empty state when no tabs are open -->
-      <div class="tab-content active" id="tabContent_empty">
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--vscode-descriptionForeground);">
-          <i class="codicon codicon-code" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
-          <div style="font-size: 14px; margin-bottom: 8px;">No file open</div>
-          <div style="font-size: 12px; opacity: 0.7;">Single-click a symbol to view disassembly</div>
-          <div style="font-size: 12px; opacity: 0.7;">Double-click a symbol to create a patch</div>
-        </div>
+      <!-- Symbols -->
+      <div class="sidebar-section">
+        <details id="details-symbols" open>
+          <summary class="sidebar-header" title="Single-click: view disassembly; Double-click: create patch">
+            <i class="codicon codicon-chevron-right"></i>
+            <span>SYMBOLS</span>
+          </summary>
+          <div class="sidebar-content" style="padding: 0">
+            <div style="padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border)">
+              <input
+                type="text"
+                id="symbolSearch"
+                class="vscode-input"
+                placeholder="Search Symbols..."
+                oninput="searchSymbols()"
+                style="height: 22px; font-size: 11px"
+              />
+            </div>
+            <div id="symbolList" class="symbol-list">
+              <!-- Populated by JS -->
+              <div style="padding: 8px; font-size: 11px; opacity: 0.7">No symbols loaded</div>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
-    
-    <!-- Global progress indicator -->
-    <div id="injectProgress" class="inject-progress" style="display: none;">
-      <span id="injectProgressText">Injecting...</span>
-      <div id="injectProgressFill" class="progress-fill"></div>
-    </div>
-  </div>
 
-  <!-- Panel Resize Sash -->
-  <div class="sash sash-horizontal" id="sashPanel"></div>
+    <!-- Sidebar Resize Sash -->
+    <div class="sash sash-vertical" id="sashSidebar"></div>
 
-  <!-- TERMINAL PANEL -->
-  <div class="panel-container" id="panelContainer">
-    <div class="panel-header">
-      <div class="panel-tab active" onclick="switchTerminalTab('tool')" id="tabBtnTool">OUTPUT</div>
-      <div class="panel-tab" onclick="switchTerminalTab('raw')" id="tabBtnRaw">SERIAL PORT</div>
-      <div class="panel-actions">
-        <button class="vscode-btn icon-only secondary" onclick="clearCurrentTerminal()" title="Clear">
-          <i class="codicon codicon-clear-all"></i>
+    <!-- MAIN EDITOR AREA -->
+    <div class="editor-container" id="editorContainer" style="position: relative">
+      <div class="editor-tabs-header" id="editorTabsHeader">
+        <!-- Tabs will be dynamically created -->
+      </div>
+
+      <div class="editor-toolbar" style="display: none">
+        <div class="flex-col" style="gap: 2px">
+          <label style="font-size: 10px; opacity: 0.7">SLOT</label>
+          <select id="slotSelect" class="vscode-select" style="width: 80px" onchange="onSlotSelectChange()">
+            <option value="0">Slot 0</option>
+            <option value="1">Slot 1</option>
+            <option value="2">Slot 2</option>
+            <option value="3">Slot 3</option>
+            <option value="4">Slot 4</option>
+            <option value="5">Slot 5</option>
+          </select>
+        </div>
+
+        <div class="spacer"></div>
+
+        <button class="vscode-btn secondary" onclick="savePatchFile()">
+          <i class="codicon codicon-save" style="margin-right: 4px"></i> Save
+        </button>
+
+        <div style="width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 4px"></div>
+
+        <button id="injectBtn" onclick="performInject()" class="vscode-btn">
+          <i class="codicon codicon-play" style="margin-right: 4px"></i> Inject
         </button>
       </div>
-    </div>
-    <div class="panel-content">
-      <!-- Tool Terminal (Python logs) -->
-      <div id="terminalPanelTool" class="terminal-panel">
-        <div id="terminal-container" style="width: 100%; height: 100%;"></div>
-      </div>
-      <!-- Raw Terminal (Serial Port - interactive) -->
-      <div id="terminalPanelRaw" class="terminal-panel" style="display: none;">
-        <div id="raw-terminal-container" style="width: 100%; height: 100%;"></div>
-      </div>
-    </div>
-  </div>
 
-  <!-- STATUS BAR -->
-  <div class="status-bar">
-    <div class="status-left">
-      <div class="status-item">
-        <i class="codicon codicon-plug"></i>
-        <span id="connectionIndicatorBase"></span>
-        <span id="connectionStatus">Disconnected</span>
-      </div>
-      <div class="status-item">
-        <i class="codicon codicon-eye"></i>
-        <span id="watcherStatus">Watcher: Off</span>
-      </div>
-    </div>
-    <div class="status-right">
-      <div class="status-item" id="currentSlotDisplay">Slot: 0</div>
-      <div class="status-item">UTF-8</div>
-      <div class="status-item">C</div>
-      <div class="status-item"><i class="codicon codicon-bell"></i></div>
-    </div>
-  </div>
-
-  <!-- File Browser Modal -->
-  <div class="modal-overlay" id="fileBrowserModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 style="margin: 0;">File Browser</h3>
-        <button class="vscode-btn icon-only secondary" onclick="closeFileBrowser()"><i class="codicon codicon-close"></i></button>
-      </div>
-      <div class="modal-body">
-        <div class="flex-row" style="margin-bottom: 10px;">
-          <input type="text" id="browserPath" class="vscode-input" onkeyup="onBrowserPathKeyup(event)" />
-          <button class="vscode-btn secondary" onclick="navigateTo(document.getElementById('browserPath').value)">Go</button>
+      <div class="editor-tabs-content">
+        <!-- Empty state when no tabs are open -->
+        <div class="tab-content active" id="tabContent_empty">
+          <div
+            style="
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100%;
+              color: var(--vscode-descriptionForeground);
+            "
+          >
+            <i class="codicon codicon-code" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3"></i>
+            <div style="font-size: 14px; margin-bottom: 8px">No file open</div>
+          </div>
         </div>
-        <div class="file-list" id="fileList"></div>
       </div>
-      <div class="modal-footer">
-        <button class="vscode-btn secondary" onclick="closeFileBrowser()">Cancel</button>
-        <button class="vscode-btn" onclick="selectBrowserItem()">Select</button>
+
+      <!-- Global progress indicator -->
+      <div id="injectProgress" class="inject-progress" style="display: none">
+        <span id="injectProgressText">Injecting...</span>
+        <div id="injectProgressFill" class="progress-fill"></div>
       </div>
     </div>
-  </div>
 
-  <!-- Scripts -->
-  <script src="/static/js/app.js"></script>
-  <script>
-    // Clock Update
-    function updateClock() {
-      const now = new Date();
-      const timeString = now.getFullYear() + '-' +
-        String(now.getMonth() + 1).padStart(2, '0') + '-' +
-        String(now.getDate()).padStart(2, '0') + ' ' +
-        String(now.getHours()).padStart(2, '0') + ':' +
-        String(now.getMinutes()).padStart(2, '0');
-      const clock = document.getElementById('clockDisplay');
-      if (clock) clock.innerText = timeString;
-    }
+    <!-- Panel Resize Sash -->
+    <div class="sash sash-horizontal" id="sashPanel"></div>
 
-    document.addEventListener('DOMContentLoaded', () => {
-      setInterval(updateClock, 1000);
-      updateClock();
-      initSashResize();
-      loadLayoutPreferences();
-      loadThemePreference();
-    });
-  </script>
-</body>
+    <!-- TERMINAL PANEL -->
+    <div class="panel-container" id="panelContainer">
+      <div class="panel-header">
+        <div class="panel-tab active" onclick="switchTerminalTab('tool')" id="tabBtnTool">OUTPUT</div>
+        <div class="panel-tab" onclick="switchTerminalTab('raw')" id="tabBtnRaw">SERIAL PORT</div>
+        <div class="panel-actions">
+          <button class="vscode-btn icon-only secondary" onclick="clearCurrentTerminal()" title="Clear">
+            <i class="codicon codicon-clear-all"></i>
+          </button>
+        </div>
+      </div>
+      <div class="panel-content">
+        <!-- Tool Terminal (Python logs) -->
+        <div id="terminalPanelTool" class="terminal-panel">
+          <div id="terminal-container" style="width: 100%; height: 100%"></div>
+        </div>
+        <!-- Raw Terminal (Serial Port - interactive) -->
+        <div id="terminalPanelRaw" class="terminal-panel" style="display: none">
+          <div id="raw-terminal-container" style="width: 100%; height: 100%"></div>
+        </div>
+      </div>
+    </div>
 
+    <!-- STATUS BAR -->
+    <div class="status-bar">
+      <div class="status-left">
+        <div class="status-item">
+          <i class="codicon codicon-plug"></i>
+          <span id="connectionIndicatorBase"></span>
+          <span id="connectionStatus">Disconnected</span>
+        </div>
+        <div class="status-item">
+          <i class="codicon codicon-eye"></i>
+          <span id="watcherStatus">Watcher: Off</span>
+        </div>
+      </div>
+      <div class="status-right">
+        <div class="status-item" id="currentSlotDisplay">Slot: 0</div>
+        <div class="status-item">UTF-8</div>
+        <div class="status-item">C</div>
+        <div class="status-item"><i class="codicon codicon-bell"></i></div>
+      </div>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div class="modal-overlay" id="fileBrowserModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 style="margin: 0">File Browser</h3>
+          <button class="vscode-btn icon-only secondary" onclick="closeFileBrowser()">
+            <i class="codicon codicon-close"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="flex-row" style="margin-bottom: 10px">
+            <input type="text" id="browserPath" class="vscode-input" onkeyup="onBrowserPathKeyup(event)" />
+            <button class="vscode-btn secondary" onclick="navigateTo(document.getElementById('browserPath').value)">
+              Go
+            </button>
+          </div>
+          <div class="file-list" id="fileList"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="vscode-btn secondary" onclick="closeFileBrowser()">Cancel</button>
+          <button class="vscode-btn" onclick="selectBrowserItem()">Select</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/app.js"></script>
+    <script>
+      // Clock Update
+      function updateClock() {
+        const now = new Date();
+        const timeString =
+          now.getFullYear() +
+          "-" +
+          String(now.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(now.getDate()).padStart(2, "0") +
+          " " +
+          String(now.getHours()).padStart(2, "0") +
+          ":" +
+          String(now.getMinutes()).padStart(2, "0");
+        const clock = document.getElementById("clockDisplay");
+        if (clock) clock.innerText = timeString;
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        setInterval(updateClock, 1000);
+        updateClock();
+        initSashResize();
+        loadLayoutPreferences();
+        loadThemePreference();
+      });
+    </script>
+  </body>
 </html>

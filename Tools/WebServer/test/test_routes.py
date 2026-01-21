@@ -230,14 +230,6 @@ class TestRoutesFPB(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertIn("content", data)
 
-    def test_generate_patch(self):
-        """测试生成补丁"""
-        payload = {"target_func": "my_func"}
-        response = self.client.post("/api/patch/generate", json=payload)
-        data = json.loads(response.data)
-        self.assertTrue(data["success"])
-        self.assertIn("inject_my_func", data["content"])
-
     def test_get_status_all_fields(self):
         """测试获取所有状态字段"""
         response = self.client.get("/api/status")
@@ -664,14 +656,6 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not provided", data["error"])
 
-    def test_generate_patch_no_target(self):
-        """测试生成补丁无目标函数"""
-        response = self.client.post("/api/patch/generate", json={})
-        data = json.loads(response.data)
-
-        self.assertFalse(data["success"])
-        self.assertIn("not specified", data["error"])
-
     @patch("routes.get_fpb_inject")
     def test_fpb_info_error(self, mock_get_fpb):
         """测试获取设备信息失败"""
@@ -693,17 +677,6 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertIn("watching", data)
         self.assertIn("watch_dirs", data)
-
-    def test_patch_generate_with_signature(self):
-        """测试带签名生成补丁"""
-        response = self.client.post(
-            "/api/patch/generate", json={"target_func": "my_func", "signature": "int"}
-        )
-        data = json.loads(response.data)
-
-        self.assertTrue(data["success"])
-        self.assertIn("inject_my_func", data["content"])
-        self.assertIn("int inject_my_func", data["content"])
 
     @patch("patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_file(self, mock_gen_class):

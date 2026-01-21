@@ -152,10 +152,9 @@ class AppState:
  * Example: Replace a function named "target_function"
  * The inject function should have the same signature as the original.
  *
- * __attribute__((used, section(".text.inject")))
  * void inject_target_function(int arg1, int arg2) {
  *     printf("Injected: arg1=%d, arg2=%d\\n", arg1, arg2);
- *     /* Custom behavior here */
+ *     // Custom behavior here
  * }
  */
 

@@ -826,33 +826,6 @@ def register_routes(app):
         """Get default patch template."""
         return jsonify({"success": True, "content": state.patch_template})
 
-    @app.route("/api/patch/generate", methods=["POST"])
-    def api_generate_patch():
-        """Generate patch code from template."""
-        data = request.json or {}
-        target_func = data.get("target_func")
-        signature = data.get("signature", "void")
-
-        if not target_func:
-            return jsonify({"success": False, "error": "Target function not specified"})
-
-        # Generate patch code
-        patch_code = f"""/*
- * Auto-generated patch for: {target_func}
- */
-
-#include <syslog.h>
-
-__attribute__((used, section(".text.inject")))
-{signature} inject_{target_func}(/* TODO: add arguments */) {{
-    syslog(LOG_INFO, "Injected {target_func} called\\n");
-    // TODO: Add your injection logic here
-    // Call original function if needed:
-    // {target_func}_original(...);
-}}
-"""
-        return jsonify({"success": True, "content": patch_code})
-
     @app.route("/api/patch/auto_generate", methods=["POST"])
     def api_auto_generate_patch():
         """

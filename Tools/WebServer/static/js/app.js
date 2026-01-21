@@ -16,7 +16,15 @@ let autoInjectPollInterval = null;
 let lastAutoInjectStatus = 'idle';
 let autoInjectProgressHideTimer = null;
 let selectedSlot = 0;
-let slotStates = Array(6).fill().map(() => ({ occupied: false, func: '', orig_addr: '', target_addr: '', code_size: 0 }));
+let slotStates = Array(6)
+  .fill()
+  .map(() => ({
+    occupied: false,
+    func: '',
+    orig_addr: '',
+    target_addr: '',
+    code_size: 0,
+  }));
 
 // Tabs state
 let editorTabs = [];
@@ -36,7 +44,7 @@ let selectedBrowserItem = null;
    INITIALIZATION
    =========================== */
 document.addEventListener('DOMContentLoaded', () => {
-  loadThemePreference();  // Load theme FIRST before terminal init
+  loadThemePreference(); // Load theme FIRST before terminal init
   initTerminals();
   refreshPorts();
   loadConfig();
@@ -60,32 +68,40 @@ function initSlotSelectListener() {
 
 // Update UI disabled state based on connection
 function updateDisabledState() {
-  const disableWhenDisconnected = [
-    'slotSelect', 'injectBtn'
-  ];
-  const opacityElements = [
-    'editorContainer', 'slotContainer'
-  ];
-  
-  disableWhenDisconnected.forEach(id => {
+  const disableWhenDisconnected = ['slotSelect', 'injectBtn'];
+  const opacityElements = ['editorContainer', 'slotContainer'];
+
+  disableWhenDisconnected.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
       el.disabled = !isConnected;
       el.style.opacity = isConnected ? '1' : '0.5';
     }
   });
-  
+
   // Add visual feedback for disabled sections
-  opacityElements.forEach(id => {
+  opacityElements.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
       el.style.opacity = isConnected ? '1' : '0.6';
       el.style.pointerEvents = isConnected ? 'auto' : 'none';
     }
   });
-  
-  // Device info buttons
-  document.querySelectorAll('#slotContainer .slot-btn').forEach(btn => {
+
+  // Device info content - disable all buttons and interactions when not connected
+  const deviceInfoContent = document.getElementById('deviceInfoContent');
+  if (deviceInfoContent) {
+    deviceInfoContent.style.opacity = isConnected ? '1' : '0.5';
+    deviceInfoContent.querySelectorAll('button').forEach((btn) => {
+      btn.disabled = !isConnected;
+    });
+    deviceInfoContent.querySelectorAll('.slot-item').forEach((item) => {
+      item.style.pointerEvents = isConnected ? 'auto' : 'none';
+    });
+  }
+
+  // Device info buttons (backup selector)
+  document.querySelectorAll('#slotContainer .slot-btn').forEach((btn) => {
     btn.disabled = !isConnected;
   });
 }
@@ -98,7 +114,7 @@ const darkTerminalTheme = {
   foreground: '#cccccc',
   cursor: '#ffffff',
   cursorAccent: '#1e1e1e',
-  selection: '#264f78'
+  selection: '#264f78',
 };
 
 const lightTerminalTheme = {
@@ -106,7 +122,7 @@ const lightTerminalTheme = {
   foreground: '#333333',
   cursor: '#333333',
   cursorAccent: '#f3f3f3',
-  selection: '#add6ff'
+  selection: '#add6ff',
 };
 
 function toggleTheme() {
@@ -131,14 +147,18 @@ function updateThemeIcon() {
   const currentTheme = document.documentElement.getAttribute('data-theme');
   if (themeIcon) {
     // Use existing codicons: lightbulb for light, lightbulb-autofix for dark
-    themeIcon.className = currentTheme === 'light' ? 'codicon codicon-lightbulb' : 'codicon codicon-lightbulb-autofix';
+    themeIcon.className =
+      currentTheme === 'light'
+        ? 'codicon codicon-lightbulb'
+        : 'codicon codicon-lightbulb-autofix';
   }
 }
 
 function updateTerminalTheme() {
   const currentTheme = document.documentElement.getAttribute('data-theme');
-  const termTheme = currentTheme === 'light' ? lightTerminalTheme : darkTerminalTheme;
-  
+  const termTheme =
+    currentTheme === 'light' ? lightTerminalTheme : darkTerminalTheme;
+
   if (toolTerminal) {
     toolTerminal.options.theme = termTheme;
   }
@@ -191,13 +211,19 @@ function initSashResize() {
     if (isResizingSidebar) {
       const delta = e.clientX - startX;
       const newWidth = Math.max(180, Math.min(600, startWidth + delta));
-      document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
+      document.documentElement.style.setProperty(
+        '--sidebar-width',
+        newWidth + 'px',
+      );
     }
 
     if (isResizingPanel) {
       const delta = startY - e.clientY;
       const newHeight = Math.max(100, Math.min(500, startHeight + delta));
-      document.documentElement.style.setProperty('--panel-height', newHeight + 'px');
+      document.documentElement.style.setProperty(
+        '--panel-height',
+        newHeight + 'px',
+      );
     }
   });
 
@@ -233,8 +259,12 @@ function loadLayoutPreferences() {
 }
 
 function saveLayoutPreferences() {
-  const sidebarWidth = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width');
-  const panelHeight = getComputedStyle(document.documentElement).getPropertyValue('--panel-height');
+  const sidebarWidth = getComputedStyle(
+    document.documentElement,
+  ).getPropertyValue('--sidebar-width');
+  const panelHeight = getComputedStyle(
+    document.documentElement,
+  ).getPropertyValue('--panel-height');
 
   localStorage.setItem('fpbinject-sidebar-width', sidebarWidth.trim());
   localStorage.setItem('fpbinject-panel-height', panelHeight.trim());
@@ -267,7 +297,7 @@ function saveSidebarState() {
   try {
     const state = {};
     // Find all details elements with IDs that start with 'details-'
-    document.querySelectorAll('details[id^="details-"]').forEach(details => {
+    document.querySelectorAll('details[id^="details-"]').forEach((details) => {
       state[details.id] = details.open;
     });
     localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(state));
@@ -278,7 +308,7 @@ function saveSidebarState() {
 
 function setupSidebarStateListeners() {
   // Listen for toggle events on all sidebar details elements
-  document.querySelectorAll('details[id^="details-"]').forEach(details => {
+  document.querySelectorAll('details[id^="details-"]').forEach((details) => {
     details.addEventListener('toggle', saveSidebarState);
   });
 }
@@ -293,7 +323,7 @@ function getTerminalTheme() {
 
 function initTerminals() {
   const termTheme = getTerminalTheme();
-  
+
   // Tool Terminal (OUTPUT - Python logs)
   const toolContainer = document.getElementById('terminal-container');
   if (toolContainer && typeof Terminal !== 'undefined') {
@@ -304,13 +334,13 @@ function initTerminals() {
       cursorBlink: false,
       disableStdin: true,
       // Enable mouse selection
-      allowProposedApi: true
+      allowProposedApi: true,
     });
     toolFitAddon = new FitAddon.FitAddon();
     toolTerminal.loadAddon(toolFitAddon);
     toolTerminal.open(toolContainer);
     toolFitAddon.fit();
-    
+
     // Enable text selection with mouse
     toolTerminal.attachCustomKeyEventHandler((e) => {
       // Allow Ctrl+C for copy
@@ -323,7 +353,7 @@ function initTerminals() {
       }
       return true;
     });
-    
+
     toolTerminal.writeln('\x1b[36m[OUTPUT] FPBInject Workbench Ready\x1b[0m');
   }
 
@@ -336,7 +366,7 @@ function initTerminals() {
       fontSize: 12,
       cursorBlink: true,
       disableStdin: false,
-      allowProposedApi: true
+      allowProposedApi: true,
     });
     rawFitAddon = new FitAddon.FitAddon();
     rawTerminal.loadAddon(rawFitAddon);
@@ -356,7 +386,7 @@ function initTerminals() {
     });
 
     // Setup input handler for interactive terminal
-    rawTerminal.onData(data => {
+    rawTerminal.onData((data) => {
       if (isConnected) {
         sendTerminalCommand(data);
       }
@@ -376,8 +406,12 @@ function fitTerminals() {
 function switchTerminalTab(tab) {
   currentTerminalTab = tab;
 
-  document.getElementById('tabBtnTool').classList.toggle('active', tab === 'tool');
-  document.getElementById('tabBtnRaw').classList.toggle('active', tab === 'raw');
+  document
+    .getElementById('tabBtnTool')
+    .classList.toggle('active', tab === 'tool');
+  document
+    .getElementById('tabBtnRaw')
+    .classList.toggle('active', tab === 'raw');
 
   const toolPanel = document.getElementById('terminalPanelTool');
   const rawPanel = document.getElementById('terminalPanelRaw');
@@ -415,13 +449,13 @@ function writeToOutput(message, type = 'info') {
     success: '\x1b[32m',
     warning: '\x1b[33m',
     error: '\x1b[31m',
-    system: '\x1b[36m'
+    system: '\x1b[36m',
   };
   const color = colors[type] || colors.info;
-  
+
   // Split message by newlines and write each line separately
   const lines = message.split('\n');
-  lines.forEach(line => {
+  lines.forEach((line) => {
     toolTerminal.writeln(`${color}${line}\x1b[0m`);
   });
 }
@@ -465,7 +499,8 @@ function updateSlotUI() {
   }
 
   document.getElementById('activeSlotCount').textContent = `${activeCount}/6`;
-  document.getElementById('currentSlotDisplay').textContent = `Slot: ${selectedSlot}`;
+  document.getElementById('currentSlotDisplay').textContent =
+    `Slot: ${selectedSlot}`;
   document.getElementById('slotSelect').value = selectedSlot;
 }
 
@@ -473,7 +508,7 @@ function selectSlot(slotId) {
   selectedSlot = parseInt(slotId);
   updateSlotUI();
   writeToOutput(`[INFO] Selected Slot ${slotId}`, 'info');
-  
+
   // If slot has a function, open its disassembly view
   const slotState = slotStates[slotId];
   if (slotState && slotState.func) {
@@ -500,18 +535,27 @@ async function fpbUnpatch(slotId) {
     const res = await fetch('/api/fpb/unpatch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comp: slotId })
+      body: JSON.stringify({ comp: slotId }),
     });
     const data = await res.json();
 
     if (data.success) {
-      slotStates[slotId] = { occupied: false, func: '', orig_addr: '', target_addr: '', code_size: 0 };
+      slotStates[slotId] = {
+        occupied: false,
+        func: '',
+        orig_addr: '',
+        target_addr: '',
+        code_size: 0,
+      };
       updateSlotUI();
       writeToOutput(`[SUCCESS] Slot ${slotId} cleared`, 'success');
       // Refresh device info to get accurate state
       fpbInfo();
     } else {
-      writeToOutput(`[ERROR] Failed to clear slot ${slotId}: ${data.message}`, 'error');
+      writeToOutput(
+        `[ERROR] Failed to clear slot ${slotId}: ${data.message}`,
+        'error',
+      );
     }
   } catch (e) {
     writeToOutput(`[ERROR] Unpatch error: ${e}`, 'error');
@@ -535,17 +579,24 @@ async function fpbReinject(slotId) {
   // Get target function from slot state
   const slotState = slotStates[slotId];
   if (!slotState || !slotState.func) {
-    writeToOutput(`[INFO] Slot ${slotId} has no target function, using multi-inject`, 'info');
+    writeToOutput(
+      `[INFO] Slot ${slotId} has no target function, using multi-inject`,
+      'info',
+    );
     // Use multi-inject API
     await fpbInjectMulti();
     return;
   }
 
   const targetFunc = slotState.func;
-  writeToOutput(`[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`, 'info');
+  writeToOutput(
+    `[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`,
+    'info',
+  );
 
   try {
-    const patchMode = document.getElementById('patchMode')?.value || 'trampoline';
+    const patchMode =
+      document.getElementById('patchMode')?.value || 'trampoline';
     const res = await fetch('/api/fpb/inject', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -553,16 +604,22 @@ async function fpbReinject(slotId) {
         source_content: patchSource,
         target_func: targetFunc,
         patch_mode: patchMode,
-        comp: slotId  // Force specific slot
-      })
+        comp: slotId, // Force specific slot
+      }),
     });
     const data = await res.json();
 
     if (data.success) {
-      writeToOutput(`[SUCCESS] Re-injected ${targetFunc} to Slot ${slotId}`, 'success');
+      writeToOutput(
+        `[SUCCESS] Re-injected ${targetFunc} to Slot ${slotId}`,
+        'success',
+      );
       await fpbInfo();
     } else {
-      writeToOutput(`[ERROR] Re-inject failed: ${data.error || 'Unknown error'}`, 'error');
+      writeToOutput(
+        `[ERROR] Re-inject failed: ${data.error || 'Unknown error'}`,
+        'error',
+      );
     }
   } catch (e) {
     writeToOutput(`[ERROR] Re-inject error: ${e}`, 'error');
@@ -585,25 +642,32 @@ async function fpbInjectMulti() {
   writeToOutput('[INFO] Injecting all functions...', 'info');
 
   try {
-    const patchMode = document.getElementById('patchMode')?.value || 'trampoline';
+    const patchMode =
+      document.getElementById('patchMode')?.value || 'trampoline';
     const res = await fetch('/api/fpb/inject/multi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         source_content: patchSource,
-        patch_mode: patchMode
-      })
+        patch_mode: patchMode,
+      }),
     });
     const data = await res.json();
 
     if (data.success) {
       const successCount = data.successful_count || 0;
       const totalCount = data.total_count || 0;
-      writeToOutput(`[SUCCESS] Injected ${successCount}/${totalCount} functions`, 'success');
+      writeToOutput(
+        `[SUCCESS] Injected ${successCount}/${totalCount} functions`,
+        'success',
+      );
       displayAutoInjectStats(data, 'multi');
       await fpbInfo();
     } else {
-      writeToOutput(`[ERROR] Multi-inject failed: ${data.error || 'Unknown error'}`, 'error');
+      writeToOutput(
+        `[ERROR] Multi-inject failed: ${data.error || 'Unknown error'}`,
+        'error',
+      );
     }
   } catch (e) {
     writeToOutput(`[ERROR] Multi-inject error: ${e}`, 'error');
@@ -617,7 +681,11 @@ async function fpbUnpatchAll() {
   }
 
   // Confirm before clearing all slots
-  if (!confirm('Are you sure you want to clear all FPB slots? This will unpatch all injected functions.')) {
+  if (
+    !confirm(
+      'Are you sure you want to clear all FPB slots? This will unpatch all injected functions.',
+    )
+  ) {
     return;
   }
 
@@ -625,12 +693,20 @@ async function fpbUnpatchAll() {
     const res = await fetch('/api/fpb/unpatch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ all: true })
+      body: JSON.stringify({ all: true }),
     });
     const data = await res.json();
 
     if (data.success) {
-      slotStates = Array(6).fill().map(() => ({ occupied: false, func: '', orig_addr: '', target_addr: '', code_size: 0 }));
+      slotStates = Array(6)
+        .fill()
+        .map(() => ({
+          occupied: false,
+          func: '',
+          orig_addr: '',
+          target_addr: '',
+          code_size: 0,
+        }));
       updateSlotUI();
       writeToOutput('[SUCCESS] All slots cleared and memory freed', 'success');
       // Refresh device info to get accurate state
@@ -656,17 +732,20 @@ async function refreshPorts() {
 
     // Handle both array of strings and array of objects
     const ports = data.ports || [];
-    ports.forEach(p => {
+    ports.forEach((p) => {
       const opt = document.createElement('option');
       // Support both string format and object format {port: "xxx", desc: "xxx"}
-      const portName = (typeof p === 'string') ? p : (p.port || p.device || String(p));
+      const portName =
+        typeof p === 'string' ? p : p.port || p.device || String(p);
       opt.value = portName;
       opt.textContent = portName;
       sel.appendChild(opt);
     });
 
     // Restore previous selection if still available
-    const portValues = ports.map(p => (typeof p === 'string') ? p : (p.port || p.device || String(p)));
+    const portValues = ports.map((p) =>
+      typeof p === 'string' ? p : p.port || p.device || String(p),
+    );
     if (portValues.includes(prevValue)) {
       sel.value = prevValue;
     }
@@ -690,7 +769,7 @@ async function toggleConnect() {
       const res = await fetch('/api/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port, baudrate: parseInt(baud) })
+        body: JSON.stringify({ port, baudrate: parseInt(baud) }),
       });
       const data = await res.json();
 
@@ -750,29 +829,36 @@ function stopLogPolling() {
 
 async function fetchLogs() {
   try {
-    const res = await fetch(`/api/logs?tool_since=${toolLogNextId}&raw_since=${rawLogNextId}`);
-    
+    const res = await fetch(
+      `/api/logs?tool_since=${toolLogNextId}&raw_since=${rawLogNextId}`,
+    );
+
     // Check if response is ok
     if (!res.ok) {
       return; // Silently ignore non-200 responses
     }
-    
+
     // Check content type before parsing
     const contentType = res.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       return; // Not JSON, skip
     }
-    
+
     const text = await res.text();
     if (!text || text.trim() === '') {
       return; // Empty response, skip
     }
-    
+
     let data;
     try {
       data = JSON.parse(text);
     } catch (parseError) {
-      console.warn('Log parse error:', parseError, 'Response:', text.substring(0, 100));
+      console.warn(
+        'Log parse error:',
+        parseError,
+        'Response:',
+        text.substring(0, 100),
+      );
       return;
     }
 
@@ -781,8 +867,12 @@ async function fetchLogs() {
     if (data.raw_next !== undefined) rawLogNextId = data.raw_next;
 
     // Tool logs (Python output) -> OUTPUT terminal
-    if (data.tool_logs && Array.isArray(data.tool_logs) && data.tool_logs.length > 0) {
-      data.tool_logs.forEach(log => {
+    if (
+      data.tool_logs &&
+      Array.isArray(data.tool_logs) &&
+      data.tool_logs.length > 0
+    ) {
+      data.tool_logs.forEach((log) => {
         writeToOutput(log, 'info');
       });
     }
@@ -834,7 +924,7 @@ async function fpbInfo() {
               func: slot.func || '',
               orig_addr: slot.orig_addr || '',
               target_addr: slot.target_addr || '',
-              code_size: slot.code_size || 0
+              code_size: slot.code_size || 0,
             };
           }
         });
@@ -848,7 +938,10 @@ async function fpbInfo() {
 
       writeToOutput('[INFO] Device info updated', 'success');
     } else {
-      writeToOutput(`[ERROR] ${data.error || 'Failed to get device info'}`, 'error');
+      writeToOutput(
+        `[ERROR] ${data.error || 'Failed to get device info'}`,
+        'error',
+      );
     }
   } catch (e) {
     writeToOutput(`[ERROR] Info failed: ${e}`, 'error');
@@ -896,6 +989,49 @@ function updateMemoryInfo(memory) {
 /* ===========================
    PATCH OPERATIONS
    =========================== */
+
+// Unified template generation function
+function generatePatchTemplate(
+  funcName,
+  slot,
+  signature = null,
+  sourceFile = null,
+) {
+  let returnType = 'void';
+  let params = '';
+
+  if (signature) {
+    const parsed = parseSignature(signature, funcName);
+    returnType = parsed.returnType;
+    params = parsed.params;
+  }
+
+  const injectFuncName = `inject_${funcName}`;
+  const paramNames = extractParamNames(params);
+  const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
+
+  return `/*
+ * Patch for: ${funcName}
+ * Slot: ${slot}
+${sourceFile ? ` * Source: ${sourceFile}` : ''}
+ */
+
+#include <stdint.h>
+#include <stdio.h>
+
+${signature ? `// Original function signature:\n// ${signature}` : `// Original function prototype (adjust as needed)\n// extern ${returnType} ${funcName}(${params || 'void'});`}
+
+// Inject function - will replace ${funcName}
+${returnType} ${injectFuncName}(${params || 'void'}) {
+    printf("Patched ${funcName} executed!\\n");
+
+    // Your patch code here
+
+${returnType !== 'void' ? `    // TODO: return appropriate value\n    return 0;` : `    // Call original if needed:\n    // ${funcName}_original(${callParams});`}
+}
+`;
+}
+
 async function generatePatch() {
   const targetFunc = document.getElementById('targetFunc').value;
   if (!targetFunc) {
@@ -903,16 +1039,19 @@ async function generatePatch() {
     return;
   }
 
-  writeToOutput(`[GENERATE] Analyzing function signature for ${targetFunc}...`, 'system');
+  writeToOutput(
+    `[GENERATE] Analyzing function signature for ${targetFunc}...`,
+    'system',
+  );
 
   let signature = null;
   let sourceFile = null;
-  let returnType = 'void';
-  let params = '';
 
   // Try to get function signature from backend
   try {
-    const res = await fetch(`/api/symbols/signature?func=${encodeURIComponent(targetFunc)}`);
+    const res = await fetch(
+      `/api/symbols/signature?func=${encodeURIComponent(targetFunc)}`,
+    );
     const data = await res.json();
 
     if (data.success && data.signature) {
@@ -922,49 +1061,27 @@ async function generatePatch() {
       if (sourceFile) {
         writeToOutput(`[INFO] Source file: ${sourceFile}`, 'info');
       }
-
-      // Parse the signature to extract return type and parameters
-      const parsed = parseSignature(signature, targetFunc);
-      returnType = parsed.returnType;
-      params = parsed.params;
     } else {
-      writeToOutput(`[WARN] Could not find function signature, using default template`, 'warning');
+      writeToOutput(
+        `[WARN] Could not find function signature, using default template`,
+        'warning',
+      );
     }
   } catch (e) {
     writeToOutput(`[WARN] Failed to fetch signature: ${e}`, 'warning');
   }
 
-  // Generate inject function name
-  const injectFuncName = `inject_${targetFunc}`;
-
-  // Build parameter list for calling original function
-  const paramNames = extractParamNames(params);
-  const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
-
-  // Generate template
-  const template = `/*
- * Auto-generated patch for: ${targetFunc}
- * Slot: ${selectedSlot}
-${sourceFile ? ` * Source: ${sourceFile}` : ''}
- */
-
-#include <stdint.h>
-#include <stdio.h>
-
-${signature ? `// Original function signature:\n// ${signature}` : '// Original function prototype (adjust as needed)\n// extern ' + returnType + ' ' + targetFunc + '(' + (params || 'void') + ');'}
-
-// Inject function - will replace ${targetFunc}
-__attribute__((used, section(".text.inject")))
-${returnType} ${injectFuncName}(${params || 'void'}) {
-    // Your patch code here
-    printf("Patched ${targetFunc} executed!\\n");
-
-${returnType !== 'void' ? `    // TODO: return appropriate value` : `    // Call original if needed:\n    // ${targetFunc}_original(${callParams});`}
-}
-`;
-
+  const template = generatePatchTemplate(
+    targetFunc,
+    selectedSlot,
+    signature,
+    sourceFile,
+  );
   document.getElementById('patchSource').value = template;
-  writeToOutput(`[SUCCESS] Patch template generated with ${signature ? 'analyzed' : 'default'} signature`, 'success');
+  writeToOutput(
+    `[SUCCESS] Patch template generated with ${signature ? 'analyzed' : 'default'} signature`,
+    'success',
+  );
 }
 
 // Parse function signature to extract return type and parameters
@@ -973,7 +1090,9 @@ function parseSignature(signature, funcName) {
   let params = '';
 
   // Remove leading static/inline/extern keywords
-  let sig = signature.replace(/^(static|inline|extern|__attribute__\s*\([^)]*\))\s+/g, '').trim();
+  let sig = signature
+    .replace(/^(static|inline|extern|__attribute__\s*\([^)]*\))\s+/g, '')
+    .trim();
 
   // Find function name position
   const funcNameMatch = sig.match(new RegExp(`\\b${funcName}\\s*\\(`));
@@ -1045,7 +1164,24 @@ function extractParamNames(params) {
     if (words.length > 0) {
       const lastWord = words[words.length - 1];
       // Skip if it's a type keyword
-      if (!['int', 'char', 'void', 'float', 'double', 'long', 'short', 'unsigned', 'signed', 'const', 'volatile', 'struct', 'enum', 'union'].includes(lastWord)) {
+      if (
+        ![
+          'int',
+          'char',
+          'void',
+          'float',
+          'double',
+          'long',
+          'short',
+          'unsigned',
+          'signed',
+          'const',
+          'volatile',
+          'struct',
+          'enum',
+          'union',
+        ].includes(lastWord)
+      ) {
         names.push(lastWord);
       }
     }
@@ -1069,7 +1205,7 @@ async function performInject() {
   const tabId = currentPatchTab.id;
   const targetFunc = currentPatchTab.funcName;
   const textarea = document.getElementById(`editor_${tabId}`);
-  
+
   if (!textarea) {
     writeToOutput('[ERROR] Editor not found', 'error');
     return;
@@ -1090,7 +1226,10 @@ async function performInject() {
   progressText.textContent = 'Starting...';
   progressFill.style.width = '5%';
 
-  writeToOutput(`[INJECT] Starting injection of ${targetFunc} to slot ${selectedSlot}...`, 'system');
+  writeToOutput(
+    `[INJECT] Starting injection of ${targetFunc} to slot ${selectedSlot}...`,
+    'system',
+  );
 
   try {
     // Use streaming API for real-time progress
@@ -1101,8 +1240,8 @@ async function performInject() {
         source_content: source,
         target_func: targetFunc,
         comp: selectedSlot,
-        patch_mode: document.getElementById('patchMode').value
-      })
+        patch_mode: document.getElementById('patchMode').value,
+      }),
     });
 
     if (!response.ok) {
@@ -1135,7 +1274,7 @@ async function performInject() {
             } else if (data.type === 'progress') {
               const uploadPercent = data.percent || 0;
               // Map upload progress (0-100) to overall progress (30-90)
-              const overallPercent = 30 + (uploadPercent * 0.6);
+              const overallPercent = 30 + uploadPercent * 0.6;
               progressText.textContent = `Uploading... ${data.uploaded}/${data.total} bytes (${uploadPercent}%)`;
               progressFill.style.width = `${overallPercent}%`;
             } else if (data.type === 'result') {
@@ -1182,16 +1321,26 @@ function displayInjectionStats(data, targetFunc) {
   const compileTime = data.compile_time || 0;
   const uploadTime = data.upload_time || 0;
   const codeSize = data.code_size || 0;
-  const totalTime = data.total_time || (compileTime + uploadTime);
+  const totalTime = data.total_time || compileTime + uploadTime;
   const uploadSpeed = uploadTime > 0 ? Math.round(codeSize / uploadTime) : 0;
-  const patchMode = data.patch_mode || document.getElementById('patchMode').value;
-  
+  const patchMode =
+    data.patch_mode || document.getElementById('patchMode').value;
+
   writeToOutput(`[SUCCESS] Injection complete!`, 'success');
   writeToOutput(`--- Injection Statistics ---`, 'system');
-  writeToOutput(`Target:        ${targetFunc} @ ${data.target_addr || 'unknown'}`, 'info');
-  writeToOutput(`Inject func:   ${data.inject_func || 'unknown'} @ ${data.inject_addr || 'unknown'}`, 'info');
+  writeToOutput(
+    `Target:        ${targetFunc} @ ${data.target_addr || 'unknown'}`,
+    'info',
+  );
+  writeToOutput(
+    `Inject func:   ${data.inject_func || 'unknown'} @ ${data.inject_addr || 'unknown'}`,
+    'info',
+  );
   writeToOutput(`Compile time:  ${compileTime.toFixed(2)}s`, 'info');
-  writeToOutput(`Upload time:   ${uploadTime.toFixed(2)}s (${uploadSpeed} B/s)`, 'info');
+  writeToOutput(
+    `Upload time:   ${uploadTime.toFixed(2)}s (${uploadSpeed} B/s)`,
+    'info',
+  );
   writeToOutput(`Code size:     ${codeSize} bytes`, 'info');
   writeToOutput(`Total time:    ${totalTime.toFixed(2)}s`, 'info');
   writeToOutput(`Injection active! (mode: ${patchMode})`, 'success');
@@ -1205,26 +1354,34 @@ async function searchSymbols() {
   const list = document.getElementById('symbolList');
 
   if (query.length < 2) {
-    list.innerHTML = '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">Enter at least 2 characters</div>';
+    list.innerHTML =
+      '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">Enter at least 2 characters</div>';
     return;
   }
 
   try {
-    const res = await fetch(`/api/symbols/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(
+      `/api/symbols/search?q=${encodeURIComponent(query)}`,
+    );
     const data = await res.json();
 
     if (data.symbols && data.symbols.length > 0) {
-      list.innerHTML = data.symbols.map(sym => `
+      list.innerHTML = data.symbols
+        .map(
+          (sym) => `
         <div class="symbol-item" onclick="openDisassembly('${sym.name}', '${sym.addr}')" ondblclick="openManualPatchTab('${sym.name}')">
           <i class="codicon codicon-symbol-method symbol-icon"></i>
           <span class="symbol-name">${sym.name}</span>
           <span class="symbol-addr">${sym.addr}</span>
         </div>
-      `).join('');
+      `,
+        )
+        .join('');
     } else if (data.error) {
       list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7; color: #f44336;">${data.error}</div>`;
     } else {
-      list.innerHTML = '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">No symbols found</div>';
+      list.innerHTML =
+        '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">No symbols found</div>';
     }
   } catch (e) {
     list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7; color: #f44336;">Error: ${e.message}</div>`;
@@ -1241,59 +1398,40 @@ async function openManualPatchTab(funcName) {
   const tabTitle = `patch_${funcName}.c`;
 
   // Check if tab already exists
-  if (editorTabs.find(t => t.id === tabId)) {
+  if (editorTabs.find((t) => t.id === tabId)) {
     switchEditorTab(tabId);
     return;
   }
 
-  writeToOutput(`[PATCH] Creating manual patch tab for ${funcName}...`, 'system');
+  writeToOutput(
+    `[PATCH] Creating manual patch tab for ${funcName}...`,
+    'system',
+  );
 
-  // Fetch function signature and generate template
+  // Fetch function signature and generate template using unified function
   let template = '';
   try {
-    const res = await fetch(`/api/symbols/signature?func=${encodeURIComponent(funcName)}`);
+    const res = await fetch(
+      `/api/symbols/signature?func=${encodeURIComponent(funcName)}`,
+    );
     const data = await res.json();
 
     let signature = null;
     let sourceFile = null;
-    let returnType = 'void';
-    let params = '';
 
     if (data.success && data.signature) {
       signature = data.signature;
       sourceFile = data.source_file;
-      const parsed = parseSignature(signature, funcName);
-      returnType = parsed.returnType;
-      params = parsed.params;
     }
 
-    const injectFuncName = `inject_${funcName}`;
-    const paramNames = extractParamNames(params);
-    const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
-
-    template = `/*
- * Manual patch for: ${funcName}
- * Slot: ${selectedSlot}
-${sourceFile ? ` * Source: ${sourceFile}` : ''}
- */
-
-#include <stdint.h>
-#include <stdio.h>
-
-${signature ? `// Original function signature:\n// ${signature}` : '// Original function prototype (adjust as needed)\n// extern ' + returnType + ' ' + funcName + '(' + (params || 'void') + ');'}
-
-// Inject function - will replace ${funcName}
-__attribute__((used, section(".text.inject")))
-${returnType} ${injectFuncName}(${params || 'void'}) {
-    printf("Patched ${funcName} executed!\\n");
-
-    // Your patch code here
-
-${returnType !== 'void' ? `    // TODO: return appropriate value\n    return 0;` : `    // Call original if needed:\n    // ${funcName}_original(${callParams});`}
-}
-`;
+    template = generatePatchTemplate(
+      funcName,
+      selectedSlot,
+      signature,
+      sourceFile,
+    );
   } catch (e) {
-    template = `/*\n * Manual patch for: ${funcName}\n */\n\n#include <stdint.h>\n\nvoid inject_${funcName}(void) {\n    // Your patch code here\n}\n`;
+    template = generatePatchTemplate(funcName, selectedSlot, null, null);
   }
 
   // Create new tab
@@ -1303,7 +1441,7 @@ ${returnType !== 'void' ? `    // TODO: return appropriate value\n    return 0;`
     type: 'c',
     closable: true,
     funcName: funcName,
-    content: template
+    content: template,
   });
 
   // Add tab button
@@ -1349,7 +1487,7 @@ async function openDisassembly(funcName, addr) {
   const tabId = `disasm_${funcName}`;
 
   // Check if tab already exists
-  if (editorTabs.find(t => t.id === tabId)) {
+  if (editorTabs.find((t) => t.id === tabId)) {
     switchEditorTab(tabId);
     return;
   }
@@ -1357,7 +1495,9 @@ async function openDisassembly(funcName, addr) {
   writeToOutput(`[DISASM] Loading disassembly for ${funcName}...`, 'system');
 
   try {
-    const res = await fetch(`/api/symbols/disasm?func=${encodeURIComponent(funcName)}`);
+    const res = await fetch(
+      `/api/symbols/disasm?func=${encodeURIComponent(funcName)}`,
+    );
     const data = await res.json();
 
     // Create new tab
@@ -1365,7 +1505,7 @@ async function openDisassembly(funcName, addr) {
       id: tabId,
       title: `${funcName}.asm`,
       type: 'asm',
-      closable: true
+      closable: true,
     });
 
     // Add tab button
@@ -1387,7 +1527,9 @@ async function openDisassembly(funcName, addr) {
     contentDiv.className = 'tab-content';
     contentDiv.id = `tabContent_${tabId}`;
 
-    const disasmCode = data.disasm || `; Disassembly for ${funcName} @ ${addr}\n; (Disassembly data not available)`;
+    const disasmCode =
+      data.disasm ||
+      `; Disassembly for ${funcName} @ ${addr}\n; (Disassembly data not available)`;
 
     contentDiv.innerHTML = `
       <div class="code-display">
@@ -1398,7 +1540,7 @@ async function openDisassembly(funcName, addr) {
 
     // Apply syntax highlighting (try multiple methods)
     if (typeof hljs !== 'undefined') {
-      contentDiv.querySelectorAll('pre code').forEach(block => {
+      contentDiv.querySelectorAll('pre code').forEach((block) => {
         // Try auto-detection if language not recognized
         try {
           hljs.highlightElement(block);
@@ -1411,7 +1553,6 @@ async function openDisassembly(funcName, addr) {
 
     switchEditorTab(tabId);
     writeToOutput(`[SUCCESS] Disassembly loaded for ${funcName}`, 'success');
-
   } catch (e) {
     writeToOutput(`[ERROR] Failed to load disassembly: ${e}`, 'error');
   }
@@ -1427,101 +1568,32 @@ function switchEditorTab(tabId) {
   activeEditorTab = tabId;
 
   // Update tab buttons
-  document.querySelectorAll('.editor-tabs-header .tab').forEach(tab => {
+  document.querySelectorAll('.editor-tabs-header .tab').forEach((tab) => {
     tab.classList.toggle('active', tab.getAttribute('data-tab') === tabId);
   });
 
   // Update tab content - handle empty state
-  document.querySelectorAll('.tab-content').forEach(content => {
+  document.querySelectorAll('.tab-content').forEach((content) => {
     if (content.id === 'tabContent_empty') {
       content.classList.toggle('active', editorTabs.length === 0);
     } else {
       content.classList.toggle('active', content.id === `tabContent_${tabId}`);
     }
   });
-  
+
   // Show/hide manual inject controls based on tab type
   // Show for manual patch tabs (type 'c'), hide for asm tabs and preview tabs
   const editorToolbar = document.querySelector('.editor-toolbar');
   if (editorToolbar) {
-    const tabInfo = editorTabs.find(t => t.id === tabId);
+    const tabInfo = editorTabs.find((t) => t.id === tabId);
     // Only show toolbar for manual patch tabs (type 'c'), not preview tabs
     const isManualPatchTab = tabInfo && tabInfo.type === 'c';
     editorToolbar.style.display = isManualPatchTab ? 'flex' : 'none';
-    
+
     // Update currentPatchTab if switching to a patch tab
     if (isManualPatchTab && tabInfo.funcName) {
       currentPatchTab = { id: tabId, funcName: tabInfo.funcName };
     }
-  }
-}
-
-// Generate patch for current tab
-async function generatePatchForCurrentTab() {
-  if (!currentPatchTab || !currentPatchTab.funcName) {
-    writeToOutput('[ERROR] No patch tab selected', 'error');
-    return;
-  }
-
-  const funcName = currentPatchTab.funcName;
-  const tabId = currentPatchTab.id;
-  const textarea = document.getElementById(`editor_${tabId}`);
-  
-  if (!textarea) {
-    writeToOutput('[ERROR] Editor not found', 'error');
-    return;
-  }
-
-  writeToOutput(`[GENERATE] Regenerating patch template for ${funcName}...`, 'system');
-
-  // Fetch function signature and regenerate template
-  try {
-    const res = await fetch(`/api/symbols/signature?func=${encodeURIComponent(funcName)}`);
-    const data = await res.json();
-
-    let signature = null;
-    let sourceFile = null;
-    let returnType = 'void';
-    let params = '';
-
-    if (data.success && data.signature) {
-      signature = data.signature;
-      sourceFile = data.source_file;
-      const parsed = parseSignature(signature, funcName);
-      returnType = parsed.returnType;
-      params = parsed.params;
-    }
-
-    const injectFuncName = `inject_${funcName}`;
-    const paramNames = extractParamNames(params);
-    const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
-
-    const template = `/*
- * Manual patch for: ${funcName}
- * Slot: ${selectedSlot}
-${sourceFile ? ` * Source: ${sourceFile}` : ''}
- */
-
-#include <stdint.h>
-#include <syslog.h>
-
-${signature ? `// Original function signature:\\n// ${signature}` : '// Original function prototype (adjust as needed)\\n// extern ' + returnType + ' ' + funcName + '(' + (params || 'void') + ');'}
-
-// Inject function - will replace ${funcName}
-__attribute__((used, section(".text.inject")))
-${returnType} ${injectFuncName}(${params || 'void'}) {
-    syslog(LOG_INFO, "Patched ${funcName} executed!\\n");
-
-    // Your patch code here
-
-${returnType !== 'void' ? `    // TODO: return appropriate value\\n    return 0;` : `    // Call original if needed:\\n    // ${funcName}_original(${callParams});`}
-}
-`;
-
-    textarea.value = template;
-    writeToOutput(`[SUCCESS] Patch template regenerated`, 'success');
-  } catch (e) {
-    writeToOutput(`[ERROR] Failed to regenerate template: ${e}`, 'error');
   }
 }
 
@@ -1535,7 +1607,7 @@ async function savePatchFile() {
   const funcName = currentPatchTab.funcName;
   const tabId = currentPatchTab.id;
   const textarea = document.getElementById(`editor_${tabId}`);
-  
+
   if (!textarea) {
     writeToOutput('[ERROR] Editor not found', 'error');
     return;
@@ -1548,13 +1620,15 @@ async function savePatchFile() {
   fileBrowserCallback = async (selectedPath) => {
     if (!selectedPath) return;
 
-    const fullPath = selectedPath.endsWith('/') ? selectedPath + fileName : selectedPath + '/' + fileName;
+    const fullPath = selectedPath.endsWith('/')
+      ? selectedPath + fileName
+      : selectedPath + '/' + fileName;
 
     try {
       const res = await fetch('/api/file/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: fullPath, content: content })
+        body: JSON.stringify({ path: fullPath, content: content }),
       });
       const data = await res.json();
 
@@ -1575,11 +1649,11 @@ async function savePatchFile() {
 function closeTab(tabId, event) {
   if (event) event.stopPropagation();
 
-  const tabInfo = editorTabs.find(t => t.id === tabId);
+  const tabInfo = editorTabs.find((t) => t.id === tabId);
   if (!tabInfo || !tabInfo.closable) return;
 
   // Remove from tabs array
-  editorTabs = editorTabs.filter(t => t.id !== tabId);
+  editorTabs = editorTabs.filter((t) => t.id !== tabId);
 
   // Remove DOM elements
   document.querySelector(`.tab[data-tab="${tabId}"]`)?.remove();
@@ -1609,20 +1683,20 @@ function closeTab(tabId, event) {
 async function loadConfig() {
   try {
     const res = await fetch('/api/config');
-    
+
     // Check if response is OK
     if (!res.ok) {
       // Config endpoint not available, use defaults
       return;
     }
-    
+
     // Check content type to ensure it's JSON
     const contentType = res.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       // Not a JSON response, skip config loading
       return;
     }
-    
+
     const data = await res.json();
 
     // Load serial port settings
@@ -1644,15 +1718,21 @@ async function loadConfig() {
       }
       portSelect.value = data.port;
     }
-    if (data.baudrate) document.getElementById('baudrate').value = data.baudrate;
+    if (data.baudrate)
+      document.getElementById('baudrate').value = data.baudrate;
 
     if (data.elf_path) document.getElementById('elfPath').value = data.elf_path;
-    if (data.compile_commands_path) document.getElementById('compileCommandsPath').value = data.compile_commands_path;
-    if (data.toolchain_path) document.getElementById('toolchainPath').value = data.toolchain_path;
-    if (data.patch_mode) document.getElementById('patchMode').value = data.patch_mode;
+    if (data.compile_commands_path)
+      document.getElementById('compileCommandsPath').value =
+        data.compile_commands_path;
+    if (data.toolchain_path)
+      document.getElementById('toolchainPath').value = data.toolchain_path;
+    if (data.patch_mode)
+      document.getElementById('patchMode').value = data.patch_mode;
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
-    if (data.auto_compile !== undefined) document.getElementById('autoCompile').checked = data.auto_compile;
-    
+    if (data.auto_compile !== undefined)
+      document.getElementById('autoCompile').checked = data.auto_compile;
+
     // Start auto-inject polling if auto_compile is enabled
     if (data.auto_compile) {
       startAutoInjectPolling();
@@ -1670,14 +1750,14 @@ async function saveConfig(silent = false) {
     toolchain_path: document.getElementById('toolchainPath').value,
     patch_mode: document.getElementById('patchMode').value,
     watch_dirs: getWatchDirs(),
-    auto_compile: document.getElementById('autoCompile').checked
+    auto_compile: document.getElementById('autoCompile').checked,
   };
 
   try {
     const res = await fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config)
+      body: JSON.stringify(config),
     });
     const data = await res.json();
 
@@ -1695,7 +1775,7 @@ async function saveConfig(silent = false) {
 function setupAutoSave() {
   // Text inputs - save on blur
   const textInputs = ['elfPath', 'compileCommandsPath', 'toolchainPath'];
-  textInputs.forEach(id => {
+  textInputs.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', () => saveConfig(true));
@@ -1704,7 +1784,7 @@ function setupAutoSave() {
 
   // Select inputs - save on change
   const selectInputs = ['patchMode'];
-  selectInputs.forEach(id => {
+  selectInputs.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', () => saveConfig(true));
@@ -1718,19 +1798,23 @@ function setupAutoSave() {
 function updateWatchDirsList(dirs) {
   const list = document.getElementById('watchDirsList');
   list.innerHTML = '';
-  
+
   if (!dirs || dirs.length === 0) {
     return;
   }
-  
+
   dirs.forEach((dir, index) => {
     addWatchDirItem(dir, index);
   });
 }
 
 function getWatchDirs() {
-  const items = document.querySelectorAll('#watchDirsList .watch-dir-item input');
-  return Array.from(items).map(input => input.value.trim()).filter(v => v);
+  const items = document.querySelectorAll(
+    '#watchDirsList .watch-dir-item input',
+  );
+  return Array.from(items)
+    .map((input) => input.value.trim())
+    .filter((v) => v);
 }
 
 function addWatchDir() {
@@ -1747,7 +1831,7 @@ function addWatchDir() {
 function addWatchDirItem(path, index = null) {
   const list = document.getElementById('watchDirsList');
   const itemIndex = index !== null ? index : list.children.length;
-  
+
   const item = document.createElement('div');
   item.className = 'watch-dir-item';
   item.innerHTML = `
@@ -1782,14 +1866,17 @@ function removeWatchDir(btn) {
 
 function onAutoCompileChange() {
   const enabled = document.getElementById('autoCompile').checked;
-  writeToOutput(`[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`, 'info');
+  writeToOutput(
+    `[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`,
+    'info',
+  );
   // Sync to backend - this will also start/stop the file watcher
   fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ auto_compile: enabled })
+    body: JSON.stringify({ auto_compile: enabled }),
   });
-  
+
   // Start or stop auto-inject status polling
   if (enabled) {
     startAutoInjectPolling();
@@ -1803,7 +1890,7 @@ function onAutoCompileChange() {
    =========================== */
 function startAutoInjectPolling() {
   if (autoInjectPollInterval) return; // Already polling
-  
+
   autoInjectPollInterval = setInterval(pollAutoInjectStatus, 500);
   writeToOutput('[INFO] Auto-inject status monitoring started', 'system');
 }
@@ -1820,23 +1907,23 @@ async function pollAutoInjectStatus() {
   try {
     const res = await fetch('/api/watch/auto_inject_status');
     const data = await res.json();
-    
+
     if (!data.success) return;
-    
+
     const status = data.status;
     const message = data.message;
     const progress = data.progress || 0;
     const modifiedFuncs = data.modified_funcs || [];
     const result = data.result || {};
     const sourceFile = data.source_file || null;
-    
+
     // Check if status changed
     const statusChanged = status !== lastAutoInjectStatus;
-    
+
     // Only output if status changed
     if (statusChanged) {
       lastAutoInjectStatus = status;
-      
+
       // Log status changes
       switch (status) {
         case 'detecting':
@@ -1880,16 +1967,15 @@ async function pollAutoInjectStatus() {
           // Silent for idle status changes
           break;
       }
-      
+
       // Load patch source when generating or success
       if (status === 'generating' || status === 'success') {
         await loadPatchSourceFromBackend();
       }
     }
-    
+
     // Update progress bar (always update progress, pass statusChanged for hide logic)
     updateAutoInjectProgress(progress, status, statusChanged);
-    
   } catch (e) {
     // Silent error - don't spam console
   }
@@ -1899,36 +1985,51 @@ function displayAutoInjectStats(result, targetFunc) {
   const compileTime = result.compile_time || 0;
   const uploadTime = result.upload_time || 0;
   const codeSize = result.code_size || 0;
-  const totalTime = result.total_time || (compileTime + uploadTime);
+  const totalTime = result.total_time || compileTime + uploadTime;
   const uploadSpeed = uploadTime > 0 ? Math.round(codeSize / uploadTime) : 0;
   const patchMode = result.patch_mode || 'unknown';
-  
+
   writeToOutput(`--- Auto-Injection Statistics ---`, 'system');
-  
+
   // Check if this is multi-function injection result
   const injections = result.injections || [];
   if (injections.length > 0) {
     // Multi-function injection
     const successCount = result.successful_count || 0;
     const totalCount = result.total_count || injections.length;
-    writeToOutput(`Functions:     ${successCount}/${totalCount} injected successfully`, 'info');
-    
+    writeToOutput(
+      `Functions:     ${successCount}/${totalCount} injected successfully`,
+      'info',
+    );
+
     for (const inj of injections) {
       const status = inj.success ? '✓' : '✗';
       const slotInfo = inj.slot >= 0 ? `[Slot ${inj.slot}]` : '';
-      writeToOutput(`  ${status} ${inj.target_func || 'unknown'} @ ${inj.target_addr || '?'} -> ${inj.inject_func || '?'} @ ${inj.inject_addr || '?'} ${slotInfo}`, inj.success ? 'info' : 'error');
+      writeToOutput(
+        `  ${status} ${inj.target_func || 'unknown'} @ ${inj.target_addr || '?'} -> ${inj.inject_func || '?'} @ ${inj.inject_addr || '?'} ${slotInfo}`,
+        inj.success ? 'info' : 'error',
+      );
     }
   } else {
     // Single function injection (legacy format)
-    writeToOutput(`Target:        ${targetFunc} @ ${result.target_addr || 'unknown'}`, 'info');
-    writeToOutput(`Inject func:   ${result.inject_func || 'unknown'} @ ${result.inject_addr || 'unknown'}`, 'info');
+    writeToOutput(
+      `Target:        ${targetFunc} @ ${result.target_addr || 'unknown'}`,
+      'info',
+    );
+    writeToOutput(
+      `Inject func:   ${result.inject_func || 'unknown'} @ ${result.inject_addr || 'unknown'}`,
+      'info',
+    );
     if (result.slot !== undefined) {
       writeToOutput(`Slot:          ${result.slot}`, 'info');
     }
   }
-  
+
   writeToOutput(`Compile time:  ${compileTime.toFixed(2)}s`, 'info');
-  writeToOutput(`Upload time:   ${uploadTime.toFixed(2)}s (${uploadSpeed} B/s)`, 'info');
+  writeToOutput(
+    `Upload time:   ${uploadTime.toFixed(2)}s (${uploadSpeed} B/s)`,
+    'info',
+  );
   writeToOutput(`Code size:     ${codeSize} bytes`, 'info');
   writeToOutput(`Total time:    ${totalTime.toFixed(2)}s`, 'info');
   writeToOutput(`Injection mode: ${patchMode}`, 'success');
@@ -1957,11 +2058,14 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
   let baseName = funcName;
   if (sourceFile) {
     // Extract filename without path and extension
-    baseName = sourceFile.split('/').pop().replace(/\.[^.]+$/, '');
+    baseName = sourceFile
+      .split('/')
+      .pop()
+      .replace(/\.[^.]+$/, '');
   }
   const tabId = `patch_${baseName}`;
   const tabTitle = `patch_${baseName}.c`;
-  
+
   // Load patch content from backend
   let patchContent = '';
   try {
@@ -1973,9 +2077,9 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
   } catch (e) {
     patchContent = `// Failed to load patch content for ${funcName}`;
   }
-  
+
   // Check if tab already exists - update content if so
-  const existingTab = editorTabs.find(t => t.id === tabId);
+  const existingTab = editorTabs.find((t) => t.id === tabId);
   if (existingTab) {
     // Update existing tab content
     const existingContent = document.getElementById(`tabContent_${tabId}`);
@@ -1992,15 +2096,15 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
     switchEditorTab(tabId);
     return;
   }
-  
+
   // Create new tab
   editorTabs.push({
     id: tabId,
     title: tabTitle,
-    type: 'preview',  // Mark as auto-generated preview (read-only, no toolbar)
-    closable: true
+    type: 'preview', // Mark as auto-generated preview (read-only, no toolbar)
+    closable: true,
   });
-  
+
   // Add tab button
   const tabsHeader = document.getElementById('editorTabsHeader');
   const tabDiv = document.createElement('div');
@@ -2014,13 +2118,13 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
   `;
   tabDiv.onclick = () => switchEditorTab(tabId);
   tabsHeader.appendChild(tabDiv);
-  
+
   // Add tab content (read-only code display)
   const tabsContent = document.querySelector('.editor-tabs-content');
   const contentDiv = document.createElement('div');
   contentDiv.className = 'tab-content';
   contentDiv.id = `tabContent_${tabId}`;
-  
+
   contentDiv.innerHTML = `
     <div class="code-display" style="height: 100%; overflow: auto;">
       <div style="padding: 4px 8px; background: #2d2d2d; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #888;">
@@ -2031,10 +2135,10 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
     </div>
   `;
   tabsContent.appendChild(contentDiv);
-  
+
   // Apply syntax highlighting
   if (typeof hljs !== 'undefined') {
-    contentDiv.querySelectorAll('pre code').forEach(block => {
+    contentDiv.querySelectorAll('pre code').forEach((block) => {
       try {
         hljs.highlightElement(block);
       } catch (e) {
@@ -2042,7 +2146,7 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
       }
     });
   }
-  
+
   switchEditorTab(tabId);
   writeToOutput(`[AUTO-INJECT] Created preview tab: ${tabTitle}`, 'info');
 }
@@ -2050,22 +2154,26 @@ async function createPatchPreviewTab(funcName, sourceFile = null) {
 function updateAutoInjectProgress(progress, status, statusChanged = false) {
   // Get all progress elements (in patch_source and any preview tabs)
   const allProgressEls = document.querySelectorAll('.inject-progress');
-  
+
   // For idle status, hide all progress bars
   if (status === 'idle') {
     // Don't immediately hide - let any existing timer finish
     return;
   }
-  
-  allProgressEls.forEach(progressEl => {
-    const progressText = progressEl.querySelector('#injectProgressText, .progress-text');
-    const progressFill = progressEl.querySelector('#injectProgressFill, .progress-fill');
-    
+
+  allProgressEls.forEach((progressEl) => {
+    const progressText = progressEl.querySelector(
+      '#injectProgressText, .progress-text',
+    );
+    const progressFill = progressEl.querySelector(
+      '#injectProgressFill, .progress-fill',
+    );
+
     if (!progressEl || !progressFill) return;
-    
+
     progressEl.style.display = 'flex';
     progressFill.style.width = `${progress}%`;
-    
+
     if (status === 'success') {
       if (progressText) progressText.textContent = 'Auto-inject complete!';
       progressFill.style.background = '#4caf50';
@@ -2074,22 +2182,24 @@ function updateAutoInjectProgress(progress, status, statusChanged = false) {
       progressFill.style.background = '#f44336';
     } else {
       const statusTexts = {
-        'detecting': 'Detecting changes...',
-        'generating': 'Generating patch...',
-        'compiling': 'Compiling...',
-        'injecting': 'Injecting...'
+        detecting: 'Detecting changes...',
+        generating: 'Generating patch...',
+        compiling: 'Compiling...',
+        injecting: 'Injecting...',
       };
-      if (progressText) progressText.textContent = statusTexts[status] || status;
+      if (progressText)
+        progressText.textContent = statusTexts[status] || status;
       progressFill.style.background = '';
     }
   });
-  
+
   // Handle hide timer
   if (status === 'success' || status === 'failed') {
     if (statusChanged) {
-      if (autoInjectProgressHideTimer) clearTimeout(autoInjectProgressHideTimer);
+      if (autoInjectProgressHideTimer)
+        clearTimeout(autoInjectProgressHideTimer);
       autoInjectProgressHideTimer = setTimeout(() => {
-        allProgressEls.forEach(el => {
+        allProgressEls.forEach((el) => {
           el.style.display = 'none';
           const fill = el.querySelector('#injectProgressFill, .progress-fill');
           if (fill) {
@@ -2111,7 +2221,7 @@ function updateAutoInjectProgress(progress, status, statusChanged = false) {
 /* ===========================
    FILE BROWSER
    =========================== */
-const HOME_PATH = '~';  // Will be expanded by backend
+const HOME_PATH = '~'; // Will be expanded by backend
 
 function browseFile(inputId, filter = '') {
   fileBrowserCallback = (path) => {
@@ -2136,11 +2246,12 @@ async function refreshSymbolsFromELF(elfPath) {
     await fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ elf_path: elfPath })
+      body: JSON.stringify({ elf_path: elfPath }),
     });
     // Clear and show loading
     const list = document.getElementById('symbolList');
-    list.innerHTML = '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">Symbols ready. Search above...</div>';
+    list.innerHTML =
+      '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">Symbols ready. Search above...</div>';
     writeToOutput(`[SUCCESS] ELF loaded: ${elfPath}`, 'success');
   } catch (e) {
     writeToOutput(`[ERROR] Failed to load ELF: ${e}`, 'error');
@@ -2186,12 +2297,18 @@ async function openFileBrowser(path) {
       list.appendChild(parentDiv);
     }
 
-    data.items.forEach(item => {
-      const itemPath = actualPath === '/' ? `/${item.name}` : `${actualPath}/${item.name}`;
+    data.items.forEach((item) => {
+      const itemPath =
+        actualPath === '/' ? `/${item.name}` : `${actualPath}/${item.name}`;
       const isDir = item.type === 'dir';
 
       // Filter files if needed (in file mode)
-      if (!isDir && fileBrowserMode === 'file' && fileBrowserFilter && !item.name.endsWith(fileBrowserFilter)) {
+      if (
+        !isDir &&
+        fileBrowserMode === 'file' &&
+        fileBrowserFilter &&
+        !item.name.endsWith(fileBrowserFilter)
+      ) {
         return;
       }
 
@@ -2244,7 +2361,9 @@ function onBrowserPathKeyup(e) {
 }
 
 function selectFileBrowserItem(element, path) {
-  document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
+  document
+    .querySelectorAll('.file-item')
+    .forEach((el) => el.classList.remove('selected'));
   element.classList.add('selected');
   selectedBrowserItem = path;
 }
@@ -2275,7 +2394,7 @@ async function sendTerminalCommand(data) {
     await fetch('/api/serial/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: data })
+      body: JSON.stringify({ data: data }),
     });
   } catch (e) {
     // Silent fail for send errors
