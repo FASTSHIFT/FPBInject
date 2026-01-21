@@ -57,6 +57,85 @@ def add_tool_log(message):
         device.tool_log = device.tool_log[-device.tool_log_max_size :]
 
 
+def _build_slot_response(device, app_state):
+    """
+    Build slot response data from cached device info.
+
+    This is used by both /api/fpb/info and /api/logs to provide
+    consistent slot information to the frontend.
+
+    Args:
+        device: DeviceState instance
+        app_state: AppState instance
+
+    Returns:
+        dict with 'slots' and 'memory' keys, or None if no info available
+    """
+    info = device.device_info
+    if info is None:
+        return None
+
+    # Ensure symbols are loaded for address lookup
+    fpb = get_fpb_inject()
+    if (
+        not app_state.symbols_loaded
+        and device.elf_path
+        and os.path.exists(device.elf_path)
+    ):
+        app_state.symbols = fpb.get_symbols(device.elf_path)
+        app_state.symbols_loaded = True
+
+    # Get symbols for address lookup
+    symbols_reverse = {}
+    if app_state.symbols:
+        symbols_reverse = {v: k for k, v in app_state.symbols.items()}
+
+    # Build slot states from device info
+    slots = []
+    device_slots = info.get("slots", [])
+    for i in range(6):
+        slot_data = next((s for s in device_slots if s.get("id") == i), None)
+        if slot_data and slot_data.get("occupied"):
+            orig_addr = slot_data.get("orig_addr", 0)
+            target_addr = slot_data.get("target_addr", 0)
+            code_size = slot_data.get("code_size", 0)
+            # Lookup function name from symbols (try both original and Thumb-cleared address)
+            func_name = symbols_reverse.get(orig_addr, "")
+            if not func_name:
+                func_name = symbols_reverse.get(orig_addr & ~1, "")
+            slots.append(
+                {
+                    "id": i,
+                    "occupied": True,
+                    "orig_addr": f"0x{orig_addr:08X}",
+                    "target_addr": f"0x{target_addr:08X}",
+                    "func": func_name,
+                    "code_size": code_size,
+                }
+            )
+        else:
+            slots.append(
+                {
+                    "id": i,
+                    "occupied": False,
+                    "orig_addr": "",
+                    "target_addr": "",
+                    "func": "",
+                    "code_size": 0,
+                }
+            )
+
+    # Memory info
+    memory = {
+        "is_dynamic": info.get("is_dynamic", False),
+        "base": info.get("base", 0),
+        "size": info.get("size", 0),
+        "used": info.get("used", 0),
+    }
+
+    return {"slots": slots, "memory": memory}
+
+
 def register_routes(app):
     """Register all routes with the Flask app."""
 
@@ -277,72 +356,24 @@ def register_routes(app):
         info, error = fpb.info()
         if error:
             return jsonify({"success": False, "error": error})
-        state.device.device_info = info
 
-        # Ensure symbols are loaded for address lookup
-        device = state.device
-        if (
-            not state.symbols_loaded
-            and device.elf_path
-            and os.path.exists(device.elf_path)
-        ):
-            state.symbols = fpb.get_symbols(device.elf_path)
-            state.symbols_loaded = True
+        # Store device info for use by _build_slot_response
+        # (info() may also auto-update via _update_slot_state() if not mocked)
+        if info:
+            state.device.device_info = info
 
-        # Get symbols for address lookup
-        symbols_reverse = {}
-        if state.symbols:
-            symbols_reverse = {v: k for k, v in state.symbols.items()}
+        # Use shared helper to build response
+        slot_response = _build_slot_response(state.device, state)
 
-        # Build slot states from device info
-        slots = []
-        device_slots = info.get("slots", [])
-        for i in range(6):
-            slot_data = next((s for s in device_slots if s.get("id") == i), None)
-            if slot_data and slot_data.get("occupied"):
-                orig_addr = slot_data.get("orig_addr", 0)
-                target_addr = slot_data.get("target_addr", 0)
-                code_size = slot_data.get("code_size", 0)
-                # Lookup function name from symbols (try both original and Thumb-cleared address)
-                func_name = symbols_reverse.get(orig_addr, "")
-                if not func_name:
-                    func_name = symbols_reverse.get(orig_addr & ~1, "")
-                slots.append(
-                    {
-                        "id": i,
-                        "occupied": True,
-                        "orig_addr": f"0x{orig_addr:08X}",
-                        "target_addr": f"0x{target_addr:08X}",
-                        "func": func_name,
-                        "code_size": code_size,
-                    }
-                )
-            else:
-                slots.append(
-                    {
-                        "id": i,
-                        "occupied": False,
-                        "orig_addr": "",
-                        "target_addr": "",
-                        "func": "",
-                        "code_size": 0,
-                    }
-                )
-
-        # Memory info
-        memory_info = {
-            "is_dynamic": info.get("is_dynamic", False) if info else False,
-            "base": info.get("base", 0) if info else 0,
-            "size": info.get("size", 0) if info else 0,
-            "used": info.get("used", 0) if info else 0,
-        }
+        if slot_response is None:
+            return jsonify({"success": False, "error": "No device info available"})
 
         return jsonify(
             {
                 "success": True,
                 "info": info,
-                "slots": slots,
-                "memory": memory_info,
+                "slots": slot_response["slots"],
+                "memory": slot_response["memory"],
             }
         )
 
@@ -1081,9 +1112,10 @@ Base Address: 0x{base_addr:08X}
 
     @app.route("/api/logs", methods=["GET"])
     def api_logs():
-        """Get combined tool logs and raw serial data for frontend."""
+        """Get combined tool logs, raw serial data, and slot updates for frontend."""
         tool_since = request.args.get("tool_since", 0, type=int)
         raw_since = request.args.get("raw_since", 0, type=int)
+        slot_since = request.args.get("slot_since", 0, type=int)
         device = state.device
 
         # Get tool logs (format: {id, message})
@@ -1101,15 +1133,27 @@ Base Address: 0x{base_addr:08X}
         raw_data = "".join(entry.get("data", "") for entry in raw_entries)
         raw_next = device.raw_log_next_id
 
-        return jsonify(
-            {
-                "success": True,
-                "tool_logs": tool_logs,
-                "tool_next": tool_next,
-                "raw_data": raw_data,
-                "raw_next": raw_next,
-            }
-        )
+        # Check for slot updates (decoupled from request logic)
+        slot_update_id = device.slot_update_id
+        slot_data = None
+        if slot_update_id > slot_since:
+            # Slot info has been updated, include it in response
+            slot_data = _build_slot_response(device, state)
+
+        response = {
+            "success": True,
+            "tool_logs": tool_logs,
+            "tool_next": tool_next,
+            "raw_data": raw_data,
+            "raw_next": raw_next,
+            "slot_update_id": slot_update_id,
+        }
+
+        # Only include slot_data if there are updates
+        if slot_data is not None:
+            response["slot_data"] = slot_data
+
+        return jsonify(response)
 
     @app.route("/api/serial/send", methods=["POST"])
     def api_serial_send():

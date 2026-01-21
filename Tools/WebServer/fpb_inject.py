@@ -617,6 +617,34 @@ class FPBInject:
 
         return {"ok": False, "msg": clean_resp, "raw": resp}
 
+    def _update_slot_state(self, info: dict):
+        """
+        Update device slot state for frontend push notification.
+
+        This method is called automatically when info() successfully parses
+        slot information, enabling the frontend to detect slot changes
+        through the /api/logs polling endpoint without explicit requests.
+
+        Args:
+            info: Parsed info dictionary containing slot information
+        """
+        if self.device is None:
+            return
+
+        try:
+            slots = info.get("slots", [])
+            # Check if slots changed
+            if slots != self.device.cached_slots:
+                self.device.cached_slots = slots.copy()
+                self.device.slot_update_id += 1
+                self.device.device_info = info  # Also update device_info
+                logger.debug(
+                    f"Slot state updated (id={self.device.slot_update_id}): "
+                    f"{len([s for s in slots if s.get('occupied')])} active slots"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update slot state: {e}")
+
     def ping(self) -> Tuple[bool, str]:
         """Ping device."""
         try:
@@ -699,6 +727,10 @@ class FPBInject:
                                     )
                         except:
                             pass
+
+                # Auto-update device slot state for frontend push
+                self._update_slot_state(info)
+
                 return info, ""
             return None, result.get("msg", "Unknown error")
         except Exception as e:

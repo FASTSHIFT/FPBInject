@@ -827,11 +827,13 @@ async function toggleConnect() {
    =========================== */
 let toolLogNextId = 0;
 let rawLogNextId = 0;
+let slotUpdateId = 0; // Track slot updates for push notification
 
 function startLogPolling() {
   stopLogPolling();
   toolLogNextId = 0;
   rawLogNextId = 0;
+  slotUpdateId = 0;
   logPollInterval = setInterval(fetchLogs, 200);
 }
 
@@ -845,7 +847,7 @@ function stopLogPolling() {
 async function fetchLogs() {
   try {
     const res = await fetch(
-      `/api/logs?tool_since=${toolLogNextId}&raw_since=${rawLogNextId}`,
+      `/api/logs?tool_since=${toolLogNextId}&raw_since=${rawLogNextId}&slot_since=${slotUpdateId}`,
     );
 
     // Check if response is ok
@@ -895,6 +897,30 @@ async function fetchLogs() {
     // Raw serial data -> SERIAL PORT terminal
     if (data.raw_data && data.raw_data.length > 0) {
       writeToSerial(data.raw_data);
+    }
+
+    // Slot update push notification (decoupled from request logic)
+    if (data.slot_update_id !== undefined && data.slot_update_id > slotUpdateId) {
+      slotUpdateId = data.slot_update_id;
+      // Update slot states from pushed data
+      if (data.slot_data && data.slot_data.slots) {
+        data.slot_data.slots.forEach((slot, i) => {
+          if (i < 6) {
+            slotStates[i] = {
+              occupied: slot.occupied || false,
+              func: slot.func || '',
+              orig_addr: slot.orig_addr || '',
+              target_addr: slot.target_addr || '',
+              code_size: slot.code_size || 0,
+            };
+          }
+        });
+        updateSlotUI();
+        // Update memory info if available
+        if (data.slot_data.memory) {
+          updateMemoryInfo(data.slot_data.memory);
+        }
+      }
     }
   } catch (e) {
     // Silently fail on polling errors (network issues, etc.)

@@ -100,6 +100,10 @@ class DeviceState:
         self.auto_inject_last_update = 0
         self.auto_inject_result = {}  # Injection statistics result
 
+        # Slot update tracking (for frontend push)
+        self.slot_update_id = 0  # Incremented on slot info change
+        self.cached_slots = []  # Cached slot info from last info response
+
     def to_dict(self):
         """Export persistent config as dict."""
         return {key: getattr(self, key) for key in PERSISTENT_KEYS}
