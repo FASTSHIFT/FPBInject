@@ -445,11 +445,11 @@ function clearCurrentTerminal() {
 function writeToOutput(message, type = 'info') {
   if (!toolTerminal) return;
   const colors = {
-    info: '\x1b[37m',
-    success: '\x1b[32m',
-    warning: '\x1b[33m',
-    error: '\x1b[31m',
-    system: '\x1b[36m',
+    info: '\x1b[0m', // Default terminal color (works in both light/dark themes)
+    success: '\x1b[32m', // Green
+    warning: '\x1b[33m', // Yellow
+    error: '\x1b[31m', // Red
+    system: '\x1b[36m', // Cyan
   };
   const color = colors[type] || colors.info;
 
