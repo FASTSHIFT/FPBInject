@@ -170,6 +170,20 @@ function updateTerminalTheme() {
 /* ===========================
    SASH RESIZE FUNCTIONALITY
    =========================== */
+function updateCornerSashPosition() {
+  const sashCorner = document.getElementById('sashCorner');
+  const sidebar = document.getElementById('sidebar');
+  const panelContainer = document.getElementById('panelContainer');
+
+  if (sashCorner && sidebar && panelContainer) {
+    const sidebarRect = sidebar.getBoundingClientRect();
+    const panelRect = panelContainer.getBoundingClientRect();
+    // Position at the intersection of sidebar right edge and panel top edge
+    sashCorner.style.left = sidebarRect.right - 2 + 'px';
+    sashCorner.style.top = panelRect.top - 2 + 'px';
+  }
+}
+
 function initSashResize() {
   const sashSidebar = document.getElementById('sashSidebar');
   const sashPanel = document.getElementById('sashPanel');
@@ -207,23 +221,73 @@ function initSashResize() {
     });
   }
 
+  // Corner resize (simultaneous sidebar and panel resize)
+  const sashCorner = document.getElementById('sashCorner');
+  let isResizingCorner = false;
+
+  if (sashCorner) {
+    sashCorner.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isResizingCorner = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startWidth = sidebar.offsetWidth;
+      startHeight = panelContainer.offsetHeight;
+      document.body.classList.add('resizing-sidebar');
+      document.body.classList.add('resizing-panel');
+      sashCorner.classList.add('active');
+    });
+  }
+
   document.addEventListener('mousemove', (e) => {
     if (isResizingSidebar) {
       const delta = e.clientX - startX;
-      const newWidth = Math.max(180, Math.min(600, startWidth + delta));
-      document.documentElement.style.setProperty(
-        '--sidebar-width',
-        newWidth + 'px',
-      );
+      const newWidth = startWidth + delta;
+      // Minimum width only, no maximum - allow user to resize freely
+      if (newWidth >= 150) {
+        document.documentElement.style.setProperty(
+          '--sidebar-width',
+          newWidth + 'px',
+        );
+      }
     }
 
     if (isResizingPanel) {
       const delta = startY - e.clientY;
-      const newHeight = Math.max(100, Math.min(500, startHeight + delta));
-      document.documentElement.style.setProperty(
-        '--panel-height',
-        newHeight + 'px',
-      );
+      const newHeight = startHeight + delta;
+      // Minimum height only, no maximum - allow user to resize freely
+      if (newHeight >= 80) {
+        document.documentElement.style.setProperty(
+          '--panel-height',
+          newHeight + 'px',
+        );
+      }
+    }
+
+    if (isResizingCorner) {
+      // Resize both sidebar and panel simultaneously
+      const deltaX = e.clientX - startX;
+      const deltaY = startY - e.clientY;
+      const newWidth = startWidth + deltaX;
+      const newHeight = startHeight + deltaY;
+
+      if (newWidth >= 150) {
+        document.documentElement.style.setProperty(
+          '--sidebar-width',
+          newWidth + 'px',
+        );
+      }
+      if (newHeight >= 80) {
+        document.documentElement.style.setProperty(
+          '--panel-height',
+          newHeight + 'px',
+        );
+      }
+    }
+
+    // Update corner sash position during any resize
+    if (isResizingSidebar || isResizingPanel || isResizingCorner) {
+      updateCornerSashPosition();
     }
   });
 
@@ -243,7 +307,22 @@ function initSashResize() {
       saveLayoutPreferences();
       fitTerminals();
     }
+
+    if (isResizingCorner) {
+      isResizingCorner = false;
+      document.body.classList.remove('resizing-sidebar');
+      document.body.classList.remove('resizing-panel');
+      sashCorner.classList.remove('active');
+      saveLayoutPreferences();
+      fitTerminals();
+    }
   });
+
+  // Initial position update
+  updateCornerSashPosition();
+
+  // Update on window resize
+  window.addEventListener('resize', updateCornerSashPosition);
 }
 
 function loadLayoutPreferences() {
@@ -256,6 +335,9 @@ function loadLayoutPreferences() {
   if (panelHeight) {
     document.documentElement.style.setProperty('--panel-height', panelHeight);
   }
+
+  // Update corner sash position after layout is loaded
+  requestAnimationFrame(updateCornerSashPosition);
 }
 
 function saveLayoutPreferences() {
@@ -1133,27 +1215,38 @@ function parseSignature(signature, funcName) {
   let returnType = 'void';
   let params = '';
 
-  // Remove leading static/inline/extern keywords
+  // Remove leading static/inline/extern keywords (may be multiple)
   let sig = signature
-    .replace(/^(static|inline|extern|__attribute__\s*\([^)]*\))\s+/g, '')
+    .replace(
+      /^\s*((?:(?:static|inline|extern|const|volatile|__attribute__\s*\([^)]*\))\s+)*)/,
+      '',
+    )
     .trim();
 
-  // Find function name position
-  const funcNameMatch = sig.match(new RegExp(`\\b${funcName}\\s*\\(`));
-  if (funcNameMatch) {
-    const funcNamePos = sig.indexOf(funcNameMatch[0]);
+  // Find function name and opening parenthesis
+  // Pattern: return_type func_name(
+  const funcPattern = new RegExp(`^(.+?)\\s+${funcName}\\s*\\((.*)\\)\\s*$`);
+  const match = sig.match(funcPattern);
 
-    // Everything before function name is return type
-    returnType = sig.substring(0, funcNamePos).trim() || 'void';
-
-    // Extract parameters from parentheses
-    const paramsStart = sig.indexOf('(', funcNamePos);
-    const paramsEnd = sig.lastIndexOf(')');
-    if (paramsStart !== -1 && paramsEnd !== -1) {
-      params = sig.substring(paramsStart + 1, paramsEnd).trim();
-      // Normalize void parameters
-      if (params.toLowerCase() === 'void') {
-        params = '';
+  if (match) {
+    returnType = match[1].trim() || 'void';
+    params = match[2].trim();
+    // Normalize void parameters
+    if (params.toLowerCase() === 'void') {
+      params = '';
+    }
+  } else {
+    // Fallback: try simpler parsing
+    const funcNameIdx = sig.indexOf(funcName);
+    if (funcNameIdx > 0) {
+      returnType = sig.substring(0, funcNameIdx).trim() || 'void';
+      const paramsStart = sig.indexOf('(', funcNameIdx);
+      const paramsEnd = sig.lastIndexOf(')');
+      if (paramsStart !== -1 && paramsEnd !== -1) {
+        params = sig.substring(paramsStart + 1, paramsEnd).trim();
+        if (params.toLowerCase() === 'void') {
+          params = '';
+        }
       }
     }
   }

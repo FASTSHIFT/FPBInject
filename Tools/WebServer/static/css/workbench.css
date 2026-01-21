@@ -191,6 +191,7 @@ body {
     "activity sidebar sash-v sash-h"
     "activity sidebar sash-v panel"
     "statusbar statusbar statusbar statusbar";
+  gap: 0;
 }
 
 /* ===========================
@@ -398,7 +399,6 @@ details[open] .sidebar-header .codicon-chevron-right {
 
 .sash-vertical {
   grid-area: sash-v;
-  grid-row: 2 / 5;
   cursor: col-resize;
   width: var(--sash-size);
 }
@@ -407,6 +407,20 @@ details[open] .sidebar-header .codicon-chevron-right {
   grid-area: sash-h;
   cursor: row-resize;
   height: var(--sash-size);
+}
+
+/* Corner sash for simultaneous resize - positioned absolutely */
+.sash-corner {
+  position: fixed;
+  cursor: nwse-resize;
+  z-index: 101;
+  width: calc(var(--sash-size) + 4px);
+  height: calc(var(--sash-size) + 4px);
+}
+
+.sash-corner:hover,
+.sash-corner.active {
+  background: var(--sash-hover-color);
 }
 
 /* When resizing */
