@@ -292,22 +292,76 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
     # Pattern to match function definition
     # Handles: return_type func_name(params)
     # Including: static, inline, const, volatile, pointers, etc.
-    pattern = (
-        r"(?:^|\n)"  # Start of line
-        r"((?:\s*(?:static|inline|extern|const|volatile|__attribute__\s*\([^)]*\))\s+)*"  # Modifiers
-        r"[\w\s\*]+?)"  # Return type
-        rf"\s+({re.escape(func_name)})\s*"  # Function name
-        r"(\([^)]*\))"  # Parameters
-        r"\s*(?:\{|;)"  # Opening brace or semicolon
-    )
 
-    match = re.search(pattern, content, re.MULTILINE)
-    if match:
-        # Build clean signature
-        return_type = match.group(1).strip()
-        name = match.group(2)
-        params = match.group(3)
-        return f"{return_type} {name}{params}"
+    # More robust pattern that captures:
+    # 1. Optional modifiers (static, inline, etc.)
+    # 2. Return type (including pointers like void *, int **, etc.)
+    # 3. Function name
+    # 4. Parameters
+
+    # First try to find the function name followed by (
+    func_pattern = rf"\b{re.escape(func_name)}\s*\("
+
+    for match in re.finditer(func_pattern, content):
+        func_start = match.start()
+
+        # Look backward to find the return type (up to 200 chars or newline with non-space start)
+        start_search = max(0, func_start - 200)
+        prefix = content[start_search:func_start]
+
+        # Find the start of the declaration (usually after a newline or semicolon/brace)
+        lines = prefix.split("\n")
+        # Take the last line(s) that form the declaration
+        decl_parts = []
+        for line in reversed(lines):
+            stripped = line.strip()
+            if stripped and not stripped.startswith("//") and not stripped.startswith("*"):
+                decl_parts.insert(0, stripped)
+                # Stop if we hit a line that looks like the start of declaration
+                if re.match(
+                    r"^(?:static|inline|extern|const|volatile|unsigned|signed|void|int|char|short|long|float|double|struct|union|enum|\w+_t)\b",
+                    stripped,
+                ):
+                    break
+            elif not stripped:
+                if decl_parts:
+                    break
+
+        if not decl_parts:
+            continue
+
+        return_type = " ".join(decl_parts)
+
+        # Clean up return type - remove any trailing content after the type
+        return_type = re.sub(r"\s+", " ", return_type).strip()
+
+        # Skip if return_type looks like an assignment or function call
+        # e.g., "void * new = " or "result = "
+        if "=" in return_type or ";" in return_type or "(" in return_type:
+            continue
+
+        # Skip if return_type starts with keywords that indicate a statement
+        if re.match(r"^(if|else|while|for|switch|case|return|break|continue)\b", return_type):
+            continue
+
+        # Find parameters
+        paren_start = match.end() - 1  # Position of (
+        depth = 1
+        i = match.end()
+        while i < len(content) and depth > 0:
+            if content[i] == "(":
+                depth += 1
+            elif content[i] == ")":
+                depth -= 1
+            i += 1
+
+        if depth == 0:
+            params = content[paren_start : i]
+
+            # Check if this is followed by { or ; (definition or declaration)
+            rest = content[i:].lstrip()
+            if rest and (rest[0] == "{" or rest[0] == ";"):
+                return f"{return_type} {func_name}{params}"
 
     return None
 

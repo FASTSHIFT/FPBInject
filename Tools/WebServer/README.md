@@ -173,7 +173,7 @@ FPB 硬件支持 6 个比较器（Slot），每个 Slot 可以拦截一个函数
 
 ```bash
 # 运行所有测试
-./test/run_tests.py
+./tests/run_tests.py
 
 # 代码格式化
 ./format.sh
