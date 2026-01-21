@@ -415,6 +415,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
         self.device = DeviceState()
         self.device.ser = Mock()
         self.device.ser.isOpen.return_value = True
+        self.device.chunk_size = 48  # 设置固定的 chunk_size 用于测试
         self.fpb = FPBInject(self.device)
 
     def test_send_cmd_write_error(self):
@@ -548,7 +549,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
         self.assertTrue(success)
         self.assertEqual(result["bytes"], 100)
-        # 100 bytes / 48 bytes per chunk = 3 chunks
+        # 100 bytes / 48 bytes per chunk = 2.08, 向上取整 = 3 chunks
         self.assertEqual(result["chunks"], 3)
 
     def test_upload_fail(self):
