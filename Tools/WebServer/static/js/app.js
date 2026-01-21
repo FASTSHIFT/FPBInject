@@ -1333,6 +1333,55 @@ async function performInject() {
     return;
   }
 
+  // Check if all slots are occupied
+  const occupiedSlots = slotStates.filter((s) => s.occupied).length;
+  const totalSlots = slotStates.length;
+
+  if (occupiedSlots >= totalSlots) {
+    // All slots are full, show warning dialog
+    const shouldContinue = confirm(
+      `⚠️ All ${totalSlots} FPB Slots are occupied!\n\n` +
+        `Current slots:\n` +
+        slotStates
+          .map((s, i) => `  Slot ${i}: ${s.func || 'Empty'}`)
+          .join('\n') +
+        `\n\nPlease clear some slots before injecting.\n` +
+        `Use "Clear All" button or click ✕ on individual slots.\n\n` +
+        `Click OK to open Device Info panel.`,
+    );
+
+    if (shouldContinue) {
+      // Expand the Device Info section
+      const deviceDetails = document.getElementById('details-device');
+      if (deviceDetails) {
+        deviceDetails.open = true;
+      }
+    }
+
+    writeToOutput(
+      `[ERROR] All ${totalSlots} slots are occupied. Clear some slots before injecting.`,
+      'error',
+    );
+    return;
+  }
+
+  // Check if selected slot is already occupied
+  if (slotStates[selectedSlot].occupied) {
+    const slotFunc = slotStates[selectedSlot].func;
+    const overwrite = confirm(
+      `⚠️ Slot ${selectedSlot} is already occupied by "${slotFunc}".\n\n` +
+        `Do you want to overwrite it?`,
+    );
+
+    if (!overwrite) {
+      writeToOutput(
+        `[INFO] Injection cancelled - slot ${selectedSlot} is occupied`,
+        'info',
+      );
+      return;
+    }
+  }
+
   // Get source from current patch tab
   if (!currentPatchTab || !currentPatchTab.funcName) {
     writeToOutput('[ERROR] No patch tab selected', 'error');
@@ -2177,6 +2226,9 @@ function displayAutoInjectStats(result, targetFunc) {
       'info',
     );
 
+    // Collect failed injections
+    const failedInjections = [];
+
     for (const inj of injections) {
       const status = inj.success ? '✓' : '✗';
       const slotInfo = inj.slot >= 0 ? `[Slot ${inj.slot}]` : '';
@@ -2184,6 +2236,48 @@ function displayAutoInjectStats(result, targetFunc) {
         `  ${status} ${inj.target_func || 'unknown'} @ ${inj.target_addr || '?'} -> ${inj.inject_func || '?'} @ ${inj.inject_addr || '?'} ${slotInfo}`,
         inj.success ? 'info' : 'error',
       );
+
+      if (!inj.success) {
+        failedInjections.push({
+          func: inj.target_func || 'unknown',
+          error: inj.error || 'Unknown error',
+        });
+      }
+    }
+
+    // Show alert dialog if there are failed injections
+    if (failedInjections.length > 0) {
+      const isSlotFull =
+        failedInjections.some(
+          (f) =>
+            f.error.toLowerCase().includes('slot') ||
+            f.error.toLowerCase().includes('no free') ||
+            f.error.toLowerCase().includes('occupied'),
+        ) || successCount < totalCount;
+
+      const failedList = failedInjections
+        .map((f) => `  • ${f.func}: ${f.error}`)
+        .join('\n');
+
+      let message =
+        `⚠️ ${failedInjections.length} injection(s) failed!\n\n` +
+        `Failed functions:\n${failedList}\n\n`;
+
+      if (isSlotFull) {
+        message +=
+          `This may be due to FPB Slots being full.\n` +
+          `Please clear some Slots in DEVICE INFO panel and try again.`;
+      }
+
+      // Use setTimeout to avoid blocking the UI update
+      setTimeout(() => {
+        alert(message);
+        // Expand Device Info section to make it easier to clear slots
+        const deviceDetails = document.getElementById('details-device');
+        if (deviceDetails) {
+          deviceDetails.open = true;
+        }
+      }, 100);
     }
   } else {
     // Single function injection (legacy format)
