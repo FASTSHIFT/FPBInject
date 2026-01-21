@@ -410,9 +410,24 @@ class FPBInject:
             return False
 
     def _send_cmd(
-        self, cmd: str, timeout: float = 2.0, retry_on_missing_cmd: bool = True
+        self,
+        cmd: str,
+        timeout: float = 2.0,
+        retry_on_missing_cmd: bool = True,
+        max_retries: int = 3,
     ) -> str:
-        """Send command and get response."""
+        """
+        Send command and get response with automatic retry on interrupted responses.
+
+        Args:
+            cmd: Command to send
+            timeout: Response timeout in seconds
+            retry_on_missing_cmd: Whether to retry if "Missing --cmd" is detected
+            max_retries: Maximum number of retries on interrupted/invalid responses
+
+        Returns:
+            Response string
+        """
         ser = self.device.ser
         if not ser:
             raise FPBInjectError("Serial port not connected")
@@ -420,48 +435,123 @@ class FPBInject:
         # Build command: fl --cmd ...
         # Note: -ni flag is NOT used here - it's only for entering interactive mode
         full_cmd = f"fl {cmd}" if not cmd.strip().startswith("fl ") else cmd
-        logger.debug(f"TX: {full_cmd}")
 
-        # Log raw TX
-        self._log_raw("TX", full_cmd)
+        last_response = ""
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                logger.warning(
+                    f"Retry {attempt}/{max_retries} for command: {cmd[:50]}..."
+                )
+                self._log_raw("RETRY", f"Attempt {attempt + 1}/{max_retries + 1}")
+                time.sleep(0.05)  # Brief delay before retry
 
-        # Clear buffer
-        ser.reset_input_buffer()
+            logger.debug(f"TX: {full_cmd}")
+            self._log_raw("TX", full_cmd)
 
-        # Send command
-        ser.write((full_cmd + "\n").encode())
-        ser.flush()
+            # Clear buffer
+            ser.reset_input_buffer()
 
-        # Read response
-        response = ""
-        start = time.time()
-        while time.time() - start < timeout:
-            if ser.in_waiting:
-                chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
-                response += chunk
-                if "[OK]" in response or "[ERR]" in response:
-                    time.sleep(0.005)
-                    if ser.in_waiting:
-                        response += ser.read(ser.in_waiting).decode(
-                            "utf-8", errors="replace"
-                        )
-                    break
-            time.sleep(0.002)
+            # Send command
+            ser.write((full_cmd + "\n").encode())
+            ser.flush()
 
-        logger.debug(f"RX: {response.strip()}")
-        # Log raw RX
-        self._log_raw("RX", response.strip())
+            # Read response
+            response = ""
+            start = time.time()
+            while time.time() - start < timeout:
+                if ser.in_waiting:
+                    chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
+                    response += chunk
+                    if "[OK]" in response or "[ERR]" in response:
+                        time.sleep(0.005)
+                        if ser.in_waiting:
+                            response += ser.read(ser.in_waiting).decode(
+                                "utf-8", errors="replace"
+                            )
+                        break
+                time.sleep(0.002)
+
+            response = response.strip()
+            last_response = response
+            logger.debug(f"RX: {response}")
+            self._log_raw("RX", response)
+
+            # Check if response is valid (contains [OK] or [ERR])
+            if "[OK]" in response or "[ERR]" in response:
+                # Valid response, check if it looks complete
+                # A valid response should have [OK] or [ERR] followed by optional data
+                if self._is_response_complete(response, cmd):
+                    break  # Success, exit retry loop
+                else:
+                    logger.warning(
+                        f"Response appears incomplete, may have been interrupted"
+                    )
+                    self._log_raw("WARN", "Response incomplete, retrying...")
+                    continue  # Retry
+            elif "Missing --cmd" in response:
+                # Not in fl mode - handle separately
+                break
+            else:
+                # No valid response marker, might be interrupted by logs
+                logger.warning(f"No valid response marker ([OK]/[ERR]), retrying...")
+                self._log_raw("WARN", "No response marker, retrying...")
+                continue  # Retry
 
         # Check if we got "Missing --cmd" which means we're not in fl mode
-        # Need to enter fl mode first and retry
-        if retry_on_missing_cmd and "Missing --cmd" in response:
+        if retry_on_missing_cmd and "Missing --cmd" in last_response:
             logger.info("Detected 'Missing --cmd', entering fl mode and retrying...")
             self._log_raw("INFO", "Not in fl mode, entering...")
             if self.enter_fl_mode():
-                # Retry the command (without retry to avoid infinite loop)
-                return self._send_cmd(cmd, timeout, retry_on_missing_cmd=False)
+                return self._send_cmd(
+                    cmd, timeout, retry_on_missing_cmd=False, max_retries=max_retries
+                )
 
-        return response.strip()
+        return last_response
+
+    def _is_response_complete(self, response: str, cmd: str) -> bool:
+        """
+        Check if response appears complete and not interrupted.
+
+        Args:
+            response: The response string
+            cmd: The original command (for context)
+
+        Returns:
+            True if response appears complete
+        """
+        # Basic check: response should have [OK] or [ERR]
+        has_marker = "[OK]" in response or "[ERR]" in response
+
+        if not has_marker:
+            return False
+
+        # For data commands (like read), check if data looks complete
+        # Data is usually hex encoded, should have even length
+        if "--cmd read" in cmd or "--cmd info" in cmd:
+            # Extract data after [OK]
+            if "[OK]" in response:
+                parts = response.split("[OK]", 1)
+                if len(parts) > 1:
+                    data_part = parts[1].strip()
+                    # If there's data, it should look like valid output
+                    # Check for common signs of interruption: truncated hex, mixed logs
+                    if data_part:
+                        # Check if interrupted by log messages (common patterns)
+                        log_patterns = [
+                            "[I]",
+                            "[W]",
+                            "[E]",
+                            "[D]",
+                            "INFO:",
+                            "WARN:",
+                            "ERR:",
+                        ]
+                        for pattern in log_patterns:
+                            if pattern in data_part:
+                                # Log message mixed in - likely interrupted
+                                return False
+
+        return True
 
     def _log_raw(self, direction: str, data: str):
         """Log raw serial communication to device's raw_serial_log."""
@@ -1672,6 +1762,7 @@ SECTIONS
                 comp=-1,  # Auto-select slot
                 progress_callback=progress_callback,
                 source_ext=source_ext,
+                original_source_file=original_source_file,
             )
 
             injection_entry = {
