@@ -1737,9 +1737,37 @@ async function loadConfig() {
     if (data.auto_compile) {
       startAutoInjectPolling();
     }
+
+    // Check connection status (backend may have auto-connected on startup)
+    await checkConnectionStatus();
   } catch (e) {
     // Silently ignore config load errors on startup
     console.warn('Config load skipped:', e.message);
+  }
+}
+
+// Check if backend is already connected (e.g., via auto_connect on startup)
+async function checkConnectionStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+
+    const data = await res.json();
+    if (data.connected) {
+      // Backend is already connected, update UI
+      isConnected = true;
+      const btn = document.getElementById('connectBtn');
+      const statusEl = document.getElementById('statusText');
+      btn.textContent = 'Disconnect';
+      btn.classList.add('connected');
+      statusEl.textContent = data.port || 'Connected';
+      startLogPolling();
+      fpbInfo();
+      updateDisabledState();
+      writeToOutput(`[AUTO-CONNECTED] ${data.port}`, 'success');
+    }
+  } catch (e) {
+    console.warn('Status check failed:', e.message);
   }
 }
 

@@ -868,7 +868,16 @@ class FPBInject:
             if not disasm_lines:
                 return False, f"Could not extract disassembly for '{func_name}'"
 
-            return True, "\n".join(disasm_lines)
+            # Filter out empty section headers (e.g., "Disassembly of section .trampoline:")
+            # Keep only the actual function disassembly
+            filtered_lines = []
+            for line in disasm_lines:
+                # Skip empty section headers that appear after the function
+                if line.strip().startswith("Disassembly of section"):
+                    break
+                filtered_lines.append(line)
+
+            return True, "\n".join(filtered_lines)
 
         except subprocess.TimeoutExpired:
             return False, "Disassembly timed out"
