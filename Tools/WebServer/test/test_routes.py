@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, mock_open
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -698,10 +698,10 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertIn("not found", data["error"])
 
     @patch("patch_generator.PatchGenerator")
-    def test_auto_generate_patch_no_modified(self, mock_gen_class):
-        """测试自动生成补丁无修改"""
+    def test_auto_generate_patch_no_markers(self, mock_gen_class):
+        """测试自动生成补丁无标记"""
         mock_gen = Mock()
-        mock_gen.detect_modified_functions.return_value = []
+        mock_gen.generate_patch.return_value = ("", [])
         mock_gen_class.return_value = mock_gen
 
         with patch("os.path.exists", return_value=True):
@@ -711,13 +711,12 @@ class TestRoutesExtended(TestRoutesBase):
             data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        self.assertEqual(data["modified_functions"], [])
+        self.assertEqual(data["marked_functions"], [])
 
     @patch("patch_generator.PatchGenerator")
     def test_auto_generate_patch_success(self, mock_gen_class):
         """测试自动生成补丁成功"""
         mock_gen = Mock()
-        mock_gen.detect_modified_functions.return_value = ["func1", "func2"]
         mock_gen.generate_patch.return_value = ("// patch code", ["func1", "func2"])
         mock_gen_class.return_value = mock_gen
 
@@ -728,33 +727,34 @@ class TestRoutesExtended(TestRoutesBase):
             data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        self.assertEqual(len(data["modified_functions"]), 2)
+        self.assertEqual(len(data["marked_functions"]), 2)
         self.assertIn("inject_func1", data["injected_functions"])
 
     @patch("patch_generator.PatchGenerator")
-    def test_detect_changes_no_file(self, mock_gen_class):
-        """测试检测变更无文件"""
-        response = self.client.post("/api/patch/detect_changes", json={})
+    def test_detect_markers_no_file(self, mock_gen_class):
+        """测试检测标记无文件"""
+        response = self.client.post("/api/patch/detect_markers", json={})
         data = json.loads(response.data)
 
         self.assertFalse(data["success"])
         self.assertIn("not provided", data["error"])
 
     @patch("patch_generator.PatchGenerator")
-    def test_detect_changes_success(self, mock_gen_class):
-        """测试检测变更成功"""
+    @patch("builtins.open", mock_open(read_data="/* FPB_INJECT */\nvoid func1(void) {}"))
+    def test_detect_markers_success(self, mock_gen_class):
+        """测试检测标记成功"""
         mock_gen = Mock()
-        mock_gen.detect_modified_functions.return_value = ["func1"]
+        mock_gen.find_marked_functions.return_value = ["func1"]
         mock_gen_class.return_value = mock_gen
 
         with patch("os.path.exists", return_value=True):
             response = self.client.post(
-                "/api/patch/detect_changes", json={"file_path": "/tmp/test.c"}
+                "/api/patch/detect_markers", json={"file_path": "/tmp/test.c"}
             )
             data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        self.assertEqual(data["modified_functions"], ["func1"])
+        self.assertEqual(data["marked_functions"], ["func1"])
 
     def test_status_with_connected_serial(self):
         """测试有连接的串口状态"""

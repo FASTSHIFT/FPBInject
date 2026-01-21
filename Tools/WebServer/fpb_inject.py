@@ -888,9 +888,19 @@ class FPBInject:
             return False, str(e)
 
     def parse_compile_commands(
-        self, compile_commands_path: str, verbose: bool = False
+        self,
+        compile_commands_path: str,
+        source_file: str = None,
+        verbose: bool = False,
     ) -> Optional[Dict]:
-        """Parse standard CMake compile_commands.json to extract compiler flags."""
+        """
+        Parse standard CMake compile_commands.json to extract compiler flags.
+
+        Args:
+            compile_commands_path: Path to compile_commands.json
+            source_file: Optional source file path to match for specific compile flags
+            verbose: Enable verbose output
+        """
         import json
         import shlex
 
@@ -920,17 +930,33 @@ class FPBInject:
             )
             return None
 
-        # Find a suitable entry
+        # Find a suitable entry - prioritize matching source_file if provided
         selected_entry = None
-        for entry in commands:
-            if not isinstance(entry, dict):
-                continue
-            file_path = entry.get("file", "")
-            if file_path.endswith(".c") and "__ASSEMBLY__" not in entry.get(
-                "command", ""
-            ):
-                selected_entry = entry
-                break
+
+        # First pass: try to match the exact source file
+        if source_file:
+            source_file_normalized = os.path.normpath(source_file)
+            logger.info(f"Looking for source file in compile_commands: {source_file_normalized}")
+            for entry in commands:
+                if not isinstance(entry, dict):
+                    continue
+                file_path = entry.get("file", "")
+                if os.path.normpath(file_path) == source_file_normalized:
+                    selected_entry = entry
+                    logger.info(f"Found exact match in compile_commands.json: {file_path}")
+                    break
+
+        # Second pass: fallback to any C file
+        if not selected_entry:
+            for entry in commands:
+                if not isinstance(entry, dict):
+                    continue
+                file_path = entry.get("file", "")
+                if file_path.endswith(".c") and "__ASSEMBLY__" not in entry.get(
+                    "command", ""
+                ):
+                    selected_entry = entry
+                    break
 
         if not selected_entry:
             logger.error("No suitable C file entry found in compile_commands.json")
@@ -1048,6 +1074,7 @@ class FPBInject:
         compile_commands_path: str = None,
         verbose: bool = False,
         source_ext: str = None,
+        original_source_file: str = None,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, int]], str]:
         """
         Compile injection code from source content to binary.
@@ -1059,13 +1086,19 @@ class FPBInject:
             compile_commands_path: Path to compile_commands.json
             verbose: Enable verbose output
             source_ext: Source file extension (.c or .cpp), auto-detect if None
+            original_source_file: Path to original source file for matching compile flags
 
         Returns:
             Tuple of (binary_data, symbols, error_message)
         """
+        logger.info(f"compile_inject called with original_source_file={original_source_file}")
         config = None
         if compile_commands_path:
-            config = self.parse_compile_commands(compile_commands_path, verbose=verbose)
+            config = self.parse_compile_commands(
+                compile_commands_path,
+                source_file=original_source_file,
+                verbose=verbose,
+            )
 
         if not config:
             return (
@@ -1327,6 +1360,7 @@ SECTIONS
         comp: int = -1,
         progress_callback=None,
         source_ext: str = None,
+        original_source_file: str = None,
     ) -> Tuple[bool, dict]:
         """
         Perform full injection workflow.
@@ -1339,6 +1373,7 @@ SECTIONS
             comp: FPB comparator index, -1 for auto-select (default)
             progress_callback: Progress callback function
             source_ext: Source file extension (.c or .cpp)
+            original_source_file: Path to original source file for matching compile flags
 
         Returns:
             Tuple of (success, result_dict)
@@ -1402,6 +1437,7 @@ SECTIONS
                 elf_path,
                 self.device.compile_commands_path,
                 source_ext=source_ext,
+                original_source_file=original_source_file,
             )
             if error:
                 return False, {"error": error}
@@ -1426,6 +1462,7 @@ SECTIONS
                 elf_path,
                 self.device.compile_commands_path,
                 source_ext=source_ext,
+                original_source_file=original_source_file,
             )
             if error:
                 return False, {"error": error}
@@ -1439,6 +1476,7 @@ SECTIONS
                 elf_path,
                 self.device.compile_commands_path,
                 source_ext=source_ext,
+                original_source_file=original_source_file,
             )
             if error:
                 return False, {"error": error}
@@ -1517,6 +1555,7 @@ SECTIONS
         patch_mode: str = "trampoline",
         progress_callback=None,
         source_ext: str = None,
+        original_source_file: str = None,
     ) -> Tuple[bool, dict]:
         """
         Perform multi-function injection workflow.
@@ -1529,6 +1568,7 @@ SECTIONS
             patch_mode: Patch mode (trampoline, debugmon, direct)
             progress_callback: Progress callback function
             source_ext: Source file extension (.c or .cpp)
+            original_source_file: Path to original source file for matching compile flags
 
         Returns:
             Tuple of (success, result_dict)
@@ -1560,6 +1600,7 @@ SECTIONS
             elf_path,
             self.device.compile_commands_path,
             source_ext=source_ext,
+            original_source_file=original_source_file,
         )
         if error:
             return False, {"error": error}

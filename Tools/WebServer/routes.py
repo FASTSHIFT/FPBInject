@@ -830,10 +830,10 @@ def register_routes(app):
     @app.route("/api/patch/auto_generate", methods=["POST"])
     def api_auto_generate_patch():
         """
-        Auto-generate patch from modified source file.
+        Auto-generate patch from source file with FPB_INJECT markers.
 
-        Detects modified functions by comparing with git HEAD,
-        clones the entire file with modified functions renamed to inject_xxx.
+        Finds functions marked with /* FPB_INJECT */ comment,
+        copies entire file with marked functions renamed to inject_xxx.
         """
         from patch_generator import PatchGenerator
 
@@ -849,27 +849,24 @@ def register_routes(app):
         try:
             gen = PatchGenerator()
 
-            # Detect modified functions
-            modified = gen.detect_modified_functions(file_path)
+            # Generate patch (finds FPB_INJECT markers automatically)
+            patch_content, marked_functions = gen.generate_patch(file_path)
 
-            if not modified:
+            if not marked_functions:
                 return jsonify(
                     {
                         "success": True,
-                        "modified_functions": [],
+                        "marked_functions": [],
                         "patch_content": "",
-                        "message": "No modified functions detected",
+                        "message": "No FPB_INJECT markers found. Add /* FPB_INJECT */ before functions to inject.",
                     }
                 )
-
-            # Generate patch content
-            patch_content, injected = gen.generate_patch(file_path, modified)
 
             return jsonify(
                 {
                     "success": True,
-                    "modified_functions": modified,
-                    "injected_functions": [f"inject_{f}" for f in injected],
+                    "marked_functions": marked_functions,
+                    "injected_functions": [f"inject_{f}" for f in marked_functions],
                     "patch_content": patch_content,
                     "source_file": file_path,
                 }
@@ -879,12 +876,12 @@ def register_routes(app):
             logger.exception(f"Error generating patch: {e}")
             return jsonify({"success": False, "error": str(e)})
 
-    @app.route("/api/patch/detect_changes", methods=["POST"])
-    def api_detect_changes():
+    @app.route("/api/patch/detect_markers", methods=["POST"])
+    def api_detect_markers():
         """
-        Detect which functions have been modified in a file.
+        Detect FPB_INJECT markers in a file.
 
-        Returns list of modified function names without generating patch.
+        Returns list of marked function names without generating patch.
         """
         from patch_generator import PatchGenerator
 
@@ -899,19 +896,21 @@ def register_routes(app):
 
         try:
             gen = PatchGenerator()
-            modified = gen.detect_modified_functions(file_path)
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            marked = gen.find_marked_functions(content)
 
             return jsonify(
                 {
                     "success": True,
                     "file_path": file_path,
-                    "modified_functions": modified,
-                    "count": len(modified),
+                    "marked_functions": marked,
+                    "count": len(marked),
                 }
             )
 
         except Exception as e:
-            logger.exception(f"Error detecting changes: {e}")
+            logger.exception(f"Error detecting markers: {e}")
             return jsonify({"success": False, "error": str(e)})
 
     @app.route("/api/patch/preview", methods=["POST"])
@@ -1389,28 +1388,30 @@ def _trigger_auto_inject(file_path):
 
             gen = PatchGenerator()
 
-            # Step 1: Detect modified functions
+            # Step 1: Find FPB_INJECT markers
             device.auto_inject_status = "detecting"
-            device.auto_inject_message = "正在检测修改的函数..."
+            device.auto_inject_message = "正在查找 FPB_INJECT 标记..."
             device.auto_inject_progress = 20
             device.auto_inject_last_update = time.time()
 
-            modified = gen.detect_modified_functions(file_path)
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            marked = gen.find_marked_functions(content)
 
-            if not modified:
+            if not marked:
                 device.auto_inject_status = "idle"
                 device.auto_inject_modified_funcs = []
                 device.auto_inject_progress = 0
                 device.auto_inject_last_update = time.time()
-                logger.info(f"No modified functions detected in {file_path}")
+                logger.info(f"No FPB_INJECT markers found in {file_path}")
 
-                # Auto unpatch: if the last injected target function is now unchanged,
-                # it means the file has been restored to original state
+                # Auto unpatch: if the last injected target function is now unmarked,
+                # it means the marker has been removed
                 if device.inject_active and device.last_inject_target:
                     logger.info(
-                        f"Target function '{device.last_inject_target}' restored to original, auto unpatch..."
+                        f"Target function '{device.last_inject_target}' marker removed, auto unpatch..."
                     )
-                    device.auto_inject_message = "函数已恢复原状，正在清除注入..."
+                    device.auto_inject_message = "标记已移除，正在清除注入..."
                     try:
                         fpb = get_fpb_inject()
                         fpb.enter_fl_mode()
@@ -1420,7 +1421,7 @@ def _trigger_auto_inject(file_path):
                                 device.inject_active = False
                                 device.auto_inject_status = "success"
                                 device.auto_inject_message = (
-                                    "函数已恢复原状，已自动清除注入"
+                                    "标记已移除，已自动清除注入"
                                 )
                                 device.auto_inject_progress = 100
                                 logger.info("Auto unpatch successful")
@@ -1434,20 +1435,20 @@ def _trigger_auto_inject(file_path):
                         logger.warning(f"Auto unpatch error: {e}")
                     device.auto_inject_last_update = time.time()
                 else:
-                    device.auto_inject_message = "未检测到函数修改"
+                    device.auto_inject_message = "未找到 FPB_INJECT 标记"
 
                 return
 
-            device.auto_inject_modified_funcs = modified
-            logger.info(f"Detected modified functions: {modified}")
+            device.auto_inject_modified_funcs = marked
+            logger.info(f"Found marked functions: {marked}")
 
             # Step 2: Generate patch
             device.auto_inject_status = "generating"
-            device.auto_inject_message = f"正在生成 Patch: {', '.join(modified)}"
+            device.auto_inject_message = f"正在生成 Patch: {', '.join(marked)}"
             device.auto_inject_progress = 40
             device.auto_inject_last_update = time.time()
 
-            patch_content, injected = gen.generate_patch(file_path, modified)
+            patch_content, injected = gen.generate_patch(file_path)
 
             if not patch_content:
                 device.auto_inject_status = "failed"
@@ -1507,9 +1508,9 @@ def _trigger_auto_inject(file_path):
                 source_ext = os.path.splitext(file_path)[1] or ".c"
 
                 device.auto_inject_status = "injecting"
-                func_list = ", ".join(modified[:3])
-                if len(modified) > 3:
-                    func_list += f" 等 {len(modified)} 个函数"
+                func_list = ", ".join(marked[:3])
+                if len(marked) > 3:
+                    func_list += f" 等 {len(marked)} 个函数"
                 device.auto_inject_message = f"正在注入: {func_list}"
                 device.auto_inject_progress = 80
                 device.auto_inject_last_update = time.time()
@@ -1520,6 +1521,7 @@ def _trigger_auto_inject(file_path):
                     source_content=patch_content,
                     patch_mode=device.patch_mode,
                     source_ext=source_ext,
+                    original_source_file=file_path,
                 )
 
                 if success:

@@ -174,10 +174,10 @@ class TestFPBInjectAPI(unittest.TestCase):
         data = json.loads(response.data)
         self.assertIn("success", data)
 
-    def test_patch_detect_changes_no_file(self):
-        """测试检测变化 - 文件不存在"""
+    def test_patch_detect_markers_no_file(self):
+        """测试检测标记 - 文件不存在"""
         response = self.client.post(
-            "/api/patch/detect_changes", json={"file_path": "/nonexistent/file.c"}
+            "/api/patch/detect_markers", json={"file_path": "/nonexistent/file.c"}
         )
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
