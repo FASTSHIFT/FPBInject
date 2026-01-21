@@ -154,6 +154,7 @@ int main(int argc, char** argv) {
     static fl_context_t ctx = {0};
 
     if (!fl_is_inited(&ctx)) {
+        fl_init(&ctx);
         ctx.output_cb = nuttx_output_cb;
         ctx.flush_dcache_cb = nuttx_flush_dcache_cb;
 #if FL_NUTTX_BUF_SIZE <= 0
@@ -165,7 +166,6 @@ int main(int argc, char** argv) {
         ctx.static_buf = code_buf;
         ctx.static_size = sizeof(code_buf);
 #endif
-        fl_init(&ctx);
     }
 
     /* No arguments - interactive mode */
