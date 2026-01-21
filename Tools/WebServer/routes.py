@@ -380,23 +380,26 @@ def register_routes(app):
     @app.route("/api/fpb/unpatch", methods=["POST"])
     def api_fpb_unpatch():
         """Clear FPB patch. Use all=True to clear all patches and free memory."""
-        data = request.json or {}
-        comp = data.get("comp", 0)
-        clear_all = data.get("all", False)
+        try:
+            data = request.json or {}
+            comp = data.get("comp", 0)
+            clear_all = data.get("all", False)
 
-        fpb = get_fpb_inject()
-        success, msg = fpb.unpatch(comp=comp, all=clear_all)
+            fpb = get_fpb_inject()
+            success, msg = fpb.unpatch(comp=comp, all=clear_all)
 
-        if success:
-            if clear_all:
-                state.device.inject_active = False
-                state.device.last_inject_target = None
-                state.device.last_inject_func = None
-            add_tool_log(
-                f"[UNPATCH] {'All slots' if clear_all else f'Slot {comp}'} cleared"
-            )
+            if success:
+                if clear_all:
+                    state.device.inject_active = False
+                    state.device.last_inject_target = None
+                    state.device.last_inject_func = None
+                add_tool_log(
+                    f"[UNPATCH] {'All slots' if clear_all else f'Slot {comp}'} cleared"
+                )
 
-        return jsonify({"success": success, "message": msg})
+            return jsonify({"success": success, "message": msg})
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)})
 
     @app.route("/api/fpb/inject", methods=["POST"])
     def api_fpb_inject():
