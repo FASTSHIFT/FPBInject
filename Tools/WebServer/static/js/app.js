@@ -1998,7 +1998,7 @@ async function pollAutoInjectStatus() {
           }
           // Refresh slot UI after successful injection
           updateSlotUI();
-          fetchFPBInfo(); // Refresh device info to show new slot state
+          fpbInfo(); // Refresh device info to show new slot state
           break;
         case 'failed':
           writeToOutput(`[AUTO-INJECT] ${message}`, 'error');
