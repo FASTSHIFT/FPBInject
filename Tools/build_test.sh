@@ -18,6 +18,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_ROOT/build_test"
 TOOLCHAIN_FILE="$PROJECT_ROOT/cmake/arm-none-eabi-gcc.cmake"
+NUTTX_MOCK_DIR="$SCRIPT_DIR/nuttx_mock"
+
+# ARM toolchain path (can be set via --toolchain argument)
+ARM_TOOLCHAIN_PATH=""
 
 # Configuration options
 APP_SELECTS=(1 2 3)
@@ -120,10 +124,59 @@ build_config() {
     return 0
 }
 
+# Build NuttX configuration (using mock API)
+build_nuttx_config() {
+    local alloc_mode="$1"
+    local no_trampoline="$2"
+    local no_asm="$3"
+    local config_name="$4"
+    local no_debugmon="${5:-OFF}"
+    
+    local build_subdir="$BUILD_DIR/$config_name"
+    
+    # Create build directory
+    mkdir -p "$build_subdir"
+    
+    # Set ARM toolchain path if found
+    if [ -n "$ARM_TOOLCHAIN_PATH" ]; then
+        export ARM_TOOLCHAIN_PATH
+    fi
+    
+    # Run cmake with ARM cross-compiler
+    local cmake_args=(
+        -B "$build_subdir"
+        -S "$NUTTX_MOCK_DIR"
+        -DFPB_NO_TRAMPOLINE="$no_trampoline"
+        -DFPB_TRAMPOLINE_NO_ASM="$no_asm"
+        -DFPB_NO_DEBUGMON="$no_debugmon"
+        -DFL_ALLOC_MODE="$alloc_mode"
+    )
+    
+    # Configure
+    if ! cmake "${cmake_args[@]}" > "$build_subdir/cmake.log" 2>&1; then
+        return 1
+    fi
+    
+    # Build
+    if ! cmake --build "$build_subdir" --parallel > "$build_subdir/build.log" 2>&1; then
+        return 1
+    fi
+    
+    # Check if library file exists
+    if [ ! -f "$build_subdir/libfpbinject_nuttx.a" ]; then
+        return 1
+    fi
+    
+    return 0
+}
+
 # Run all tests
 run_tests() {
     echo "Toolchain: $TOOLCHAIN_FILE"
     echo "Build Dir: $BUILD_DIR"
+    if [ -n "$ARM_TOOLCHAIN_PATH" ]; then
+        echo "ARM Toolchain: $ARM_TOOLCHAIN_PATH"
+    fi
     echo ""
     
     # Clean build directory
@@ -243,6 +296,52 @@ run_tests() {
             FAILED_CONFIGS+=("$config_desc")
         fi
     done
+
+    echo ""
+    echo -e "${YELLOW}Testing NuttX platform (mock API)...${NC}"
+    echo ""
+    
+    # Test NuttX platform with different allocation modes
+    for alloc in "${ALLOC_MODES[@]}"; do
+        local config_name="NUTTX_${alloc}"
+        local config_desc="NuttX ALLOC=$alloc"
+        
+        TOTAL_TESTS=$((TOTAL_TESTS + 1))
+        
+        local start_time=$(date +%s)
+        
+        if build_nuttx_config "$alloc" "OFF" "ON" "$config_name" "OFF"; then
+            local end_time=$(date +%s)
+            local elapsed=$((end_time - start_time))
+            
+            print_result "$config_desc" "PASS" "$elapsed"
+            PASSED_TESTS=$((PASSED_TESTS + 1))
+        else
+            print_result "$config_desc" "FAIL" ""
+            FAILED_TESTS=$((FAILED_TESTS + 1))
+            FAILED_CONFIGS+=("$config_desc")
+        fi
+    done
+    
+    # Test NuttX with DebugMonitor disabled
+    local config_name="NUTTX_NO_DEBUGMON"
+    local config_desc="NuttX NO_DEBUGMON=ON"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    local start_time=$(date +%s)
+    
+    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "ON"; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+        
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
 }
 
 # Print summary
@@ -297,13 +396,18 @@ while [[ $# -gt 0 ]]; do
             CLEAN_ONLY=true
             shift
             ;;
+        --toolchain)
+            ARM_TOOLCHAIN_PATH="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  --clean       Clean build_test directory after testing"
-            echo "  --clean-only  Only clean build_test directory, don't run tests"
-            echo "  -h, --help    Show this help message"
+            echo "  --clean            Clean build_test directory after testing"
+            echo "  --clean-only       Only clean build_test directory, don't run tests"
+            echo "  --toolchain <path> Path to ARM toolchain bin directory"
+            echo "  -h, --help         Show this help message"
             exit 0
             ;;
         *)
@@ -317,6 +421,11 @@ done
 if [ "$CLEAN_ONLY" == true ]; then
     cleanup
     exit 0
+fi
+
+# Set ARM toolchain path if provided
+if [ -n "$ARM_TOOLCHAIN_PATH" ]; then
+    export PATH="$ARM_TOOLCHAIN_PATH:$PATH"
 fi
 
 print_header
