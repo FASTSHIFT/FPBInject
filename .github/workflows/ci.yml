@@ -42,7 +42,7 @@ jobs:
           Tools/install-prerequisites.sh
           sudo apt-get install -y clang-format-14
           sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-14 100
-          pip install cmake-format
+          pip install cmake-format kconfiglib
 
       - name: CMake format check
         working-directory: .
