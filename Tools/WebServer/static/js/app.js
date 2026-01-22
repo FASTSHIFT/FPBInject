@@ -662,11 +662,17 @@ async function fpbReinject(slotId) {
   const targetFunc = slotState?.func;
 
   if (!targetFunc) {
-    writeToOutput(`[ERROR] Slot ${slotId} is empty, nothing to re-inject`, 'error');
+    writeToOutput(
+      `[ERROR] Slot ${slotId} is empty, nothing to re-inject`,
+      'error',
+    );
     return;
   }
 
-  writeToOutput(`[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`, 'info');
+  writeToOutput(
+    `[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`,
+    'info',
+  );
 
   try {
     // Get the patch source from backend (auto-saved from last injection)
