@@ -10,14 +10,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Check if clang-format is installed
-if ! command -v clang-format &> /dev/null; then
+
+# Prefer clang-format-14 if available
+if command -v clang-format-14 &> /dev/null; then
+    CLANG_FORMAT=clang-format-14
+elif command -v clang-format &> /dev/null; then
+    CLANG_FORMAT=clang-format
+else
     echo "Error: clang-format is not installed"
-    echo "Install it with: sudo apt install clang-format"
+    echo "Install it with: sudo apt install clang-format-14"
     exit 1
 fi
 
 # Print clang-format version for debug
-echo "Using clang-format version: $(clang-format --version)"
+echo "Using clang-format: $CLANG_FORMAT"
+echo "Version: $($CLANG_FORMAT --version)"
 
 # Directories to format
 FORMAT_DIRS=(
@@ -66,7 +73,7 @@ for dir in "${FORMAT_DIRS[@]}"; do
             
             if $CHECK_MODE; then
                 # Check if file needs formatting
-                if ! clang-format --dry-run --Werror "$file" 2>/dev/null; then
+                if ! $CLANG_FORMAT --dry-run --Werror "$file" 2>/dev/null; then
                     echo -e "  ${RED}[NEEDS FORMAT]${NC} $file"
                     FAILED_FILES=$((FAILED_FILES + 1))
                 else
@@ -75,7 +82,7 @@ for dir in "${FORMAT_DIRS[@]}"; do
                 fi
             else
                 # Format file in place
-                if clang-format -i "$file" 2>/dev/null; then
+                if $CLANG_FORMAT -i "$file" 2>/dev/null; then
                     echo -e "  ${GREEN}[FORMATTED]${NC} $file"
                     FORMATTED_FILES=$((FORMATTED_FILES + 1))
                 else
