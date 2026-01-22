@@ -16,6 +16,9 @@ if ! command -v clang-format &> /dev/null; then
     exit 1
 fi
 
+# Print clang-format version for debug
+echo "Using clang-format version: $(clang-format --version)"
+
 # Directories to format
 FORMAT_DIRS=(
     "$PROJECT_ROOT/Source"
