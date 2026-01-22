@@ -50,7 +50,9 @@ jobs:
             stlink-tools \
             git \
             make \
-            clang-format
+            clang-format-14
+          # Use clang-format-14 for consistent formatting
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-14 100
 
       - name: Check C/C++ code format
         working-directory: .
