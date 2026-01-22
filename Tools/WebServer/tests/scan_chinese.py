@@ -60,14 +60,15 @@ def scan_directory(root_dir):
 
 
 def main():
-    # Get the directory where this script is located
+    # Get the WebServer directory (parent of tests)
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    webserver_dir = os.path.dirname(script_dir)
 
     print("Scanning for Chinese text in .js, .html, and .py files...")
-    print(f"Directory: {script_dir}")
+    print(f"Directory: {webserver_dir}")
     print("-" * 60)
 
-    results = scan_directory(script_dir)
+    results = scan_directory(webserver_dir)
 
     if not results:
         print("No Chinese text found in .js, .html, and .py files.")
@@ -82,7 +83,7 @@ def main():
     print()
 
     for file_path, findings in results.items():
-        rel_path = os.path.relpath(file_path, script_dir)
+        rel_path = os.path.relpath(file_path, webserver_dir)
         print(f"📁 {rel_path} ({len(findings)} instances):")
 
         for finding in findings:

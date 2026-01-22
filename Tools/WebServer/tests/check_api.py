@@ -156,8 +156,9 @@ def check_consistency(backend_routes, frontend_calls):
 
 def main():
     script_dir = Path(__file__).parent
-    routes_file = script_dir / "routes.py"
-    js_dir = script_dir / "static" / "js"
+    webserver_dir = script_dir.parent  # Go up to WebServer directory
+    routes_file = webserver_dir / "routes.py"
+    js_dir = webserver_dir / "static" / "js"
 
     print("=" * 60)
     print("API Consistency Checker")

@@ -6,17 +6,18 @@ FPBInject WebServer Test Runner
 Supports coverage statistics and HTML report generation.
 
 Usage:
-    ./test/run_tests.py              # Run all tests
-    ./test/run_tests.py -v           # Verbose output
-    ./test/run_tests.py --coverage   # Run tests and generate coverage report
-    ./test/run_tests.py --html       # Generate HTML coverage report
-    ./test/run_tests.py --target 80  # Set coverage target to 80%
+    ./tests/run_tests.py              # Run all tests
+    ./tests/run_tests.py -v           # Verbose output
+    ./tests/run_tests.py --coverage   # Run tests and generate coverage report
+    ./tests/run_tests.py --html       # Generate HTML coverage report
+    ./tests/run_tests.py --target 80  # Set coverage target to 80%
 """
 
 import argparse
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import unittest
 
@@ -24,6 +25,7 @@ import unittest
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PARENT_DIR)
+sys.path.insert(0, SCRIPT_DIR)
 
 # Default coverage target
 DEFAULT_COVERAGE_TARGET = 80
@@ -48,6 +50,30 @@ def restore_config():
         os.remove(CONFIG_BACKUP)
         return True
     return False
+
+
+def run_scan_chinese():
+    """Run Chinese text scanner"""
+    print("\n" + "=" * 70)
+    print("Running Chinese Text Scanner")
+    print("=" * 70)
+
+    from scan_chinese import main as scan_main
+
+    scan_main()
+    return True  # Scanner always succeeds, just reports findings
+
+
+def run_api_check():
+    """Run API consistency check"""
+    print("\n" + "=" * 70)
+    print("Running API Consistency Check")
+    print("=" * 70)
+
+    from check_api import main as check_main
+
+    error_count = check_main()
+    return error_count == 0
 
 
 def run_tests(
@@ -89,7 +115,7 @@ def run_tests(
             cov = coverage.Coverage(
                 source=[PARENT_DIR],
                 omit=[
-                    "*/test/*",
+                    "*/tests/*",
                     "*/__pycache__/*",
                     "*/static/*",
                     "*/templates/*",
@@ -157,20 +183,41 @@ def main():
         default=DEFAULT_COVERAGE_TARGET,
         help=f"Coverage target percentage (default: {DEFAULT_COVERAGE_TARGET}%%)",
     )
+    parser.add_argument(
+        "--skip-checks",
+        action="store_true",
+        help="Skip API and Chinese text checks",
+    )
 
     args = parser.parse_args()
+
+    all_passed = True
+
+    # Run additional checks first (unless skipped)
+    if not args.skip_checks:
+        # Run Chinese text scanner
+        run_scan_chinese()
+
+        # Run API consistency check
+        if not run_api_check():
+            print("\n❌ API consistency check failed!")
+            all_passed = False
 
     verbosity = 2 if args.verbose else 1
     with_coverage = args.coverage or args.html
 
-    success = run_tests(
+    # Run unit tests
+    test_success = run_tests(
         verbosity=verbosity,
         with_coverage=with_coverage,
         html_report=args.html,
         coverage_target=args.target,
     )
 
-    sys.exit(0 if success else 1)
+    if not test_success:
+        all_passed = False
+
+    sys.exit(0 if all_passed else 1)
 
 
 if __name__ == "__main__":

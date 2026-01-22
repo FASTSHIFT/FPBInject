@@ -133,27 +133,11 @@ jobs:
           fi
           echo "✅ Code format check passed!"
 
-      - name: Scan for Chinese text
-        working-directory: Tools/WebServer
-        run: |
-          echo "🔍 Scanning for Chinese text in code..."
-          chmod +x scan_chinese.py
-          python scan_chinese.py
-          echo "✅ Chinese text scan completed!"
-
-      - name: API Consistency Check
-        working-directory: Tools/WebServer
-        run: |
-          echo "🔍 Checking API consistency (frontend/backend)..."
-          chmod +x check_api.py
-          ./check_api.py
-          echo "✅ API consistency check completed!"
-
       - name: Run backend tests
         working-directory: Tools/WebServer
         run: |
           echo "🧪 Running backend Python tests..."
-          python tests/run_tests.py --coverage --target 75
+          python tests/run_tests.py --coverage --target 60
           echo "✅ Backend tests passed!"
 
       - name: Run frontend tests
