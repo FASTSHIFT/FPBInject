@@ -136,6 +136,14 @@ jobs:
           python scan_chinese.py
           echo "✅ Chinese text scan completed!"
 
+      - name: API Consistency Check
+        working-directory: Tools/WebServer
+        run: |
+          echo "🔍 Checking API consistency (frontend/backend)..."
+          chmod +x check_api.py
+          ./check_api.py
+          echo "✅ API consistency check completed!"
+
       - name: Run backend tests
         working-directory: Tools/WebServer
         run: |
