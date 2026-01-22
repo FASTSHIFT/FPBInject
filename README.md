@@ -23,26 +23,25 @@ FPBInject enables runtime function hooking and code injection on Cortex-M microc
 
 ## How It Works
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        FPBInject Injection Flow                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   1. Original Call           2. FPB Intercept         3. Trampoline     │
-│   ┌──────────────┐          ┌──────────────┐         ┌──────────────┐   │
-│   │ caller()     │          │   FPB Unit   │         │ trampoline_0 │   │
-│   │ calls        │────────> │ addr match   │───────> │ in Flash     │   │
-│   │ digitalWrite │          │ 0x08008308   │         │ loads target │   │
-│   └──────────────┘          └──────────────┘         └──────────────┘   │
-│                                                             │           │
-│   4. RAM Code Execution                                     ▼           │
-│   ┌──────────────────────────────────────────────────────────────────┐  │
-│   │  inject_digitalWrite() @ 0x20000278 (RAM)                        │  │
-│   │  - Custom hook logic executes                                    │  │
-│   │  - Can call original function or replace entirely                │  │
-│   └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph step1 ["1. Original Call"]
+        A["caller()<br/>calls<br/>digitalWrite"]
+    end
+    
+    subgraph step2 ["2. FPB Intercept"]
+        B["FPB Unit<br/>addr match<br/>0x08008308"]
+    end
+    
+    subgraph step3 ["3. Trampoline"]
+        C["trampoline_0<br/>in Flash<br/>loads target"]
+    end
+    
+    subgraph step4 ["4. RAM Code Execution"]
+        D["inject_digitalWrite() @ 0x20000278 (RAM)<br/>• Custom hook logic executes<br/>• Can call original function or replace entirely"]
+    end
+    
+    A --> B --> C --> D
 ```
 
 ### Architecture
@@ -286,34 +285,29 @@ DebugMonitor mode provides a software-based alternative that works on both legac
 
 ### How DebugMonitor Mode Works
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     DebugMonitor Redirection Flow                       │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   1. Function Call           2. FPB Breakpoint       3. DebugMonitor    │
-│   ┌──────────────┐          ┌──────────────┐         ┌──────────────┐   │
-│   │ caller()     │          │   FPB Unit   │         │DebugMon_     │   │
-│   │ calls        │────────> │ BKPT trigger │───────> │Handler()     │   │
-│   │ digitalWrite │          │ @ 0x08008308 │         │ (exception)  │   │
-│   └──────────────┘          └──────────────┘         └──────────────┘   │
-│                                                             │           │
-│   4. Stack Frame Modification                               ▼           │
-│   ┌──────────────────────────────────────────────────────────────────┐  │
-│   │  Exception Stack Frame:                                          │  │
-│   │  [SP+0]  R0      - preserved                                     │  │
-│   │  [SP+4]  R1      - preserved                                     │  │
-│   │  [SP+8]  R2      - preserved                                     │  │
-│   │  [SP+12] R3      - preserved                                     │  │
-│   │  [SP+16] R12     - preserved                                     │  │
-│   │  [SP+20] LR      - preserved                                     │  │
-│   │  [SP+24] PC  ◄── MODIFIED to inject_digitalWrite (0x20000278)    │  │
-│   │  [SP+28] xPSR    - preserved                                     │  │
-│   └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│   5. Exception Return → Execution continues at inject_digitalWrite()   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph step1 ["1. Function Call"]
+        A["caller()<br/>calls<br/>digitalWrite"]
+    end
+    
+    subgraph step2 ["2. FPB Breakpoint"]
+        B["FPB Unit<br/>BKPT trigger<br/>@ 0x08008308"]
+    end
+    
+    subgraph step3 ["3. DebugMonitor"]
+        C["DebugMon_Handler()<br/>(exception)"]
+    end
+    
+    subgraph step4 ["4. Stack Frame Modification"]
+        D["Exception Stack Frame:<br/>[SP+0] R0 - preserved<br/>[SP+4] R1 - preserved<br/>[SP+8] R2 - preserved<br/>[SP+12] R3 - preserved<br/>[SP+16] R12 - preserved<br/>[SP+20] LR - preserved<br/>[SP+24] PC ◄── MODIFIED to inject_digitalWrite<br/>[SP+28] xPSR - preserved"]
+    end
+    
+    subgraph step5 ["5. Exception Return"]
+        E["Execution continues at<br/>inject_digitalWrite()"]
+    end
+    
+    A --> B --> C --> D --> E
 ```
 
 ### Technical Implementation
@@ -391,36 +385,26 @@ On NuttX RTOS, the DebugMonitor implementation uses NuttX's native `up_debugpoin
 
 #### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                   NuttX DebugMonitor Implementation                     │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   1. Initialization                                                     │
-│   ┌──────────────────────────────────────────────────────────────────┐  │
-│   │  fpb_debugmon_init()                                             │  │
-│   │  ├── irq_attach(NVIC_IRQ_DBGMONITOR, arm_dbgmonitor, NULL)       │  │
-│   │  │   (Replace vendor's PANIC handler with NuttX's handler)       │  │
-│   │  └── arm_enable_dbgmonitor()                                     │  │
-│   │       (Initialize FPB/DWT hardware)                              │  │
-│   └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│   2. Set Redirect                                                       │
-│   ┌──────────────────────────────────────────────────────────────────┐  │
-│   │  fpb_debugmon_set_redirect(comp, orig_addr, redirect_addr)       │  │
-│   │  └── up_debugpoint_add(DEBUGPOINT_BREAKPOINT, addr, size,        │  │
-│   │                        debugmon_callback, &redirect_info)        │  │
-│   └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│   3. Breakpoint Trigger                                                 │
-│   ┌──────────────────────────────────────────────────────────────────┐  │
-│   │  CPU hits breakpoint → arm_dbgmonitor() → debugmon_callback()    │  │
-│   │  └── regs = running_regs()    ← Get saved register context       │  │
-│   │  └── regs[REG_PC] = redirect_addr   ← Modify stacked PC          │  │
-│   │  └── Exception return → Execution at inject function             │  │
-│   └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph init ["1. Initialization"]
+        A1["fpb_debugmon_init()"] --> A2["irq_attach(NVIC_IRQ_DBGMONITOR,<br/>arm_dbgmonitor, NULL)<br/><i>Replace vendor's PANIC handler</i>"]
+        A2 --> A3["arm_enable_dbgmonitor()<br/><i>Initialize FPB/DWT hardware</i>"]
+    end
+    
+    subgraph redirect ["2. Set Redirect"]
+        B1["fpb_debugmon_set_redirect<br/>(comp, orig_addr, redirect_addr)"] --> B2["up_debugpoint_add<br/>(DEBUGPOINT_BREAKPOINT,<br/>addr, size,<br/>debugmon_callback,<br/>&redirect_info)"]
+    end
+    
+    subgraph trigger ["3. Breakpoint Trigger"]
+        C1["CPU hits breakpoint"] --> C2["arm_dbgmonitor()"]
+        C2 --> C3["debugmon_callback()"]
+        C3 --> C4["regs = running_regs()<br/><i>Get saved register context</i>"]
+        C4 --> C5["regs[REG_PC] = redirect_addr<br/><i>Modify stacked PC</i>"]
+        C5 --> C6["Exception return<br/>→ Execution at inject function"]
+    end
+    
+    init --> redirect --> trigger
 ```
 
 #### Key NuttX APIs Used
