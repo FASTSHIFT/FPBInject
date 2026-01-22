@@ -470,7 +470,11 @@ class TestFPBUnpatchAPI(TestRoutesBase):
         mock_fpb.unpatch.return_value = (False, "Error")
         mock_get_fpb.return_value = mock_fpb
 
-        response = self.client.post("/api/fpb/unpatch")
+        response = self.client.post(
+            "/api/fpb/unpatch",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
 
         # Ensure response is not empty and is valid JSON
         self.assertTrue(response.data, "Response data is empty")
