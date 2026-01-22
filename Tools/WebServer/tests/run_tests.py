@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 import shutil
 import sys
@@ -72,6 +73,9 @@ def run_tests(
     if config_backed_up:
         print("📦 Config file backed up")
 
+    # Suppress noisy log output during tests
+    logging.disable(logging.CRITICAL)
+
     try:
         if with_coverage:
             try:
@@ -127,6 +131,9 @@ def run_tests(
 
         return result.wasSuccessful()
     finally:
+        # Re-enable logging
+        logging.disable(logging.NOTSET)
+
         # Restore config file
         if config_backed_up:
             restore_config()
