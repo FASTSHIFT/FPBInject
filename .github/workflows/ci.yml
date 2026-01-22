@@ -54,6 +54,21 @@ jobs:
           # Use clang-format-14 for consistent formatting
           sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-14 100
 
+      - name: CMake format check
+        working-directory: .
+        run: |
+          echo "🔍 Checking CMake file format..."
+          chmod +x Tools/cmake_format.sh
+          Tools/cmake_format.sh --check
+          echo "✅ CMake format check completed!"
+
+      - name: Kconfig lint check
+        working-directory: .
+        run: |
+          echo "🔍 Checking Kconfig syntax..."
+          python3 Tools/kconfig_lint.py $(find . -name 'Kconfig*')
+          echo "✅ Kconfig lint check completed!"
+
       - name: Check C/C++ code format
         working-directory: .
         run: |
