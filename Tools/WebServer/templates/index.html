@@ -411,6 +411,13 @@
                 <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
                 <label for="autoCompile" style="font-size: 11px">Auto Inject on Save</label>
               </div>
+              <div
+                class="flex-row"
+                title="Enable decompilation when creating patch templates (requires angr, may increase wait time)"
+              >
+                <input type="checkbox" id="enableDecompile" onchange="onEnableDecompileChange()" />
+                <label for="enableDecompile" style="font-size: 11px">Enable Decompilation</label>
+              </div>
               <div class="watch-dirs-section" id="watchDirsSection" style="display: none">
                 <div class="flex-row" style="margin-bottom: 4px">
                   <span style="font-size: 10px; opacity: 0.7; flex: 1">Watch Directories</span>

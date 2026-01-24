@@ -253,6 +253,7 @@ def register_routes(app):
                 "chunk_size": device.chunk_size,
                 "auto_connect": device.auto_connect,
                 "auto_compile": device.auto_compile,
+                "enable_decompile": device.enable_decompile,
                 "patch_source_path": device.patch_source_path,
                 "inject_active": device.inject_active,
                 "last_inject_target": device.last_inject_target,
@@ -277,6 +278,7 @@ def register_routes(app):
                 "patch_mode": device.patch_mode,
                 "chunk_size": device.chunk_size,
                 "auto_compile": device.auto_compile,
+                "enable_decompile": device.enable_decompile,
             }
         )
 
@@ -326,6 +328,9 @@ def register_routes(app):
                 _restart_file_watcher()
             else:
                 _stop_file_watcher()
+
+        if "enable_decompile" in data:
+            device.enable_decompile = data["enable_decompile"]
 
         if "patch_source_path" in data:
             device.patch_source_path = data["patch_source_path"]
@@ -803,6 +808,42 @@ def register_routes(app):
         except Exception as e:
             return jsonify(
                 {"success": False, "error": str(e), "disasm": f"; Error: {e}"}
+            )
+
+    @app.route("/api/symbols/decompile", methods=["GET"])
+    def api_decompile_symbol():
+        """Decompile a specific function using angr."""
+        func_name = request.args.get("func", "")
+        if not func_name:
+            return jsonify({"success": False, "error": "Function name not specified"})
+
+        device = state.device
+        if not device.elf_path or not os.path.exists(device.elf_path):
+            return jsonify(
+                {"success": False, "error": "ELF file not configured or not found"}
+            )
+
+        try:
+            fpb = get_fpb_inject()
+            success, result = fpb.decompile_function(device.elf_path, func_name)
+
+            if success:
+                return jsonify({"success": True, "decompiled": result})
+            else:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": result,
+                        "decompiled": f"// Error: {result}",
+                    }
+                )
+        except Exception as e:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "decompiled": f"// Error: {e}",
+                }
             )
 
     # ============== Patch Source Management ==============

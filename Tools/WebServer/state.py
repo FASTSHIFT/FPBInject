@@ -32,6 +32,7 @@ PERSISTENT_KEYS = [
     "chunk_size",
     "auto_connect",
     "auto_compile",
+    "enable_decompile",
 ]
 
 
@@ -60,6 +61,7 @@ class DeviceState:
         # Auto settings
         self.auto_connect = False
         self.auto_compile = False  # Auto compile and inject on file change
+        self.enable_decompile = False  # Enable decompilation (requires angr)
 
         # Device info (from fl --info)
         self.device_info = None

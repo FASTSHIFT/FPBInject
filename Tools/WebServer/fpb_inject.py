@@ -1007,6 +1007,99 @@ class FPBInject:
             logger.error(f"Error disassembling function: {e}")
             return False, str(e)
 
+    def decompile_function(self, elf_path: str, func_name: str) -> Tuple[bool, str]:
+        """
+        Decompile a specific function from ELF file using angr.
+
+        Args:
+            elf_path: Path to ELF file
+            func_name: Name of the function to decompile
+
+        Returns:
+            Tuple of (success, decompiled_code or error_message)
+        """
+        try:
+            import angr
+            from angr.analyses.decompiler.structured_codegen import (
+                DummyStructuredCodeGenerator,
+            )
+        except ImportError:
+            return False, "ANGR_NOT_INSTALLED"
+
+        # Suppress noisy angr logs (e.g., unsupported ARM CCall warnings)
+        import logging as angr_logging
+
+        for name in [
+            "angr",
+            "cle",
+            "pyvex",
+            "angr.analyses.calling_convention",
+        ]:
+            angr_logging.getLogger(name).setLevel(angr_logging.CRITICAL)
+
+        try:
+            # Load the ELF file with angr
+            # auto_load_libs=False to avoid loading system libraries
+            proj = angr.Project(elf_path, auto_load_libs=False)
+
+            # Find the function symbol
+            func_symbol = proj.loader.find_symbol(func_name)
+            if not func_symbol:
+                # Try with underscore prefix (common in C)
+                func_symbol = proj.loader.find_symbol(f"_{func_name}")
+
+            if not func_symbol:
+                return False, f"Function '{func_name}' not found in ELF"
+
+            # Get the CFG (Control Flow Graph)
+            cfg = proj.analyses.CFGFast(normalize=True, data_references=True)
+
+            # Find the function in CFG
+            func_addr = func_symbol.rebased_addr
+            func = cfg.kb.functions.get(func_addr)
+
+            if not func:
+                # Try to find by name in knowledge base
+                for f in cfg.kb.functions.values():
+                    if f.name == func_name or f.name == f"_{func_name}":
+                        func = f
+                        break
+
+            if not func:
+                return False, f"Could not analyze function '{func_name}'"
+
+            # Decompile the function
+            try:
+                dec = proj.analyses.Decompiler(func, cfg=cfg)
+
+                if dec.codegen is None or isinstance(
+                    dec.codegen, DummyStructuredCodeGenerator
+                ):
+                    return False, f"Could not decompile '{func_name}' - analysis failed"
+
+                decompiled = dec.codegen.text
+
+                if not decompiled or not decompiled.strip():
+                    return (
+                        False,
+                        f"Decompilation produced empty output for '{func_name}'",
+                    )
+
+                # Add header comment
+                header = f"// Decompiled from: {os.path.basename(elf_path)}\n"
+                header += f"// Function: {func_name} @ 0x{func_addr:08x}\n"
+                header += "// Note: This is machine-generated pseudocode\n\n"
+
+                return True, header + decompiled
+
+            except Exception as e:
+                logger.error(f"Decompilation analysis failed: {e}")
+                return False, f"Decompilation failed: {str(e)}"
+
+        except Exception as e:
+            logger.error(f"Error decompiling function: {e}")
+            return False, str(e)
+
     def parse_compile_commands(
         self,
         compile_commands_path: str,

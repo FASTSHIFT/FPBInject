@@ -1134,6 +1134,8 @@ function generatePatchTemplate(
   slot,
   signature = null,
   sourceFile = null,
+  decompiled = null,
+  angrNotInstalled = false,
 ) {
   let returnType = 'void';
   let params = '';
@@ -1148,6 +1150,32 @@ function generatePatchTemplate(
   const paramNames = extractParamNames(params);
   const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
 
+  // Format decompiled code as comment block
+  let decompiledSection = '';
+  if (decompiled) {
+    const decompiledLines = decompiled
+      .split('\n')
+      .map((line) => ' * ' + line)
+      .join('\n');
+    decompiledSection = `
+/*
+ * ============== DECOMPILED REFERENCE ==============
+${decompiledLines}
+ * ==================================================
+ */
+
+`;
+  } else if (angrNotInstalled) {
+    decompiledSection = `
+/*
+ * TIP: Install 'angr' for automatic decompilation reference:
+ *   pip install angr
+ * Then enable "Enable Decompilation" in Settings panel.
+ */
+
+`;
+  }
+
   return `/*
  * Patch for: ${funcName}
  * Slot: ${slot}
@@ -1158,7 +1186,7 @@ ${sourceFile ? ` * Source: ${sourceFile}` : ''}
 #include <stdio.h>
 
 ${signature ? `// Original function signature:\n// ${signature}` : `// Original function prototype (adjust as needed)\n// extern ${returnType} ${funcName}(${params || 'void'});`}
-
+${decompiledSection}
 // Inject function - will replace ${funcName}
 ${returnType} ${injectFuncName}(${params || 'void'}) {
     printf("Patched ${funcName} executed!\\n");
@@ -1590,6 +1618,11 @@ function selectSymbol(name) {
   writeToOutput(`[INFO] Selected symbol: ${name}`, 'info');
 }
 
+// Handler for enable decompile checkbox change
+function onEnableDecompileChange() {
+  saveConfig(true);
+}
+
 // Open a manual patch tab for the given function
 async function openManualPatchTab(funcName) {
   const tabId = `patch_${funcName}`;
@@ -1601,45 +1634,26 @@ async function openManualPatchTab(funcName) {
     return;
   }
 
+  const enableDecompile = document.getElementById('enableDecompile')?.checked;
+
   writeToOutput(
     `[PATCH] Creating manual patch tab for ${funcName}...`,
     'system',
   );
 
-  // Fetch function signature and generate template using unified function
-  let template = '';
-  try {
-    const res = await fetch(
-      `/api/symbols/signature?func=${encodeURIComponent(funcName)}`,
-    );
-    const data = await res.json();
+  // Create tab immediately with loading indicator if decompilation is enabled
+  const loadingContent = enableDecompile
+    ? `/*\n * Loading...\n * \n * Decompiling ${funcName}, please wait...\n * This may take a few seconds.\n */\n`
+    : '';
 
-    let signature = null;
-    let sourceFile = null;
-
-    if (data.success && data.signature) {
-      signature = data.signature;
-      sourceFile = data.source_file;
-    }
-
-    template = generatePatchTemplate(
-      funcName,
-      selectedSlot,
-      signature,
-      sourceFile,
-    );
-  } catch (e) {
-    template = generatePatchTemplate(funcName, selectedSlot, null, null);
-  }
-
-  // Create new tab
+  // Create new tab entry
   editorTabs.push({
     id: tabId,
     title: tabTitle,
     type: 'c',
     closable: true,
     funcName: funcName,
-    content: template,
+    content: loadingContent,
   });
 
   // Add tab button
@@ -1655,7 +1669,7 @@ async function openManualPatchTab(funcName) {
   tabDiv.onclick = () => switchEditorTab(tabId);
   tabsHeader.appendChild(tabDiv);
 
-  // Add tab content with CodeMirror editor
+  // Add tab content
   const tabsContent = document.querySelector('.editor-tabs-content');
   const contentDiv = document.createElement('div');
   contentDiv.className = 'tab-content';
@@ -1663,21 +1677,108 @@ async function openManualPatchTab(funcName) {
 
   contentDiv.innerHTML = `
     <div class="editor-main" style="height: 100%;">
-      <textarea id="editor_${tabId}" class="code-editor" spellcheck="false">${escapeHtml(template)}</textarea>
+      <textarea id="editor_${tabId}" class="code-editor" spellcheck="false">${escapeHtml(loadingContent)}</textarea>
     </div>
   `;
   tabsContent.appendChild(contentDiv);
 
-  // Apply syntax highlighting using highlight.js for display
+  // Switch to the new tab immediately
+  switchEditorTab(tabId);
+  currentPatchTab = { id: tabId, funcName: funcName };
+
+  // Now fetch data in background
+  let template = '';
+  let decompiled = null;
+  let angrNotInstalled = false;
+
+  // Conditionally fetch decompiled code
+  let decompilePromise = Promise.resolve(null);
+  if (enableDecompile) {
+    writeToOutput(
+      `[DECOMPILE] Requesting decompilation for ${funcName}...`,
+      'system',
+    );
+    decompilePromise = fetch(
+      `/api/symbols/decompile?func=${encodeURIComponent(funcName)}`,
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.decompiled) {
+          return { decompiled: data.decompiled, notInstalled: false };
+        }
+        // Check if angr is not installed
+        if (data.error === 'ANGR_NOT_INSTALLED') {
+          return { decompiled: null, notInstalled: true };
+        }
+        return { decompiled: null, notInstalled: false };
+      })
+      .catch(() => ({ decompiled: null, notInstalled: false }));
+  }
+
+  try {
+    const res = await fetch(
+      `/api/symbols/signature?func=${encodeURIComponent(funcName)}`,
+    );
+    const data = await res.json();
+
+    let signature = null;
+    let sourceFile = null;
+
+    if (data.success && data.signature) {
+      signature = data.signature;
+      sourceFile = data.source_file;
+    }
+
+    // Wait for decompilation result
+    const decompileResult = await decompilePromise;
+    decompiled = decompileResult?.decompiled || null;
+    angrNotInstalled = decompileResult?.notInstalled || false;
+
+    template = generatePatchTemplate(
+      funcName,
+      selectedSlot,
+      signature,
+      sourceFile,
+      decompiled,
+      angrNotInstalled,
+    );
+
+    if (decompiled) {
+      writeToOutput(`[INFO] Decompiled code included as reference`, 'info');
+    } else if (angrNotInstalled) {
+      writeToOutput(
+        `[INFO] angr not installed - install with: pip install angr`,
+        'info',
+      );
+    }
+  } catch (e) {
+    const decompileResult = await decompilePromise;
+    decompiled = decompileResult?.decompiled || null;
+    angrNotInstalled = decompileResult?.notInstalled || false;
+    template = generatePatchTemplate(
+      funcName,
+      selectedSlot,
+      null,
+      null,
+      decompiled,
+      angrNotInstalled,
+    );
+  }
+
+  // Update tab content with final template
   const textarea = document.getElementById(`editor_${tabId}`);
   if (textarea) {
-    // Store reference to current tab
+    textarea.value = template;
     textarea.dataset.funcName = funcName;
     textarea.dataset.tabId = tabId;
   }
 
-  switchEditorTab(tabId);
-  currentPatchTab = { id: tabId, funcName: funcName };
+  // Update stored content
+  const tabEntry = editorTabs.find((t) => t.id === tabId);
+  if (tabEntry) {
+    tabEntry.content = template;
+  }
+
   writeToOutput(`[SUCCESS] Created patch tab: ${tabTitle}`, 'success');
 }
 
@@ -1932,6 +2033,9 @@ async function loadConfig() {
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
     if (data.auto_compile !== undefined)
       document.getElementById('autoCompile').checked = data.auto_compile;
+    if (data.enable_decompile !== undefined)
+      document.getElementById('enableDecompile').checked =
+        data.enable_decompile;
 
     // Show/hide Watch Directories section based on auto_compile state
     const watchDirsSection = document.getElementById('watchDirsSection');
@@ -1980,6 +2084,7 @@ async function saveConfig(silent = false) {
     chunk_size: parseInt(document.getElementById('chunkSize').value) || 128,
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile').checked,
+    enable_decompile: document.getElementById('enableDecompile').checked,
   };
 
   try {

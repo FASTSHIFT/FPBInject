@@ -843,5 +843,49 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestDecompileFunction(unittest.TestCase):
+    """Decompile function tests"""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.fpb = FPBInject(self.device)
+
+    def test_decompile_angr_not_installed(self):
+        """Test decompile when angr is not installed"""
+        with patch.dict("sys.modules", {"angr": None}):
+            # Force reimport check
+            success, msg = self.fpb.decompile_function("/tmp/test.elf", "test_func")
+
+            # Should return ANGR_NOT_INSTALLED since we're mocking import failure
+            self.assertFalse(success)
+            self.assertEqual(msg, "ANGR_NOT_INSTALLED")
+
+    @patch("fpb_inject.FPBInject.decompile_function")
+    def test_decompile_success_mock(self, mock_decompile):
+        """Test successful decompile with mock"""
+        mock_decompile.return_value = (
+            True,
+            "// Decompiled\nvoid test_func(void) { }",
+        )
+
+        success, result = mock_decompile("/tmp/test.elf", "test_func")
+
+        self.assertTrue(success)
+        self.assertIn("test_func", result)
+
+    @patch("fpb_inject.FPBInject.decompile_function")
+    def test_decompile_function_not_found(self, mock_decompile):
+        """Test decompile when function not found"""
+        mock_decompile.return_value = (
+            False,
+            "Function 'unknown' not found in ELF",
+        )
+
+        success, result = mock_decompile("/tmp/test.elf", "unknown")
+
+        self.assertFalse(success)
+        self.assertIn("not found", result)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

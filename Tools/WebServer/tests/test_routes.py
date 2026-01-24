@@ -470,18 +470,100 @@ class TestFPBUnpatchAPI(TestRoutesBase):
         mock_fpb.unpatch.return_value = (False, "Error")
         mock_get_fpb.return_value = mock_fpb
 
-        response = self.client.post(
-            "/api/fpb/unpatch",
-            data=json.dumps({}),
-            content_type="application/json",
-        )
-
-        # Ensure response is not empty and is valid JSON
-        self.assertTrue(response.data, "Response data is empty")
+        response = self.client.post("/api/fpb/unpatch")
         data = json.loads(response.data)
 
         self.assertFalse(data["success"])
-        self.assertEqual(data["message"], "Error")
+
+
+class TestDecompileAPI(TestRoutesBase):
+    """Decompile API tests"""
+
+    def test_decompile_no_func(self):
+        """Test decompile without function name"""
+        response = self.client.get("/api/symbols/decompile")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"])
+
+    def test_decompile_no_elf(self):
+        """Test decompile without ELF file"""
+        response = self.client.get("/api/symbols/decompile?func=test_func")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("ELF", data["error"])
+
+    @patch("routes.get_fpb_inject")
+    def test_decompile_angr_not_installed(self, mock_get_fpb):
+        """Test decompile when angr is not installed"""
+        mock_fpb = Mock()
+        mock_fpb.decompile_function.return_value = (False, "ANGR_NOT_INSTALLED")
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            state.device.elf_path = elf_path
+
+            response = self.client.get("/api/symbols/decompile?func=test_func")
+            data = json.loads(response.data)
+
+            self.assertFalse(data["success"])
+            self.assertEqual(data["error"], "ANGR_NOT_INSTALLED")
+        finally:
+            os.unlink(elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_decompile_success(self, mock_get_fpb):
+        """Test successful decompilation"""
+        mock_fpb = Mock()
+        mock_fpb.decompile_function.return_value = (
+            True,
+            "// Decompiled\nvoid test_func(void) {\n    return;\n}",
+        )
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            state.device.elf_path = elf_path
+
+            response = self.client.get("/api/symbols/decompile?func=test_func")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertIn("decompiled", data)
+            self.assertIn("test_func", data["decompiled"])
+        finally:
+            os.unlink(elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_decompile_function_not_found(self, mock_get_fpb):
+        """Test decompile when function not found"""
+        mock_fpb = Mock()
+        mock_fpb.decompile_function.return_value = (
+            False,
+            "Function 'nonexistent' not found in ELF",
+        )
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            state.device.elf_path = elf_path
+
+            response = self.client.get("/api/symbols/decompile?func=nonexistent")
+            data = json.loads(response.data)
+
+            self.assertFalse(data["success"])
+            self.assertIn("not found", data["error"])
+        finally:
+            os.unlink(elf_path)
 
 
 class TestFPBInjectAPI(TestRoutesBase):

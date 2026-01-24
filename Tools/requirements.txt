@@ -9,3 +9,6 @@ tree_sitter
 
 # Test dependencies
 coverage
+
+# Optional: Decompilation support (large dependency, ~500MB)
+angr

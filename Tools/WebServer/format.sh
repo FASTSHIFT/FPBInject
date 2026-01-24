@@ -27,8 +27,8 @@ FAILED=0
 format_python() {
     echo -e "\n${GREEN}📦 Formatting Python files (*.py)...${NC}"
     
-    # Check for black
-    if ! command -v black &> /dev/null; then
+    # Check for black via python -m
+    if ! python -m black --version &> /dev/null; then
         echo -e "${YELLOW}   Installing black...${NC}"
         pip install black -q
     fi
@@ -48,7 +48,7 @@ format_python() {
     
     for file in $files; do
         echo -n "   Formatting $file... "
-        if black --quiet --line-length 88 "$file" 2>/dev/null; then
+        if python -m black --quiet --line-length 88 "$file" 2>/dev/null; then
             echo -e "${GREEN}✓${NC}"
             FORMATTED=$((FORMATTED + 1))
         else
