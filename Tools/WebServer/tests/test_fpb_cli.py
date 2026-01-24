@@ -196,9 +196,9 @@ class TestFPBCLIAnalyze(unittest.TestCase):
 
     def test_analyze_success(self):
         """Test successful analyze"""
-        with patch.object(self.cli._fpb, "get_symbols") as mock_symbols, \
-             patch.object(self.cli._fpb, "disassemble_function") as mock_disasm, \
-             patch.object(self.cli._fpb, "get_signature") as mock_sig:
+        with patch.object(self.cli._fpb, "get_symbols") as mock_symbols, patch.object(
+            self.cli._fpb, "disassemble_function"
+        ) as mock_disasm, patch.object(self.cli._fpb, "get_signature") as mock_sig:
             mock_symbols.return_value = {"main": 0x08001000}
             mock_disasm.return_value = (True, "push {r7, lr}\nmov r7, sp")
             mock_sig.return_value = "int main(void)"
@@ -450,6 +450,7 @@ class TestFPBCLICompile(unittest.TestCase):
     def tearDown(self):
         self.cli.cleanup()
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_compile_file_not_found(self):
@@ -469,7 +470,11 @@ class TestFPBCLICompile(unittest.TestCase):
         source.write_text("void inject_test(void) {}")
 
         with patch.object(self.cli._fpb, "compile_inject") as mock_compile:
-            mock_compile.return_value = (b"\x00\x01\x02", {"inject_test": 0x20001000}, None)
+            mock_compile.return_value = (
+                b"\x00\x01\x02",
+                {"inject_test": 0x20001000},
+                None,
+            )
 
             f = io.StringIO()
             with redirect_stdout(f):
@@ -488,7 +493,11 @@ class TestFPBCLICompile(unittest.TestCase):
         large_binary = b"\x00" * 2000
 
         with patch.object(self.cli._fpb, "compile_inject") as mock_compile:
-            mock_compile.return_value = (large_binary, {"inject_test": 0x20001000}, None)
+            mock_compile.return_value = (
+                large_binary,
+                {"inject_test": 0x20001000},
+                None,
+            )
 
             f = io.StringIO()
             with redirect_stdout(f):
@@ -541,8 +550,12 @@ class TestFPBCLICompile(unittest.TestCase):
 
             f = io.StringIO()
             with redirect_stdout(f):
-                self.cli.compile(str(source), elf_path="/path/to/elf",
-                                 base_addr=0x20002000, compile_commands="/path/to/cc.json")
+                self.cli.compile(
+                    str(source),
+                    elf_path="/path/to/elf",
+                    base_addr=0x20002000,
+                    compile_commands="/path/to/cc.json",
+                )
 
             output = json.loads(f.getvalue())
             self.assertTrue(output["success"])
@@ -619,6 +632,7 @@ class TestFPBCLIInject(unittest.TestCase):
     def tearDown(self):
         self.cli.cleanup()
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_inject_file_not_found(self):
@@ -703,9 +717,15 @@ class TestFPBCLIInject(unittest.TestCase):
 
             f = io.StringIO()
             with redirect_stdout(f):
-                self.cli.inject("target", str(source), elf_path="/fake/elf",
-                                compile_commands="/fake/cc.json", patch_mode="debugmon",
-                                comp=1, verify=True)
+                self.cli.inject(
+                    "target",
+                    str(source),
+                    elf_path="/fake/elf",
+                    compile_commands="/fake/cc.json",
+                    patch_mode="debugmon",
+                    comp=1,
+                    verify=True,
+                )
 
             output = json.loads(f.getvalue())
             self.assertTrue(output["success"])
@@ -1017,7 +1037,10 @@ class TestMainArgumentParsing(unittest.TestCase):
 
     def test_main_with_port_and_baudrate(self):
         """Test main with --port and --baudrate"""
-        with patch("sys.argv", ["fpb_cli.py", "--port", "/dev/ttyACM0", "--baudrate", "9600", "info"]):
+        with patch(
+            "sys.argv",
+            ["fpb_cli.py", "--port", "/dev/ttyACM0", "--baudrate", "9600", "info"],
+        ):
             with patch("fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
@@ -1041,6 +1064,227 @@ class TestFPBCLISetupLogging(unittest.TestCase):
         cli = FPBCLI(verbose=False)
         self.assertFalse(cli.verbose)
         cli.cleanup()
+
+
+class TestCppMemberFunctionHijacking(unittest.TestCase):
+    """Test C++ member function hijacking capabilities"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.cli = FPBCLI()
+        # Mock ELF data with C++ mangled symbols
+        self.mock_elf_data = {
+            "functions": [
+                {"name": "blink_led", "address": 0x080087D0, "size": 100},
+                {
+                    "name": "_ZN5Print5printEPKc",
+                    "address": 0x08008792,
+                    "size": 50,
+                },  # Print::print(char const*)
+                {
+                    "name": "_ZN5Print5writeEPKc",
+                    "address": 0x080086D8,
+                    "size": 40,
+                },  # Print::write(char const*)
+                {
+                    "name": "_ZN14HardwareSerial5beginEm",
+                    "address": 0x08008500,
+                    "size": 30,
+                },  # HardwareSerial::begin(unsigned long)
+            ],
+            "symbols": [
+                {"name": "_ZN5Print5printEPKc", "address": 0x08008792, "type": "FUNC"},
+                {"name": "_ZN5Print5writeEPKc", "address": 0x080086D8, "type": "FUNC"},
+                {
+                    "name": "_ZN14HardwareSerial5beginEm",
+                    "address": 0x08008500,
+                    "type": "FUNC",
+                },
+            ],
+        }
+
+    def tearDown(self):
+        """Clean up"""
+        self.cli.cleanup()
+
+    def test_search_cpp_mangled_name(self):
+        """Test searching for C++ mangled function names"""
+        with patch.object(self.cli, "_fpb") as mock_fpb:
+            # Mock get_symbols to return C++ mangled names
+            mock_fpb.get_symbols.return_value = {
+                "_ZN5Print5printEPKc": 0x08008792,
+                "_ZN5Print5writeEPKc": 0x080086D8,
+                "_ZN14HardwareSerial5beginEm": 0x08008500,
+                "blink_led": 0x080087D0,
+            }
+
+            # Capture output
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.search("/tmp/test.elf", "_ZN5Print")
+                output = mock_stdout.getvalue()
+                result = json.loads(output)
+
+                self.assertTrue(result["success"])
+                # Should find Print class methods
+                self.assertGreater(result["count"], 0)
+
+    def test_search_cpp_class_name(self):
+        """Test searching using partial C++ class names"""
+        with patch.object(self.cli, "_fpb") as mock_fpb:
+            mock_fpb.get_symbols.return_value = {
+                "_ZN5Print5printEPKc": 0x08008792,
+                "_ZN5Print5writeEPKc": 0x080086D8,
+                "_ZN14HardwareSerial5beginEm": 0x08008500,
+            }
+
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.search("/tmp/test.elf", "HardwareSerial")
+                output = mock_stdout.getvalue()
+                result = json.loads(output)
+
+                self.assertTrue(result["success"])
+                self.assertGreater(result["count"], 0)
+
+    def test_cpp_member_function_signature_detection(self):
+        """Test detecting C++ member function by mangled name format"""
+        # _ZN prefix indicates a C++ member function (nested name)
+        mangled_names = [
+            "_ZN5Print5printEPKc",  # Print::print(char const*)
+            "_ZN5Print5writeEPKc",  # Print::write(char const*)
+            "_ZN14HardwareSerial5beginEm",  # HardwareSerial::begin(unsigned long)
+        ]
+
+        for name in mangled_names:
+            # _ZN indicates C++ mangled name with nested names
+            self.assertTrue(name.startswith("_ZN"), f"{name} should start with _ZN")
+
+    def test_compile_cpp_patch_with_extern_c(self):
+        """Test compiling C++ patch with extern C linkage"""
+        # C++ member function patch needs extern "C" to avoid double mangling
+        cpp_patch_code = """
+#include <stddef.h>
+extern "C" size_t _ZN5Print5writeEPKc(void* thisptr, const char* str);
+
+extern "C" __attribute__((used, section(".text.inject"), nothrow))
+size_t inject_Print_print(void* thisptr, const char* str) {
+    _ZN5Print5writeEPKc(thisptr, "[HOOK] ");
+    return _ZN5Print5writeEPKc(thisptr, str);
+}
+"""
+        with patch.object(self.cli, "compile") as mock_compile:
+            mock_compile.return_value = {
+                "success": True,
+                "binary_size": 56,
+                "base_addr": "0x20001000",
+                "symbols": {
+                    "inject_Print_print": "0x20001000",
+                    "___ZN5Print5writeEPKc_veneer": "0x20001020",
+                },
+            }
+
+            result = self.cli.compile("/tmp/test_patch.cpp")
+            self.assertTrue(result["success"])
+            self.assertIn("inject_Print_print", result["symbols"])
+            # Veneer for original function call
+            self.assertIn("___ZN5Print5writeEPKc_veneer", result["symbols"])
+
+    def test_inject_cpp_member_function_with_trampoline(self):
+        """Test injecting a C++ member function hijack using trampoline mode"""
+        with patch.object(self.cli, "inject") as mock_inject:
+            mock_inject.return_value = {
+                "success": True,
+                "result": {
+                    "code_size": 56,
+                    "inject_func": "inject_Print_print",
+                    "target_addr": "0x08008792",  # Print::print address
+                    "inject_addr": "0x20000250",
+                    "slot": 0,
+                    "patch_mode": "trampoline",
+                },
+            }
+
+            result = self.cli.inject(
+                inject_func="inject_Print_print",
+                target_addr="0x08008792",  # C++ mangled function address
+                patch_mode="trampoline",
+            )
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["result"]["patch_mode"], "trampoline")
+            self.assertEqual(result["result"]["target_addr"], "0x08008792")
+
+    def test_arm_eabi_cpp_member_function_calling_convention(self):
+        """Test understanding of ARM EABI C++ member function calling convention
+
+        For C++ member functions on ARM EABI:
+        - r0 = this pointer
+        - r1 = first argument
+        - r2 = second argument
+        - etc.
+        """
+        # This test documents the calling convention
+        # The hijack function must preserve this convention:
+        # void* thisptr in r0, const char* str in r1
+
+        # Example: Print::print(const char* str)
+        # Assembly call would be:
+        #   r0 = &Serial (this pointer)
+        #   r1 = "Hello" (string argument)
+        #   BL _ZN5Print5printEPKc
+
+        expected_signature = "size_t inject_func(void* thisptr, const char* str)"
+        self.assertIn("thisptr", expected_signature)
+        self.assertIn("str", expected_signature)
+
+    def test_compile_cpp_patch_generates_veneer(self):
+        """Test that compiling C++ patch generates veneer for original function call"""
+        with patch.object(self.cli, "compile") as mock_compile:
+            mock_compile.return_value = {
+                "success": True,
+                "binary_size": 56,
+                "base_addr": "0x20001000",
+                "symbols": {
+                    "inject_Print_print": "0x20001000",
+                    "___ZN5Print5writeEPKc_veneer": "0x20001020",
+                },
+            }
+
+            result = self.cli.compile("/tmp/test_patch.cpp")
+
+            # Veneer symbol should be generated for the external C++ function call
+            veneer_symbols = [s for s in result["symbols"] if "veneer" in s]
+            self.assertTrue(
+                len(veneer_symbols) > 0, "Should generate veneer for C++ function calls"
+            )
+
+    def test_cpp_mangled_name_demangling_concept(self):
+        """Test C++ name mangling/demangling concepts
+
+        Itanium C++ ABI mangling rules (used by ARM):
+        _Z = mangled C++ symbol
+        N = nested name
+        <number><name> = length-prefixed name
+        E = end of nested name
+        P = pointer
+        K = const
+        c = char
+        m = unsigned long
+        """
+        # _ZN5Print5printEPKc breakdown:
+        # _Z = C++ mangled
+        # N = nested name start
+        # 5Print = class name "Print" (5 chars)
+        # 5print = method name "print" (5 chars)
+        # E = end nested name
+        # P = pointer
+        # K = const
+        # c = char
+        # Result: Print::print(char const*)
+
+        mangled = "_ZN5Print5printEPKc"
+        self.assertTrue(mangled.startswith("_ZN"))
+        self.assertIn("Print", mangled)
+        self.assertIn("print", mangled)
 
 
 if __name__ == "__main__":

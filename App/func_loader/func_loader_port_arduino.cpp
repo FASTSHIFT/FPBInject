@@ -131,6 +131,12 @@ static void blink_led() {
         return;
     }
 
+    String str = led_state ? "led on" : "led off";
+    str += "\n";
+    str.toUpperCase();
+
+    Serial.print(str);
+
     led_state = !led_state;
     digitalWrite(LED_PIN, led_state);
     last_time = millis();

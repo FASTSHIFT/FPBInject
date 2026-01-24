@@ -333,6 +333,101 @@ class FPBInject:
             logger.debug(f"Subprocess PATH prepended with: {self._toolchain_path}")
         return env
 
+    def _fix_veneer_thumb_bits(
+        self, data: bytes, base_addr: int, elf_path: str, verbose: bool = False
+    ) -> bytes:
+        """
+        Fix Thumb bit in linker-generated veneer addresses.
+
+        When using --just-symbols, GCC linker generates long call veneers like:
+            ldr.w pc, [pc, #0]   ; F8 5F F0 00
+            .word <address>      ; Target address (missing Thumb bit)
+
+        For Thumb functions, the target address must have bit 0 set.
+        This function scans the binary for such patterns and fixes them.
+
+        Args:
+            data: Compiled binary data
+            base_addr: Base address of the binary
+            elf_path: Path to the firmware ELF (to check function types)
+            verbose: Enable verbose logging
+
+        Returns:
+            Fixed binary data with Thumb bits set in veneers
+        """
+        if not elf_path or len(data) < 8:
+            return data
+
+        # Build a set of Thumb function addresses from the ELF
+        # Thumb functions in ELF have odd addresses (bit 0 set) in symbol table
+        thumb_funcs = set()
+        try:
+            import subprocess
+
+            readelf_cmd = self.get_tool_path("arm-none-eabi-readelf")
+            result = subprocess.run(
+                [readelf_cmd, "-s", elf_path],
+                capture_output=True,
+                text=True,
+                env=self._get_subprocess_env(),
+            )
+            for line in result.stdout.split("\n"):
+                parts = line.split()
+                if len(parts) >= 8 and parts[3] == "FUNC":
+                    try:
+                        addr = int(parts[1], 16)
+                        # Thumb functions have odd address in symbol table
+                        if addr & 1:
+                            thumb_funcs.add(addr & ~1)  # Store even address for lookup
+                    except ValueError:
+                        pass
+        except Exception as e:
+            logger.warning(f"Failed to read ELF symbols for Thumb fix: {e}")
+            return data
+
+        if not thumb_funcs:
+            return data
+
+        # Convert to bytearray for modification
+        data = bytearray(data)
+
+        # Pattern: F8 5F F0 00 = ldr.w pc, [pc, #0] (little-endian: 5F F8 00 F0)
+        # Followed by 4-byte address
+        veneer_pattern = bytes([0x5F, 0xF8, 0x00, 0xF0])
+        fixed_count = 0
+
+        i = 0
+        while i < len(data) - 8:
+            if data[i : i + 4] == veneer_pattern:
+                # Found veneer instruction, get the address (little-endian)
+                addr_offset = i + 4
+                target_addr = int.from_bytes(
+                    data[addr_offset : addr_offset + 4], "little"
+                )
+
+                # Check if this is a Thumb function (even address that should be odd)
+                if (target_addr & 1) == 0 and target_addr in thumb_funcs:
+                    # Fix: set Thumb bit
+                    fixed_addr = target_addr | 1
+                    data[addr_offset : addr_offset + 4] = fixed_addr.to_bytes(
+                        4, "little"
+                    )
+                    fixed_count += 1
+                    if verbose:
+                        veneer_addr = base_addr + i
+                        logger.info(
+                            f"Fixed veneer Thumb bit at 0x{veneer_addr:08X}: "
+                            f"0x{target_addr:08X} -> 0x{fixed_addr:08X}"
+                        )
+                i += 8  # Skip past the veneer
+            else:
+                i += 2  # Thumb instructions are 2-byte aligned
+
+        if fixed_count > 0:
+            logger.info(f"Fixed {fixed_count} veneer Thumb bit(s)")
+
+        return bytes(data)
+
     def enter_fl_mode(self, timeout: float = 1.0) -> bool:
         """Enter fl interactive mode by sending 'fl' command.
 
@@ -887,11 +982,36 @@ class FPBInject:
         return -1, False  # No slot available
 
     def get_symbols(self, elf_path: str) -> Dict[str, int]:
-        """Extract symbols from ELF file."""
+        """Extract symbols from ELF file.
+
+        Returns a dictionary with both mangled and demangled names pointing to addresses.
+        For C++ symbols, the mangled name (e.g., _ZN5Print5printEPKc) and demangled name
+        (e.g., Print::print) are both included.
+        """
         symbols = {}
         try:
             nm_tool = self.get_tool_path("arm-none-eabi-nm")
             env = self._get_subprocess_env()
+
+            # First get mangled names (without -C)
+            result = subprocess.run(
+                [nm_tool, elf_path],
+                capture_output=True,
+                text=True,
+                check=True,
+                env=env,
+            )
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 3:
+                    try:
+                        addr = int(parts[0], 16)
+                        name = parts[2]
+                        symbols[name] = addr
+                    except ValueError:
+                        pass
+
+            # Also get demangled names (-C) for easier lookup
             result = subprocess.run(
                 [nm_tool, "-C", elf_path],
                 capture_output=True,
@@ -902,9 +1022,17 @@ class FPBInject:
             for line in result.stdout.splitlines():
                 parts = line.split()
                 if len(parts) >= 3:
-                    addr = int(parts[0], 16)
-                    name = parts[2]
-                    symbols[name] = addr
+                    try:
+                        addr = int(parts[0], 16)
+                        # Join all parts after type to get full demangled name
+                        full_name = " ".join(parts[2:])
+                        # Also extract just the function name (before parentheses)
+                        if "(" in full_name:
+                            short_name = full_name.split("(")[0]
+                            symbols[short_name] = addr
+                        symbols[full_name] = addr
+                    except ValueError:
+                        pass
         except Exception as e:
             logger.error(f"Error reading symbols: {e}")
         return symbols
@@ -1485,6 +1613,13 @@ SECTIONS
             # Read binary
             with open(bin_file, "rb") as f:
                 data = f.read()
+
+            # Fix Thumb bit in veneer addresses
+            # When using --just-symbols, the linker generates veneers for long calls
+            # but doesn't set the Thumb bit (bit 0) for Thumb functions.
+            # Veneer pattern: LDR PC, [PC, #0] followed by 4-byte address
+            # Machine code: F8 5F F0 00 (ldr.w pc, [pc]) followed by address
+            data = self._fix_veneer_thumb_bits(data, base_addr, elf_path, verbose)
 
             # Get symbols - use --defined-only to exclude symbols from --just-symbols
             # and filter by address range to only include symbols in our inject code
