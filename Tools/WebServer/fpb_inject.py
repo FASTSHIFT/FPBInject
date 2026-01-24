@@ -1100,6 +1100,66 @@ class FPBInject:
             logger.error(f"Error decompiling function: {e}")
             return False, str(e)
 
+    def get_signature(self, elf_path: str, func_name: str) -> Optional[str]:
+        """
+        Get function signature from ELF file using DWARF debug info.
+
+        Args:
+            elf_path: Path to ELF file
+            func_name: Name of the function
+
+        Returns:
+            Function signature string or None if not found
+        """
+        try:
+            # First try using nm to get demangled name (for C++)
+            nm_tool = self.get_tool_path("arm-none-eabi-nm")
+            env = self._get_subprocess_env()
+
+            result = subprocess.run(
+                [nm_tool, "-C", elf_path],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            # Search for function in demangled output
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 3:
+                    name = " ".join(parts[2:])  # Name might have spaces in C++
+                    if func_name in name:
+                        # If it has parentheses, it's likely a signature
+                        if "(" in name:
+                            return name
+                        # Otherwise return basic name
+                        return name
+
+            # Fallback: try to get signature from readelf debug info
+            readelf_tool = self.get_tool_path("arm-none-eabi-readelf")
+            result = subprocess.run(
+                [readelf_tool, "--debug-dump=info", elf_path],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            # Parse DWARF info for function (simplified)
+            in_function = False
+            for line in result.stdout.splitlines():
+                if "DW_AT_name" in line and func_name in line:
+                    in_function = True
+                elif in_function and "DW_AT_type" in line:
+                    # Found type info - return basic signature
+                    return f"{func_name}()"
+
+            # If nothing found, return just the name
+            return func_name
+
+        except Exception as e:
+            logger.debug(f"Could not get signature for {func_name}: {e}")
+            return func_name
+
     def parse_compile_commands(
         self,
         compile_commands_path: str,
