@@ -27,9 +27,6 @@ int _write(int fd, char* ptr, int len) {
     (void)fd;
 
     for (int i = 0; i < len; i++) {
-        if (ptr[i] == '\n') {
-            uart_putc('\r');
-        }
         uart_putc(ptr[i]);
     }
     return len;

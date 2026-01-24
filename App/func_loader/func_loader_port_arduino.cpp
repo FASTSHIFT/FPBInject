@@ -166,16 +166,14 @@ void func_loader_run(void) {
     static char s_line_buf[512];
     fl_stream_init(&s_stream, &s_ctx, &s_serial, s_line_buf, sizeof(s_line_buf));
 
-    Serial.println("=====================================");
-    Serial.println("FPBInject Function Loader v1.0");
-    Serial.println("=====================================");
-    Serial.println("Type fl --cmd help for commands");
-    Serial.println("");
+    printf("=====================================\n");
+    printf("FPBInject Function Loader v1.0\n");
+    printf("=====================================\n");
+    printf("Type fl --cmd help for commands\n");
 
-    Serial.printf("Toggle LED pin: %d\n", LED_PIN);
-    Serial.printf("Alloc mode: %s\n", ALLOC_MODE_NAME);
+    printf("Toggle LED pin: %d\n", LED_PIN);
+    printf("Alloc mode: %s\n", ALLOC_MODE_NAME);
     print_alloc_info();
-    Serial.println("");
 
     for (;;) {
         fl_stream_process(&s_stream);
