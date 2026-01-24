@@ -33,6 +33,9 @@ let activeEditorTab = null;
 // Current patch tab info for manual mode
 let currentPatchTab = null;
 
+// Ace Editor instances map (tabId -> editor instance)
+const aceEditors = new Map();
+
 // File browser state
 let fileBrowserCallback = null;
 let fileBrowserFilter = '';
@@ -133,6 +136,7 @@ function toggleTheme() {
   localStorage.setItem('fpbinject-theme', newTheme);
   updateThemeIcon();
   updateTerminalTheme();
+  updateAceEditorsTheme(newTheme === 'dark');
 }
 
 function loadThemePreference() {
@@ -1430,14 +1434,13 @@ async function performInject() {
 
   const tabId = currentPatchTab.id;
   const targetFunc = currentPatchTab.funcName;
-  const textarea = document.getElementById(`editor_${tabId}`);
 
-  if (!textarea) {
+  // Get content from Ace Editor
+  const source = getAceEditorContent(tabId);
+  if (!source) {
     writeToOutput('[ERROR] Editor not found', 'error');
     return;
   }
-
-  const source = textarea.value;
 
   if (!source.trim()) {
     writeToOutput('[ERROR] No patch source code', 'error');
@@ -1656,7 +1659,7 @@ async function openManualPatchTab(funcName) {
     content: loadingContent,
   });
 
-  // Add tab button
+  // Add tab button with middle-click to close
   const tabsHeader = document.getElementById('editorTabsHeader');
   const tabDiv = document.createElement('div');
   tabDiv.className = 'tab';
@@ -1667,24 +1670,33 @@ async function openManualPatchTab(funcName) {
     <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
   `;
   tabDiv.onclick = () => switchEditorTab(tabId);
+  tabDiv.onmousedown = (e) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      closeTab(tabId, e);
+    }
+  };
   tabsHeader.appendChild(tabDiv);
 
-  // Add tab content
+  // Add tab content with Ace Editor container
   const tabsContent = document.querySelector('.editor-tabs-content');
   const contentDiv = document.createElement('div');
   contentDiv.className = 'tab-content';
   contentDiv.id = `tabContent_${tabId}`;
 
   contentDiv.innerHTML = `
-    <div class="editor-main" style="height: 100%;">
-      <textarea id="editor_${tabId}" class="code-editor" spellcheck="false">${escapeHtml(loadingContent)}</textarea>
+    <div class="editor-main">
+      <div id="editor_${tabId}" class="ace-editor-container"></div>
     </div>
   `;
   tabsContent.appendChild(contentDiv);
 
-  // Switch to the new tab immediately
+  // Switch to the new tab first (makes content visible for Ace to measure)
   switchEditorTab(tabId);
   currentPatchTab = { id: tabId, funcName: funcName };
+
+  // Initialize Ace Editor after tab is visible
+  initAceEditor(tabId, loadingContent, 'c_cpp');
 
   // Now fetch data in background
   let template = '';
@@ -1765,12 +1777,10 @@ async function openManualPatchTab(funcName) {
     );
   }
 
-  // Update tab content with final template
-  const textarea = document.getElementById(`editor_${tabId}`);
-  if (textarea) {
-    textarea.value = template;
-    textarea.dataset.funcName = funcName;
-    textarea.dataset.tabId = tabId;
+  // Update Ace Editor content with final template
+  const editor = aceEditors.get(tabId);
+  if (editor) {
+    editor.setValue(template, -1); // -1 moves cursor to start
   }
 
   // Update stored content
@@ -1807,7 +1817,7 @@ async function openDisassembly(funcName, addr) {
       closable: true,
     });
 
-    // Add tab button
+    // Add tab button with middle-click to close
     const tabsHeader = document.getElementById('editorTabsHeader');
     const tabDiv = document.createElement('div');
     tabDiv.className = 'tab';
@@ -1818,9 +1828,15 @@ async function openDisassembly(funcName, addr) {
       <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
     `;
     tabDiv.onclick = () => switchEditorTab(tabId);
+    tabDiv.onmousedown = (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tabId, e);
+      }
+    };
     tabsHeader.appendChild(tabDiv);
 
-    // Add tab content
+    // Add tab content with Ace Editor container
     const tabsContent = document.querySelector('.editor-tabs-content');
     const contentDiv = document.createElement('div');
     contentDiv.className = 'tab-content';
@@ -1831,26 +1847,17 @@ async function openDisassembly(funcName, addr) {
       `; Disassembly for ${funcName} @ ${addr}\n; (Disassembly data not available)`;
 
     contentDiv.innerHTML = `
-      <div class="code-display">
-        <pre><code class="language-x86asm">${escapeHtml(disasmCode)}</code></pre>
+      <div class="editor-main">
+        <div id="editor_${tabId}" class="ace-editor-container"></div>
       </div>
     `;
     tabsContent.appendChild(contentDiv);
 
-    // Apply syntax highlighting (try multiple methods)
-    if (typeof hljs !== 'undefined') {
-      contentDiv.querySelectorAll('pre code').forEach((block) => {
-        // Try auto-detection if language not recognized
-        try {
-          hljs.highlightElement(block);
-        } catch (e) {
-          // Fallback: highlight as plain text with assembly-like coloring
-          block.classList.add('hljs');
-        }
-      });
-    }
-
+    // Switch to tab first (makes content visible for Ace to measure)
     switchEditorTab(tabId);
+
+    // Initialize Ace Editor for assembly (read-only) after tab is visible
+    initAceEditor(tabId, disasmCode, 'assembly_x86', true);
     writeToOutput(`[SUCCESS] Disassembly loaded for ${funcName}`, 'success');
   } catch (e) {
     writeToOutput(`[ERROR] Failed to load disassembly: ${e}`, 'error');
@@ -1861,6 +1868,85 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// Initialize Ace Editor for a tab
+function initAceEditor(tabId, content, mode, readOnly = false) {
+  const editorElement = document.getElementById(`editor_${tabId}`);
+  if (!editorElement) {
+    return null;
+  }
+
+  // Force height calculation - get parent container height
+  const tabContent = document.getElementById(`tabContent_${tabId}`);
+  if (tabContent) {
+    const rect = tabContent.getBoundingClientRect();
+    if (rect.height > 0) {
+      editorElement.style.height = rect.height + 'px';
+    } else {
+      editorElement.style.height = 'calc(100vh - 200px)';
+    }
+  }
+
+  if (typeof ace === 'undefined') {
+    return null;
+  }
+
+  const editor = ace.edit(editorElement);
+
+  // Determine theme based on current theme preference
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const isDarkTheme = currentTheme !== 'light';
+  editor.setTheme(
+    isDarkTheme ? 'ace/theme/tomorrow_night' : 'ace/theme/tomorrow',
+  );
+
+  // Set language mode
+  editor.session.setMode(`ace/mode/${mode}`);
+
+  // Editor options
+  editor.setOptions({
+    fontSize: '13px',
+    fontFamily: '"Consolas", "Courier New", monospace',
+    showLineNumbers: true,
+    showGutter: true,
+    highlightActiveLine: true,
+    readOnly: readOnly,
+    wrap: false,
+    tabSize: 4,
+    useSoftTabs: true,
+    showPrintMargin: false,
+  });
+
+  // Set content
+  editor.setValue(content, -1);
+
+  // Store editor instance
+  aceEditors.set(tabId, editor);
+
+  // Resize on tab switch
+  setTimeout(() => editor.resize(), 0);
+
+  return editor;
+}
+
+// Get content from Ace Editor
+function getAceEditorContent(tabId) {
+  const editor = aceEditors.get(tabId);
+  if (editor) {
+    return editor.getValue();
+  }
+  // Fallback to textarea
+  const textarea = document.getElementById(`editor_${tabId}`);
+  return textarea ? textarea.value : '';
+}
+
+// Update Ace Editor theme when global theme changes
+function updateAceEditorsTheme(isDark) {
+  const theme = isDark ? 'ace/theme/tomorrow_night' : 'ace/theme/tomorrow';
+  aceEditors.forEach((editor) => {
+    editor.setTheme(theme);
+  });
 }
 
 function switchEditorTab(tabId) {
@@ -1879,6 +1965,12 @@ function switchEditorTab(tabId) {
       content.classList.toggle('active', content.id === `tabContent_${tabId}`);
     }
   });
+
+  // Resize Ace Editor when tab becomes visible
+  const editor = aceEditors.get(tabId);
+  if (editor) {
+    setTimeout(() => editor.resize(), 0);
+  }
 
   // Show/hide manual inject controls based on tab type
   // Show for manual patch tabs (type 'c'), hide for asm tabs and preview tabs
@@ -1905,14 +1997,14 @@ async function savePatchFile() {
 
   const funcName = currentPatchTab.funcName;
   const tabId = currentPatchTab.id;
-  const textarea = document.getElementById(`editor_${tabId}`);
 
-  if (!textarea) {
+  // Get content from Ace Editor
+  const content = getAceEditorContent(tabId);
+  if (!content) {
     writeToOutput('[ERROR] Editor not found', 'error');
     return;
   }
 
-  const content = textarea.value;
   const fileName = `patch_${funcName}.c`;
 
   // Open file browser to select save location
@@ -1950,6 +2042,13 @@ function closeTab(tabId, event) {
 
   const tabInfo = editorTabs.find((t) => t.id === tabId);
   if (!tabInfo || !tabInfo.closable) return;
+
+  // Destroy Ace Editor instance if exists
+  if (aceEditors.has(tabId)) {
+    const editor = aceEditors.get(tabId);
+    editor.destroy();
+    aceEditors.delete(tabId);
+  }
 
   // Remove from tabs array
   editorTabs = editorTabs.filter((t) => t.id !== tabId);

@@ -642,6 +642,32 @@ select.form-control {
   border-color: var(--accent-primary);
 }
 
+/* Ace Editor Container - Override for proper height */
+.editor-tabs-content .tab-content .editor-main {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  display: block !important;
+}
+
+.ace-editor-container {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.ace-editor-container .ace_editor {
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* Patch Preview */
 .patch-preview {
   width: 100%;
