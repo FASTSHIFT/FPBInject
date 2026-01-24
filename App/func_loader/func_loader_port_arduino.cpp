@@ -131,14 +131,18 @@ static void blink_led() {
         return;
     }
 
+    led_state = !led_state;
+
     String str = led_state ? "led on" : "led off";
     str += "\n";
     str.toUpperCase();
 
     Serial.print(str);
 
-    led_state = !led_state;
     digitalWrite(LED_PIN, led_state);
+
+    Serial.printf("LED GPIO state: %d\n", digitalRead(LED_PIN));
+
     last_time = millis();
 }
 
