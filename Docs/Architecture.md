@@ -8,13 +8,25 @@ FPBInject enables runtime function hooking on ARM Cortex-M microcontrollers usin
 
 ## Injection Flow
 
-```
-1. Original Call      2. FPB Intercept       3. Trampoline         4. RAM Code
-   caller()              FPB Unit               trampoline_0          inject_func()
-   calls                 addr match             in Flash              @ RAM
-   target_func           0x08xxxxxx             loads target          executes
-        |                    |                      |                     |
-        └──────────────>────┴──────────────>──────┴──────────────>──────┘
+```mermaid
+flowchart LR
+    subgraph step1["1. Original Call"]
+        A["caller()<br/>calls target_func"]
+    end
+    
+    subgraph step2["2. FPB Intercept"]
+        B["FPB Unit<br/>addr match<br/>0x08xxxxxx"]
+    end
+    
+    subgraph step3["3. Trampoline"]
+        C["trampoline_0<br/>in Flash<br/>loads target"]
+    end
+    
+    subgraph step4["4. RAM Code"]
+        D["inject_func()<br/>@ RAM<br/>executes"]
+    end
+    
+    A --> B --> C --> D
 ```
 
 ## FPB Unit
@@ -59,23 +71,21 @@ FPBInject repurposes FPB's REMAP feature for code injection.
 
 Best for: Cortex-M3/M4
 
-```
-Flash                    SRAM
-┌──────────────┐        ┌──────────────┐
-│ target_func  │        │ target_addr  │
-│ @ 0x08001234 │        │ = 0x20001000 │
-└──────┬───────┘        └──────┬───────┘
-       │ FPB REMAP             │
-       ▼                       │
-┌──────────────┐               │
-│ trampoline_n │               │
-│ LDR PC, [Rx] │───────────────┘
-└──────────────┘               │
-                               ▼
-                        ┌──────────────┐
-                        │inject_func() │
-                        │ @ 0x20001000 │
-                        └──────────────┘
+```mermaid
+flowchart TB
+    subgraph Flash
+        TF["target_func<br/>@ 0x08001234"]
+        TR["trampoline_n<br/>LDR PC, [Rx]"]
+    end
+    
+    subgraph SRAM
+        TA["target_addr<br/>= 0x20001000"]
+        IF["inject_func()<br/>@ 0x20001000"]
+    end
+    
+    TF -->|"FPB REMAP"| TR
+    TR -->|"load target"| TA
+    TA -->|"jump"| IF
 ```
 
 **How it works:**
@@ -87,17 +97,11 @@ Flash                    SRAM
 
 Best for: ARMv8-M or when trampolines unavailable
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Function   │     │DebugMonitor │     │   Stack     │
-│   Call      │────▶│  Exception  │────▶│ PC Modified │
-│             │     │             │     │             │
-└─────────────┘     └─────────────┘     └──────┬──────┘
-                                               │
-                                               ▼
-                                        ┌─────────────┐
-                                        │inject_func()│
-                                        └─────────────┘
+```mermaid
+flowchart LR
+    A["Function<br/>Call"] --> B["DebugMonitor<br/>Exception"]
+    B --> C["Stack PC<br/>Modified"]
+    C --> D["inject_func()"]
 ```
 
 **How it works:**
@@ -107,16 +111,46 @@ Best for: ARMv8-M or when trampolines unavailable
 4. Exception return continues at inject function
 
 **Exception Stack Frame:**
+
+| Offset | Register | Description |
+|--------|----------|-------------|
+| SP+0 | R0 | preserved |
+| SP+4 | R1 | preserved |
+| SP+8 | R2 | preserved |
+| SP+12 | R3 | preserved |
+| SP+16 | R12 | preserved |
+| SP+20 | LR | preserved |
+| SP+24 | PC | ← MODIFIED to inject_func |
+| SP+28 | xPSR | preserved |
+
+### 3. Hook Mode (Non-replacing)
+
+Best for: Instrumentation without changing execution flow
+
+```mermaid
+flowchart TB
+    subgraph Normal["Normal Execution"]
+        A["instruction @ 0x08001234"]
+        B["next instruction"]
+    end
+    
+    subgraph Hook["Hook Triggered"]
+        C["FPB Breakpoint"]
+        D["DebugMonitor"]
+        E["Call hook_func()"]
+        F["Return & Continue"]
+    end
+    
+    A --> C
+    C --> D --> E --> F
+    F --> B
 ```
-[SP+0]  R0      - preserved
-[SP+4]  R1      - preserved
-[SP+8]  R2      - preserved
-[SP+12] R3      - preserved
-[SP+16] R12     - preserved
-[SP+20] LR      - preserved
-[SP+24] PC      ← MODIFIED to inject_func
-[SP+28] xPSR    - preserved
-```
+
+**How it works:**
+1. FPB breakpoint triggers at specified address
+2. DebugMonitor calls hook function (void -> void)
+3. Execution continues at next instruction
+4. Original code flow unchanged
 
 ### 3. Direct Mode
 
@@ -137,12 +171,11 @@ static uint8_t inject_buffer[4096];
 
 Uses `malloc()` with 8-byte alignment handling:
 
-```
-malloc returns:  0x20001544 (4-byte aligned)
-aligned address: 0x20001548 (8-byte aligned)
-offset:          4 bytes
-
-Upload starts at aligned offset to match compiled addresses.
+```mermaid
+flowchart LR
+    A["malloc()<br/>returns 0x20001544<br/>(4-byte aligned)"] --> B["align to 8<br/>0x20001548"]
+    B --> C["upload code<br/>at offset 4"]
+    C --> D["code starts at<br/>0x20001548"]
 ```
 
 ## Compilation Process
