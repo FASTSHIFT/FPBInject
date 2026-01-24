@@ -548,7 +548,10 @@ function writeToOutput(message, type = 'info') {
 
 function writeToSerial(data) {
   if (rawTerminal) {
-    rawTerminal.write(data);
+    // Convert \n to \r\n for proper terminal display
+    // xterm.js requires \r\n for newline + carriage return
+    const normalizedData = data.replace(/(?<!\r)\n/g, '\r\n');
+    rawTerminal.write(normalizedData);
   }
 }
 
