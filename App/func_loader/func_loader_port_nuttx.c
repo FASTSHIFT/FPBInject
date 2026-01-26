@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
 
     if (argc > 1) {
         printf("[ERR] Enter '%s' to start interactive mode\n", argv[0]);
-        return ERROR;
+        return 0;
     }
 
     /* No arguments - interactive mode */
