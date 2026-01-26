@@ -235,6 +235,22 @@ static void cmd_ping(fl_context_t* ctx) {
     fl_response(ctx, true, "PONG");
 }
 
+static void cmd_echo(fl_context_t* ctx, const char* data_str) {
+    /* Echo command for serial throughput testing.
+     * Echoes back the data length and CRC for verification.
+     * The data is hex-encoded, so actual byte count is strlen/2.
+     */
+    size_t len = data_str ? strlen(data_str) / 2 : 0;
+    uint16_t crc = 0;
+
+    if (data_str && len > 0) {
+        /* Calculate CRC of the hex string (not decoded bytes) */
+        crc = calc_crc16((const uint8_t*)data_str, strlen(data_str));
+    }
+
+    fl_response(ctx, true, "ECHO %zu Bytes, CRC 0x%04X", len, crc);
+}
+
 static void cmd_info(fl_context_t* ctx) {
     bool is_dynamic = ctx->malloc_cb != NULL;
     const char* mode = is_dynamic ? "dynamic" : "static";
@@ -561,10 +577,10 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     struct argparse_option opts[] = {
         OPT_HELP(),
         OPT_STRING('c', "cmd", &cmd, "Command", NULL, 0, 0),
-        OPT_INTEGER(0, "size", &size, "Alloc size", NULL, 0, 0),
+        OPT_INTEGER('s', "size", &size, "Alloc size", NULL, 0, 0),
         OPT_POINTER('a', "addr", &addr, "Address/offset (hex)", NULL, 0, 0),
         OPT_STRING('d', "data", &data, "Hex data", NULL, 0, 0),
-        OPT_INTEGER(0, "crc", &crc, "CRC-16 (hex)", NULL, 0, 0),
+        OPT_INTEGER('r', "crc", &crc, "CRC-16 (hex)", NULL, 0, 0),
         OPT_INTEGER('e', "entry", &entry, "Entry offset", NULL, 0, 0),
         OPT_STRING(0, "args", &args, "Arguments", NULL, 0, 0),
         OPT_INTEGER('l', "len", &len, "Read length", NULL, 0, 0),
@@ -592,6 +608,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
 
     if (strcmp(cmd, "ping") == 0) {
         cmd_ping(ctx);
+    } else if (strcmp(cmd, "echo") == 0) {
+        cmd_echo(ctx, data);
     } else if (strcmp(cmd, "info") == 0) {
         cmd_info(ctx);
     } else if (strcmp(cmd, "alloc") == 0) {

@@ -1049,6 +1049,82 @@ async function fpbPing() {
   }
 }
 
+async function fpbTestSerial() {
+  if (!isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
+
+  writeToOutput(
+    '[TEST] Starting serial throughput test (x2 stepping)...',
+    'info',
+  );
+
+  try {
+    const res = await fetch('/api/fpb/test-serial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start_size: 16,
+        max_size: 4096,
+        timeout: 2.0,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      // Display test results
+      writeToOutput('─'.repeat(50), 'info');
+      writeToOutput('[TEST] Serial Throughput Test Results:', 'info');
+
+      // Show each test step
+      if (data.tests && data.tests.length > 0) {
+        data.tests.forEach((test) => {
+          const status = test.passed ? '✓' : '✗';
+          const timeStr = test.response_time_ms
+            ? ` (${test.response_time_ms}ms)`
+            : '';
+          const cmdLen = test.cmd_len ? ` [cmd:${test.cmd_len}B]` : '';
+          const errStr = test.error ? ` - ${test.error}` : '';
+          writeToOutput(
+            `  ${status} ${test.size} bytes${cmdLen}${timeStr}${errStr}`,
+            test.passed ? 'success' : 'error',
+          );
+        });
+      }
+
+      writeToOutput('─'.repeat(50), 'info');
+      writeToOutput(
+        `[RESULT] Max working size: ${data.max_working_size} bytes`,
+        'success',
+      );
+      if (data.failed_size > 0) {
+        writeToOutput(
+          `[RESULT] Failed at: ${data.failed_size} bytes`,
+          'warning',
+        );
+      }
+      writeToOutput(
+        `[RESULT] Recommended chunk size: ${data.recommended_chunk_size} bytes`,
+        'success',
+      );
+
+      // Update chunk size input if exists
+      const chunkInput = document.getElementById('chunkSizeInput');
+      if (chunkInput) {
+        chunkInput.value = data.recommended_chunk_size;
+      }
+    } else {
+      writeToOutput(
+        `[ERROR] Test failed: ${data.error || 'Unknown error'}`,
+        'error',
+      );
+    }
+  } catch (e) {
+    writeToOutput(`[ERROR] Serial test failed: ${e}`, 'error');
+  }
+}
+
 async function fpbInfo() {
   if (!isConnected) {
     writeToOutput('[ERROR] Not connected', 'error');

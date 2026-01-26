@@ -621,6 +621,79 @@ class TestFPBCLIInfo(unittest.TestCase):
             output = json.loads(f.getvalue())
             self.assertFalse(output["success"])
 
+    def test_test_serial_not_connected(self):
+        """Test serial throughput without connection"""
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.test_serial()
+
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+        self.assertIn("No device connected", output["error"])
+
+    def test_test_serial_success(self):
+        """Test serial throughput success"""
+        self.cli._device_state.connected = True
+        with patch.object(self.cli._fpb, "test_serial_throughput") as mock_test:
+            mock_test.return_value = {
+                "success": True,
+                "max_working_size": 256,
+                "failed_size": 512,
+                "tests": [
+                    {"size": 16, "passed": True},
+                    {"size": 32, "passed": True},
+                    {"size": 64, "passed": True},
+                    {"size": 128, "passed": True},
+                    {"size": 256, "passed": True},
+                    {"size": 512, "passed": False, "error": "timeout"},
+                ],
+                "recommended_chunk_size": 192,
+            }
+
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.test_serial(start_size=16, max_size=512)
+
+            output = json.loads(f.getvalue())
+            self.assertTrue(output["success"])
+            self.assertEqual(output["max_working_size"], 256)
+            self.assertEqual(output["failed_size"], 512)
+            self.assertEqual(len(output["tests"]), 6)
+
+    def test_test_serial_all_pass(self):
+        """Test serial throughput when all sizes pass"""
+        self.cli._device_state.connected = True
+        with patch.object(self.cli._fpb, "test_serial_throughput") as mock_test:
+            mock_test.return_value = {
+                "success": True,
+                "max_working_size": 4096,
+                "failed_size": 0,
+                "tests": [{"size": 16, "passed": True}],
+                "recommended_chunk_size": 3072,
+            }
+
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.test_serial()
+
+            output = json.loads(f.getvalue())
+            self.assertTrue(output["success"])
+            self.assertEqual(output["failed_size"], 0)
+
+    def test_test_serial_exception(self):
+        """Test serial throughput with exception"""
+        self.cli._device_state.connected = True
+        with patch.object(self.cli._fpb, "test_serial_throughput") as mock_test:
+            mock_test.side_effect = Exception("Serial error")
+
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.test_serial()
+
+            output = json.loads(f.getvalue())
+            self.assertFalse(output["success"])
+            self.assertIn("Serial error", output["error"])
+
 
 class TestFPBCLIInject(unittest.TestCase):
     """Test inject command"""

@@ -354,6 +354,48 @@ def register_routes(app):
         success, msg = fpb.ping()
         return jsonify({"success": success, "message": msg})
 
+    @app.route("/api/fpb/test-serial", methods=["POST"])
+    def api_fpb_test_serial():
+        """
+        Test serial throughput to find max single-transfer size.
+
+        Uses x2 stepping to probe device's receive buffer limit.
+        Returns max working size and recommended chunk size.
+        """
+        data = request.json or {}
+        start_size = data.get("start_size", 16)
+        max_size = data.get("max_size", 4096)
+        timeout = data.get("timeout", 2.0)
+
+        fpb = get_fpb_inject()
+
+        add_tool_log("[TEST] Starting serial throughput test...")
+
+        # test_serial_throughput uses _send_cmd which handles fl mode automatically
+        result = fpb.test_serial_throughput(
+            start_size=start_size, max_size=max_size, timeout=timeout
+        )
+
+        if result.get("success"):
+            max_working = result.get("max_working_size", 0)
+            failed_at = result.get("failed_size", 0)
+            recommended = result.get("recommended_chunk_size", 64)
+
+            if failed_at > 0:
+                add_tool_log(
+                    f"[TEST] Max working size: {max_working} bytes, "
+                    f"failed at: {failed_at} bytes"
+                )
+            else:
+                add_tool_log(f"[TEST] All tests passed up to {max_working} bytes")
+            add_tool_log(f"[TEST] Recommended chunk size: {recommended} bytes")
+        else:
+            add_tool_log(
+                f"[ERROR] Serial test failed: {result.get('error', 'Unknown')}"
+            )
+
+        return jsonify(result)
+
     @app.route("/api/fpb/info", methods=["GET"])
     def api_fpb_info():
         """Get device info including slot states."""

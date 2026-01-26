@@ -168,13 +168,13 @@ int main(int argc, char** argv) {
 #endif
     }
 
-    /* No arguments - interactive mode */
-    if (argc <= 1) {
-        return interactive_mode(&ctx);
+    if (argc > 1) {
+        printf("[ERR] Enter '%s' to start interactive mode\n", argv[0]);
+        return ERROR;
     }
 
-    /* Direct command execution */
-    return fl_exec_cmd(&ctx, argc - 1, (const char**)(argv + 1));
+    /* No arguments - interactive mode */
+    return interactive_mode(&ctx);
 }
 
 #endif /* __NUTTX__ */

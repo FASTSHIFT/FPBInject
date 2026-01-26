@@ -414,6 +414,29 @@ class FPBCLI:
         except Exception as e:
             self.output_error(f"Info failed: {str(e)}", e)
 
+    def test_serial(
+        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+    ) -> None:
+        """
+        Test serial throughput to find max single-transfer size.
+
+        Uses x2 stepping to probe device's receive buffer limit.
+        """
+        try:
+            if not self._device_state.connected:
+                raise FPBCLIError(
+                    "No device connected. Use --port to specify serial port."
+                )
+
+            result = self._fpb.test_serial_throughput(
+                start_size=start_size, max_size=max_size, timeout=timeout
+            )
+
+            self.output_json(result)
+
+        except Exception as e:
+            self.output_error(f"Serial test failed: {str(e)}", e)
+
     def cleanup(self):
         """Cleanup resources"""
         self._device_state.disconnect()
@@ -510,6 +533,30 @@ Examples:
         "info", help="Get device FPB info (requires --port)"
     )
 
+    # test-serial command (requires device)
+    test_serial_parser = subparsers.add_parser(
+        "test-serial",
+        help="Test serial throughput to find max transfer size (requires --port)",
+    )
+    test_serial_parser.add_argument(
+        "--start-size",
+        type=int,
+        default=16,
+        help="Starting test size in bytes (default: 16)",
+    )
+    test_serial_parser.add_argument(
+        "--max-size",
+        type=int,
+        default=4096,
+        help="Maximum test size in bytes (default: 4096)",
+    )
+    test_serial_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=2.0,
+        help="Timeout per test in seconds (default: 2.0)",
+    )
+
     # inject command (requires device)
     inject_parser = subparsers.add_parser(
         "inject", help="Inject patch to device (requires --port)"
@@ -573,6 +620,8 @@ Examples:
             cli.compile(args.source_file, elf_path, args.addr, args.compile_commands)
         elif args.command == "info":
             cli.info()
+        elif args.command == "test-serial":
+            cli.test_serial(args.start_size, args.max_size, args.timeout)
         elif args.command == "inject":
             cli.inject(
                 args.target_func,

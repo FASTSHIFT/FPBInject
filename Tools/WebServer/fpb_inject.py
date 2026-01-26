@@ -306,6 +306,8 @@ class FPBInject:
     def __init__(self, device_state):
         self.device = device_state
         self._toolchain_path = None
+        self._in_fl_mode = False
+        self._platform = "unknown"  # "nuttx", "bare-metal", or "unknown"
 
     def set_toolchain_path(self, path: str):
         """Set the toolchain path."""
@@ -437,6 +439,7 @@ class FPBInject:
         ser = self.device.ser
         if not ser:
             self._in_fl_mode = False
+            self._platform = "unknown"
             return False
 
         try:
@@ -452,20 +455,59 @@ class FPBInject:
                 if ser.in_waiting:
                     chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
                     response += chunk
-                    if "fl>" in response or "[OK]" in response:
+                    if "fl>" in response or "[OK]" in response or "[ERR]" in response:
                         break
                 time.sleep(0.01)
 
             self._log_raw("RX", response.strip())
             logger.debug(f"Entered fl mode: {response.strip()}")
 
-            # Check if we actually entered fl interactive mode (has fl> prompt)
-            self._in_fl_mode = "fl>" in response
-            return self._in_fl_mode
+            # Detect platform type based on response
+            if "fl>" in response:
+                # NuttX platform - entered interactive mode
+                self._in_fl_mode = True
+                self._platform = "nuttx"
+                logger.info("Detected NuttX platform (fl interactive mode)")
+                return True
+            elif "Enter" in response and "interactive mode" in response:
+                # NuttX platform - got the hint message, need to enter fl mode
+                # This happens when NuttX receives direct command without fl prefix
+                self._platform = "nuttx"
+                logger.info("Detected NuttX platform (requires interactive mode)")
+                # Already sent 'fl', should be in fl mode now - retry read
+                start = time.time()
+                while time.time() - start < timeout:
+                    if ser.in_waiting:
+                        chunk = ser.read(ser.in_waiting).decode(
+                            "utf-8", errors="replace"
+                        )
+                        response += chunk
+                        if "fl>" in response:
+                            self._in_fl_mode = True
+                            return True
+                    time.sleep(0.01)
+                self._in_fl_mode = False
+                return False
+            else:
+                # Bare-metal or unknown - commands work directly
+                self._in_fl_mode = False
+                self._platform = "bare-metal"
+                return False
         except Exception as e:
             logger.error(f"Error entering fl mode: {e}")
             self._in_fl_mode = False
+            self._platform = "unknown"
             return False
+
+    def get_platform(self) -> str:
+        """Get detected platform type.
+
+        Returns:
+            "nuttx" - NuttX RTOS (requires fl interactive mode)
+            "bare-metal" - Bare-metal firmware (direct commands)
+            "unknown" - Not detected yet
+        """
+        return getattr(self, "_platform", "unknown")
 
     def exit_fl_mode(self, timeout: float = 1.0) -> bool:
         """Exit fl interactive mode by sending 'exit' command.
@@ -573,6 +615,10 @@ class FPBInject:
 
             # Check if response is valid (contains [OK] or [ERR])
             if "[OK]" in response or "[ERR]" in response:
+                # Check if this is NuttX platform detection message
+                if "Enter" in response and "interactive mode" in response:
+                    # NuttX platform: need to enter fl mode first
+                    break
                 # Valid response, check if it looks complete
                 # A valid response should have [OK] or [ERR] followed by optional data
                 if self._is_response_complete(response, cmd):
@@ -584,7 +630,7 @@ class FPBInject:
                     self._log_raw("WARN", "Response incomplete, retrying...")
                     continue  # Retry
             elif "Missing --cmd" in response:
-                # Not in fl mode - handle separately
+                # Not in fl mode (bare-metal platform or direct execution)
                 break
             else:
                 # No valid response marker, might be interrupted by logs
@@ -592,10 +638,19 @@ class FPBInject:
                 self._log_raw("WARN", "No response marker, retrying...")
                 continue  # Retry
 
-        # Check if we got "Missing --cmd" which means we're not in fl mode
-        if retry_on_missing_cmd and "Missing --cmd" in last_response:
-            logger.info("Detected 'Missing --cmd', entering fl mode and retrying...")
-            self._log_raw("INFO", "Not in fl mode, entering...")
+        # Detect platform and enter fl mode if needed
+        need_fl_mode = False
+        if "Enter" in last_response and "interactive mode" in last_response:
+            # NuttX platform: explicitly requires fl interactive mode
+            self._platform = "nuttx"
+            need_fl_mode = True
+            logger.info("Detected NuttX platform (requires fl interactive mode)")
+        elif "Missing --cmd" in last_response:
+            # Bare-metal or older NuttX - try entering fl mode
+            need_fl_mode = True
+
+        if retry_on_missing_cmd and need_fl_mode:
+            self._log_raw("INFO", "Entering fl interactive mode...")
             if self.enter_fl_mode():
                 return self._send_cmd(
                     cmd, timeout, retry_on_missing_cmd=False, max_retries=max_retries
@@ -622,7 +677,7 @@ class FPBInject:
 
         # For data commands (like read), check if data looks complete
         # Data is usually hex encoded, should have even length
-        if "--cmd read" in cmd or "--cmd info" in cmd:
+        if "-c read" in cmd or "-c info" in cmd:
             # Extract data after [OK]
             if "[OK]" in response:
                 parts = response.split("[OK]", 1)
@@ -743,16 +798,146 @@ class FPBInject:
     def ping(self) -> Tuple[bool, str]:
         """Ping device."""
         try:
-            resp = self._send_cmd("--cmd ping")
+            resp = self._send_cmd("-c ping")
             result = self._parse_response(resp)
             return result.get("ok", False), result.get("msg", "")
         except Exception as e:
             return False, str(e)
 
+    def test_serial_throughput(
+        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+    ) -> Dict:
+        """
+        Test serial port throughput by sending increasing data sizes.
+
+        Uses x2 stepping to find the maximum single-transfer size the device can handle.
+        Sends test data and verifies echo response.
+
+        Args:
+            start_size: Starting test size in bytes (default: 16)
+            max_size: Maximum test size in bytes (default: 4096)
+            timeout: Timeout for each test in seconds (default: 2.0)
+
+        Returns:
+            dict with test results:
+                - success: bool - True if test completed
+                - max_working_size: int - Largest size that worked
+                - failed_size: int - First size that failed (0 if all passed)
+                - tests: list - Details of each test
+                - recommended_chunk_size: int - Recommended safe chunk size
+        """
+        if self.device is None or self.device.ser is None:
+            return {
+                "success": False,
+                "error": "Serial port not connected",
+                "max_working_size": 0,
+                "failed_size": 0,
+                "tests": [],
+                "recommended_chunk_size": 64,
+            }
+
+        results = {
+            "success": True,
+            "max_working_size": 0,
+            "failed_size": 0,
+            "tests": [],
+            "recommended_chunk_size": 64,
+        }
+
+        try:
+            # Test using x2 stepping
+            test_size = start_size
+            max_working = 0
+
+            while test_size <= max_size:
+                # Create test data: hex pattern of target size
+                hex_data = "".join(f"{(i % 256):02X}" for i in range(test_size))
+
+                # Build echo command - use standard format for _send_cmd
+                cmd = f"-c echo -d {hex_data}"
+
+                test_result = {
+                    "size": test_size,
+                    "cmd_len": len(cmd),
+                    "passed": False,
+                    "error": None,
+                    "response_time_ms": 0,
+                }
+
+                try:
+                    # Use _send_cmd which handles fl mode automatically
+                    start_time = time.time()
+                    response = self._send_cmd(cmd, timeout=timeout)
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    test_result["response_time_ms"] = round(elapsed_ms, 2)
+
+                    # Check response and verify CRC
+                    if "[OK]" in response:
+                        # Parse response: "[OK] ECHO <len> Bytes, CRC 0x<crc>"
+                        # Calculate expected CRC (on hex string, not bytes)
+                        expected_crc = crc16(hex_data.encode("ascii"))
+
+                        # Extract CRC from response
+                        crc_match = re.search(r"0x([0-9A-Fa-f]{4})", response)
+                        if crc_match:
+                            received_crc = int(crc_match.group(1), 16)
+                            if received_crc == expected_crc:
+                                test_result["passed"] = True
+                                max_working = test_size
+                            else:
+                                test_result["passed"] = False
+                                test_result["error"] = (
+                                    f"CRC mismatch: expected 0x{expected_crc:04X}, "
+                                    f"got 0x{received_crc:04X}"
+                                )
+                                results["failed_size"] = test_size
+                                results["tests"].append(test_result)
+                                break
+                        else:
+                            # No CRC in response, just check [OK]
+                            test_result["passed"] = True
+                            max_working = test_size
+                    else:
+                        test_result["passed"] = False
+                        if "[ERR]" in response:
+                            test_result["error"] = "Device returned error"
+                        elif not response:
+                            test_result["error"] = "No response (timeout)"
+                        else:
+                            test_result["error"] = "Incomplete/invalid response"
+                        results["failed_size"] = test_size
+                        results["tests"].append(test_result)
+                        break
+
+                except Exception as e:
+                    test_result["passed"] = False
+                    test_result["error"] = str(e)
+                    results["failed_size"] = test_size
+                    results["tests"].append(test_result)
+                    break
+
+                results["tests"].append(test_result)
+
+                # x2 stepping
+                test_size *= 2
+
+            results["max_working_size"] = max_working
+            # Recommend 75% of max working size for safety margin
+            if max_working > 0:
+                results["recommended_chunk_size"] = max(64, (max_working * 3) // 4)
+            else:
+                results["recommended_chunk_size"] = 64
+
+        except Exception as e:
+            results["success"] = False
+            results["error"] = str(e)
+
+        return results
+
     def info(self) -> Tuple[Optional[dict], str]:
         """Get device info including slot states."""
         try:
-            resp = self._send_cmd("--cmd info")
+            resp = self._send_cmd("-c info")
             result = self._parse_response(resp)
 
             if result.get("ok"):
@@ -834,7 +1019,7 @@ class FPBInject:
     def alloc(self, size: int) -> Tuple[Optional[int], str]:
         """Allocate memory buffer."""
         try:
-            resp = self._send_cmd(f"--cmd alloc --size {size}")
+            resp = self._send_cmd(f"-c alloc -s {size}")
             logger.debug(f"Alloc response: {resp}")
             result = self._parse_response(resp)
             logger.debug(f"Alloc parsed result: {result}")
@@ -870,7 +1055,7 @@ class FPBInject:
             crc = crc16(chunk)
 
             device_offset = start_offset + data_offset
-            cmd = f"--cmd upload --addr 0x{device_offset:X} --data {b64_data} --crc 0x{crc:04X}"
+            cmd = f"-c upload -a 0x{device_offset:X} -d {b64_data} -r 0x{crc:04X}"
 
             try:
                 resp = self._send_cmd(cmd)
@@ -902,7 +1087,7 @@ class FPBInject:
     def patch(self, comp: int, orig: int, target: int) -> Tuple[bool, str]:
         """Set FPB patch (direct mode)."""
         try:
-            cmd = f"--cmd patch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
+            cmd = f"-c patch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
             return result.get("ok", False), result.get("msg", "")
@@ -912,7 +1097,7 @@ class FPBInject:
     def tpatch(self, comp: int, orig: int, target: int) -> Tuple[bool, str]:
         """Set trampoline patch."""
         try:
-            cmd = f"--cmd tpatch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
+            cmd = f"-c tpatch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
             return result.get("ok", False), result.get("msg", "")
@@ -922,7 +1107,7 @@ class FPBInject:
     def dpatch(self, comp: int, orig: int, target: int) -> Tuple[bool, str]:
         """Set DebugMonitor patch."""
         try:
-            cmd = f"--cmd dpatch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
+            cmd = f"-c dpatch --comp {comp} --orig 0x{orig:X} --target 0x{target:X}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
             return result.get("ok", False), result.get("msg", "")
@@ -933,9 +1118,9 @@ class FPBInject:
         """Clear FPB patch. If all=True, clear all patches and free memory."""
         try:
             if all:
-                cmd = "--cmd unpatch --all"
+                cmd = "-c unpatch --all"
             else:
-                cmd = f"--cmd unpatch --comp {comp}"
+                cmd = f"-c unpatch --comp {comp}"
             resp = self._send_cmd(cmd)
             result = self._parse_response(resp)
             return result.get("ok", False), result.get("msg", "")

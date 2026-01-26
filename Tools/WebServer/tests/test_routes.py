@@ -391,6 +391,99 @@ class TestFPBPingAPI(TestRoutesBase):
         self.assertFalse(data["success"])
 
 
+class TestFPBTestSerialAPI(TestRoutesBase):
+    """FPB Test Serial API tests"""
+
+    @patch("routes.get_fpb_inject")
+    def test_serial_success(self, mock_get_fpb):
+        """Test serial throughput test success"""
+        mock_fpb = Mock()
+        mock_fpb.test_serial_throughput.return_value = {
+            "success": True,
+            "max_working_size": 256,
+            "failed_size": 512,
+            "tests": [
+                {"size": 16, "passed": True, "response_time_ms": 5.2},
+                {"size": 32, "passed": True, "response_time_ms": 6.1},
+                {"size": 64, "passed": True, "response_time_ms": 8.3},
+                {"size": 128, "passed": True, "response_time_ms": 12.5},
+                {"size": 256, "passed": True, "response_time_ms": 20.1},
+                {"size": 512, "passed": False, "error": "No response (timeout)"},
+            ],
+            "recommended_chunk_size": 192,
+        }
+        mock_fpb.enter_fl_mode = Mock()
+        mock_fpb.exit_fl_mode = Mock()
+        mock_get_fpb.return_value = mock_fpb
+
+        response = self.client.post(
+            "/api/fpb/test-serial",
+            data=json.dumps({"start_size": 16, "max_size": 512}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["max_working_size"], 256)
+        self.assertEqual(data["failed_size"], 512)
+        self.assertEqual(data["recommended_chunk_size"], 192)
+        self.assertEqual(len(data["tests"]), 6)
+
+    @patch("routes.get_fpb_inject")
+    def test_serial_all_pass(self, mock_get_fpb):
+        """Test serial throughput when all sizes pass"""
+        mock_fpb = Mock()
+        mock_fpb.test_serial_throughput.return_value = {
+            "success": True,
+            "max_working_size": 4096,
+            "failed_size": 0,
+            "tests": [
+                {"size": 16, "passed": True},
+                {"size": 32, "passed": True},
+            ],
+            "recommended_chunk_size": 3072,
+        }
+        mock_fpb.enter_fl_mode = Mock()
+        mock_fpb.exit_fl_mode = Mock()
+        mock_get_fpb.return_value = mock_fpb
+
+        response = self.client.post(
+            "/api/fpb/test-serial",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["failed_size"], 0)
+
+    @patch("routes.get_fpb_inject")
+    def test_serial_not_connected(self, mock_get_fpb):
+        """Test serial throughput when not connected"""
+        mock_fpb = Mock()
+        mock_fpb.test_serial_throughput.return_value = {
+            "success": False,
+            "error": "Serial port not connected",
+            "max_working_size": 0,
+            "failed_size": 0,
+            "tests": [],
+            "recommended_chunk_size": 64,
+        }
+        mock_fpb.enter_fl_mode = Mock()
+        mock_fpb.exit_fl_mode = Mock()
+        mock_get_fpb.return_value = mock_fpb
+
+        response = self.client.post(
+            "/api/fpb/test-serial",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not connected", data.get("error", ""))
+
+
 class TestFPBInfoAPI(TestRoutesBase):
     """FPB Info API tests"""
 

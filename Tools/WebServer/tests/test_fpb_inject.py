@@ -337,7 +337,51 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         result = self.fpb.enter_fl_mode(timeout=0.1)
 
         self.assertTrue(result)
+        self.assertEqual(self.fpb.get_platform(), "nuttx")
         self.device.ser.write.assert_called()
+
+    def test_enter_fl_mode_bare_metal(self):
+        """Test entering fl mode on bare-metal (no fl> prompt)"""
+        self.device.ser.read.return_value = b"[OK] some response"
+        self.device.ser.in_waiting = 18
+
+        result = self.fpb.enter_fl_mode(timeout=0.1)
+
+        self.assertFalse(result)
+        self.assertEqual(self.fpb.get_platform(), "bare-metal")
+
+    def test_enter_fl_mode_nuttx_hint(self):
+        """Test detecting NuttX platform via hint message"""
+        # Simulate NuttX returning the hint message
+        responses = [
+            b"[ERR] Enter 'fl' to start interactive mode",
+            b"fl>",
+        ]
+        call_count = [0]
+
+        def mock_read(n):
+            if call_count[0] < len(responses):
+                resp = responses[call_count[0]]
+                call_count[0] += 1
+                return resp
+            return b""
+
+        def mock_in_waiting():
+            if call_count[0] < len(responses):
+                return len(responses[call_count[0]])
+            return 0
+
+        self.device.ser.read.side_effect = mock_read
+        type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
+
+        result = self.fpb.enter_fl_mode(timeout=0.2)
+
+        self.assertTrue(result)
+        self.assertEqual(self.fpb.get_platform(), "nuttx")
+
+    def test_get_platform_default(self):
+        """Test default platform value"""
+        self.assertEqual(self.fpb.get_platform(), "unknown")
 
     def test_exit_fl_mode(self):
         """Test exiting fl mode"""
@@ -885,6 +929,84 @@ class TestDecompileFunction(unittest.TestCase):
 
         self.assertFalse(success)
         self.assertIn("not found", result)
+
+
+class TestSerialThroughput(unittest.TestCase):
+    """Serial throughput test cases"""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.device.ser = Mock()
+        self.device.ser.isOpen.return_value = True
+        self.device.ser.in_waiting = 0
+        self.device.ser.timeout = 1.0
+        self.fpb = FPBInject(self.device)
+
+    def test_test_serial_no_connection(self):
+        """Test serial throughput without connection"""
+        self.device.ser = None
+
+        result = self.fpb.test_serial_throughput()
+
+        self.assertFalse(result["success"])
+        self.assertIn("not connected", result.get("error", ""))
+        self.assertEqual(result["max_working_size"], 0)
+
+    def test_test_serial_all_pass(self):
+        """Test serial throughput with all tests passing"""
+        # Mock serial responses - all return [OK]
+        self.device.ser.read.return_value = b"[OK] Echo received"
+        self.device.ser.in_waiting = 20
+
+        result = self.fpb.test_serial_throughput(start_size=16, max_size=64)
+
+        self.assertTrue(result["success"])
+        self.assertGreater(result["max_working_size"], 0)
+        self.assertGreater(len(result["tests"]), 0)
+
+    def test_test_serial_partial_pass(self):
+        """Test serial throughput with some tests failing"""
+        # First calls return OK, then timeout
+        call_count = [0]
+
+        def mock_read(size=None):
+            call_count[0] += 1
+            if call_count[0] <= 3:
+                return b"[OK] Echo received"
+            return b""  # Timeout
+
+        self.device.ser.read.side_effect = mock_read
+        self.device.ser.in_waiting = 20
+
+        result = self.fpb.test_serial_throughput(
+            start_size=16, max_size=256, timeout=0.1
+        )
+
+        self.assertTrue(result["success"])
+        self.assertGreater(len(result["tests"]), 0)
+
+    def test_test_serial_recommended_size(self):
+        """Test that recommended chunk size is calculated correctly"""
+        # Mock all tests passing up to 128 bytes
+        self.device.ser.read.return_value = b"[OK] Echo received"
+        self.device.ser.in_waiting = 20
+
+        result = self.fpb.test_serial_throughput(start_size=16, max_size=128)
+
+        self.assertTrue(result["success"])
+        # Recommended should be 75% of max working size
+        if result["max_working_size"] > 0:
+            expected_min = 64  # Minimum recommended size
+            self.assertGreaterEqual(result["recommended_chunk_size"], expected_min)
+
+    def test_test_serial_exception_handling(self):
+        """Test serial throughput exception handling"""
+        self.device.ser.write.side_effect = Exception("Serial write error")
+
+        result = self.fpb.test_serial_throughput(start_size=16, max_size=32)
+
+        # Should handle exception gracefully
+        self.assertIn("tests", result)
 
 
 if __name__ == "__main__":
