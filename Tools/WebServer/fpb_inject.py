@@ -588,8 +588,21 @@ class FPBInject:
             # Clear buffer
             ser.reset_input_buffer()
 
-            # Send command
-            ser.write((full_cmd + "\n").encode())
+            # Send command with chunking to workaround slow serial drivers
+            data_bytes = (full_cmd + "\n").encode()
+            tx_chunk_size = getattr(self.device, "tx_chunk_size", 0)
+            tx_chunk_delay = getattr(self.device, "tx_chunk_delay", 0.005)
+            if tx_chunk_size > 0 and len(data_bytes) > tx_chunk_size:
+                # Split into chunks for slow serial drivers
+                for i in range(0, len(data_bytes), tx_chunk_size):
+                    chunk = data_bytes[i : i + tx_chunk_size]
+                    ser.write(chunk)
+                    ser.flush()
+                    if i + tx_chunk_size < len(data_bytes):
+                        time.sleep(tx_chunk_delay)
+            else:
+                # Send all at once
+                ser.write(data_bytes)
             ser.flush()
 
             # Read response

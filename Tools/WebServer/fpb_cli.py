@@ -56,6 +56,8 @@ class DeviceState:
         self.cached_slots = None  # Cache for slot state
         self.slot_update_id = 0
         self.chunk_size = 128  # Default chunk size for upload
+        self.tx_chunk_size = 0  # 0 = disabled, >0 = chunk size for TX
+        self.tx_chunk_delay = 0.005  # Delay between TX chunks (seconds)
 
     def connect(self, port: str, baudrate: int = 115200) -> bool:
         """Connect to device via serial port"""
@@ -89,6 +91,8 @@ class FPBCLI:
         baudrate: int = 115200,
         elf_path: Optional[str] = None,
         compile_commands: Optional[str] = None,
+        tx_chunk_size: int = 0,
+        tx_chunk_delay: float = 0.005,
     ):
         self.verbose = verbose
         self.setup_logging()
@@ -96,6 +100,8 @@ class FPBCLI:
         self._device_state = DeviceState()
         self._device_state.elf_path = elf_path
         self._device_state.compile_commands_path = compile_commands
+        self._device_state.tx_chunk_size = tx_chunk_size
+        self._device_state.tx_chunk_delay = tx_chunk_delay
         self._fpb = FPBInject(self._device_state)
 
         # Connect to serial if port specified
@@ -490,6 +496,18 @@ Examples:
     )
     parser.add_argument("--elf", help="Path to ELF file")
     parser.add_argument("--compile-commands", help="Path to compile_commands.json")
+    parser.add_argument(
+        "--tx-chunk-size",
+        type=int,
+        default=0,
+        help="TX chunk size for serial commands (0=disabled). Workaround for slow serial drivers.",
+    )
+    parser.add_argument(
+        "--tx-chunk-delay",
+        type=float,
+        default=0.005,
+        help="Delay between TX chunks in seconds (default: 0.005). Only used when --tx-chunk-size > 0.",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -602,6 +620,8 @@ Examples:
         baudrate=args.baudrate,
         elf_path=elf_path,
         compile_commands=args.compile_commands,
+        tx_chunk_size=args.tx_chunk_size,
+        tx_chunk_delay=args.tx_chunk_delay,
     )
 
     try:

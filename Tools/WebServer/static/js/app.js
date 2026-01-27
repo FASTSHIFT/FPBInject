@@ -2208,6 +2208,12 @@ async function loadConfig() {
       document.getElementById('patchMode').value = data.patch_mode;
     if (data.chunk_size)
       document.getElementById('chunkSize').value = data.chunk_size;
+    if (data.tx_chunk_size !== undefined)
+      document.getElementById('txChunkSize').value = data.tx_chunk_size;
+    if (data.tx_chunk_delay !== undefined)
+      document.getElementById('txChunkDelay').value = Math.round(
+        data.tx_chunk_delay * 1000,
+      );
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
     if (data.auto_compile !== undefined)
       document.getElementById('autoCompile').checked = data.auto_compile;
@@ -2260,6 +2266,9 @@ async function saveConfig(silent = false) {
     toolchain_path: document.getElementById('toolchainPath').value,
     patch_mode: document.getElementById('patchMode').value,
     chunk_size: parseInt(document.getElementById('chunkSize').value) || 128,
+    tx_chunk_size: parseInt(document.getElementById('txChunkSize').value) || 0,
+    tx_chunk_delay:
+      (parseInt(document.getElementById('txChunkDelay').value) || 5) / 1000,
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile').checked,
     enable_decompile: document.getElementById('enableDecompile').checked,
@@ -2295,7 +2304,12 @@ function setupAutoSave() {
   });
 
   // Select inputs - save on change
-  const selectInputs = ['patchMode', 'chunkSize'];
+  const selectInputs = [
+    'patchMode',
+    'chunkSize',
+    'txChunkSize',
+    'txChunkDelay',
+  ];
   selectInputs.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {

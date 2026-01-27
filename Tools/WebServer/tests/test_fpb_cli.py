@@ -36,6 +36,8 @@ class TestDeviceState(unittest.TestCase):
         self.assertIsNone(state.cached_slots)
         self.assertEqual(state.slot_update_id, 0)
         self.assertEqual(state.chunk_size, 128)
+        self.assertEqual(state.tx_chunk_size, 0)
+        self.assertEqual(state.tx_chunk_delay, 0.005)
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
     @patch("fpb_cli.serial.Serial")
@@ -111,6 +113,13 @@ class TestFPBCLI(unittest.TestCase):
         cli = FPBCLI(elf_path="/path/to/elf", compile_commands="/path/to/cc.json")
         self.assertEqual(cli._device_state.elf_path, "/path/to/elf")
         self.assertEqual(cli._device_state.compile_commands_path, "/path/to/cc.json")
+        cli.cleanup()
+
+    def test_init_with_tx_chunk_params(self):
+        """Test initialization with TX chunk parameters"""
+        cli = FPBCLI(tx_chunk_size=16, tx_chunk_delay=0.01)
+        self.assertEqual(cli._device_state.tx_chunk_size, 16)
+        self.assertEqual(cli._device_state.tx_chunk_delay, 0.01)
         cli.cleanup()
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")

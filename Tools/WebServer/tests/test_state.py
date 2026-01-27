@@ -35,6 +35,8 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.watch_dirs, [])
         self.assertEqual(state.patch_mode, "trampoline")
         self.assertEqual(state.chunk_size, 128)
+        self.assertEqual(state.tx_chunk_size, 0)
+        self.assertEqual(state.tx_chunk_delay, 0.005)
 
         # Auto settings
         self.assertFalse(state.auto_connect)
@@ -85,6 +87,8 @@ class TestDeviceState(unittest.TestCase):
             "watch_dirs": ["/src"],
             "patch_mode": "direct",
             "chunk_size": 256,
+            "tx_chunk_size": 16,
+            "tx_chunk_delay": 0.01,
             "auto_connect": True,
             "auto_compile": True,
         }
@@ -97,6 +101,8 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.toolchain_path, "/opt/toolchain/bin")
         self.assertEqual(state.patch_mode, "direct")
         self.assertEqual(state.chunk_size, 256)
+        self.assertEqual(state.tx_chunk_size, 16)
+        self.assertEqual(state.tx_chunk_delay, 0.01)
         self.assertTrue(state.auto_connect)
         self.assertTrue(state.auto_compile)
 

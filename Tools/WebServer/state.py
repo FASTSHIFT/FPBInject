@@ -30,6 +30,8 @@ PERSISTENT_KEYS = [
     "watch_dirs",
     "patch_mode",
     "chunk_size",
+    "tx_chunk_size",
+    "tx_chunk_delay",
     "auto_connect",
     "auto_compile",
     "enable_decompile",
@@ -53,6 +55,8 @@ class DeviceState:
         self.watch_dirs = []
         self.patch_mode = "trampoline"  # trampoline, debugmon, direct
         self.chunk_size = 128
+        self.tx_chunk_size = 0  # 0 = disabled, >0 = chunk size for TX
+        self.tx_chunk_delay = 0.005  # Delay between TX chunks (seconds)
 
         # Patch source settings
         self.patch_source_path = ""  # Current patch source file path

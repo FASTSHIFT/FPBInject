@@ -277,6 +277,8 @@ def register_routes(app):
                 "watch_dirs": device.watch_dirs,
                 "patch_mode": device.patch_mode,
                 "chunk_size": device.chunk_size,
+                "tx_chunk_size": device.tx_chunk_size,
+                "tx_chunk_delay": device.tx_chunk_delay,
                 "auto_compile": device.auto_compile,
                 "enable_decompile": device.enable_decompile,
             }
@@ -320,6 +322,12 @@ def register_routes(app):
 
         if "chunk_size" in data:
             device.chunk_size = data["chunk_size"]
+
+        if "tx_chunk_size" in data:
+            device.tx_chunk_size = data["tx_chunk_size"]
+
+        if "tx_chunk_delay" in data:
+            device.tx_chunk_delay = data["tx_chunk_delay"]
 
         if "auto_compile" in data:
             device.auto_compile = data["auto_compile"]

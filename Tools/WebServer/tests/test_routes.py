@@ -213,6 +213,8 @@ class TestRoutesFPB(TestRoutesBase):
             "baudrate": 9600,
             "patch_mode": "debugmon",
             "chunk_size": 128,
+            "tx_chunk_size": 16,
+            "tx_chunk_delay": 0.01,
         }
         response = self.client.post("/api/config", json=payload)
         data = json.loads(response.data)
@@ -222,6 +224,8 @@ class TestRoutesFPB(TestRoutesBase):
         self.assertEqual(state.device.baudrate, 9600)
         self.assertEqual(state.device.patch_mode, "debugmon")
         self.assertEqual(state.device.chunk_size, 128)
+        self.assertEqual(state.device.tx_chunk_size, 16)
+        self.assertEqual(state.device.tx_chunk_delay, 0.01)
 
     def test_patch_template(self):
         """Test getting patch template"""

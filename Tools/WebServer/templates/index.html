@@ -422,6 +422,44 @@
                 <span style="font-size: 10px; opacity: 0.6; margin-left: 4px">Bytes</span>
               </div>
               <div class="flex-row">
+                <label
+                  for="txChunkSize"
+                  style="font-size: 11px; width: 80px"
+                  title="TX chunk size for serial commands (bytes). 0 = disabled. Workaround for slow serial drivers that may drop data on large transfers. Enable if you experience command failures or data corruption."
+                  >TX Chunk</label
+                >
+                <input
+                  type="number"
+                  id="txChunkSize"
+                  class="vscode-input"
+                  value="0"
+                  min="0"
+                  max="256"
+                  step="8"
+                  style="width: 60px"
+                />
+                <span style="font-size: 10px; opacity: 0.6; margin-left: 4px">Bytes</span>
+              </div>
+              <div class="flex-row">
+                <label
+                  for="txChunkDelay"
+                  style="font-size: 11px; width: 80px"
+                  title="Delay between TX chunks (milliseconds). Workaround for slow serial drivers. Only used when TX Chunk > 0."
+                  >TX Delay</label
+                >
+                <input
+                  type="number"
+                  id="txChunkDelay"
+                  class="vscode-input"
+                  value="5"
+                  min="1"
+                  max="100"
+                  step="1"
+                  style="width: 60px"
+                />
+                <span style="font-size: 10px; opacity: 0.6; margin-left: 4px">ms</span>
+              </div>
+              <div class="flex-row">
                 <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
                 <label for="autoCompile" style="font-size: 11px">Auto Inject on Save</label>
               </div>
