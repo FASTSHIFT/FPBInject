@@ -219,26 +219,82 @@ class PatchGenerator:
         Examples:
             #include "lv_mem.h"          -> #include "/abs/path/to/lv_mem.h"
             #include "../misc/lv_log.h"  -> #include "/abs/path/to/misc/lv_log.h"
-            #include <stdio.h>           -> unchanged
+            #include <stdio.h>           -> unchanged (unless found in source tree)
+            #include <local_header.h>    -> #include "/abs/path/to/local_header.h" (if found)
         """
-        match = re.match(r'^(\s*#\s*include\s*)"([^"]+)"(.*)$', line)
-        if not match:
+        # Handle double-quoted includes
+        match = re.match(r'^(\s*#\s*include\s*)"([^"]+)"(.*)', line)
+        if match:
+            prefix = match.group(1)
+            include_path = match.group(2)
+            suffix = match.group(3)
+
+            # Skip if already absolute
+            if os.path.isabs(include_path):
+                return line
+
+            # Resolve relative path
+            abs_path = os.path.normpath(os.path.join(source_dir, include_path))
+
+            # Only convert if file exists
+            if os.path.exists(abs_path):
+                return f'{prefix}"{abs_path}"{suffix}'
+
             return line
 
-        prefix = match.group(1)
-        include_path = match.group(2)
-        suffix = match.group(3)
+        # Handle angle-bracket includes - try to find in source directory tree
+        match = re.match(r'^(\s*#\s*include\s*)<([^>]+)>(.*)', line)
+        if match:
+            prefix = match.group(1)
+            include_path = match.group(2)
+            suffix = match.group(3)
 
-        # Skip if already absolute
-        if os.path.isabs(include_path):
-            return line
+            # Skip standard library headers (heuristic: no path separator and common names)
+            std_headers = {
+                'stdio.h', 'stdlib.h', 'string.h', 'stdint.h', 'stdbool.h',
+                'stddef.h', 'stdarg.h', 'limits.h', 'math.h', 'time.h',
+                'assert.h', 'errno.h', 'signal.h', 'setjmp.h', 'ctype.h',
+                'locale.h', 'float.h', 'iso646.h', 'wchar.h', 'wctype.h',
+                'complex.h', 'fenv.h', 'inttypes.h', 'tgmath.h',
+            }
+            if include_path in std_headers:
+                return line
 
-        # Resolve relative path
-        abs_path = os.path.normpath(os.path.join(source_dir, include_path))
+            # Search for the header in source directory and parent directories
+            search_dir = source_dir
+            for _ in range(5):  # Search up to 5 levels up
+                if not search_dir or not os.path.isdir(search_dir):
+                    break
 
-        # Only convert if file exists
-        if os.path.exists(abs_path):
-            return f'{prefix}"{abs_path}"{suffix}'
+                # Try direct path
+                abs_path = os.path.normpath(os.path.join(search_dir, include_path))
+                if os.path.exists(abs_path):
+                    # Convert to double-quoted include with absolute path
+                    return f'{prefix}"{abs_path}"{suffix}'
+
+                # Search recursively in this directory (limited depth)
+                for root, dirs, files in os.walk(search_dir):
+                    # Limit search depth
+                    depth = root[len(search_dir):].count(os.sep)
+                    if depth > 3:
+                        dirs[:] = []
+                        continue
+
+                    # Skip common non-source directories
+                    dirs[:] = [d for d in dirs if d not in [
+                        '.git', 'build', 'out', '__pycache__', 'node_modules',
+                        '.svn', '.hg', 'CMakeFiles'
+                    ]]
+
+                    # Check if the header exists here
+                    header_name = os.path.basename(include_path)
+                    if header_name in files:
+                        abs_path = os.path.join(root, header_name)
+                        # Verify it's the right file (path suffix matches)
+                        if include_path == header_name or abs_path.endswith(include_path):
+                            return f'{prefix}"{abs_path}"{suffix}'
+
+                search_dir = os.path.dirname(search_dir)
 
         return line
 
