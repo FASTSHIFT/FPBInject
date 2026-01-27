@@ -810,6 +810,40 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["filtered"], 1)
 
+    def test_get_symbols_search_by_address(self):
+        """Test searching symbols by address (0x prefix)"""
+        state.symbols = {
+            "main": 0x08000000,
+            "test_func": 0x08001000,
+            "helper": 0x08002000,
+        }
+        state.symbols_loaded = True
+
+        # Search by exact address with 0x prefix
+        response = self.client.get("/api/symbols/search?q=0x08001000")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["filtered"], 1)
+        self.assertEqual(data["symbols"][0]["name"], "test_func")
+
+    def test_get_symbols_search_by_address_partial(self):
+        """Test searching symbols by partial address"""
+        state.symbols = {
+            "main": 0x08000000,
+            "test_func": 0x08001000,
+            "helper": 0x08002000,
+        }
+        state.symbols_loaded = True
+
+        # Search by partial hex (without 0x prefix)
+        response = self.client.get("/api/symbols/search?q=08001")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["filtered"], 1)
+        self.assertEqual(data["symbols"][0]["name"], "test_func")
+
     def test_patch_source_get(self):
         """Test getting patch source"""
         state.device.patch_source_content = "// test code"

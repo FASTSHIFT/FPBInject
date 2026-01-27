@@ -1658,8 +1658,13 @@ function displayInjectionStats(data, targetFunc) {
    SYMBOL SEARCH
    =========================== */
 async function searchSymbols() {
-  const query = document.getElementById('symbolSearch').value;
+  const query = document.getElementById('symbolSearch').value.trim();
   const list = document.getElementById('symbolList');
+
+  // Check if it's an address search (starts with 0x or looks like hex)
+  const isAddrSearch =
+    query.toLowerCase().startsWith('0x') ||
+    (query.length >= 4 && /^[0-9a-fA-F]+$/.test(query));
 
   if (query.length < 2) {
     list.innerHTML =
@@ -1688,8 +1693,10 @@ async function searchSymbols() {
     } else if (data.error) {
       list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7; color: #f44336;">${data.error}</div>`;
     } else {
-      list.innerHTML =
-        '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">No symbols found</div>';
+      const hint = isAddrSearch
+        ? 'No symbols found at this address'
+        : 'No symbols found';
+      list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7;">${hint}</div>`;
     }
   } catch (e) {
     list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7; color: #f44336;">Error: ${e.message}</div>`;

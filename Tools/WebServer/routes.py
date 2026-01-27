@@ -677,7 +677,7 @@ def register_routes(app):
 
     @app.route("/api/symbols/search", methods=["GET"])
     def api_search_symbols():
-        """Search symbols from ELF file."""
+        """Search symbols from ELF file. Supports search by name or address (0x prefix)."""
         # Load symbols if not loaded
         if not state.symbols_loaded:
             device = state.device
@@ -705,12 +705,39 @@ def register_routes(app):
                 )
 
         # Filter symbols if search query provided
-        query = request.args.get("q", "").lower()
+        query = request.args.get("q", "").strip()
         limit = int(request.args.get("limit", 100))
 
         symbols = state.symbols
+
         if query:
-            symbols = {k: v for k, v in symbols.items() if query in k.lower()}
+            # Check if query is an address (starts with 0x or is hex digits)
+            is_addr_search = query.lower().startswith("0x") or (
+                len(query) >= 4 and all(c in "0123456789abcdefABCDEF" for c in query)
+            )
+
+            if is_addr_search:
+                # Search by address
+                try:
+                    # Parse the address
+                    addr_str = query.lower()
+                    if addr_str.startswith("0x"):
+                        addr_str = addr_str[2:]
+
+                    # Find symbols matching the address (partial match on hex string)
+                    symbols = {
+                        k: v for k, v in symbols.items() if addr_str in f"{v:08x}"
+                    }
+                except ValueError:
+                    # Invalid hex, fall back to name search
+                    query_lower = query.lower()
+                    symbols = {
+                        k: v for k, v in symbols.items() if query_lower in k.lower()
+                    }
+            else:
+                # Search by name (case-insensitive)
+                query_lower = query.lower()
+                symbols = {k: v for k, v in symbols.items() if query_lower in k.lower()}
 
         # Convert to list and limit
         symbol_list = [
