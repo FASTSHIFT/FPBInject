@@ -761,6 +761,7 @@ body.resizing-panel .sash {
   padding: 0 10px;
   font-size: 11px;
   border-top: 1px solid var(--vscode-panel-border);
+  z-index: 10;
 }
 
 .progress-fill {
