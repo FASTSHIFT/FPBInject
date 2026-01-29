@@ -1214,5 +1214,638 @@ class TestBuildTimeVerification(TestRoutesBase):
         self.assertIsNone(data.get("elf_build_time"))
 
 
+class TestFilesAPI(TestRoutesBase):
+    """Files API tests"""
+
+    def test_browse_home_directory(self):
+        """Test browsing home directory"""
+        response = self.client.get("/api/browse?path=~")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["type"], "directory")
+        self.assertIn("items", data)
+
+    def test_browse_nonexistent_path(self):
+        """Test browsing non-existent path"""
+        response = self.client.get("/api/browse?path=/nonexistent/path/12345")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+    def test_browse_file_path(self):
+        """Test browsing a file path returns file info"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            temp_path = f.name
+
+        try:
+            response = self.client.get(f"/api/browse?path={temp_path}")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["type"], "file")
+            self.assertEqual(data["path"], temp_path)
+        finally:
+            os.unlink(temp_path)
+
+    def test_browse_with_filter(self):
+        """Test browsing with file extension filter"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create test files
+            open(os.path.join(tmpdir, "test.c"), "w").close()
+            open(os.path.join(tmpdir, "test.h"), "w").close()
+            open(os.path.join(tmpdir, "test.txt"), "w").close()
+
+            response = self.client.get(f"/api/browse?path={tmpdir}&filter=.c,.h")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            # Should only include .c and .h files
+            file_names = [item["name"] for item in data["items"]]
+            self.assertIn("test.c", file_names)
+            self.assertIn("test.h", file_names)
+            self.assertNotIn("test.txt", file_names)
+
+    def test_browse_hidden_files_excluded(self):
+        """Test that hidden files are excluded"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            open(os.path.join(tmpdir, ".hidden"), "w").close()
+            open(os.path.join(tmpdir, "visible"), "w").close()
+
+            response = self.client.get(f"/api/browse?path={tmpdir}")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            file_names = [item["name"] for item in data["items"]]
+            self.assertNotIn(".hidden", file_names)
+            self.assertIn("visible", file_names)
+
+    def test_file_write_no_path(self):
+        """Test file write without path"""
+        response = self.client.post(
+            "/api/file/write",
+            data=json.dumps({"content": "test"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"].lower())
+
+    def test_file_write_success(self):
+        """Test successful file write"""
+        # Use home directory which is always allowed
+        home = os.path.expanduser("~")
+        file_path = os.path.join(home, ".fpb_test_write.txt")
+
+        try:
+            response = self.client.post(
+                "/api/file/write",
+                data=json.dumps({"path": file_path, "content": "test content"}),
+                content_type="application/json",
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertTrue(os.path.exists(file_path))
+            with open(file_path) as f:
+                self.assertEqual(f.read(), "test content")
+        finally:
+            if os.path.exists(file_path):
+                os.unlink(file_path)
+
+    def test_file_write_creates_directory(self):
+        """Test file write creates parent directory"""
+        # Use home directory which is always allowed
+        home = os.path.expanduser("~")
+        subdir = os.path.join(home, ".fpb_test_subdir")
+        file_path = os.path.join(subdir, "test.txt")
+
+        try:
+            response = self.client.post(
+                "/api/file/write",
+                data=json.dumps({"path": file_path, "content": "test"}),
+                content_type="application/json",
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertTrue(os.path.exists(file_path))
+        finally:
+            if os.path.exists(file_path):
+                os.unlink(file_path)
+            if os.path.exists(subdir):
+                os.rmdir(subdir)
+
+    def test_file_write_with_tilde(self):
+        """Test file write with ~ path expansion"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file in home directory (use temp for safety)
+            home = os.path.expanduser("~")
+            file_path = os.path.join(home, ".fpb_test_temp.txt")
+
+            try:
+                response = self.client.post(
+                    "/api/file/write",
+                    data=json.dumps({"path": file_path, "content": "test"}),
+                    content_type="application/json",
+                )
+                data = json.loads(response.data)
+
+                self.assertTrue(data["success"])
+            finally:
+                if os.path.exists(file_path):
+                    os.unlink(file_path)
+
+
+class TestLogsAPI(TestRoutesBase):
+    """Logs API tests"""
+
+    def test_get_log_empty(self):
+        """Test getting empty log"""
+        response = self.client.get("/api/log")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["logs"], [])
+
+    def test_get_log_with_entries(self):
+        """Test getting log with entries"""
+        state.device.serial_log = [
+            {"id": 0, "data": "test1"},
+            {"id": 1, "data": "test2"},
+        ]
+        state.device.log_next_id = 2
+
+        response = self.client.get("/api/log")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["logs"]), 2)
+        self.assertEqual(data["next_index"], 2)
+
+    def test_get_log_since(self):
+        """Test getting log since specific id"""
+        state.device.serial_log = [
+            {"id": 0, "data": "test1"},
+            {"id": 1, "data": "test2"},
+            {"id": 2, "data": "test3"},
+        ]
+        state.device.log_next_id = 3
+
+        response = self.client.get("/api/log?since=1")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["logs"]), 2)  # id 1 and 2
+
+    def test_clear_log(self):
+        """Test clearing log"""
+        state.device.serial_log = [{"id": 0, "data": "test"}]
+        state.device.log_next_id = 1
+
+        response = self.client.post("/api/log/clear")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(state.device.serial_log, [])
+        self.assertEqual(state.device.log_next_id, 0)
+
+    def test_get_raw_log(self):
+        """Test getting raw serial log"""
+        state.device.raw_serial_log = [
+            {"id": 0, "dir": "TX", "data": "test"},
+        ]
+        state.device.raw_log_next_id = 1
+
+        response = self.client.get("/api/raw_log")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["logs"]), 1)
+
+    def test_clear_raw_log(self):
+        """Test clearing raw log"""
+        state.device.raw_serial_log = [{"id": 0, "data": "test"}]
+        state.device.raw_log_next_id = 1
+
+        response = self.client.post("/api/raw_log/clear")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(state.device.raw_serial_log, [])
+
+    def test_get_logs_combined(self):
+        """Test getting combined logs"""
+        state.device.tool_log = [{"id": 0, "message": "tool msg"}]
+        state.device.tool_log_next_id = 1
+        state.device.raw_serial_log = [{"id": 0, "data": "raw data"}]
+        state.device.raw_log_next_id = 1
+
+        response = self.client.get("/api/logs")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertIn("tool_logs", data)
+        self.assertIn("raw_data", data)
+
+    def test_serial_send_no_data(self):
+        """Test serial send without data"""
+        response = self.client.post(
+            "/api/serial/send",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("No data", data["error"])
+
+    def test_serial_send_no_port(self):
+        """Test serial send without port open"""
+        state.device.ser = None
+
+        response = self.client.post(
+            "/api/serial/send",
+            data=json.dumps({"data": "test"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not opened", data["error"])
+
+    def test_serial_send_no_worker(self):
+        """Test serial send without worker running"""
+        state.device.ser = Mock()
+        state.device.worker = None
+
+        response = self.client.post(
+            "/api/serial/send",
+            data=json.dumps({"data": "test"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("Worker not running", data["error"])
+
+    def test_serial_send_success(self):
+        """Test successful serial send"""
+        state.device.ser = Mock()
+        mock_worker = Mock()
+        mock_worker.is_running.return_value = True
+        state.device.worker = mock_worker
+
+        response = self.client.post(
+            "/api/serial/send",
+            data=json.dumps({"data": "test"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        mock_worker.enqueue.assert_called_once_with("write", "test")
+
+    def test_command_no_command(self):
+        """Test command without command"""
+        response = self.client.post(
+            "/api/command",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("Missing command", data["error"])
+
+    def test_command_no_port(self):
+        """Test command without port open"""
+        state.device.ser = None
+
+        response = self.client.post(
+            "/api/command",
+            data=json.dumps({"command": "test"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not opened", data["error"])
+
+    def test_command_success(self):
+        """Test successful command"""
+        state.device.ser = Mock()
+        mock_worker = Mock()
+        mock_worker.is_running.return_value = True
+        state.device.worker = mock_worker
+
+        response = self.client.post(
+            "/api/command",
+            data=json.dumps({"command": "test"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        mock_worker.enqueue.assert_called_once_with("write", "test\n")
+
+    def test_command_adds_newline(self):
+        """Test command adds newline if missing"""
+        state.device.ser = Mock()
+        mock_worker = Mock()
+        mock_worker.is_running.return_value = True
+        state.device.worker = mock_worker
+
+        response = self.client.post(
+            "/api/command",
+            data=json.dumps({"command": "test"}),
+            content_type="application/json",
+        )
+
+        # Should add newline
+        mock_worker.enqueue.assert_called_with("write", "test\n")
+
+    def test_command_no_double_newline(self):
+        """Test command doesn't add double newline"""
+        state.device.ser = Mock()
+        mock_worker = Mock()
+        mock_worker.is_running.return_value = True
+        state.device.worker = mock_worker
+
+        response = self.client.post(
+            "/api/command",
+            data=json.dumps({"command": "test\n"}),
+            content_type="application/json",
+        )
+
+        # Should not add another newline
+        mock_worker.enqueue.assert_called_with("write", "test\n")
+
+
+class TestSymbolsAPI(TestRoutesBase):
+    """Symbols API tests"""
+
+    def setUp(self):
+        super().setUp()
+        state.symbols = {}
+        state.symbols_loaded = False
+
+    @patch("routes.get_fpb_inject")
+    def test_get_symbols_empty(self, mock_get_fpb):
+        """Test getting symbols when none loaded"""
+        mock_fpb = Mock()
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+
+        state.device.elf_path = ""
+
+        response = self.client.get("/api/symbols")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["symbols"], [])
+
+    @patch("routes.get_fpb_inject")
+    def test_get_symbols_with_data(self, mock_get_fpb):
+        """Test getting symbols with data"""
+        mock_fpb = Mock()
+        mock_fpb.get_symbols.return_value = {
+            "func_a": 0x08001000,
+            "func_b": 0x08002000,
+        }
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/symbols")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(len(data["symbols"]), 2)
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_get_symbols_with_query(self, mock_get_fpb):
+        """Test getting symbols with search query"""
+        state.symbols = {
+            "gpio_init": 0x08001000,
+            "gpio_read": 0x08002000,
+            "uart_init": 0x08003000,
+        }
+        state.symbols_loaded = True
+
+        response = self.client.get("/api/symbols?q=gpio")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["filtered"], 2)
+
+    @patch("routes.get_fpb_inject")
+    def test_search_symbols_by_name(self, mock_get_fpb):
+        """Test searching symbols by name"""
+        state.symbols = {
+            "gpio_init": 0x08001000,
+            "gpio_read": 0x08002000,
+            "uart_init": 0x08003000,
+        }
+        state.symbols_loaded = True
+
+        response = self.client.get("/api/symbols/search?q=gpio")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["filtered"], 2)
+
+    @patch("routes.get_fpb_inject")
+    def test_search_symbols_by_address(self, mock_get_fpb):
+        """Test searching symbols by address"""
+        state.symbols = {
+            "func_a": 0x08001000,
+            "func_b": 0x08002000,
+        }
+        state.symbols_loaded = True
+
+        response = self.client.get("/api/symbols/search?q=0x08001")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["filtered"], 1)
+
+    @patch("routes.get_fpb_inject")
+    def test_search_symbols_no_elf(self, mock_get_fpb):
+        """Test searching symbols without ELF file"""
+        state.symbols_loaded = False
+        state.device.elf_path = ""
+
+        response = self.client.get("/api/symbols/search?q=test")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+    @patch("routes.get_fpb_inject")
+    def test_reload_symbols_success(self, mock_get_fpb):
+        """Test reloading symbols"""
+        mock_fpb = Mock()
+        mock_fpb.get_symbols.return_value = {"func": 0x08001000}
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.post("/api/symbols/reload")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["count"], 1)
+        finally:
+            os.unlink(state.device.elf_path)
+
+    def test_reload_symbols_no_elf(self):
+        """Test reloading symbols without ELF file"""
+        state.device.elf_path = ""
+
+        response = self.client.post("/api/symbols/reload")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+    def test_get_signature_no_func(self):
+        """Test getting signature without function name"""
+        response = self.client.get("/api/symbols/signature")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"].lower())
+
+    @patch("core.patch_generator.find_function_signature")
+    def test_get_signature_found(self, mock_find):
+        """Test getting signature when found"""
+        mock_find.return_value = "void test_func(int a, int b)"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a source file
+            src_file = os.path.join(tmpdir, "test.c")
+            with open(src_file, "w") as f:
+                f.write("void test_func(int a, int b) {}")
+
+            state.device.watch_dirs = [tmpdir]
+
+            response = self.client.get("/api/symbols/signature?func=test_func")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertIn("signature", data)
+
+    def test_get_signature_not_found(self):
+        """Test getting signature when not found"""
+        state.device.watch_dirs = []
+
+        response = self.client.get("/api/symbols/signature?func=nonexistent_func")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+    def test_disasm_no_func(self):
+        """Test disassembly without function name"""
+        response = self.client.get("/api/symbols/disasm")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"].lower())
+
+    def test_disasm_no_elf(self):
+        """Test disassembly without ELF file"""
+        state.device.elf_path = ""
+
+        response = self.client.get("/api/symbols/disasm?func=test")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+    @patch("routes.get_fpb_inject")
+    def test_disasm_success(self, mock_get_fpb):
+        """Test successful disassembly"""
+        mock_fpb = Mock()
+        mock_fpb.disassemble_function.return_value = (True, "push {r4, lr}")
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/symbols/disasm?func=test")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertIn("disasm", data)
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_disasm_failure(self, mock_get_fpb):
+        """Test disassembly failure"""
+        mock_fpb = Mock()
+        mock_fpb.disassemble_function.return_value = (False, "Function not found")
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/symbols/disasm?func=test")
+            data = json.loads(response.data)
+
+            self.assertFalse(data["success"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    def test_decompile_no_func(self):
+        """Test decompilation without function name"""
+        response = self.client.get("/api/symbols/decompile")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"].lower())
+
+    def test_decompile_no_elf(self):
+        """Test decompilation without ELF file"""
+        state.device.elf_path = ""
+
+        response = self.client.get("/api/symbols/decompile?func=test")
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+    @patch("routes.get_fpb_inject")
+    def test_decompile_success(self, mock_get_fpb):
+        """Test successful decompilation"""
+        mock_fpb = Mock()
+        mock_fpb.decompile_function.return_value = (True, "int test() { return 0; }")
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/symbols/decompile?func=test")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertIn("decompiled", data)
+        finally:
+            os.unlink(state.device.elf_path)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
