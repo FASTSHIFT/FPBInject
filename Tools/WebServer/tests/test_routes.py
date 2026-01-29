@@ -1847,5 +1847,523 @@ class TestSymbolsAPI(TestRoutesBase):
             os.unlink(state.device.elf_path)
 
 
+class TestPatchAPI(TestRoutesBase):
+    """Patch API tests"""
+
+    def test_get_patch_source_empty(self):
+        """Test getting patch source when empty"""
+        state.device.patch_source_content = ""
+        state.device.patch_source_path = ""
+
+        response = self.client.get("/api/patch/source")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertIn("content", data)
+
+    def test_get_patch_source_with_content(self):
+        """Test getting patch source with content"""
+        state.device.patch_source_content = "void inject_test(void) {}"
+        state.device.patch_source_path = ""
+
+        response = self.client.get("/api/patch/source")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["content"], "void inject_test(void) {}")
+
+    def test_get_patch_source_from_file(self):
+        """Test getting patch source from file"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("void inject_from_file(void) {}")
+            temp_path = f.name
+
+        try:
+            state.device.patch_source_path = temp_path
+
+            response = self.client.get("/api/patch/source")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertIn("inject_from_file", data["content"])
+        finally:
+            os.unlink(temp_path)
+
+    def test_set_patch_source(self):
+        """Test setting patch source"""
+        response = self.client.post(
+            "/api/patch/source",
+            data=json.dumps({"content": "void inject_new(void) {}"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(state.device.patch_source_content, "void inject_new(void) {}")
+
+    def test_set_patch_source_no_content(self):
+        """Test setting patch source without content"""
+        response = self.client.post(
+            "/api/patch/source",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not provided", data["error"].lower())
+
+    def test_set_patch_source_save_to_file(self):
+        """Test setting patch source and saving to file"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            temp_path = f.name
+
+        try:
+            state.device.patch_source_path = temp_path
+
+            response = self.client.post(
+                "/api/patch/source",
+                data=json.dumps(
+                    {
+                        "content": "void inject_saved(void) {}",
+                        "save_to_file": True,
+                    }
+                ),
+                content_type="application/json",
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            with open(temp_path) as f:
+                self.assertIn("inject_saved", f.read())
+        finally:
+            os.unlink(temp_path)
+
+    def test_get_patch_template(self):
+        """Test getting patch template"""
+        response = self.client.get("/api/patch/template")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertIn("content", data)
+
+    def test_auto_generate_patch_no_path(self):
+        """Test auto generate patch without file path"""
+        response = self.client.post(
+            "/api/patch/auto_generate",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not provided", data["error"].lower())
+
+    def test_auto_generate_patch_file_not_found(self):
+        """Test auto generate patch with non-existent file"""
+        response = self.client.post(
+            "/api/patch/auto_generate",
+            data=json.dumps({"file_path": "/nonexistent/file.c"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+    @patch("core.patch_generator.PatchGenerator")
+    def test_auto_generate_patch_no_markers(self, mock_gen_class):
+        """Test auto generate patch with no markers"""
+        mock_gen = Mock()
+        mock_gen.generate_patch.return_value = ("", [])
+        mock_gen_class.return_value = mock_gen
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("void test(void) {}")
+            temp_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/auto_generate",
+                data=json.dumps({"file_path": temp_path}),
+                content_type="application/json",
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["marked_functions"], [])
+        finally:
+            os.unlink(temp_path)
+
+    @patch("core.patch_generator.PatchGenerator")
+    def test_auto_generate_patch_success(self, mock_gen_class):
+        """Test successful auto generate patch"""
+        mock_gen = Mock()
+        mock_gen.generate_patch.return_value = (
+            "void inject_test(void) {}",
+            ["test"],
+        )
+        mock_gen_class.return_value = mock_gen
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("/* FPB_INJECT */ void test(void) {}")
+            temp_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/auto_generate",
+                data=json.dumps({"file_path": temp_path}),
+                content_type="application/json",
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["marked_functions"], ["test"])
+            self.assertIn("inject_test", data["injected_functions"])
+        finally:
+            os.unlink(temp_path)
+
+    def test_detect_markers_no_path(self):
+        """Test detect markers without file path"""
+        response = self.client.post(
+            "/api/patch/detect_markers",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+
+    def test_detect_markers_file_not_found(self):
+        """Test detect markers with non-existent file"""
+        response = self.client.post(
+            "/api/patch/detect_markers",
+            data=json.dumps({"file_path": "/nonexistent/file.c"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+
+    @patch("core.patch_generator.PatchGenerator")
+    def test_detect_markers_success(self, mock_gen_class):
+        """Test successful detect markers"""
+        mock_gen = Mock()
+        mock_gen.find_marked_functions.return_value = ["func1", "func2"]
+        mock_gen_class.return_value = mock_gen
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("/* FPB_INJECT */ void func1(void) {}")
+            temp_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/detect_markers",
+                data=json.dumps({"file_path": temp_path}),
+                content_type="application/json",
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["count"], 2)
+        finally:
+            os.unlink(temp_path)
+
+    def test_patch_preview_no_content(self):
+        """Test patch preview without content"""
+        response = self.client.post(
+            "/api/patch/preview",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not provided", data["error"].lower())
+
+    def test_patch_preview_no_elf(self):
+        """Test patch preview without ELF file"""
+        state.device.elf_path = ""
+
+        response = self.client.post(
+            "/api/patch/preview",
+            data=json.dumps({"source_content": "void inject_test(void) {}"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"].lower())
+
+
+class TestWatchAPI(TestRoutesBase):
+    """Watch API tests"""
+
+    def test_watch_status(self):
+        """Test getting watch status"""
+        state.device.watch_dirs = ["/tmp/test"]
+        state.device.auto_compile = True
+
+        response = self.client.get("/api/watch/status")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertIn("watching", data)
+        self.assertIn("watch_dirs", data)
+        self.assertTrue(data["auto_compile"])
+
+    @patch("services.file_watcher_manager.start_file_watcher")
+    def test_watch_start_success(self, mock_start):
+        """Test starting file watcher"""
+        mock_start.return_value = True
+
+        response = self.client.post(
+            "/api/watch/start",
+            data=json.dumps({"dirs": ["/tmp/test"]}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        mock_start.assert_called_once()
+
+    @patch("services.file_watcher_manager.start_file_watcher")
+    def test_watch_start_no_dirs(self, mock_start):
+        """Test starting file watcher without directories"""
+        state.device.watch_dirs = []
+
+        response = self.client.post(
+            "/api/watch/start",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("No directories", data["error"])
+
+    @patch("services.file_watcher_manager.stop_file_watcher")
+    def test_watch_stop(self, mock_stop):
+        """Test stopping file watcher"""
+        response = self.client.post("/api/watch/stop")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        mock_stop.assert_called_once()
+
+    def test_watch_clear(self):
+        """Test clearing pending changes"""
+        state.add_pending_change("/tmp/test.c", "modified")
+
+        response = self.client.post("/api/watch/clear")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(len(state.get_pending_changes()), 0)
+
+    def test_auto_inject_status(self):
+        """Test getting auto inject status"""
+        state.device.auto_inject_status = "compiling"
+        state.device.auto_inject_message = "Compiling..."
+        state.device.auto_inject_progress = 50
+
+        response = self.client.get("/api/watch/auto_inject_status")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["status"], "compiling")
+        self.assertEqual(data["progress"], 50)
+
+    def test_auto_inject_reset(self):
+        """Test resetting auto inject status"""
+        state.device.auto_inject_status = "success"
+        state.device.auto_inject_progress = 100
+
+        response = self.client.post("/api/watch/auto_inject_reset")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(state.device.auto_inject_status, "idle")
+        self.assertEqual(state.device.auto_inject_progress, 0)
+
+
+class TestPatchRoutesExtended(TestRoutesBase):
+    """Extended patch routes tests"""
+
+    def test_get_patch_source_from_file(self):
+        """Test getting patch source from file"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("// patch content from file")
+            state.device.patch_source_path = f.name
+
+        try:
+            response = self.client.get("/api/patch/source")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertIn("patch content from file", data["content"])
+        finally:
+            os.unlink(state.device.patch_source_path)
+            state.device.patch_source_path = ""
+
+    def test_set_patch_source_save_to_file(self):
+        """Test saving patch source to file"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            state.device.patch_source_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/source",
+                json={"content": "// new content", "save_to_file": True},
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+
+            with open(state.device.patch_source_path, "r") as f:
+                saved = f.read()
+            self.assertEqual(saved, "// new content")
+        finally:
+            os.unlink(state.device.patch_source_path)
+            state.device.patch_source_path = ""
+
+    @patch("core.patch_generator.PatchGenerator")
+    def test_auto_generate_patch_success(self, mock_gen_class):
+        """Test auto generating patch successfully"""
+        mock_gen = Mock()
+        mock_gen.generate_patch.return_value = (
+            "void inject_test() {}",
+            ["test"],
+        )
+        mock_gen_class.return_value = mock_gen
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("/* FPB_INJECT */ void test() {}")
+            file_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/auto_generate", json={"file_path": file_path}
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["marked_functions"], ["test"])
+            self.assertEqual(data["injected_functions"], ["inject_test"])
+        finally:
+            os.unlink(file_path)
+
+    @patch("core.patch_generator.PatchGenerator")
+    def test_auto_generate_patch_no_markers(self, mock_gen_class):
+        """Test auto generating patch with no markers"""
+        mock_gen = Mock()
+        mock_gen.generate_patch.return_value = ("", [])
+        mock_gen_class.return_value = mock_gen
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("void test() {}")
+            file_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/auto_generate", json={"file_path": file_path}
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["marked_functions"], [])
+        finally:
+            os.unlink(file_path)
+
+    @patch("core.patch_generator.PatchGenerator")
+    def test_detect_markers_success(self, mock_gen_class):
+        """Test detecting markers successfully"""
+        mock_gen = Mock()
+        mock_gen.find_marked_functions.return_value = ["func1", "func2"]
+        mock_gen_class.return_value = mock_gen
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write(
+                "/* FPB_INJECT */ void func1() {}\n/* FPB_INJECT */ void func2() {}"
+            )
+            file_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/detect_markers", json={"file_path": file_path}
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["count"], 2)
+        finally:
+            os.unlink(file_path)
+
+    def test_detect_markers_no_file(self):
+        """Test detecting markers without file path"""
+        response = self.client.post("/api/patch/detect_markers", json={})
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not provided", data["error"])
+
+    def test_detect_markers_file_not_found(self):
+        """Test detecting markers with nonexistent file"""
+        response = self.client.post(
+            "/api/patch/detect_markers", json={"file_path": "/nonexistent/file.c"}
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"])
+
+    @patch("routes.get_fpb_inject")
+    def test_patch_preview_success(self, mock_get_fpb):
+        """Test patch preview success"""
+        mock_fpb = Mock()
+        mock_fpb.compile_inject.return_value = (
+            b"\x00\x01\x02\x03",
+            {"inject_test": 0x20000000},
+            "",
+        )
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/patch/preview",
+                json={"source_content": "void inject_test() {}"},
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertEqual(data["size"], 4)
+            self.assertIn("preview", data)
+        finally:
+            os.unlink(state.device.elf_path)
+
+    def test_patch_preview_no_source(self):
+        """Test patch preview without source"""
+        response = self.client.post("/api/patch/preview", json={})
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not provided", data["error"])
+
+    def test_patch_preview_no_elf(self):
+        """Test patch preview without ELF"""
+        state.device.elf_path = ""
+
+        response = self.client.post(
+            "/api/patch/preview", json={"source_content": "void test() {}"}
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("ELF", data["error"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

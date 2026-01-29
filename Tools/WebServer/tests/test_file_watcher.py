@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-File Watcher module test
+File watcher module tests
 """
 
 import os
@@ -9,356 +9,444 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.file_watcher import (
-    FileChangeHandler,
-    FileWatcher,
-    PollingWatcher,
-    start_watching,
-    stop_watching,
-    WATCHDOG_AVAILABLE,
-)
+from services import file_watcher
 
 
 class TestFileChangeHandler(unittest.TestCase):
-    """FileChangeHandler test"""
-
-    def setUp(self):
-        self.callback = Mock()
-        self.handler = FileChangeHandler(
-            callback=self.callback, extensions=[".c", ".h"]
-        )
-
-    def test_init(self):
-        """Test initialization"""
-        self.assertEqual(self.handler.callback, self.callback)
-        self.assertEqual(self.handler.extensions, [".c", ".h"])
+    """FileChangeHandler tests"""
 
     def test_init_default_extensions(self):
-        """Test default extensions"""
-        handler = FileChangeHandler(callback=self.callback)
-        self.assertIn(".c", handler.extensions)
-        self.assertIn(".h", handler.extensions)
+        """Test initialization with default extensions"""
+        callback = Mock()
+        handler = file_watcher.FileChangeHandler(callback)
 
-    def test_should_process_matching_file(self):
-        """Test matching file should be processed"""
-        result = self.handler.should_process("/path/to/file.c")
-        self.assertTrue(result)
+        self.assertEqual(handler.callback, callback)
+        self.assertEqual(handler.extensions, [".c", ".cpp", ".h", ".hpp"])
 
-    def test_should_process_header_file(self):
-        """Test header file should be processed"""
-        result = self.handler.should_process("/path/to/header.h")
-        self.assertTrue(result)
+    def test_init_custom_extensions(self):
+        """Test initialization with custom extensions"""
+        callback = Mock()
+        handler = file_watcher.FileChangeHandler(callback, [".py", ".txt"])
 
-    def test_should_not_process_non_matching(self):
-        """Test non-matching file should not be processed"""
-        result = self.handler.should_process("/path/to/file.txt")
-        self.assertFalse(result)
+        self.assertEqual(handler.extensions, [".py", ".txt"])
 
-    def test_should_process_all_when_no_extensions(self):
-        """Test process all files when no extensions limit"""
-        handler = FileChangeHandler(callback=self.callback, extensions=None)
-        # When extensions is None, default will use ['.c', '.cpp', '.h', '.hpp']
-        result = handler.should_process("/path/to/file.c")
-        self.assertTrue(result)
+    def test_should_process_matching_extension(self):
+        """Test should_process with matching extension"""
+        handler = file_watcher.FileChangeHandler(Mock())
+
+        self.assertTrue(handler.should_process("/path/to/file.c"))
+        self.assertTrue(handler.should_process("/path/to/file.cpp"))
+        self.assertTrue(handler.should_process("/path/to/file.h"))
+
+    def test_should_process_non_matching_extension(self):
+        """Test should_process with non-matching extension"""
+        handler = file_watcher.FileChangeHandler(Mock())
+
+        self.assertFalse(handler.should_process("/path/to/file.py"))
+        self.assertFalse(handler.should_process("/path/to/file.txt"))
+
+    def test_should_process_no_extensions(self):
+        """Test should_process with empty extensions list returns False"""
+        handler = file_watcher.FileChangeHandler(Mock(), extensions=[])
+
+        # Empty extensions list means no files match (not all files match)
+        self.assertFalse(handler.should_process("/path/to/any.file"))
 
 
 class TestPollingWatcher(unittest.TestCase):
-    """PollingWatcher test"""
-
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.callback = Mock()
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    """PollingWatcher tests"""
 
     def test_init(self):
         """Test initialization"""
-        watcher = PollingWatcher(
-            directories=[self.temp_dir],
-            callback=self.callback,
-            extensions=[".c"],
-            interval=0.5,
-        )
+        callback = Mock()
+        watcher = file_watcher.PollingWatcher(["/tmp"], callback)
 
-        self.assertEqual(watcher.directories, [self.temp_dir])
-        self.assertEqual(watcher.callback, self.callback)
-        self.assertEqual(watcher.extensions, [".c"])
-        self.assertEqual(watcher.interval, 0.5)
+        self.assertEqual(watcher.directories, ["/tmp"])
+        self.assertEqual(watcher.callback, callback)
+        self.assertFalse(watcher._running)
+
+    def test_should_process(self):
+        """Test _should_process method"""
+        watcher = file_watcher.PollingWatcher(["/tmp"], Mock())
+
+        self.assertTrue(watcher._should_process("/path/to/file.c"))
+        self.assertFalse(watcher._should_process("/path/to/file.py"))
+
+    def test_scan_directory(self):
+        """Test _scan_directory method"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create test files
+            c_file = os.path.join(tmpdir, "test.c")
+            py_file = os.path.join(tmpdir, "test.py")
+            with open(c_file, "w") as f:
+                f.write("int main() {}")
+            with open(py_file, "w") as f:
+                f.write("print('hello')")
+
+            watcher = file_watcher.PollingWatcher([tmpdir], Mock())
+            files = watcher._scan_directory(tmpdir)
+
+            self.assertIn(c_file, files)
+            self.assertNotIn(py_file, files)
+
+    def test_scan_nonexistent_directory(self):
+        """Test _scan_directory with nonexistent directory"""
+        watcher = file_watcher.PollingWatcher(["/nonexistent"], Mock())
+        files = watcher._scan_directory("/nonexistent")
+
+        self.assertEqual(files, {})
 
     def test_start_stop(self):
         """Test start and stop"""
-        watcher = PollingWatcher(
-            directories=[self.temp_dir], callback=self.callback, interval=0.1
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            callback = Mock()
+            watcher = file_watcher.PollingWatcher([tmpdir], callback, interval=0.1)
 
-        watcher.start()
-        self.assertTrue(watcher._running)
+            watcher.start()
+            self.assertTrue(watcher._running)
 
-        watcher.stop()
-        self.assertFalse(watcher._running)
+            time.sleep(0.2)
+
+            watcher.stop()
+            self.assertFalse(watcher._running)
+
+    def test_start_already_running(self):
+        """Test start when already running"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            watcher = file_watcher.PollingWatcher([tmpdir], Mock(), interval=0.1)
+
+            watcher.start()
+            watcher.start()  # Should not start another thread
+
+            self.assertTrue(watcher._running)
+            watcher.stop()
 
     def test_detect_new_file(self):
-        """Test detect new file"""
-        watcher = PollingWatcher(
-            directories=[self.temp_dir], callback=self.callback, interval=0.1
-        )
+        """Test detecting new file"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            callback = Mock()
+            watcher = file_watcher.PollingWatcher([tmpdir], callback, interval=0.1)
 
-        watcher.start()
-        time.sleep(0.2)
+            watcher.start()
+            time.sleep(0.15)
 
-        # Create new file
-        test_file = os.path.join(self.temp_dir, "test.c")
-        with open(test_file, "w") as f:
-            f.write("// test")
+            # Create new file
+            new_file = os.path.join(tmpdir, "new.c")
+            with open(new_file, "w") as f:
+                f.write("void test() {}")
 
-        time.sleep(0.3)
-        watcher.stop()
+            time.sleep(0.2)
+            watcher.stop()
 
-        # Should detect creation
-        self.callback.assert_called()
+            # Check callback was called for created file
+            calls = [c for c in callback.call_args_list if c[0][1] == "created"]
+            self.assertTrue(len(calls) > 0)
 
     def test_detect_modified_file(self):
-        """Test detect file modification"""
-        # Create file first
-        test_file = os.path.join(self.temp_dir, "existing.c")
-        with open(test_file, "w") as f:
-            f.write("// original")
+        """Test detecting modified file"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create initial file
+            test_file = os.path.join(tmpdir, "test.c")
+            with open(test_file, "w") as f:
+                f.write("void test() {}")
 
-        watcher = PollingWatcher(
-            directories=[self.temp_dir], callback=self.callback, interval=0.1
-        )
+            callback = Mock()
+            watcher = file_watcher.PollingWatcher([tmpdir], callback, interval=0.1)
 
-        watcher.start()
-        time.sleep(0.2)
+            watcher.start()
+            time.sleep(0.15)
 
-        # Modify file
-        with open(test_file, "w") as f:
-            f.write("// modified")
+            # Modify file
+            time.sleep(0.1)  # Ensure mtime changes
+            with open(test_file, "w") as f:
+                f.write("void test() { return; }")
 
-        time.sleep(0.3)
-        watcher.stop()
+            time.sleep(0.2)
+            watcher.stop()
 
-        # Should detect modification
-        self.callback.assert_called()
+            # Check callback was called for modified file
+            calls = [c for c in callback.call_args_list if c[0][1] == "modified"]
+            self.assertTrue(len(calls) > 0)
 
 
 class TestFileWatcher(unittest.TestCase):
-    """FileWatcher test"""
-
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.callback = Mock()
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    def test_init(self):
-        """Test initialization"""
-        watcher = FileWatcher(
-            directories=[self.temp_dir], callback=self.callback, extensions=[".c"]
-        )
-
-        self.assertEqual(watcher.directories, [self.temp_dir])
-        self.assertEqual(watcher.callback, self.callback)
+    """FileWatcher tests"""
 
     def test_init_filters_invalid_dirs(self):
-        """Test filter invalid directories during initialization"""
-        watcher = FileWatcher(
-            directories=[self.temp_dir, "/nonexistent/12345"], callback=self.callback
-        )
+        """Test initialization filters invalid directories"""
+        watcher = file_watcher.FileWatcher(["/tmp", "/nonexistent/path"], Mock())
 
-        self.assertEqual(watcher.directories, [self.temp_dir])
-
-    def test_start_stop(self):
-        """Test start and stop"""
-        watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
-
-        result = watcher.start()
-        self.assertTrue(result)
-        self.assertTrue(watcher.is_running())
-
-        watcher.stop()
-        time.sleep(0.1)
-        self.assertFalse(watcher.is_running())
+        self.assertIn("/tmp", watcher.directories)
+        self.assertNotIn("/nonexistent/path", watcher.directories)
 
     def test_start_no_directories(self):
-        """Test start when no directories"""
-        watcher = FileWatcher(directories=[], callback=self.callback)
+        """Test start with no valid directories"""
+        watcher = file_watcher.FileWatcher(["/nonexistent"], Mock())
 
         result = watcher.start()
+
         self.assertFalse(result)
 
-    def test_is_running(self):
-        """Test running status check"""
-        watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
+    def test_start_with_polling(self):
+        """Test start with polling fallback"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            callback = Mock()
+            watcher = file_watcher.FileWatcher([tmpdir], callback)
+
+            # Force polling by mocking WATCHDOG_AVAILABLE
+            with patch.object(file_watcher, "WATCHDOG_AVAILABLE", False):
+                result = watcher.start()
+
+            self.assertTrue(result)
+            self.assertIsNotNone(watcher._polling_watcher)
+
+            watcher.stop()
+
+    def test_stop_no_watcher(self):
+        """Test stop when no watcher is running"""
+        watcher = file_watcher.FileWatcher(["/tmp"], Mock())
+        watcher.stop()  # Should not raise
+
+    def test_is_running_not_started(self):
+        """Test is_running when not started"""
+        watcher = file_watcher.FileWatcher(["/tmp"], Mock())
 
         self.assertFalse(watcher.is_running())
 
-        watcher.start()
-        self.assertTrue(watcher.is_running())
+    def test_is_running_with_polling(self):
+        """Test is_running with polling watcher"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            watcher = file_watcher.FileWatcher([tmpdir], Mock())
 
-        watcher.stop()
+            with patch.object(file_watcher, "WATCHDOG_AVAILABLE", False):
+                watcher.start()
+
+            self.assertTrue(watcher.is_running())
+
+            watcher.stop()
+            self.assertFalse(watcher.is_running())
 
 
 class TestModuleFunctions(unittest.TestCase):
-    """Module functions test"""
-
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.callback = Mock()
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    """Module-level function tests"""
 
     def test_start_watching(self):
         """Test start_watching function"""
-        watcher = start_watching(directories=[self.temp_dir], callback=self.callback)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            callback = Mock()
 
-        self.assertIsNotNone(watcher)
-        self.assertIsInstance(watcher, FileWatcher)
+            with patch.object(file_watcher, "WATCHDOG_AVAILABLE", False):
+                watcher = file_watcher.start_watching([tmpdir], callback)
 
-        stop_watching(watcher)
+            self.assertIsNotNone(watcher)
+            self.assertTrue(watcher.is_running())
 
-    def test_start_watching_no_dirs(self):
-        """Test start_watching when no directories"""
-        watcher = start_watching(directories=[], callback=self.callback)
+            file_watcher.stop_watching(watcher)
+
+    def test_start_watching_failure(self):
+        """Test start_watching with invalid directories"""
+        watcher = file_watcher.start_watching(["/nonexistent"], Mock())
 
         self.assertIsNone(watcher)
 
     def test_stop_watching_none(self):
-        """Test stop None"""
-        stop_watching(None)  # Should not error
+        """Test stop_watching with None"""
+        file_watcher.stop_watching(None)  # Should not raise
 
 
-class TestPollingWatcherExtended(unittest.TestCase):
-    """PollingWatcher extended test"""
+@unittest.skipUnless(file_watcher.WATCHDOG_AVAILABLE, "watchdog not installed")
+class TestWatchdogHandler(unittest.TestCase):
+    """WatchdogHandler tests (only run if watchdog is available)"""
 
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.callback = Mock()
+    def test_init(self):
+        """Test initialization"""
+        callback = Mock()
+        handler = file_watcher.WatchdogHandler(callback)
 
-    def tearDown(self):
-        import shutil
+        self.assertEqual(handler.callback, callback)
 
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    def test_should_debounce(self):
+        """Test debounce logic"""
+        handler = file_watcher.WatchdogHandler(Mock())
 
-    def test_should_process(self):
-        """Test file extension check"""
-        watcher = PollingWatcher(
-            directories=[self.temp_dir],
-            callback=self.callback,
-            extensions=[".c", ".h"],
-        )
+        # First event should not be debounced
+        self.assertFalse(handler._should_debounce("/path/to/file.c"))
 
-        self.assertTrue(watcher._should_process("/path/to/file.c"))
-        self.assertTrue(watcher._should_process("/path/to/file.h"))
-        self.assertFalse(watcher._should_process("/path/to/file.txt"))
+        # Immediate second event should be debounced
+        self.assertTrue(handler._should_debounce("/path/to/file.c"))
 
-    def test_scan_directory_empty(self):
-        """Test scan empty directory"""
-        watcher = PollingWatcher(
-            directories=[self.temp_dir],
-            callback=self.callback,
-        )
+    def test_on_modified_directory(self):
+        """Test on_modified ignores directories"""
+        callback = Mock()
+        handler = file_watcher.WatchdogHandler(callback)
 
-        files = watcher._scan_directory(self.temp_dir)
-        self.assertEqual(files, {})
+        event = Mock()
+        event.is_directory = True
+        event.src_path = "/path/to/dir"
 
-    def test_scan_directory_with_files(self):
-        """Test scan directory with files"""
-        # Create test file
-        test_file = os.path.join(self.temp_dir, "test.c")
-        with open(test_file, "w") as f:
-            f.write("// test")
+        handler.on_modified(event)
 
-        watcher = PollingWatcher(
-            directories=[self.temp_dir],
-            callback=self.callback,
-        )
+        callback.assert_not_called()
 
-        files = watcher._scan_directory(self.temp_dir)
-        self.assertIn(test_file, files)
+    def test_on_modified_wrong_extension(self):
+        """Test on_modified ignores wrong extensions"""
+        callback = Mock()
+        handler = file_watcher.WatchdogHandler(callback)
 
-    def test_scan_directory_nonexistent(self):
-        """Test scan nonexistent directory"""
-        watcher = PollingWatcher(
-            directories=["/nonexistent/12345"],
-            callback=self.callback,
-        )
+        event = Mock()
+        event.is_directory = False
+        event.src_path = "/path/to/file.py"
 
-        files = watcher._scan_directory("/nonexistent/12345")
-        self.assertEqual(files, {})
+        handler.on_modified(event)
 
-    def test_detect_deleted_file(self):
-        """Test detect file deletion"""
-        # Create file
-        test_file = os.path.join(self.temp_dir, "to_delete.c")
-        with open(test_file, "w") as f:
-            f.write("// to delete")
+        callback.assert_not_called()
 
-        watcher = PollingWatcher(
-            directories=[self.temp_dir],
-            callback=self.callback,
-            interval=0.1,
-        )
+    def test_on_modified_success(self):
+        """Test on_modified calls callback"""
+        callback = Mock()
+        handler = file_watcher.WatchdogHandler(callback)
 
-        watcher.start()
-        time.sleep(0.2)
+        event = Mock()
+        event.is_directory = False
+        event.src_path = "/path/to/file.c"
 
-        # Delete file
-        os.remove(test_file)
+        handler.on_modified(event)
 
-        time.sleep(0.3)
+        callback.assert_called_once_with("/path/to/file.c", "modified")
+
+    def test_on_created(self):
+        """Test on_created calls callback"""
+        callback = Mock()
+        handler = file_watcher.WatchdogHandler(callback)
+
+        event = Mock()
+        event.is_directory = False
+        event.src_path = "/path/to/file.c"
+
+        handler.on_created(event)
+
+        callback.assert_called_once_with("/path/to/file.c", "created")
+
+    def test_on_deleted(self):
+        """Test on_deleted calls callback"""
+        callback = Mock()
+        handler = file_watcher.WatchdogHandler(callback)
+
+        event = Mock()
+        event.is_directory = False
+        event.src_path = "/path/to/file.c"
+
+        handler.on_deleted(event)
+
+        callback.assert_called_once_with("/path/to/file.c", "deleted")
+
+
+class TestFileWatcherWithWatchdog(unittest.TestCase):
+    """FileWatcher tests with watchdog mocked"""
+
+    @patch.object(file_watcher, "WATCHDOG_AVAILABLE", True)
+    @patch("services.file_watcher.Observer")
+    def test_start_with_watchdog(self, mock_observer_class):
+        """Test start with watchdog"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_observer = Mock()
+            mock_observer_class.return_value = mock_observer
+
+            # Need to mock WatchdogHandler too
+            with patch.object(file_watcher, "WatchdogHandler", Mock()):
+                watcher = file_watcher.FileWatcher([tmpdir], Mock())
+                watcher._observer = None  # Reset
+
+                # Manually set WATCHDOG_AVAILABLE for this test
+                original = file_watcher.WATCHDOG_AVAILABLE
+                file_watcher.WATCHDOG_AVAILABLE = True
+
+                try:
+                    result = watcher.start()
+                    # May fall back to polling if watchdog setup fails
+                    self.assertTrue(result)
+                finally:
+                    file_watcher.WATCHDOG_AVAILABLE = original
+                    watcher.stop()
+
+    def test_stop_with_observer(self):
+        """Test stop with observer"""
+        watcher = file_watcher.FileWatcher(["/tmp"], Mock())
+        mock_observer = Mock()
+        watcher._observer = mock_observer
+
         watcher.stop()
 
-        # Should detect deletion
-        calls = [c for c in self.callback.call_args_list if c[0][1] == "deleted"]
-        self.assertTrue(len(calls) > 0)
+        mock_observer.stop.assert_called_once()
+        mock_observer.join.assert_called_once()
 
+    def test_is_running_with_observer(self):
+        """Test is_running with observer"""
+        watcher = file_watcher.FileWatcher(["/tmp"], Mock())
+        mock_observer = Mock()
+        mock_observer.is_alive.return_value = True
+        watcher._observer = mock_observer
 
-class TestFileWatcherExtended(unittest.TestCase):
-    """FileWatcher extended test"""
+        self.assertTrue(watcher.is_running())
 
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.callback = Mock()
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    def test_double_start(self):
-        """Test double start"""
-        watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
-
-        result1 = watcher.start()
-        result2 = watcher.start()  # Second start
-
-        self.assertTrue(result1)
-        # Second start may return True (already running)
-
-        watcher.stop()
-
-    def test_double_stop(self):
-        """Test double stop"""
-        watcher = FileWatcher(directories=[self.temp_dir], callback=self.callback)
-
-        watcher.start()
-        watcher.stop()
-        watcher.stop()  # Second stop should not error
+        mock_observer.is_alive.return_value = False
+        self.assertFalse(watcher.is_running())
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()
+
+
+class TestPollingWatcherExtended(unittest.TestCase):
+    """Extended PollingWatcher tests"""
+
+    def test_detect_deleted_file(self):
+        """Test detecting deleted file"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create initial file
+            test_file = os.path.join(tmpdir, "test.c")
+            with open(test_file, "w") as f:
+                f.write("void test() {}")
+
+            callback = Mock()
+            watcher = file_watcher.PollingWatcher([tmpdir], callback, interval=0.1)
+
+            watcher.start()
+            time.sleep(0.15)
+
+            # Delete file
+            os.unlink(test_file)
+
+            time.sleep(0.2)
+            watcher.stop()
+
+            # Check callback was called for deleted file
+            calls = [c for c in callback.call_args_list if c[0][1] == "deleted"]
+            self.assertTrue(len(calls) > 0)
+
+
+class TestFileWatcherExtended(unittest.TestCase):
+    """Extended FileWatcher tests"""
+
+    @patch.object(file_watcher, "WATCHDOG_AVAILABLE", True)
+    def test_start_watchdog_exception(self):
+        """Test start with watchdog exception falls back to polling"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            callback = Mock()
+            watcher = file_watcher.FileWatcher([tmpdir], callback)
+
+            # Mock Observer to raise exception
+            with patch("services.file_watcher.Observer") as mock_observer:
+                mock_observer.side_effect = Exception("Watchdog error")
+
+                result = watcher.start()
+
+                # Should fall back to polling
+                self.assertTrue(result)
+                self.assertIsNotNone(watcher._polling_watcher)
+
+            watcher.stop()

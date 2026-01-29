@@ -137,7 +137,7 @@ jobs:
         working-directory: Tools/WebServer
         run: |
           echo "🧪 Running backend Python tests..."
-          python tests/run_tests.py --coverage --target 60
+          python tests/run_tests.py --coverage --target 80
           echo "✅ Backend tests passed!"
 
       - name: Run frontend tests

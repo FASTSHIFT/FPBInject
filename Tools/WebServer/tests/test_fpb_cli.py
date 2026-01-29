@@ -1491,5 +1491,308 @@ size_t inject_Print_print(void* thisptr, const char* str) {
         self.assertIn("print", mangled)
 
 
+class TestFpbCliEntryPoint(unittest.TestCase):
+    """Test the fpb_cli.py entry point wrapper"""
+
+    def test_import_fpb_cli_module(self):
+        """Test that fpb_cli.py can be imported"""
+        import fpb_cli
+
+        self.assertTrue(hasattr(fpb_cli, "main"))
+
+    def test_fpb_cli_main_is_cli_main(self):
+        """Test that fpb_cli.main is cli.fpb_cli.main"""
+        import fpb_cli
+        from cli.fpb_cli import main as cli_main
+
+        self.assertEqual(fpb_cli.main, cli_main)
+
+    def test_fpb_cli_can_be_called(self):
+        """Test that fpb_cli.main can be called"""
+        import fpb_cli
+
+        with patch("sys.argv", ["fpb_cli.py"]):
+            with patch("sys.exit"):
+                fpb_cli.main()
+
+
+class TestCorePackage(unittest.TestCase):
+    """Test the core package"""
+
+    def test_import_core_package(self):
+        """Test that core package can be imported"""
+        import core
+
+        self.assertIsNotNone(core)
+
+    def test_import_core_submodules(self):
+        """Test that core submodules can be imported"""
+        from core import elf_utils
+        from core import compiler
+        from core import state
+        from core import patch_generator
+
+        self.assertIsNotNone(elf_utils)
+        self.assertIsNotNone(compiler)
+        self.assertIsNotNone(state)
+        self.assertIsNotNone(patch_generator)
+
+
+class TestFPBCLIClass(unittest.TestCase):
+    """Test FPBCLI class methods"""
+
+    def setUp(self):
+        """Set up test environment"""
+        self.cli = FPBCLI(verbose=False)
+
+    def tearDown(self):
+        """Clean up"""
+        self.cli.cleanup()
+
+    def test_output_json(self):
+        """Test JSON output"""
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.output_json({"success": True, "data": "test"})
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertTrue(data["success"])
+
+    def test_output_error(self):
+        """Test error output"""
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.output_error("Test error")
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertFalse(data["success"])
+            self.assertEqual(data["error"], "Test error")
+
+    def test_output_error_with_exception(self):
+        """Test error output with exception in verbose mode"""
+        self.cli.verbose = True
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.output_error("Test error", Exception("Details"))
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertIn("exception", data)
+
+    def test_analyze_function_not_found(self):
+        """Test analyze when function not found"""
+        with patch.object(self.cli._fpb, "get_symbols", return_value={}):
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.analyze("/path/to/elf", "nonexistent")
+                output = mock_stdout.getvalue()
+                data = json.loads(output)
+                self.assertFalse(data["success"])
+
+    def test_disasm_failure(self):
+        """Test disasm when disassembly fails"""
+        with patch.object(
+            self.cli._fpb, "disassemble_function", return_value=(False, "")
+        ):
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.disasm("/path/to/elf", "test_func")
+                output = mock_stdout.getvalue()
+                data = json.loads(output)
+                self.assertFalse(data["success"])
+
+    def test_signature_success(self):
+        """Test signature retrieval"""
+        with patch.object(
+            self.cli._fpb, "get_signature", return_value="void test_func(int arg)"
+        ):
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.signature("/path/to/elf", "test_func")
+                output = mock_stdout.getvalue()
+                data = json.loads(output)
+                self.assertTrue(data["success"])
+                self.assertEqual(data["signature"], "void test_func(int arg)")
+
+    def test_search_success(self):
+        """Test symbol search"""
+        mock_symbols = {
+            "gpio_init": 0x08000100,
+            "gpio_read": 0x08000200,
+            "uart_init": 0x08000300,
+        }
+        with patch.object(self.cli._fpb, "get_symbols", return_value=mock_symbols):
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.search("/path/to/elf", "gpio")
+                output = mock_stdout.getvalue()
+                data = json.loads(output)
+                self.assertTrue(data["success"])
+                self.assertEqual(data["count"], 2)
+
+    def test_compile_file_not_found(self):
+        """Test compile with nonexistent file"""
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.compile("/nonexistent/file.c")
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertFalse(data["success"])
+            self.assertIn("not found", data["error"])
+
+    def test_unpatch_not_connected(self):
+        """Test unpatch when not connected"""
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.unpatch(comp=0)
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertFalse(data["success"])
+            self.assertIn("No device connected", data["error"])
+
+    def test_info_not_connected(self):
+        """Test info when not connected"""
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.info()
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertFalse(data["success"])
+
+    def test_test_serial_not_connected(self):
+        """Test test_serial when not connected"""
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.test_serial()
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertFalse(data["success"])
+
+
+class TestDeviceStateCLI(unittest.TestCase):
+    """Test DeviceState class from CLI"""
+
+    def test_init(self):
+        """Test initialization"""
+        from cli.fpb_cli import DeviceState
+
+        device = DeviceState()
+        self.assertIsNone(device.ser)
+        self.assertFalse(device.connected)
+        self.assertEqual(device.chunk_size, 128)
+
+    def test_disconnect(self):
+        """Test disconnect"""
+        from cli.fpb_cli import DeviceState
+
+        device = DeviceState()
+        device.ser = MagicMock()
+        device.connected = True
+
+        device.disconnect()
+
+        self.assertIsNone(device.ser)
+        self.assertFalse(device.connected)
+
+    def test_connect_no_serial(self):
+        """Test connect when pyserial not installed"""
+        from cli.fpb_cli import DeviceState
+
+        device = DeviceState()
+
+        with patch("cli.fpb_cli.HAS_SERIAL", False):
+            with self.assertRaises(RuntimeError) as cm:
+                device.connect("/dev/ttyUSB0")
+
+            self.assertIn("pyserial not installed", str(cm.exception))
+
+
+class TestFPBCLIMain(unittest.TestCase):
+    """Test main function"""
+
+    @patch("sys.argv", ["fpb_cli.py"])
+    @patch("sys.exit")
+    def test_main_no_command(self, mock_exit):
+        """Test main with no command shows help"""
+        from cli.fpb_cli import main
+
+        main()
+        mock_exit.assert_called_with(1)
+
+    @patch("sys.argv", ["fpb_cli.py", "search", "/path/to/elf", "test"])
+    @patch.object(FPBCLI, "search")
+    @patch.object(FPBCLI, "cleanup")
+    def test_main_search_command(self, mock_cleanup, mock_search):
+        """Test main with search command"""
+        from cli.fpb_cli import main
+
+        main()
+        mock_search.assert_called_once()
+        mock_cleanup.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestFPBCLIDecompile(unittest.TestCase):
+    """Test decompile command"""
+
+    def setUp(self):
+        """Set up test environment"""
+        self.cli = FPBCLI(verbose=False)
+
+    def tearDown(self):
+        """Clean up"""
+        self.cli.cleanup()
+
+    def test_decompile_success(self):
+        """Test successful decompilation"""
+        with patch.object(
+            self.cli._fpb,
+            "decompile_function",
+            return_value=(True, "void test() { return; }"),
+        ):
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.decompile("/path/to/elf", "test")
+                output = mock_stdout.getvalue()
+                data = json.loads(output)
+                self.assertTrue(data["success"])
+                self.assertIn("decompiled", data)
+
+    def test_decompile_failure(self):
+        """Test decompilation failure"""
+        with patch.object(
+            self.cli._fpb,
+            "decompile_function",
+            return_value=(False, "Function not found"),
+        ):
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.decompile("/path/to/elf", "test")
+                output = mock_stdout.getvalue()
+                data = json.loads(output)
+                self.assertFalse(data["success"])
+
+
+class TestFPBCLIInject(unittest.TestCase):
+    """Test inject command"""
+
+    def setUp(self):
+        """Set up test environment"""
+        self.cli = FPBCLI(verbose=False)
+
+    def tearDown(self):
+        """Clean up"""
+        self.cli.cleanup()
+
+    def test_inject_file_not_found(self):
+        """Test inject with nonexistent source file"""
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.cli.inject("target_func", "/nonexistent/file.c")
+            output = mock_stdout.getvalue()
+            data = json.loads(output)
+            self.assertFalse(data["success"])
+            self.assertIn("not found", data["error"])
+
+    def test_inject_not_connected_no_elf(self):
+        """Test inject when not connected and no ELF"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("void inject_test() {}")
+            source_file = f.name
+
+        try:
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                self.cli.inject("target_func", source_file)
+                output = mock_stdout.getvalue()
+                data = json.loads(output)
+                self.assertFalse(data["success"])
+        finally:
+            os.unlink(source_file)
