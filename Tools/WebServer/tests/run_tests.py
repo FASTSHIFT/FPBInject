@@ -16,9 +16,9 @@ Usage:
 import argparse
 import logging
 import os
-import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 # Add parent directory to path
@@ -29,27 +29,6 @@ sys.path.insert(0, SCRIPT_DIR)
 
 # Default coverage target
 DEFAULT_COVERAGE_TARGET = 80
-
-# Config file path
-CONFIG_FILE = os.path.join(PARENT_DIR, "config.json")
-CONFIG_BACKUP = os.path.join(PARENT_DIR, "config.json.bak")
-
-
-def backup_config():
-    """Backup original config file"""
-    if os.path.exists(CONFIG_FILE):
-        shutil.copy2(CONFIG_FILE, CONFIG_BACKUP)
-        return True
-    return False
-
-
-def restore_config():
-    """Restore original config file"""
-    if os.path.exists(CONFIG_BACKUP):
-        shutil.copy2(CONFIG_BACKUP, CONFIG_FILE)
-        os.remove(CONFIG_BACKUP)
-        return True
-    return False
 
 
 def run_scan_chinese():
@@ -94,10 +73,14 @@ def run_tests(
     Returns:
         bool: Whether all tests passed
     """
-    # Backup config file
-    config_backed_up = backup_config()
-    if config_backed_up:
-        print("📦 Config file backed up")
+    # Use temporary config file for tests to avoid modifying the real config
+    import state as state_module
+
+    temp_dir = tempfile.mkdtemp()
+    test_config_file = os.path.join(temp_dir, "test_config.json")
+    original_config_file = state_module.CONFIG_FILE
+    state_module.CONFIG_FILE = test_config_file
+    print(f"Using test config file: {test_config_file}")
 
     # Suppress noisy log output during tests
     logging.disable(logging.CRITICAL)
@@ -160,10 +143,15 @@ def run_tests(
         # Re-enable logging
         logging.disable(logging.NOTSET)
 
-        # Restore config file
-        if config_backed_up:
-            restore_config()
-            print("📦 Config file restored")
+        # Restore original config file path
+        state_module.CONFIG_FILE = original_config_file
+
+        # Clean up test config file
+        if os.path.exists(test_config_file):
+            os.remove(test_config_file)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+        print("Test config file cleaned up")
 
 
 def main():
