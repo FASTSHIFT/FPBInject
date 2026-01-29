@@ -19,8 +19,8 @@ from fpb_inject import (
     FPBInjectError,
     scan_serial_ports,
     serial_open,
-    crc16,
 )
+from utils.crc import crc16
 from core.state import DeviceState
 
 
