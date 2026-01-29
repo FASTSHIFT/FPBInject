@@ -1254,7 +1254,9 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
         def run_side_effect(cmd, **kwargs):
             result = Mock()
             # Check if this is the link command (has -nostartfiles)
-            cmd_str = " ".join(str(c) for c in cmd) if isinstance(cmd, list) else str(cmd)
+            cmd_str = (
+                " ".join(str(c) for c in cmd) if isinstance(cmd, list) else str(cmd)
+            )
             if "-nostartfiles" in cmd_str:
                 # Link fails
                 result.returncode = 1
