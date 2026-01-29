@@ -1183,5 +1183,105 @@ more_data
             os.remove(elf_path)
 
 
+class TestCompileInjectObjcopyError(unittest.TestCase):
+    """Test compile_inject objcopy error handling"""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.fpb = FPBInject(self.device)
+
+    @patch("core.compiler.subprocess.run")
+    @patch("core.compiler.parse_compile_commands")
+    def test_objcopy_error_returns_error_message(self, mock_parse, mock_run):
+        """Test that objcopy failure returns error message instead of raising exception"""
+        # Setup mock compile config
+        mock_parse.return_value = {
+            "compiler": "arm-none-eabi-gcc",
+            "objcopy": "arm-none-eabi-objcopy",
+            "includes": [],
+            "defines": [],
+            "cflags": ["-mthumb", "-mcpu=cortex-m4"],
+        }
+
+        # Mock subprocess.run to simulate:
+        # 1. Compile success
+        # 2. Link success
+        # 3. Objcopy failure (ELF has no sections)
+        def run_side_effect(cmd, **kwargs):
+            result = Mock()
+            if "objcopy" in str(cmd):
+                # Simulate objcopy error: ELF has no sections
+                result.returncode = 1
+                result.stderr = "error: the input file has no sections"
+                result.stdout = ""
+            else:
+                # Compile and link succeed
+                result.returncode = 0
+                result.stderr = ""
+                result.stdout = ""
+            return result
+
+        mock_run.side_effect = run_side_effect
+
+        from core.compiler import compile_inject
+
+        # Call compile_inject
+        data, symbols, error = compile_inject(
+            source_content="void inject_test(void) {}",
+            base_addr=0x20001000,
+            compile_commands_path="/fake/compile_commands.json",
+        )
+
+        # Should return error message, not raise exception
+        self.assertIsNone(data)
+        self.assertIsNone(symbols)
+        self.assertIsNotNone(error)
+        self.assertIn("Objcopy error", error)
+        self.assertIn("no sections", error)
+
+    @patch("core.compiler.subprocess.run")
+    @patch("core.compiler.parse_compile_commands")
+    def test_link_error_returns_error_message(self, mock_parse, mock_run):
+        """Test that link failure returns error message"""
+        mock_parse.return_value = {
+            "compiler": "arm-none-eabi-gcc",
+            "objcopy": "arm-none-eabi-objcopy",
+            "includes": [],
+            "defines": [],
+            "cflags": ["-mthumb", "-mcpu=cortex-m4"],
+        }
+
+        def run_side_effect(cmd, **kwargs):
+            result = Mock()
+            # Check if this is the link command (has -nostartfiles)
+            cmd_str = " ".join(str(c) for c in cmd) if isinstance(cmd, list) else str(cmd)
+            if "-nostartfiles" in cmd_str:
+                # Link fails
+                result.returncode = 1
+                result.stderr = "undefined reference to 'some_symbol'"
+                result.stdout = ""
+            else:
+                # Compile succeeds
+                result.returncode = 0
+                result.stderr = ""
+                result.stdout = ""
+            return result
+
+        mock_run.side_effect = run_side_effect
+
+        from core.compiler import compile_inject
+
+        data, symbols, error = compile_inject(
+            source_content="void inject_test(void) {}",
+            base_addr=0x20001000,
+            compile_commands_path="/fake/compile_commands.json",
+        )
+
+        self.assertIsNone(data)
+        self.assertIsNone(symbols)
+        self.assertIsNotNone(error)
+        self.assertIn("Link error", error)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

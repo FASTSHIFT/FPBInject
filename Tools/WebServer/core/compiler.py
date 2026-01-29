@@ -559,9 +559,14 @@ SECTIONS
             return None, None, f"Link error:\n{result.stderr}"
 
         # Extract binary
-        subprocess.run(
-            [objcopy, "-O", "binary", elf_file, bin_file], check=True, env=env
+        result = subprocess.run(
+            [objcopy, "-O", "binary", elf_file, bin_file],
+            capture_output=True,
+            text=True,
+            env=env,
         )
+        if result.returncode != 0:
+            return None, None, f"Objcopy error:\n{result.stderr}"
 
         # Read binary
         with open(bin_file, "rb") as f:
