@@ -10,7 +10,15 @@ This package contains all API route blueprints organized by functionality.
 During migration, routes are gradually moved from the legacy routes.py module.
 """
 
-# Route blueprints will be registered here as they are migrated
-# from the legacy routes.py module.
+from flask import Flask
 
-__all__ = []
+
+def register_blueprints(app: Flask):
+    """Register all route blueprints with the Flask app."""
+    from . import logs
+
+    # Register blueprints with /api prefix
+    app.register_blueprint(logs.bp, url_prefix="/api")
+
+
+__all__ = ["register_blueprints"]
