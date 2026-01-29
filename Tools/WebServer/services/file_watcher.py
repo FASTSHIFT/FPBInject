@@ -233,7 +233,9 @@ class FileWatcher:
 
         if WATCHDOG_AVAILABLE:
             try:
-                self._observer = Observer()
+                # Use globals() to allow mocking Observer in tests
+                observer_class = globals().get("Observer", Observer)
+                self._observer = observer_class()
                 handler = WatchdogHandler(self.callback, self.extensions)
 
                 for directory in self.directories:

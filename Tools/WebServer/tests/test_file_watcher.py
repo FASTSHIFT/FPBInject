@@ -440,27 +440,30 @@ class TestPollingWatcherExtended(unittest.TestCase):
 class TestFileWatcherExtended(unittest.TestCase):
     """Extended FileWatcher tests"""
 
-    @patch.object(file_watcher, "WATCHDOG_AVAILABLE", True)
     def test_start_watchdog_exception(self):
         """Test start with watchdog exception falls back to polling"""
         # Skip if watchdog not actually installed
-        try:
-            from watchdog.observers import Observer
-        except ImportError:
+        if not file_watcher.WATCHDOG_AVAILABLE:
             self.skipTest("watchdog not installed")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             callback = Mock()
             watcher = file_watcher.FileWatcher([tmpdir], callback)
 
-            # Mock Observer to raise exception
-            with patch("watchdog.observers.Observer") as mock_observer:
-                mock_observer.side_effect = Exception("Watchdog error")
+            # Mock Observer in the file_watcher module namespace
+            original_observer = getattr(file_watcher, "Observer", None)
+            mock_observer = Mock(side_effect=Exception("Watchdog error"))
+            file_watcher.Observer = mock_observer
 
+            try:
                 result = watcher.start()
 
                 # Should fall back to polling
                 self.assertTrue(result)
                 self.assertIsNotNone(watcher._polling_watcher)
+            finally:
+                # Restore original Observer
+                if original_observer is not None:
+                    file_watcher.Observer = original_observer
 
             watcher.stop()
