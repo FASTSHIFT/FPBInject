@@ -86,7 +86,9 @@ class TestSerialOpen(unittest.TestCase):
 
         self.assertEqual(ser, mock_ser)
         self.assertIsNone(error)
-        mock_serial.assert_called_with("/dev/ttyUSB0", 115200, timeout=1)
+        mock_serial.assert_called_with(
+            "/dev/ttyUSB0", 115200, timeout=1, write_timeout=1
+        )
 
     @patch("utils.serial.serial.Serial")
     def test_open_not_opened(self, mock_serial):

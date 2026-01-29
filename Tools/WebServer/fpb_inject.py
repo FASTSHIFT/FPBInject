@@ -23,6 +23,7 @@ import serial
 import serial.tools.list_ports
 
 from utils.crc import crc16
+from utils.serial import scan_serial_ports, serial_open
 
 logger = logging.getLogger(__name__)
 
@@ -2371,38 +2372,3 @@ SECTIONS
             self.device.last_inject_time = time.time()
 
         return successful > 0, result
-
-
-def scan_serial_ports() -> List[dict]:
-    """Scan for available serial ports."""
-    import glob
-
-    ports = serial.tools.list_ports.comports()
-    result = [
-        {"device": port.device, "description": port.description} for port in ports
-    ]
-
-    # Also scan for CH341 USB serial devices
-    ch341_devices = glob.glob("/dev/ttyCH341USB*")
-    existing_devices = {item["device"] for item in result}
-    for dev in ch341_devices:
-        if dev not in existing_devices:
-            result.append({"device": dev, "description": "CH341 USB Serial"})
-
-    return result
-
-
-def serial_open(port: str, baudrate: int = 115200, timeout: float = 2.0):
-    """Open a serial port."""
-    try:
-        ser = serial.Serial(port, baudrate, timeout=timeout, write_timeout=timeout)
-        if not ser.isOpen():
-            return None, f"Error opening serial port {port}"
-        ser.reset_input_buffer()
-        ser.reset_output_buffer()
-        time.sleep(0.1)
-        return ser, None
-    except serial.SerialException as e:
-        return None, f"Serial error: {e}"
-    except Exception as e:
-        return None, f"Error: {e}"

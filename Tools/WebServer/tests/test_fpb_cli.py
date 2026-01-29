@@ -146,7 +146,10 @@ class TestFPBCLI(unittest.TestCase):
 
     def test_output_json_unicode(self):
         """Test JSON output with unicode"""
-        data = {"success": True, "message": "Test message with unicode: \u00e9\u00e8\u00ea"}
+        data = {
+            "success": True,
+            "message": "Test message with unicode: \u00e9\u00e8\u00ea",
+        }
 
         f = io.StringIO()
         with redirect_stdout(f):
@@ -154,7 +157,9 @@ class TestFPBCLI(unittest.TestCase):
 
         output = f.getvalue()
         parsed = json.loads(output)
-        self.assertEqual(parsed["message"], "Test message with unicode: \u00e9\u00e8\u00ea")
+        self.assertEqual(
+            parsed["message"], "Test message with unicode: \u00e9\u00e8\u00ea"
+        )
 
     def test_output_error(self):
         """Test error output formatting"""

@@ -35,12 +35,17 @@ def scan_serial_ports():
     return result
 
 
-def serial_open(port, baudrate=115200, timeout=1):
+def serial_open(port, baudrate=115200, timeout=2.0):
     """Open a serial port."""
     try:
-        ser = serial.Serial(port, baudrate, timeout=timeout)
+        ser = serial.Serial(port, baudrate, timeout=timeout, write_timeout=timeout)
         if not ser.isOpen():
             return None, f"Error opening serial port {port}"
+        ser.reset_input_buffer()
+        ser.reset_output_buffer()
+        import time
+
+        time.sleep(0.1)
         return ser, None
     except serial.SerialException as e:
         return None, f"Serial error: {e}"

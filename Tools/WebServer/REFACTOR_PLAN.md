@@ -480,3 +480,109 @@ def test_auto_inject_success(mock_device, mock_fpb):
 4. ✅ 单个文件不超过 500 行
 5. ✅ 无循环依赖
 6. ✅ 文档更新完成
+
+
+---
+
+## 八、重构进度记录
+
+### 2025-01-29 进度更新
+
+#### 已完成
+
+**Phase 2: 路由拆分** ✅ 完成
+- `routes.py` 从 ~1800 行精简到 ~60 行
+- 所有 API 路由迁移到 `app/routes/` 蓝图:
+  - `connection.py` - 端口和连接 API
+  - `fpb.py` - FPB 注入操作 API
+  - `symbols.py` - 符号查询 API
+  - `patch.py` - Patch 管理 API
+  - `watch.py` - 文件监控 API
+  - `logs.py` - 日志 API
+  - `files.py` - 文件浏览 API
+
+**Phase 4: 清理与优化** ✅ 部分完成
+- 删除根目录旧模块文件
+- 模块迁移到新目录:
+  - `state.py` → `core/state.py`
+  - `patch_generator.py` → `core/patch_generator.py`
+  - `device_worker.py` → `services/device_worker.py`
+  - `file_watcher.py` → `services/file_watcher.py`
+  - `timer.py` → `services/timer.py`
+  - `fpb_cli.py` → `cli/fpb_cli.py`
+  - `serial_utils.py` → `utils/serial.py`
+- 新建模块:
+  - `utils/crc.py` - 从 fpb_inject.py 提取 CRC 计算
+  - `utils/helpers.py` - 共享辅助函数
+  - `services/file_watcher_manager.py` - 文件监控管理
+- 删除 `worker.py` (与 device_worker 重复)
+- `scan_serial_ports` 和 `serial_open` 统一到 `utils/serial.py`
+
+#### 当前目录结构
+
+```
+WebServer/
+├── app/
+│   ├── __init__.py
+│   └── routes/
+│       ├── __init__.py
+│       ├── connection.py
+│       ├── fpb.py
+│       ├── symbols.py
+│       ├── patch.py
+│       ├── watch.py
+│       ├── logs.py
+│       └── files.py
+├── core/
+│   ├── __init__.py
+│   ├── state.py
+│   └── patch_generator.py
+├── services/
+│   ├── __init__.py
+│   ├── device_worker.py
+│   ├── file_watcher.py
+│   ├── file_watcher_manager.py
+│   └── timer.py
+├── utils/
+│   ├── __init__.py
+│   ├── crc.py
+│   ├── helpers.py
+│   └── serial.py
+├── cli/
+│   └── fpb_cli.py
+├── static/
+├── templates/
+├── tests/
+├── main.py           # ~100 行
+├── routes.py         # ~60 行
+├── fpb_inject.py     # ~2374 行 ⚠️
+└── config.json
+```
+
+#### 文件行数统计
+
+| 文件 | 行数 | 状态 |
+|------|------|------|
+| `routes.py` | ~60 | ✅ |
+| `main.py` | ~100 | ✅ |
+| `fpb_inject.py` | ~2374 | ⚠️ 待拆分 |
+| `core/state.py` | ~300 | ✅ |
+| `core/patch_generator.py` | ~200 | ✅ |
+| `services/device_worker.py` | ~300 | ✅ |
+| `services/file_watcher_manager.py` | ~250 | ✅ |
+| `app/routes/*.py` | ~100-300 | ✅ |
+
+#### 待完成
+
+**Phase 3: 核心模块重构** - 待定
+- `fpb_inject.py` 仍有 ~2374 行
+- 可拆分为:
+  - `core/compiler.py` - 编译逻辑
+  - `core/serial_protocol.py` - 串口通信协议
+  - `core/disassembler.py` - 反汇编/反编译
+
+#### 测试状态
+
+- 单元测试: 457 个全部通过 ✅
+- 中文检查: 通过 ✅
+- 代码格式: 通过 ✅
