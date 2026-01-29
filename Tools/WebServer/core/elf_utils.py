@@ -15,25 +15,9 @@ import re
 import subprocess
 from typing import Dict, Optional, Tuple
 
+from utils.toolchain import get_tool_path, get_subprocess_env
+
 logger = logging.getLogger(__name__)
-
-
-def get_tool_path(tool_name: str, toolchain_path: Optional[str] = None) -> str:
-    """Get full path for a toolchain tool."""
-    if toolchain_path:
-        full_path = os.path.join(toolchain_path, tool_name)
-        if os.path.exists(full_path):
-            return full_path
-    return tool_name
-
-
-def get_subprocess_env(toolchain_path: Optional[str] = None) -> dict:
-    """Get environment dict with toolchain path prepended to PATH."""
-    env = os.environ.copy()
-    if toolchain_path and os.path.isdir(toolchain_path):
-        current_path = env.get("PATH", "")
-        env["PATH"] = f"{toolchain_path}:{current_path}"
-    return env
 
 
 def get_elf_build_time(elf_path: str) -> Optional[str]:

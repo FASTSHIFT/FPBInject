@@ -686,3 +686,82 @@ WebServer/
 - `core/compiler.py` (728 lines) could be further split if needed
 - `core/patch_generator.py` (512 lines) slightly over target
 - Phase 1 (Thread Safety) still pending per original plan
+
+
+### 2025-01-29 Progress Update (file_watcher fix)
+
+#### Fixed CI Test Failure
+
+- Fixed `test_start_watchdog_exception` test that was failing in CI
+- Issue: Mock of `Observer` wasn't being used because `start()` method used directly imported `Observer`
+- Solution: Modified `file_watcher.py` to use `globals().get("Observer", Observer)` to allow mocking
+- All 688 tests now pass
+
+#### Current File Sizes
+
+| File | Lines | Status |
+|------|-------|--------|
+| `fpb_inject.py` | 640 | ✅ |
+| `core/serial_protocol.py` | 597 | ✅ |
+| `core/compiler.py` | 728 | ⚠️ Over 500 target |
+| `core/elf_utils.py` | 345 | ✅ |
+| `core/patch_generator.py` | 512 | ⚠️ Slightly over 500 |
+| `core/state.py` | 242 | ✅ |
+| `services/file_watcher.py` | 314 | ✅ |
+| `services/file_watcher_manager.py` | 307 | ✅ |
+| `services/device_worker.py` | 249 | ✅ |
+
+#### Test Results
+- 688 tests all pass ✅
+
+#### Next Steps
+1. Consider splitting `core/compiler.py` (728 lines) - largest remaining file
+2. Phase 1 (Thread Safety) still pending
+
+
+### 2025-01-29 Progress Update (Module Extraction)
+
+#### Extracted Shared Utilities
+
+- Created `utils/toolchain.py` (48 lines) with shared toolchain utilities:
+  - `get_tool_path()` - Get full path for toolchain tool
+  - `get_subprocess_env()` - Get environment with toolchain PATH
+- Removed duplicate implementations from `core/compiler.py` and `core/elf_utils.py`
+- Added `tests/test_utils_toolchain.py` with 8 new tests
+
+#### Extracted Compile Commands Parsing
+
+- Created `core/compile_commands.py` (359 lines) with:
+  - `parse_dep_file_for_compile_command()` - Parse .d dependency files
+  - `parse_compile_commands()` - Parse compile_commands.json
+- `core/compiler.py` now imports from `compile_commands.py`
+
+#### Current File Sizes
+
+| File | Lines | Status |
+|------|-------|--------|
+| `fpb_inject.py` | 640 | ✅ |
+| `core/serial_protocol.py` | 597 | ✅ |
+| `core/patch_generator.py` | 512 | ⚠️ Slightly over 500 |
+| `core/compiler.py` | 372 | ✅ (down from 712) |
+| `core/compile_commands.py` | 359 | ✅ New |
+| `core/elf_utils.py` | 329 | ✅ |
+| `core/state.py` | 242 | ✅ |
+| `services/file_watcher.py` | 314 | ✅ |
+| `services/file_watcher_manager.py` | 307 | ✅ |
+| `utils/crc.py` | 284 | ✅ |
+| `services/device_worker.py` | 249 | ✅ |
+| `utils/toolchain.py` | 48 | ✅ New |
+
+#### Test Results
+- 696 tests all pass ✅ (up from 688)
+
+#### Summary
+- All core modules now under 650 lines
+- Shared utilities consolidated in `utils/toolchain.py`
+- Compile command parsing extracted to dedicated module
+- Clean separation of concerns achieved
+
+#### Remaining Work
+- `core/patch_generator.py` (512 lines) slightly over 500 target
+- Phase 1 (Thread Safety) still pending per original plan
