@@ -268,6 +268,7 @@ static void cmd_info(fl_context_t* ctx) {
     }
 
     fl_print(ctx, "FPBInject v1.0");
+    fl_print(ctx, "Build: %s %s", __DATE__, __TIME__);
     fl_print(ctx, "Alloc: %s", mode);
 
     if (!is_dynamic) {

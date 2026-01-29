@@ -1058,5 +1058,161 @@ class TestRoutesExtended(TestRoutesBase):
         )
 
 
+class TestBuildTimeVerification(TestRoutesBase):
+    """Build time verification API tests"""
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_info_build_time_match(self, mock_get_fpb):
+        """Test info with matching build times"""
+        mock_fpb = Mock()
+        mock_fpb.info.return_value = (
+            {
+                "ok": True,
+                "build_time": "Jan 29 2026 14:30:00",
+                "is_dynamic": False,
+                "slots": [],
+            },
+            "",
+        )
+        mock_fpb.get_elf_build_time.return_value = "Jan 29 2026 14:30:00"
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+
+        # Set ELF path
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".elf") as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/fpb/info")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertFalse(data.get("build_time_mismatch", False))
+            self.assertEqual(data.get("device_build_time"), "Jan 29 2026 14:30:00")
+            self.assertEqual(data.get("elf_build_time"), "Jan 29 2026 14:30:00")
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_info_build_time_mismatch(self, mock_get_fpb):
+        """Test info with mismatched build times"""
+        mock_fpb = Mock()
+        mock_fpb.info.return_value = (
+            {
+                "ok": True,
+                "build_time": "Jan 29 2026 14:30:00",
+                "is_dynamic": False,
+                "slots": [],
+            },
+            "",
+        )
+        # Different build time in ELF
+        mock_fpb.get_elf_build_time.return_value = "Jan 28 2026 10:00:00"
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".elf") as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/fpb/info")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            self.assertTrue(data.get("build_time_mismatch", False))
+            self.assertEqual(data.get("device_build_time"), "Jan 29 2026 14:30:00")
+            self.assertEqual(data.get("elf_build_time"), "Jan 28 2026 10:00:00")
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_info_no_device_build_time(self, mock_get_fpb):
+        """Test info when device doesn't report build time (old firmware)"""
+        mock_fpb = Mock()
+        mock_fpb.info.return_value = (
+            {
+                "ok": True,
+                "is_dynamic": False,
+                "slots": [],
+                # No build_time field
+            },
+            "",
+        )
+        mock_fpb.get_elf_build_time.return_value = "Jan 29 2026 14:30:00"
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".elf") as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/fpb/info")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            # No mismatch if device doesn't report build time
+            self.assertFalse(data.get("build_time_mismatch", False))
+            self.assertIsNone(data.get("device_build_time"))
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_info_no_elf_build_time(self, mock_get_fpb):
+        """Test info when ELF doesn't contain build time"""
+        mock_fpb = Mock()
+        mock_fpb.info.return_value = (
+            {
+                "ok": True,
+                "build_time": "Jan 29 2026 14:30:00",
+                "is_dynamic": False,
+                "slots": [],
+            },
+            "",
+        )
+        mock_fpb.get_elf_build_time.return_value = None
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".elf") as f:
+            state.device.elf_path = f.name
+
+        try:
+            response = self.client.get("/api/fpb/info")
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            # No mismatch if ELF doesn't have build time
+            self.assertFalse(data.get("build_time_mismatch", False))
+            self.assertEqual(data.get("device_build_time"), "Jan 29 2026 14:30:00")
+            self.assertIsNone(data.get("elf_build_time"))
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("routes.get_fpb_inject")
+    def test_fpb_info_no_elf_path(self, mock_get_fpb):
+        """Test info when no ELF path is configured"""
+        mock_fpb = Mock()
+        mock_fpb.info.return_value = (
+            {
+                "ok": True,
+                "build_time": "Jan 29 2026 14:30:00",
+                "is_dynamic": False,
+                "slots": [],
+            },
+            "",
+        )
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+
+        state.device.elf_path = ""
+
+        response = self.client.get("/api/fpb/info")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertFalse(data.get("build_time_mismatch", False))
+        self.assertIsNone(data.get("elf_build_time"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

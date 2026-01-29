@@ -1136,6 +1136,26 @@ async function fpbInfo() {
     const data = await res.json();
 
     if (data.success) {
+      // Check for build time mismatch
+      if (data.build_time_mismatch) {
+        const deviceTime = data.device_build_time || 'Unknown';
+        const elfTime = data.elf_build_time || 'Unknown';
+
+        writeToOutput(`[WARNING] Build time mismatch detected!`, 'error');
+        writeToOutput(`  Device firmware: ${deviceTime}`, 'error');
+        writeToOutput(`  ELF file: ${elfTime}`, 'error');
+
+        // Show alert dialog
+        alert(
+          `⚠️ Build Time Mismatch!\n\n` +
+            `The device firmware and ELF file have different build times.\n` +
+            `This may cause injection to fail or behave unexpectedly.\n\n` +
+            `Device firmware: ${deviceTime}\n` +
+            `ELF file: ${elfTime}\n\n` +
+            `Please ensure the ELF file matches the firmware running on the device.`,
+        );
+      }
+
       // Update slot states from device
       if (data.slots) {
         data.slots.forEach((slot, i) => {
@@ -1155,6 +1175,11 @@ async function fpbInfo() {
       // Update memory info display
       if (data.memory) {
         updateMemoryInfo(data.memory);
+      }
+
+      // Show build time info if available
+      if (data.device_build_time) {
+        writeToOutput(`[INFO] Device build: ${data.device_build_time}`, 'info');
       }
 
       writeToOutput('[INFO] Device info updated', 'success');

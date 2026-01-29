@@ -958,7 +958,10 @@ class FPBInject:
                 info = {"ok": True, "slots": [], "is_dynamic": False}
                 for line in raw.split("\n"):
                     line = line.strip()
-                    if line.startswith("Alloc:"):
+                    if line.startswith("Build:"):
+                        # Parse: Build: Jan 29 2026 14:30:00
+                        info["build_time"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Alloc:"):
                         alloc_type = line.split(":")[1].strip().lower()
                         info["is_dynamic"] = alloc_type == "dynamic"
                     elif line.startswith("Base:"):
@@ -1178,6 +1181,64 @@ class FPBInject:
             return first_empty, False
 
         return -1, False  # No slot available
+
+    def get_elf_build_time(self, elf_path: str) -> Optional[str]:
+        """Get build time from ELF file.
+
+        Searches for __DATE__ and __TIME__ strings embedded in the binary.
+        These are typically compiled into the firmware when using the macros.
+
+        Returns:
+            Build time string in format "Mon DD YYYY HH:MM:SS" or None if not found
+        """
+        if not elf_path or not os.path.exists(elf_path):
+            return None
+
+        try:
+            # Use strings command to extract printable strings from ELF
+            result = subprocess.run(
+                ["strings", "-a", elf_path], capture_output=True, text=True, timeout=60
+            )
+
+            if result.returncode != 0:
+                return None
+
+            # __DATE__ format: "Jan 29 2026" (month day year)
+            # __TIME__ format: "14:30:00" (HH:MM:SS)
+            date_pattern = (
+                r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{4}"
+            )
+            time_pattern = r"\d{2}:\d{2}:\d{2}"
+
+            lines = result.stdout.split("\n")
+
+            # Strategy 1: Look for "FPBInject" marker and find date/time nearby
+            for i, line in enumerate(lines):
+                if "FPBInject" in line and "v1.0" in line:
+                    # Search in a window around this line
+                    window_start = max(0, i - 3)
+                    window_end = min(len(lines), i + 10)
+                    window_text = "\n".join(lines[window_start:window_end])
+
+                    date_match = re.search(date_pattern, window_text)
+                    time_match = re.search(time_pattern, window_text)
+
+                    if date_match and time_match:
+                        return f"{date_match.group(0)} {time_match.group(0)}"
+
+            # Strategy 2: Look for consecutive date and time strings
+            for i, line in enumerate(lines):
+                date_match = re.match(f"^({date_pattern})$", line.strip())
+                if date_match and i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    time_match = re.match(f"^({time_pattern})$", next_line)
+                    if time_match:
+                        return f"{date_match.group(1)} {time_match.group(1)}"
+
+            return None
+        except Exception as e:
+            logger.debug(f"Error getting ELF build time: {e}")
+            return None
 
     def get_symbols(self, elf_path: str) -> Dict[str, int]:
         """Extract symbols from ELF file.

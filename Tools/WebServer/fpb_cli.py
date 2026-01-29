@@ -20,6 +20,7 @@ Output: JSON format for easy AI parsing
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -415,7 +416,36 @@ class FPBCLI:
             if error:
                 raise FPBCLIError(f"Failed to get info: {error}")
 
-            self.output_json({"success": True, "info": info})
+            # Check build time mismatch
+            build_time_mismatch = False
+            device_build_time = info.get("build_time") if info else None
+            elf_build_time = None
+
+            if self._device_state.elf_path and os.path.exists(
+                self._device_state.elf_path
+            ):
+                elf_build_time = self._fpb.get_elf_build_time(
+                    self._device_state.elf_path
+                )
+
+            if device_build_time and elf_build_time:
+                if device_build_time.strip() != elf_build_time.strip():
+                    build_time_mismatch = True
+
+            result = {"success": True, "info": info}
+
+            if device_build_time or elf_build_time:
+                result["device_build_time"] = device_build_time
+                result["elf_build_time"] = elf_build_time
+                result["build_time_mismatch"] = build_time_mismatch
+
+            if build_time_mismatch:
+                logging.warning(
+                    f"Build time mismatch! Device: '{device_build_time}', "
+                    f"ELF: '{elf_build_time}'"
+                )
+
+            self.output_json(result)
 
         except Exception as e:
             self.output_error(f"Info failed: {str(e)}", e)

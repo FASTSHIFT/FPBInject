@@ -1009,5 +1009,185 @@ class TestSerialThroughput(unittest.TestCase):
         self.assertIn("tests", result)
 
 
+class TestBuildTimeFeature(unittest.TestCase):
+    """Build time verification feature tests"""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.device.ser = Mock()
+        self.device.ser.isOpen.return_value = True
+        self.device.ser.in_waiting = 0
+        self.fpb = FPBInject(self.device)
+
+    def test_info_parse_build_time(self):
+        """Test parsing build time from info response"""
+        self.fpb._send_cmd = Mock(
+            return_value="""FPBInject v1.0
+Build: Jan 29 2026 14:30:00
+Alloc: static
+Base: 0x20000000
+Size: 1024
+Used: 100
+Slots: 0/6
+[OK] Info complete"""
+        )
+
+        info, error = self.fpb.info()
+
+        self.assertIsNotNone(info)
+        self.assertEqual(info.get("build_time"), "Jan 29 2026 14:30:00")
+        self.assertEqual(info["base"], 0x20000000)
+
+    def test_info_no_build_time(self):
+        """Test info response without build time (old firmware)"""
+        self.fpb._send_cmd = Mock(
+            return_value="""FPBInject v1.0
+Alloc: static
+Base: 0x20000000
+Size: 1024
+[OK] Info complete"""
+        )
+
+        info, error = self.fpb.info()
+
+        self.assertIsNotNone(info)
+        self.assertNotIn("build_time", info)
+
+    def test_info_dynamic_mode_with_build_time(self):
+        """Test info with dynamic allocation and build time"""
+        self.fpb._send_cmd = Mock(
+            return_value="""FPBInject v1.0
+Build: Feb 15 2026 09:45:30
+Alloc: dynamic
+Used: 256
+Slots: 2/6
+Slot[0]: 0x08001000 -> 0x20001000, 128 bytes
+Slot[1]: 0x08002000 -> 0x20001080, 64 bytes
+[OK] Info complete"""
+        )
+
+        info, error = self.fpb.info()
+
+        self.assertIsNotNone(info)
+        self.assertEqual(info.get("build_time"), "Feb 15 2026 09:45:30")
+        self.assertTrue(info["is_dynamic"])
+        self.assertEqual(len(info["slots"]), 2)
+
+    @patch("subprocess.run")
+    def test_get_elf_build_time_found(self, mock_run):
+        """Test getting build time from ELF file"""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = """
+some_string
+FPBInject v1.0
+Jan 29 2026
+14:30:00
+other_string
+"""
+        mock_run.return_value = mock_result
+
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = self.fpb.get_elf_build_time(elf_path)
+
+            self.assertIsNotNone(result)
+            self.assertIn("Jan 29 2026", result)
+            self.assertIn("14:30:00", result)
+        finally:
+            os.remove(elf_path)
+
+    @patch("subprocess.run")
+    def test_get_elf_build_time_not_found(self, mock_run):
+        """Test getting build time when not present in ELF"""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = """
+random_string
+no_date_here
+another_line
+"""
+        mock_run.return_value = mock_result
+
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = self.fpb.get_elf_build_time(elf_path)
+
+            self.assertIsNone(result)
+        finally:
+            os.remove(elf_path)
+
+    def test_get_elf_build_time_file_not_exists(self):
+        """Test getting build time from non-existent file"""
+        result = self.fpb.get_elf_build_time("/nonexistent/path/to/elf")
+
+        self.assertIsNone(result)
+
+    def test_get_elf_build_time_none_path(self):
+        """Test getting build time with None path"""
+        result = self.fpb.get_elf_build_time(None)
+
+        self.assertIsNone(result)
+
+    @patch("subprocess.run")
+    def test_get_elf_build_time_strings_error(self, mock_run):
+        """Test getting build time when strings command fails"""
+        mock_run.side_effect = Exception("strings command failed")
+
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = self.fpb.get_elf_build_time(elf_path)
+
+            self.assertIsNone(result)
+        finally:
+            os.remove(elf_path)
+
+    @patch("subprocess.run")
+    def test_get_elf_build_time_with_fpbinject_marker(self, mock_run):
+        """Test getting build time using FPBInject marker strategy"""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = """
+random_data
+FPBInject v1.0
+Mar 10 2026
+16:20:45
+more_data
+"""
+        mock_run.return_value = mock_result
+
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = self.fpb.get_elf_build_time(elf_path)
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result, "Mar 10 2026 16:20:45")
+        finally:
+            os.remove(elf_path)
+
+    @patch("subprocess.run")
+    def test_get_elf_build_time_timeout(self, mock_run):
+        """Test getting build time with timeout"""
+        mock_run.side_effect = subprocess.TimeoutExpired("strings", 60)
+
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = self.fpb.get_elf_build_time(elf_path)
+
+            self.assertIsNone(result)
+        finally:
+            os.remove(elf_path)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

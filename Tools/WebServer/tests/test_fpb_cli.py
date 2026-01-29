@@ -703,6 +703,123 @@ class TestFPBCLIInfo(unittest.TestCase):
             self.assertFalse(output["success"])
             self.assertIn("Serial error", output["error"])
 
+    def test_info_build_time_match(self):
+        """Test info with matching build times"""
+        self.cli._device_state.connected = True
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".elf") as tf:
+            elf_path = tf.name
+        self.cli._device_state.elf_path = elf_path
+
+        try:
+            with patch.object(self.cli._fpb, "info") as mock_info:
+                mock_info.return_value = (
+                    {"slots": [], "build_time": "Jan 29 2026 14:30:00"},
+                    None,
+                )
+                with patch.object(self.cli._fpb, "get_elf_build_time") as mock_elf_time:
+                    mock_elf_time.return_value = "Jan 29 2026 14:30:00"
+
+                    f = io.StringIO()
+                    with redirect_stdout(f):
+                        self.cli.info()
+
+                    output = json.loads(f.getvalue())
+                    self.assertTrue(output["success"])
+                    self.assertFalse(output.get("build_time_mismatch", False))
+                    self.assertEqual(
+                        output.get("device_build_time"), "Jan 29 2026 14:30:00"
+                    )
+                    self.assertEqual(
+                        output.get("elf_build_time"), "Jan 29 2026 14:30:00"
+                    )
+        finally:
+            os.unlink(elf_path)
+
+    def test_info_build_time_mismatch(self):
+        """Test info with mismatched build times"""
+        self.cli._device_state.connected = True
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".elf") as tf:
+            elf_path = tf.name
+        self.cli._device_state.elf_path = elf_path
+
+        try:
+            with patch.object(self.cli._fpb, "info") as mock_info:
+                mock_info.return_value = (
+                    {"slots": [], "build_time": "Jan 29 2026 14:30:00"},
+                    None,
+                )
+                with patch.object(self.cli._fpb, "get_elf_build_time") as mock_elf_time:
+                    mock_elf_time.return_value = "Jan 28 2026 10:00:00"
+
+                    f = io.StringIO()
+                    with redirect_stdout(f):
+                        self.cli.info()
+
+                    output = json.loads(f.getvalue())
+                    self.assertTrue(output["success"])
+                    self.assertTrue(output.get("build_time_mismatch", False))
+                    self.assertEqual(
+                        output.get("device_build_time"), "Jan 29 2026 14:30:00"
+                    )
+                    self.assertEqual(
+                        output.get("elf_build_time"), "Jan 28 2026 10:00:00"
+                    )
+        finally:
+            os.unlink(elf_path)
+
+    def test_info_no_elf_path(self):
+        """Test info without ELF path configured"""
+        self.cli._device_state.connected = True
+        self.cli._device_state.elf_path = ""
+
+        with patch.object(self.cli._fpb, "info") as mock_info:
+            mock_info.return_value = (
+                {"slots": [], "build_time": "Jan 29 2026 14:30:00"},
+                None,
+            )
+
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.info()
+
+            output = json.loads(f.getvalue())
+            self.assertTrue(output["success"])
+            # Build time fields present but elf_build_time is None
+            self.assertEqual(output.get("device_build_time"), "Jan 29 2026 14:30:00")
+            self.assertIsNone(output.get("elf_build_time"))
+            self.assertFalse(output.get("build_time_mismatch", False))
+
+    def test_info_no_device_build_time(self):
+        """Test info when device doesn't report build time"""
+        self.cli._device_state.connected = True
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".elf") as tf:
+            elf_path = tf.name
+        self.cli._device_state.elf_path = elf_path
+
+        try:
+            with patch.object(self.cli._fpb, "info") as mock_info:
+                mock_info.return_value = ({"slots": []}, None)  # No build_time
+                with patch.object(self.cli._fpb, "get_elf_build_time") as mock_elf_time:
+                    mock_elf_time.return_value = "Jan 29 2026 14:30:00"
+
+                    f = io.StringIO()
+                    with redirect_stdout(f):
+                        self.cli.info()
+
+                    output = json.loads(f.getvalue())
+                    self.assertTrue(output["success"])
+                    # Has build time fields but no mismatch (device doesn't report)
+                    self.assertFalse(output.get("build_time_mismatch", False))
+                    self.assertIsNone(output.get("device_build_time"))
+                    self.assertEqual(
+                        output.get("elf_build_time"), "Jan 29 2026 14:30:00"
+                    )
+        finally:
+            os.unlink(elf_path)
+
 
 class TestFPBCLIInject(unittest.TestCase):
     """Test inject command"""

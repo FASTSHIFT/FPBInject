@@ -417,6 +417,24 @@ def register_routes(app):
         if info:
             state.device.device_info = info
 
+        # Check build time mismatch between device and ELF
+        build_time_mismatch = False
+        device_build_time = info.get("build_time") if info else None
+        elf_build_time = None
+
+        if state.device.elf_path and os.path.exists(state.device.elf_path):
+            elf_build_time = fpb.get_elf_build_time(state.device.elf_path)
+
+        if device_build_time and elf_build_time:
+            # Normalize and compare build times
+            # Device format: "Jan 29 2026 14:30:00"
+            # ELF format: "Jan 29 2026 14:30:00"
+            if device_build_time.strip() != elf_build_time.strip():
+                build_time_mismatch = True
+                logger.warning(
+                    f"Build time mismatch! Device: '{device_build_time}', ELF: '{elf_build_time}'"
+                )
+
         # Use shared helper to build response
         slot_response = _build_slot_response(state.device, state)
 
@@ -429,6 +447,9 @@ def register_routes(app):
                 "info": info,
                 "slots": slot_response["slots"],
                 "memory": slot_response["memory"],
+                "build_time_mismatch": build_time_mismatch,
+                "device_build_time": device_build_time,
+                "elf_build_time": elf_build_time,
             }
         )
 
