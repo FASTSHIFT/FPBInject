@@ -239,11 +239,11 @@ class TestConfigPersistence(unittest.TestCase):
 
     def test_save_and_load_config(self):
         """Test saving and loading configuration"""
-        import state as state_module
+        import core.state as core_state_module
 
         # Temporarily replace config file path
-        original_config_file = state_module.CONFIG_FILE
-        state_module.CONFIG_FILE = self.config_file
+        original_config_file = core_state_module.CONFIG_FILE
+        core_state_module.CONFIG_FILE = self.config_file
 
         try:
             app_state = AppState()
@@ -273,14 +273,14 @@ class TestConfigPersistence(unittest.TestCase):
             self.assertEqual(new_state.device.patch_mode, "debugmon")
 
         finally:
-            state_module.CONFIG_FILE = original_config_file
+            core_state_module.CONFIG_FILE = original_config_file
 
     def test_load_nonexistent_config(self):
         """Test loading non-existent config file"""
-        import state as state_module
+        import core.state as core_state_module
 
-        original_config_file = state_module.CONFIG_FILE
-        state_module.CONFIG_FILE = "/nonexistent/path/config.json"
+        original_config_file = core_state_module.CONFIG_FILE
+        core_state_module.CONFIG_FILE = "/nonexistent/path/config.json"
 
         try:
             # Should not raise exception
@@ -290,7 +290,7 @@ class TestConfigPersistence(unittest.TestCase):
             self.assertEqual(app_state.device.baudrate, 115200)
 
         finally:
-            state_module.CONFIG_FILE = original_config_file
+            core_state_module.CONFIG_FILE = original_config_file
 
 
 class TestDeviceStateExtended(unittest.TestCase):
