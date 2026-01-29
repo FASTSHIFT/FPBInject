@@ -586,3 +586,27 @@ WebServer/
 - 单元测试: 457 个全部通过 ✅
 - 中文检查: 通过 ✅
 - 代码格式: 通过 ✅
+
+
+### 2025-01-29 进度更新 (续)
+
+#### 新增模块
+
+- `core/elf_utils.py` (~345 行) - ELF 文件工具函数
+  - `get_elf_build_time` - 获取 ELF 构建时间
+  - `get_symbols` - 提取符号表
+  - `disassemble_function` - 反汇编函数
+  - `decompile_function` - 反编译函数
+  - `get_signature` - 获取函数签名
+
+- `core/compiler.py` (~366 行) - 编译相关函数
+  - `parse_dep_file_for_compile_command` - 解析 .d 依赖文件
+  - `parse_compile_commands` - 解析 compile_commands.json
+
+#### 文件行数变化
+
+| 文件 | 之前 | 之后 | 变化 |
+|------|------|------|------|
+| `fpb_inject.py` | 2374 | 1664 | -710 |
+| `core/elf_utils.py` | - | 345 | +345 |
+| `core/compiler.py` | - | 366 | +366 |
