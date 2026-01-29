@@ -349,29 +349,37 @@ class TestFileWatcherWithWatchdog(unittest.TestCase):
     """FileWatcher tests with watchdog mocked"""
 
     @patch.object(file_watcher, "WATCHDOG_AVAILABLE", True)
-    @patch("services.file_watcher.Observer")
-    def test_start_with_watchdog(self, mock_observer_class):
+    def test_start_with_watchdog(
+        self,
+    ):
         """Test start with watchdog"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_observer = Mock()
-            mock_observer_class.return_value = mock_observer
+            # Skip if watchdog not actually installed
+            try:
+                from watchdog.observers import Observer
+            except ImportError:
+                self.skipTest("watchdog not installed")
 
-            # Need to mock WatchdogHandler too
-            with patch.object(file_watcher, "WatchdogHandler", Mock()):
-                watcher = file_watcher.FileWatcher([tmpdir], Mock())
-                watcher._observer = None  # Reset
+            with patch("watchdog.observers.Observer") as mock_observer_class:
+                mock_observer = Mock()
+                mock_observer_class.return_value = mock_observer
 
-                # Manually set WATCHDOG_AVAILABLE for this test
-                original = file_watcher.WATCHDOG_AVAILABLE
-                file_watcher.WATCHDOG_AVAILABLE = True
+                # Need to mock WatchdogHandler too
+                with patch.object(file_watcher, "WatchdogHandler", Mock()):
+                    watcher = file_watcher.FileWatcher([tmpdir], Mock())
+                    watcher._observer = None  # Reset
 
-                try:
-                    result = watcher.start()
-                    # May fall back to polling if watchdog setup fails
-                    self.assertTrue(result)
-                finally:
-                    file_watcher.WATCHDOG_AVAILABLE = original
-                    watcher.stop()
+                    # Manually set WATCHDOG_AVAILABLE for this test
+                    original = file_watcher.WATCHDOG_AVAILABLE
+                    file_watcher.WATCHDOG_AVAILABLE = True
+
+                    try:
+                        result = watcher.start()
+                        # May fall back to polling if watchdog setup fails
+                        self.assertTrue(result)
+                    finally:
+                        file_watcher.WATCHDOG_AVAILABLE = original
+                        watcher.stop()
 
     def test_stop_with_observer(self):
         """Test stop with observer"""
@@ -435,12 +443,18 @@ class TestFileWatcherExtended(unittest.TestCase):
     @patch.object(file_watcher, "WATCHDOG_AVAILABLE", True)
     def test_start_watchdog_exception(self):
         """Test start with watchdog exception falls back to polling"""
+        # Skip if watchdog not actually installed
+        try:
+            from watchdog.observers import Observer
+        except ImportError:
+            self.skipTest("watchdog not installed")
+
         with tempfile.TemporaryDirectory() as tmpdir:
             callback = Mock()
             watcher = file_watcher.FileWatcher([tmpdir], callback)
 
             # Mock Observer to raise exception
-            with patch("services.file_watcher.Observer") as mock_observer:
+            with patch("watchdog.observers.Observer") as mock_observer:
                 mock_observer.side_effect = Exception("Watchdog error")
 
                 result = watcher.start()

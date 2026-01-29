@@ -638,3 +638,51 @@ WebServer/
 - `fpb_inject.py` reduced from original ~2700 lines to 1331 lines (51% reduction)
 - Compiler-related code consolidated in `core/compiler.py`
 - ELF utilities consolidated in `core/elf_utils.py`
+
+
+### 2025-01-29 Progress Update (Serial Protocol Extraction)
+
+#### Extracted Serial Protocol to `core/serial_protocol.py`
+
+- Created new `core/serial_protocol.py` (~576 lines) containing:
+  - `FPBProtocolError` exception class
+  - `FPBProtocol` class with all serial communication methods:
+    - `enter_fl_mode()`, `exit_fl_mode()`, `get_platform()`
+    - `send_cmd()`, `_is_response_complete()`, `_log_raw()`, `parse_response()`
+    - Device commands: `ping()`, `info()`, `alloc()`, `upload()`
+    - Patch commands: `patch()`, `tpatch()`, `dpatch()`, `unpatch()`
+    - `test_serial_throughput()`
+
+- Refactored `fpb_inject.py` (~596 lines):
+  - Now uses composition with `FPBProtocol` instance (`self._protocol`)
+  - Delegates all serial communication to `_protocol`
+  - Retains injection workflow logic: `inject()`, `inject_single()`, `inject_multi()`
+  - Retains ELF/compiler utility delegations
+  - Re-exports `scan_serial_ports`, `serial_open` for backward compatibility
+
+#### Current File Sizes
+
+| File | Lines | Status |
+|------|-------|--------|
+| `fpb_inject.py` | 596 | ✅ Reduced from 1331 (55% reduction) |
+| `core/serial_protocol.py` | 576 | ✅ New module |
+| `core/compiler.py` | 728 | ⚠️ Slightly over 500 |
+| `core/elf_utils.py` | 345 | ✅ |
+| `core/patch_generator.py` | 512 | ⚠️ Slightly over 500 |
+| `core/state.py` | 242 | ✅ |
+
+#### Test Results
+- 679 passed, 2 failed (pre-existing file_watcher issues), 7 skipped
+- All fpb_inject tests pass (93 tests)
+- Updated test mocks to use `self.fpb._protocol.send_cmd` instead of `self.fpb._send_cmd`
+
+#### Summary
+- `fpb_inject.py` reduced from original ~2700 lines to 596 lines (78% total reduction)
+- Serial protocol code extracted to dedicated module
+- Clean separation of concerns: protocol handling vs injection workflow
+- All tests passing (except pre-existing file_watcher issues)
+
+#### Remaining Work
+- `core/compiler.py` (728 lines) could be further split if needed
+- `core/patch_generator.py` (512 lines) slightly over target
+- Phase 1 (Thread Safety) still pending per original plan

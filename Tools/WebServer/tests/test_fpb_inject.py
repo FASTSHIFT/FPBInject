@@ -80,7 +80,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIsNotNone(error)
 
-    @patch("fpb_inject.serial.Serial")
+    @patch("utils.serial.serial.Serial")
     def test_open_success(self, mock_serial):
         """Test successful open"""
         mock_instance = Mock()
@@ -471,10 +471,14 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     def test_send_cmd_read_error(self):
         """Test send command read error"""
+
         # send_cmd calls write then read
         # Mock ser.read to raise exception
+        def mock_read(size=None):
+            raise Exception("Read Error")
+
         self.device.ser.in_waiting = 5
-        self.device.ser.read.side_effect = Exception("Read Error")
+        self.device.ser.read.side_effect = mock_read
 
         with self.assertRaises(Exception):
             self.fpb._send_cmd("test")
@@ -586,7 +590,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     def test_upload_success(self):
         """Test upload success"""
-        self.fpb._send_cmd = Mock(return_value="[OK]")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK]")
 
         data = b"\x01" * 100
         success, result = self.fpb.upload(data, 0x20000000)
@@ -598,7 +602,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     def test_upload_fail(self):
         """Test upload failure"""
-        self.fpb._send_cmd = Mock(return_value="[ERR] Write error")
+        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] Write error")
 
         data = b"\x01" * 10
         success, result = self.fpb.upload(data, 0x20000000)
@@ -608,7 +612,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     def test_upload_callback(self):
         """Test upload callback"""
-        self.fpb._send_cmd = Mock(return_value="[OK]")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK]")
         callback = Mock()
 
         data = b"\x01" * 100
@@ -773,7 +777,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_ping_success(self):
         """Test ping success"""
-        self.fpb._send_cmd = Mock(return_value="[OK] Pong")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Pong")
 
         success, msg = self.fpb.ping()
 
@@ -781,7 +785,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_ping_failure(self):
         """Test ping failure"""
-        self.fpb._send_cmd = Mock(return_value="[ERR] No response")
+        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] No response")
 
         success, msg = self.fpb.ping()
 
@@ -789,7 +793,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_info_success(self):
         """Test info success"""
-        self.fpb._send_cmd = Mock(
+        self.fpb._protocol.send_cmd = Mock(
             return_value="Base: 0x20000000\nSize: 1024\nUsed: 100\n[OK]"
         )
 
@@ -802,7 +806,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_info_failure(self):
         """Test info failure"""
-        self.fpb._send_cmd = Mock(return_value="[ERR] Device not ready")
+        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] Device not ready")
 
         info, error = self.fpb.info()
 
@@ -812,7 +816,9 @@ class TestFPBInjectCommands(unittest.TestCase):
     def test_alloc_success(self):
         """Test alloc success"""
         # alloc response format: "[OK] Allocated buffer at 0x20001000"
-        self.fpb._send_cmd = Mock(return_value="[OK] Allocated buffer at 0x20001000")
+        self.fpb._protocol.send_cmd = Mock(
+            return_value="[OK] Allocated buffer at 0x20001000"
+        )
 
         addr, error = self.fpb.alloc(1024)
 
@@ -821,7 +827,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_alloc_failure(self):
         """Test alloc failure"""
-        self.fpb._send_cmd = Mock(return_value="[ERR] Out of memory")
+        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] Out of memory")
 
         addr, error = self.fpb.alloc(1024)
 
@@ -829,7 +835,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_unpatch_all_success(self):
         """Test unpatch all success"""
-        self.fpb._send_cmd = Mock(return_value="[OK] Cleared")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Cleared")
 
         success, msg = self.fpb.unpatch(all=True)
 
@@ -837,7 +843,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_patch_success(self):
         """Test patch success"""
-        self.fpb._send_cmd = Mock(return_value="[OK] Patched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Patched")
 
         success, msg = self.fpb.patch(0, 0x08000000, 0x20001000)
 
@@ -845,7 +851,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_tpatch_success(self):
         """Test tpatch success"""
-        self.fpb._send_cmd = Mock(return_value="[OK] Trampoline patched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Trampoline patched")
 
         success, msg = self.fpb.tpatch(0, 0x08000000, 0x20001000)
 
@@ -853,7 +859,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_dpatch_success(self):
         """Test dpatch success"""
-        self.fpb._send_cmd = Mock(return_value="[OK] DebugMonitor patched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] DebugMonitor patched")
 
         success, msg = self.fpb.dpatch(0, 0x08000000, 0x20001000)
 
@@ -861,7 +867,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_unpatch_success(self):
         """Test unpatch success"""
-        self.fpb._send_cmd = Mock(return_value="[OK] Unpatched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Unpatched")
 
         success, msg = self.fpb.unpatch(0)
 
@@ -869,7 +875,14 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_exit_fl_mode(self):
         """Test exiting fl mode"""
-        self.device.ser.read.return_value = b"[OK]\nap>"
+        # Set the fl mode flag to ensure exit is attempted
+        self.fpb._protocol._in_fl_mode = True
+
+        def mock_read(size=None):
+            self.device.ser.in_waiting = 0
+            return b"[OK]\nap>"
+
+        self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 10
 
         result = self.fpb.exit_fl_mode(timeout=0.1)
@@ -879,7 +892,7 @@ class TestFPBInjectCommands(unittest.TestCase):
     def test_exit_fl_mode_error(self):
         """Test exiting fl mode exception"""
         # Set the fl mode flag to ensure exit is attempted
-        self.fpb._in_fl_mode = True
+        self.fpb._protocol._in_fl_mode = True
         self.device.ser.write.side_effect = Exception("Write error")
 
         result = self.fpb.exit_fl_mode(timeout=0.1)
@@ -945,6 +958,8 @@ class TestSerialThroughput(unittest.TestCase):
     def test_test_serial_no_connection(self):
         """Test serial throughput without connection"""
         self.device.ser = None
+        # Need to recreate protocol with None ser
+        self.fpb._protocol.device = self.device
 
         result = self.fpb.test_serial_throughput()
 
@@ -954,9 +969,8 @@ class TestSerialThroughput(unittest.TestCase):
 
     def test_test_serial_all_pass(self):
         """Test serial throughput with all tests passing"""
-        # Mock serial responses - all return [OK]
-        self.device.ser.read.return_value = b"[OK] Echo received"
-        self.device.ser.in_waiting = 20
+        # Mock send_cmd to return [OK] without CRC (CRC check will be skipped)
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Echo received")
 
         result = self.fpb.test_serial_throughput(start_size=16, max_size=64)
 
@@ -966,17 +980,16 @@ class TestSerialThroughput(unittest.TestCase):
 
     def test_test_serial_partial_pass(self):
         """Test serial throughput with some tests failing"""
-        # First calls return OK, then timeout
+        # First calls return OK, then empty (timeout)
         call_count = [0]
 
-        def mock_read(size=None):
+        def mock_send_cmd(cmd, timeout=2.0):
             call_count[0] += 1
-            if call_count[0] <= 3:
-                return b"[OK] Echo received"
-            return b""  # Timeout
+            if call_count[0] <= 2:
+                return "[OK] Echo received"
+            return ""  # Timeout
 
-        self.device.ser.read.side_effect = mock_read
-        self.device.ser.in_waiting = 20
+        self.fpb._protocol.send_cmd = Mock(side_effect=mock_send_cmd)
 
         result = self.fpb.test_serial_throughput(
             start_size=16, max_size=256, timeout=0.1
@@ -987,9 +1000,8 @@ class TestSerialThroughput(unittest.TestCase):
 
     def test_test_serial_recommended_size(self):
         """Test that recommended chunk size is calculated correctly"""
-        # Mock all tests passing up to 128 bytes
-        self.device.ser.read.return_value = b"[OK] Echo received"
-        self.device.ser.in_waiting = 20
+        # Mock send_cmd to return [OK]
+        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Echo received")
 
         result = self.fpb.test_serial_throughput(start_size=16, max_size=128)
 
@@ -1021,7 +1033,7 @@ class TestBuildTimeFeature(unittest.TestCase):
 
     def test_info_parse_build_time(self):
         """Test parsing build time from info response"""
-        self.fpb._send_cmd = Mock(return_value="""FPBInject v1.0
+        self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v1.0
 Build: Jan 29 2026 14:30:00
 Alloc: static
 Base: 0x20000000
@@ -1038,7 +1050,7 @@ Slots: 0/6
 
     def test_info_no_build_time(self):
         """Test info response without build time (old firmware)"""
-        self.fpb._send_cmd = Mock(return_value="""FPBInject v1.0
+        self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v1.0
 Alloc: static
 Base: 0x20000000
 Size: 1024
@@ -1051,7 +1063,7 @@ Size: 1024
 
     def test_info_dynamic_mode_with_build_time(self):
         """Test info with dynamic allocation and build time"""
-        self.fpb._send_cmd = Mock(return_value="""FPBInject v1.0
+        self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v1.0
 Build: Feb 15 2026 09:45:30
 Alloc: dynamic
 Used: 256

@@ -258,7 +258,13 @@ class FileWatcher:
         """Stop watching."""
         if self._observer:
             self._observer.stop()
-            self._observer.join(timeout=2)
+            # Only join if the observer was actually started
+            try:
+                if self._observer.is_alive():
+                    self._observer.join(timeout=2)
+            except RuntimeError:
+                # Thread was never started
+                pass
             self._observer = None
             logger.info("Watchdog observer stopped")
 
