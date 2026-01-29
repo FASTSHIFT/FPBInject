@@ -409,6 +409,7 @@ def register_routes(app):
         """Get device info including slot states."""
         fpb = get_fpb_inject()
         info, error = fpb.info()
+        fpb.exit_fl_mode()
         if error:
             return jsonify({"success": False, "error": error})
 
