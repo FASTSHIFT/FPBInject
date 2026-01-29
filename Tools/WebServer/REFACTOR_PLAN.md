@@ -610,3 +610,31 @@ WebServer/
 | `fpb_inject.py` | 2374 | 1664 | -710 |
 | `core/elf_utils.py` | - | 345 | +345 |
 | `core/compiler.py` | - | 366 | +366 |
+
+
+### 2025-01-29 Progress Update (Continued)
+
+#### Extracted `compile_inject` to `core/compiler.py`
+
+- Moved `compile_inject` function (~266 lines) from `fpb_inject.py` to `core/compiler.py`
+- `FPBInject.compile_inject()` now delegates to `compiler_utils.compile_inject()`
+- Removed unused imports from `fpb_inject.py` (`subprocess`, `tempfile`, `Path`)
+
+#### Current File Sizes
+
+| File | Lines | Status |
+|------|-------|--------|
+| `fpb_inject.py` | 1331 | Reduced from 1577 |
+| `core/compiler.py` | 723 | Increased from 457 |
+| `core/elf_utils.py` | 345 | Unchanged |
+| `routes.py` | ~60 | Unchanged |
+
+#### Test Results
+- All 457 tests pass
+- Format check passes
+- No Chinese text found
+
+#### Summary
+- `fpb_inject.py` reduced from original ~2700 lines to 1331 lines (51% reduction)
+- Compiler-related code consolidated in `core/compiler.py`
+- ELF utilities consolidated in `core/elf_utils.py`
