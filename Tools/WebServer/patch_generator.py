@@ -243,7 +243,7 @@ class PatchGenerator:
             return line
 
         # Handle angle-bracket includes - try to find in source directory tree
-        match = re.match(r'^(\s*#\s*include\s*)<([^>]+)>(.*)', line)
+        match = re.match(r"^(\s*#\s*include\s*)<([^>]+)>(.*)", line)
         if match:
             prefix = match.group(1)
             include_path = match.group(2)
@@ -251,11 +251,30 @@ class PatchGenerator:
 
             # Skip standard library headers (heuristic: no path separator and common names)
             std_headers = {
-                'stdio.h', 'stdlib.h', 'string.h', 'stdint.h', 'stdbool.h',
-                'stddef.h', 'stdarg.h', 'limits.h', 'math.h', 'time.h',
-                'assert.h', 'errno.h', 'signal.h', 'setjmp.h', 'ctype.h',
-                'locale.h', 'float.h', 'iso646.h', 'wchar.h', 'wctype.h',
-                'complex.h', 'fenv.h', 'inttypes.h', 'tgmath.h',
+                "stdio.h",
+                "stdlib.h",
+                "string.h",
+                "stdint.h",
+                "stdbool.h",
+                "stddef.h",
+                "stdarg.h",
+                "limits.h",
+                "math.h",
+                "time.h",
+                "assert.h",
+                "errno.h",
+                "signal.h",
+                "setjmp.h",
+                "ctype.h",
+                "locale.h",
+                "float.h",
+                "iso646.h",
+                "wchar.h",
+                "wctype.h",
+                "complex.h",
+                "fenv.h",
+                "inttypes.h",
+                "tgmath.h",
             }
             if include_path in std_headers:
                 return line
@@ -275,23 +294,36 @@ class PatchGenerator:
                 # Search recursively in this directory (limited depth)
                 for root, dirs, files in os.walk(search_dir):
                     # Limit search depth
-                    depth = root[len(search_dir):].count(os.sep)
+                    depth = root[len(search_dir) :].count(os.sep)
                     if depth > 3:
                         dirs[:] = []
                         continue
 
                     # Skip common non-source directories
-                    dirs[:] = [d for d in dirs if d not in [
-                        '.git', 'build', 'out', '__pycache__', 'node_modules',
-                        '.svn', '.hg', 'CMakeFiles'
-                    ]]
+                    dirs[:] = [
+                        d
+                        for d in dirs
+                        if d
+                        not in [
+                            ".git",
+                            "build",
+                            "out",
+                            "__pycache__",
+                            "node_modules",
+                            ".svn",
+                            ".hg",
+                            "CMakeFiles",
+                        ]
+                    ]
 
                     # Check if the header exists here
                     header_name = os.path.basename(include_path)
                     if header_name in files:
                         abs_path = os.path.join(root, header_name)
                         # Verify it's the right file (path suffix matches)
-                        if include_path == header_name or abs_path.endswith(include_path):
+                        if include_path == header_name or abs_path.endswith(
+                            include_path
+                        ):
                             return f'{prefix}"{abs_path}"{suffix}'
 
                 search_dir = os.path.dirname(search_dir)

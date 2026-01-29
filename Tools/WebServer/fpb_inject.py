@@ -1493,77 +1493,86 @@ class FPBInject:
     ) -> Optional[str]:
         """
         Parse .d dependency file to extract the original compile command.
-        
+
         vendor/bes build system stores compile commands in .d files with format:
         cmd_<path>/<file>.o := <full compile command>
-        
+
         Args:
             source_file: Path to the source file
             build_output_dir: Optional build output directory to search for .d files
-            
+
         Returns:
             The compile command string if found, None otherwise
         """
         import subprocess
-        
+
         if not source_file:
             return None
-            
+
         source_file = os.path.normpath(source_file)
         source_basename = os.path.basename(source_file)
         source_name_no_ext = os.path.splitext(source_basename)[0]
-        
+
         # Determine search directories
         search_dirs = []
         if build_output_dir:
             search_dirs.append(build_output_dir)
-        
+
         # Also search in common build output locations
-        workspace_root = os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
-        
+        workspace_root = os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(
+                    os.path.dirname(
+                        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    )
+                )
+            )
+        )
+
         # Search for .d files in out directory
         out_dir = os.path.join(workspace_root, "out")
         if os.path.isdir(out_dir):
             search_dirs.append(out_dir)
-        
+
         # Look for .d file with matching name
         dep_file_pattern = f".{source_name_no_ext}.o.d"
-        
+
         for search_dir in search_dirs:
             if not os.path.isdir(search_dir):
                 continue
-            
+
             # Use find command for faster search (much faster than os.walk for large directories)
             try:
                 result = subprocess.run(
                     ["find", search_dir, "-name", dep_file_pattern, "-type", "f"],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    dep_files = result.stdout.strip().split('\n')
+                    dep_files = result.stdout.strip().split("\n")
                     for dep_file_path in dep_files:
                         if not dep_file_path:
                             continue
                         logger.info(f"Found potential .d file: {dep_file_path}")
-                        
+
                         # Read and parse the .d file
                         try:
-                            with open(dep_file_path, 'r') as df:
+                            with open(dep_file_path, "r") as df:
                                 content = df.read()
-                                
+
                             # Check if this .d file is for our source file
                             if source_file in content or source_basename in content:
                                 # Look for cmd_xxx := pattern
-                                for line in content.split('\n'):
-                                    if line.startswith('cmd_') and ':=' in line:
+                                for line in content.split("\n"):
+                                    if line.startswith("cmd_") and ":=" in line:
                                         # Extract the command after :=
-                                        cmd_start = line.find(':=')
+                                        cmd_start = line.find(":=")
                                         if cmd_start != -1:
-                                            compile_cmd = line[cmd_start + 2:].strip()
-                                            logger.info(f"Found compile command in .d file: {dep_file_path}")
+                                            compile_cmd = line[cmd_start + 2 :].strip()
+                                            logger.info(
+                                                f"Found compile command in .d file: {dep_file_path}"
+                                            )
                                             return compile_cmd
                         except Exception as e:
                             logger.debug(f"Error reading .d file {dep_file_path}: {e}")
@@ -1579,23 +1588,29 @@ class FPBInject:
                         if f == dep_file_pattern:
                             dep_file_path = os.path.join(root, f)
                             logger.info(f"Found potential .d file: {dep_file_path}")
-                            
+
                             try:
-                                with open(dep_file_path, 'r') as df:
+                                with open(dep_file_path, "r") as df:
                                     content = df.read()
-                                    
+
                                 if source_file in content or source_basename in content:
-                                    for line in content.split('\n'):
-                                        if line.startswith('cmd_') and ':=' in line:
-                                            cmd_start = line.find(':=')
+                                    for line in content.split("\n"):
+                                        if line.startswith("cmd_") and ":=" in line:
+                                            cmd_start = line.find(":=")
                                             if cmd_start != -1:
-                                                compile_cmd = line[cmd_start + 2:].strip()
-                                                logger.info(f"Found compile command in .d file: {dep_file_path}")
+                                                compile_cmd = line[
+                                                    cmd_start + 2 :
+                                                ].strip()
+                                                logger.info(
+                                                    f"Found compile command in .d file: {dep_file_path}"
+                                                )
                                                 return compile_cmd
                             except Exception as e2:
-                                logger.debug(f"Error reading .d file {dep_file_path}: {e2}")
+                                logger.debug(
+                                    f"Error reading .d file {dep_file_path}: {e2}"
+                                )
                                 continue
-        
+
         return None
 
     def parse_compile_commands(
@@ -1683,7 +1698,9 @@ class FPBInject:
                         continue
                     file_dir = os.path.dirname(os.path.normpath(file_path))
                     # Check if the file is in the same directory tree
-                    if file_dir.startswith(search_dir) or search_dir.startswith(file_dir):
+                    if file_dir.startswith(search_dir) or search_dir.startswith(
+                        file_dir
+                    ):
                         selected_entry = entry
                         logger.info(
                             f"Found related file in compile_commands.json: {file_path} (same directory tree as {source_file})"
@@ -1696,7 +1713,9 @@ class FPBInject:
         dep_file_command = None
         if not selected_entry and source_file:
             build_output_dir = os.path.dirname(compile_commands_path)
-            dep_file_command = self.parse_dep_file_for_compile_command(source_file, build_output_dir)
+            dep_file_command = self.parse_dep_file_for_compile_command(
+                source_file, build_output_dir
+            )
             if dep_file_command:
                 logger.info(f"Found compile command from .d file for: {source_file}")
 
@@ -1929,6 +1948,7 @@ class FPBInject:
             # Use raw command from .d file if available (direct passthrough)
             if raw_command:
                 import shlex
+
                 # Parse the raw command and replace input/output files
                 raw_tokens = shlex.split(raw_command)
                 cmd = []
@@ -1960,10 +1980,16 @@ class FPBInject:
                 logger.info(f"Using raw command from .d file (passthrough)")
             else:
                 # Build command from parsed components
-                cmd = [compiler] + cflags + [
-                    "-c", "-ffunction-sections", "-fdata-sections",
-                    "-Wno-error",  # Don't treat warnings as errors (vendor code may have warnings)
-                ]
+                cmd = (
+                    [compiler]
+                    + cflags
+                    + [
+                        "-c",
+                        "-ffunction-sections",
+                        "-fdata-sections",
+                        "-Wno-error",  # Don't treat warnings as errors (vendor code may have warnings)
+                    ]
+                )
 
                 for inc in includes:
                     if os.path.isdir(inc):
