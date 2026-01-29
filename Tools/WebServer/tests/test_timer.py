@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from timer import Timer, TimerManager
+from services.timer import Timer, TimerManager
 
 
 class TestTimer(unittest.TestCase):

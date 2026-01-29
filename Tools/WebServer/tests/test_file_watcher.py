@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from file_watcher import (
+from services.file_watcher import (
     FileChangeHandler,
     FileWatcher,
     PollingWatcher,

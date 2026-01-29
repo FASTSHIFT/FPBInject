@@ -16,8 +16,8 @@ import threading
 
 from flask import jsonify, request, render_template, Response
 
-from state import state
-from device_worker import (
+from core.state import state
+from services.device_worker import (
     start_worker,
     stop_worker,
     run_in_device_worker,
@@ -819,7 +819,7 @@ def register_routes(app):
                 if os.path.isdir(src_dir) and src_dir not in watch_dirs:
                     watch_dirs.append(src_dir)
 
-        from patch_generator import find_function_signature
+        from core.patch_generator import find_function_signature
 
         for watch_dir in watch_dirs:
             if not os.path.isdir(watch_dir):
@@ -1006,7 +1006,7 @@ def register_routes(app):
         Finds functions marked with /* FPB_INJECT */ comment,
         copies entire file with marked functions renamed to inject_xxx.
         """
-        from patch_generator import PatchGenerator
+        from core.patch_generator import PatchGenerator
 
         data = request.json or {}
         file_path = data.get("file_path")
@@ -1054,7 +1054,7 @@ def register_routes(app):
 
         Returns list of marked function names without generating patch.
         """
-        from patch_generator import PatchGenerator
+        from core.patch_generator import PatchGenerator
 
         data = request.json or {}
         file_path = data.get("file_path")
@@ -1508,7 +1508,7 @@ Base Address: 0x{base_addr:08X}
 def _start_file_watcher(dirs):
     """Start file watcher for given directories."""
     try:
-        from file_watcher import start_watching
+        from services.file_watcher import start_watching
 
         state.file_watcher = start_watching(dirs, _on_file_change)
         return True
@@ -1521,7 +1521,7 @@ def _stop_file_watcher():
     """Stop file watcher."""
     if state.file_watcher:
         try:
-            from file_watcher import stop_watching
+            from services.file_watcher import stop_watching
 
             stop_watching(state.file_watcher)
         except:
@@ -1568,7 +1568,7 @@ def _trigger_auto_inject(file_path):
 
     def do_auto_inject():
         try:
-            from patch_generator import PatchGenerator
+            from core.patch_generator import PatchGenerator
 
             gen = PatchGenerator()
 

@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask
 import routes
-from state import DeviceState, AppState, state
+from core.state import DeviceState, AppState, state
 
 
 class TestRoutesBase(unittest.TestCase):
@@ -898,7 +898,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertIn("watching", data)
         self.assertIn("watch_dirs", data)
 
-    @patch("patch_generator.PatchGenerator")
+    @patch("core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_file(self, mock_gen_class):
         """Test auto generating patch without file path"""
         response = self.client.post("/api/patch/auto_generate", json={})
@@ -907,7 +907,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not provided", data["error"])
 
-    @patch("patch_generator.PatchGenerator")
+    @patch("core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_file_not_found(self, mock_gen_class):
         """Test auto generating patch when file not found"""
         response = self.client.post(
@@ -918,7 +918,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    @patch("patch_generator.PatchGenerator")
+    @patch("core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_markers(self, mock_gen_class):
         """Test auto generating patch with no markers"""
         mock_gen = Mock()
@@ -934,7 +934,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["marked_functions"], [])
 
-    @patch("patch_generator.PatchGenerator")
+    @patch("core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_success(self, mock_gen_class):
         """Test auto generating patch success"""
         mock_gen = Mock()
@@ -951,7 +951,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertEqual(len(data["marked_functions"]), 2)
         self.assertIn("inject_func1", data["injected_functions"])
 
-    @patch("patch_generator.PatchGenerator")
+    @patch("core.patch_generator.PatchGenerator")
     def test_detect_markers_no_file(self, mock_gen_class):
         """Test detecting markers without file"""
         response = self.client.post("/api/patch/detect_markers", json={})
@@ -960,7 +960,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not provided", data["error"])
 
-    @patch("patch_generator.PatchGenerator")
+    @patch("core.patch_generator.PatchGenerator")
     @patch(
         "builtins.open", mock_open(read_data="/* FPB_INJECT */\nvoid func1(void) {}")
     )

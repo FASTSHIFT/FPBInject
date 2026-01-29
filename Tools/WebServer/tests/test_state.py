@@ -12,7 +12,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from state import DeviceState, AppState, PERSISTENT_KEYS, CONFIG_VERSION
+from core.state import DeviceState, AppState, PERSISTENT_KEYS, CONFIG_VERSION
 
 
 class TestDeviceState(unittest.TestCase):

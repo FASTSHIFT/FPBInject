@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main import create_app
-from state import state
+from core.state import state
 
 # Create test app
 app = create_app()
@@ -289,7 +289,7 @@ class TestStateManagement(unittest.TestCase):
 
     def test_state_initial_values(self):
         """Test state initial values"""
-        from state import DeviceState
+        from core.state import DeviceState
 
         test_state = DeviceState()
         self.assertIsNone(test_state.ser)
@@ -299,7 +299,7 @@ class TestStateManagement(unittest.TestCase):
 
     def test_state_to_dict(self):
         """Test state to dictionary"""
-        from state import DeviceState
+        from core.state import DeviceState
 
         test_state = DeviceState()
         test_state.elf_path = "/test/path.elf"
@@ -321,7 +321,7 @@ class TestFPBInjectModule(unittest.TestCase):
     def test_fpb_inject_init(self):
         """Test FPBInject initialization"""
         from fpb_inject import FPBInject
-        from state import DeviceState
+        from core.state import DeviceState
 
         device = DeviceState()
         fpb = FPBInject(device)

@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fpb_cli import FPBCLI, FPBCLIError, DeviceState, HAS_SERIAL, main
+from cli.fpb_cli import FPBCLI, FPBCLIError, DeviceState, HAS_SERIAL, main
 
 
 class TestDeviceState(unittest.TestCase):
@@ -40,7 +40,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.tx_chunk_delay, 0.005)
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
-    @patch("fpb_cli.serial.Serial")
+    @patch("cli.fpb_cli.serial.Serial")
     def test_connect_success(self, mock_serial):
         """Test successful connection"""
         state = DeviceState()
@@ -52,7 +52,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertIsNotNone(state.ser)
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
-    @patch("fpb_cli.serial.Serial")
+    @patch("cli.fpb_cli.serial.Serial")
     def test_connect_failure(self, mock_serial):
         """Test connection failure"""
         state = DeviceState()
@@ -123,7 +123,7 @@ class TestFPBCLI(unittest.TestCase):
         cli.cleanup()
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
-    @patch("fpb_cli.serial.Serial")
+    @patch("cli.fpb_cli.serial.Serial")
     def test_init_with_port(self, mock_serial):
         """Test initialization with serial port"""
         mock_serial.return_value = MagicMock()
@@ -1069,7 +1069,7 @@ class TestMain(unittest.TestCase):
     def test_main_keyboard_interrupt(self):
         """Test main handles keyboard interrupt"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "test"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli.search.side_effect = KeyboardInterrupt()
                 mock_cli_class.return_value = mock_cli
@@ -1080,7 +1080,7 @@ class TestMain(unittest.TestCase):
     def test_main_cli_error(self):
         """Test main handles FPBCLIError"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "test"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli.search.side_effect = FPBCLIError("Test error")
                 mock_cli_class.return_value = mock_cli
@@ -1091,7 +1091,7 @@ class TestMain(unittest.TestCase):
     def test_main_unexpected_error(self):
         """Test main handles unexpected errors"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "test"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli.search.side_effect = RuntimeError("Unexpected")
                 mock_cli_class.return_value = mock_cli
@@ -1120,7 +1120,7 @@ class TestDeviceStateAdvanced(unittest.TestCase):
     def test_connect_without_serial(self):
         """Test connect raises without pyserial"""
         state = DeviceState()
-        with patch("fpb_cli.HAS_SERIAL", False):
+        with patch("cli.fpb_cli.HAS_SERIAL", False):
             # Reload DeviceState method would be complex, test error message
             pass
 
@@ -1145,7 +1145,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_analyze_command(self):
         """Test main with analyze command"""
         with patch("sys.argv", ["fpb_cli.py", "analyze", "/fake.elf", "main"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1154,7 +1154,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_disasm_command(self):
         """Test main with disasm command"""
         with patch("sys.argv", ["fpb_cli.py", "disasm", "/fake.elf", "main"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1163,7 +1163,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_decompile_command(self):
         """Test main with decompile command"""
         with patch("sys.argv", ["fpb_cli.py", "decompile", "/fake.elf", "main"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1172,7 +1172,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_signature_command(self):
         """Test main with signature command"""
         with patch("sys.argv", ["fpb_cli.py", "signature", "/fake.elf", "main"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1181,7 +1181,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_search_command(self):
         """Test main with search command"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "gpio"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1190,7 +1190,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_compile_command(self):
         """Test main with compile command"""
         with patch("sys.argv", ["fpb_cli.py", "compile", "/fake.c"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1199,7 +1199,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_info_command(self):
         """Test main with info command"""
         with patch("sys.argv", ["fpb_cli.py", "info"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1208,7 +1208,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_inject_command(self):
         """Test main with inject command"""
         with patch("sys.argv", ["fpb_cli.py", "inject", "target", "patch.c"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1217,7 +1217,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_unpatch_command(self):
         """Test main with unpatch command"""
         with patch("sys.argv", ["fpb_cli.py", "unpatch", "--comp", "0"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1226,7 +1226,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_with_global_elf(self):
         """Test main with global --elf option"""
         with patch("sys.argv", ["fpb_cli.py", "--elf", "/path/to/elf", "info"]):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1240,7 +1240,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "--port", "/dev/ttyACM0", "--baudrate", "9600", "info"],
         ):
-            with patch("fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()

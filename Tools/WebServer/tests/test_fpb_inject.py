@@ -21,7 +21,7 @@ from fpb_inject import (
     serial_open,
     crc16,
 )
-from state import DeviceState
+from core.state import DeviceState
 
 
 class TestCRC16(unittest.TestCase):

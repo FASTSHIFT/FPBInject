@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from patch_generator import PatchGenerator, check_dependencies, FPB_INJECT_MARKER
+from core.patch_generator import PatchGenerator, check_dependencies, FPB_INJECT_MARKER
 
 
 class TestFindMarkedFunctions(unittest.TestCase):

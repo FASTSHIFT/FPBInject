@@ -13,8 +13,8 @@ from unittest.mock import Mock, patch, MagicMock, PropertyMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import device_worker
-from device_worker import (
+import services.device_worker as device_worker
+from services.device_worker import (
     DeviceWorker,
     get_worker,
     start_worker,
