@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+
+# MIT License
+# Copyright (c) 2025 - 2026 _VIFEXTech
+
+"""
+Connection API routes for FPBInject Web Server.
+
+Provides endpoints for serial port connection management and configuration.
+"""
+
+import os
+
+from flask import Blueprint, jsonify, request
+
+from core.state import state
+from services.device_worker import run_in_device_worker, start_worker, stop_worker
+
+bp = Blueprint("connection", __name__)
+
+
+def _get_helpers():
+    """Lazy import to avoid circular dependency."""
+    from routes import (
+        add_tool_log,
+        get_fpb_inject,
+        _restart_file_watcher,
+        _stop_file_watcher,
+    )
+    from fpb_inject import scan_serial_ports, serial_open
+
+    return (
+        add_tool_log,
+        get_fpb_inject,
+        _restart_file_watcher,
+        _stop_file_watcher,
+        scan_serial_ports,
+        serial_open,
+    )
+
+
+@bp.route("/ports", methods=["GET"])
+def api_get_ports():
+    """Get available serial ports."""
+    _, _, _, _, scan_serial_ports, _ = _get_helpers()
+    ports = scan_serial_ports()
+    return jsonify({"success": True, "ports": ports})
+
+
+@bp.route("/connect", methods=["POST"])
+def api_connect():
+    """Connect to a serial port."""
+    add_tool_log, get_fpb_inject, _, _, _, serial_open = _get_helpers()
+
+    data = request.json or {}
+    port = data.get("port")
+    baudrate = data.get("baudrate", 115200)
+    timeout = data.get("timeout", 2)
+
+    if not port:
+        return jsonify({"success": False, "error": "Port not specified"})
+
+    device = state.device
+
+    # Start worker first
+    start_worker(device)
+
+    result = {"error": None}
+
+    def do_connect():
+        if device.ser:
+            try:
+                device.ser.close()
+            except:
+                pass
+            device.ser = None
+
+        ser, error = serial_open(port, baudrate, timeout)
+        if error:
+            result["error"] = error
+        else:
+            device.ser = ser
+            device.port = port
+            device.baudrate = baudrate
+            device.timeout = timeout
+
+    if not run_in_device_worker(device, do_connect, timeout=5.0):
+        return jsonify({"success": False, "error": "Connect timeout"})
+
+    if result["error"]:
+        add_tool_log(f"[ERROR] Connection failed: {result['error']}")
+        return jsonify({"success": False, "error": result["error"]})
+
+    device.auto_connect = True
+    state.save_config()
+
+    # Setup toolchain if configured
+    fpb = get_fpb_inject()
+    if device.toolchain_path:
+        fpb.set_toolchain_path(device.toolchain_path)
+
+    add_tool_log(f"[SUCCESS] Connected to {port} @ {baudrate}")
+    return jsonify({"success": True, "port": port})
+
+
+@bp.route("/disconnect", methods=["POST"])
+def api_disconnect():
+    """Disconnect from serial port."""
+    add_tool_log, _, _, _, _, _ = _get_helpers()
+
+    device = state.device
+
+    def do_disconnect():
+        if device.ser:
+            try:
+                device.ser.close()
+            except:
+                pass
+            device.ser = None
+
+    run_in_device_worker(device, do_disconnect, timeout=2.0)
+    stop_worker(device)
+
+    device.auto_connect = False
+    device.inject_active = False
+    state.save_config()
+
+    add_tool_log("[INFO] Disconnected from serial port")
+    return jsonify({"success": True})
+
+
+@bp.route("/status", methods=["GET"])
+def api_status():
+    """Get current device status."""
+    device = state.device
+
+    connected = False
+    try:
+        connected = device.ser is not None and device.ser.isOpen()
+    except:
+        pass
+
+    return jsonify(
+        {
+            "success": True,
+            "connected": connected,
+            "port": device.port,
+            "baudrate": device.baudrate,
+            "elf_path": device.elf_path,
+            "toolchain_path": device.toolchain_path,
+            "compile_commands_path": device.compile_commands_path,
+            "watch_dirs": device.watch_dirs,
+            "patch_mode": device.patch_mode,
+            "chunk_size": device.chunk_size,
+            "auto_connect": device.auto_connect,
+            "auto_compile": device.auto_compile,
+            "enable_decompile": device.enable_decompile,
+            "patch_source_path": device.patch_source_path,
+            "inject_active": device.inject_active,
+            "last_inject_target": device.last_inject_target,
+            "last_inject_func": device.last_inject_func,
+            "last_inject_time": device.last_inject_time,
+            "device_info": device.device_info,
+        }
+    )
+
+
+@bp.route("/config", methods=["GET"])
+def api_get_config():
+    """Get current device configuration."""
+    device = state.device
+    return jsonify(
+        {
+            "port": device.port,
+            "baudrate": device.baudrate,
+            "elf_path": device.elf_path,
+            "toolchain_path": device.toolchain_path,
+            "compile_commands_path": device.compile_commands_path,
+            "watch_dirs": device.watch_dirs,
+            "patch_mode": device.patch_mode,
+            "chunk_size": device.chunk_size,
+            "tx_chunk_size": device.tx_chunk_size,
+            "tx_chunk_delay": device.tx_chunk_delay,
+            "auto_compile": device.auto_compile,
+            "enable_decompile": device.enable_decompile,
+        }
+    )
+
+
+@bp.route("/config", methods=["POST"])
+def api_config():
+    """Update device configuration."""
+    _, get_fpb_inject, _restart_file_watcher, _stop_file_watcher, _, _ = _get_helpers()
+
+    data = request.json or {}
+    device = state.device
+
+    if "port" in data:
+        device.port = data["port"]
+
+    if "baudrate" in data:
+        device.baudrate = data["baudrate"]
+
+    if "elf_path" in data:
+        device.elf_path = data["elf_path"]
+        # Reload symbols
+        if device.elf_path and os.path.exists(device.elf_path):
+            fpb = get_fpb_inject()
+            state.symbols = fpb.get_symbols(device.elf_path)
+            state.symbols_loaded = True
+
+    if "toolchain_path" in data:
+        device.toolchain_path = data["toolchain_path"]
+        fpb = get_fpb_inject()
+        fpb.set_toolchain_path(device.toolchain_path)
+
+    if "compile_commands_path" in data:
+        device.compile_commands_path = data["compile_commands_path"]
+
+    if "watch_dirs" in data:
+        device.watch_dirs = data["watch_dirs"]
+        # Restart file watcher if needed
+        _restart_file_watcher()
+
+    if "patch_mode" in data:
+        device.patch_mode = data["patch_mode"]
+
+    if "chunk_size" in data:
+        device.chunk_size = data["chunk_size"]
+
+    if "tx_chunk_size" in data:
+        device.tx_chunk_size = data["tx_chunk_size"]
+
+    if "tx_chunk_delay" in data:
+        device.tx_chunk_delay = data["tx_chunk_delay"]
+
+    if "auto_compile" in data:
+        device.auto_compile = data["auto_compile"]
+        # Start or stop file watcher based on auto_compile setting
+        if device.auto_compile:
+            _restart_file_watcher()
+        else:
+            _stop_file_watcher()
+
+    if "enable_decompile" in data:
+        device.enable_decompile = data["enable_decompile"]
+
+    if "patch_source_path" in data:
+        device.patch_source_path = data["patch_source_path"]
+        # Load patch source content if file exists
+        if device.patch_source_path and os.path.exists(device.patch_source_path):
+            try:
+                with open(device.patch_source_path, "r") as f:
+                    device.patch_source_content = f.read()
+            except:
+                pass
+
+    state.save_config()
+    return jsonify({"success": True})

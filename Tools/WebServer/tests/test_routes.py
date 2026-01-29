@@ -61,7 +61,7 @@ class TestIndexRoute(TestRoutesBase):
 class TestPortsAPI(TestRoutesBase):
     """Ports API tests"""
 
-    @patch("routes.scan_serial_ports")
+    @patch("fpb_inject.scan_serial_ports")
     def test_get_ports(self, mock_scan):
         """Test getting ports list"""
         mock_scan.return_value = [
@@ -75,7 +75,7 @@ class TestPortsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(len(data["ports"]), 2)
 
-    @patch("routes.scan_serial_ports")
+    @patch("fpb_inject.scan_serial_ports")
     def test_get_ports_empty(self, mock_scan):
         """Test no available ports"""
         mock_scan.return_value = []
@@ -90,8 +90,8 @@ class TestPortsAPI(TestRoutesBase):
 class TestConnectAPI(TestRoutesBase):
     """Connect API tests"""
 
-    @patch("routes.start_worker")
-    @patch("routes.run_in_device_worker")
+    @patch("app.routes.connection.start_worker")
+    @patch("app.routes.connection.run_in_device_worker")
     def test_connect_no_port(self, mock_run, mock_start):
         """Test connect without specifying port"""
         response = self.client.post(
@@ -102,8 +102,8 @@ class TestConnectAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Port not specified", data["error"])
 
-    @patch("routes.start_worker")
-    @patch("routes.run_in_device_worker")
+    @patch("app.routes.connection.start_worker")
+    @patch("app.routes.connection.run_in_device_worker")
     def test_connect_timeout(self, mock_run, mock_start):
         """Test connection timeout"""
         mock_run.return_value = False
@@ -122,8 +122,8 @@ class TestConnectAPI(TestRoutesBase):
 class TestDisconnectAPI(TestRoutesBase):
     """Disconnect API tests"""
 
-    @patch("routes.run_in_device_worker")
-    @patch("routes.stop_worker")
+    @patch("app.routes.connection.run_in_device_worker")
+    @patch("app.routes.connection.stop_worker")
     def test_disconnect(self, mock_stop, mock_run):
         """Test disconnect"""
         mock_run.return_value = True
@@ -1003,9 +1003,9 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertFalse(data["connected"])
 
-    @patch("routes.start_worker")
-    @patch("routes.run_in_device_worker")
-    @patch("routes.serial_open")
+    @patch("app.routes.connection.start_worker")
+    @patch("app.routes.connection.run_in_device_worker")
+    @patch("fpb_inject.serial_open")
     def test_connect_success(self, mock_serial_open, mock_run, mock_start):
         """Test connect success"""
         mock_serial = Mock()
