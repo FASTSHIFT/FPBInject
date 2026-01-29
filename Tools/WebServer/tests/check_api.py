@@ -10,27 +10,47 @@ from collections import defaultdict
 
 
 def find_backend_routes(routes_file):
-    """Extract all API routes from routes.py"""
+    """Extract all API routes from routes.py and app/routes/*.py"""
     routes = {}
 
-    with open(routes_file, "r") as f:
-        content = f.read()
+    # Collect all route files to scan
+    routes_files = [routes_file]
 
-    # Match @app.route("/api/...", methods=[...])
-    pattern = r'@app\.route\(["\']([^"\']+)["\'](?:,\s*methods=\[([^\]]+)\])?\)'
+    # Also scan app/routes/*.py for blueprints
+    app_routes_dir = routes_file.parent / "app" / "routes"
+    if app_routes_dir.exists():
+        for bp_file in app_routes_dir.glob("*.py"):
+            if bp_file.name != "__init__.py":
+                routes_files.append(bp_file)
 
-    for match in re.finditer(pattern, content):
-        path = match.group(1)
-        methods_str = match.group(2) or '"GET"'
-        # Parse methods
-        methods = re.findall(r'"(\w+)"', methods_str)
-        if not methods:
-            methods = ["GET"]
-        # Merge methods if path already exists
-        if path in routes:
-            routes[path] = list(set(routes[path] + methods))
-        else:
-            routes[path] = methods
+    for rf in routes_files:
+        with open(rf, "r") as f:
+            content = f.read()
+
+        # Match @app.route("/api/...", methods=[...]) for routes.py
+        pattern1 = r'@app\.route\(["\']([^"\']+)["\'](?:,\s*methods=\[([^\]]+)\])?\)'
+
+        # Match @bp.route("/...", methods=[...]) for blueprints
+        pattern2 = r'@bp\.route\(["\']([^"\']+)["\'](?:,\s*methods=\[([^\]]+)\])?\)'
+
+        for pattern in [pattern1, pattern2]:
+            for match in re.finditer(pattern, content):
+                path = match.group(1)
+                methods_str = match.group(2) or '"GET"'
+                # Parse methods
+                methods = re.findall(r'"(\w+)"', methods_str)
+                if not methods:
+                    methods = ["GET"]
+
+                # For blueprints, add /api prefix if not present
+                if pattern == pattern2 and not path.startswith("/api"):
+                    path = "/api" + path
+
+                # Merge methods if path already exists
+                if path in routes:
+                    routes[path] = list(set(routes[path] + methods))
+                else:
+                    routes[path] = methods
 
     return routes
 
