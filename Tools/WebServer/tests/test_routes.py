@@ -323,7 +323,7 @@ class TestConfigAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertTrue(state.device.auto_compile)
 
-    @patch("routes._restart_file_watcher")
+    @patch("services.file_watcher_manager.restart_file_watcher")
     def test_update_watch_dirs(self, mock_restart):
         """Test updating watch directories"""
         response = self.client.post(

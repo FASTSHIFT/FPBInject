@@ -25,7 +25,16 @@ logger = logging.getLogger(__name__)
 
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
-    from routes import add_tool_log, get_fpb_inject, _build_slot_response
+    from routes import get_fpb_inject
+    from utils.helpers import build_slot_response
+    from core.state import state
+
+    def add_tool_log(msg):
+        state.device.add_tool_log(msg)
+
+    def _build_slot_response(device, app_state):
+        """Wrapper to call build_slot_response with get_fpb_inject."""
+        return build_slot_response(device, app_state, get_fpb_inject)
 
     return add_tool_log, get_fpb_inject, _build_slot_response
 

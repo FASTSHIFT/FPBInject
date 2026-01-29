@@ -27,10 +27,11 @@ import sys
 from flask import Flask
 from flask_cors import CORS
 
-from routes import register_routes, restore_file_watcher
+from routes import register_routes
 from core.state import state
 from fpb_inject import serial_open
 from services.device_worker import start_worker
+from services.file_watcher_manager import restore_file_watcher
 
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

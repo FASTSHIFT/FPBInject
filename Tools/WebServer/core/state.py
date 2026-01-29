@@ -112,6 +112,15 @@ class DeviceState:
         self.slot_update_id = 0  # Incremented on slot info change
         self.cached_slots = []  # Cached slot info from last info response
 
+    def add_tool_log(self, message):
+        """Add a message to tool output log (shown in OUTPUT terminal)."""
+        log_id = self.tool_log_next_id
+        self.tool_log_next_id += 1
+        entry = {"id": log_id, "message": message}
+        self.tool_log.append(entry)
+        if len(self.tool_log) > self.tool_log_max_size:
+            self.tool_log = self.tool_log[-self.tool_log_max_size :]
+
     def to_dict(self):
         """Export persistent config as dict."""
         return {key: getattr(self, key) for key in PERSISTENT_KEYS}

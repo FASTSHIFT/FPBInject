@@ -16,12 +16,12 @@ from core.state import state
 bp = Blueprint("watch", __name__)
 
 
-# Import file watcher helpers from routes module
+# Import file watcher helpers
 def _get_file_watcher_helpers():
     """Lazy import to avoid circular dependency."""
-    from routes import _start_file_watcher, _stop_file_watcher
+    from services.file_watcher_manager import start_file_watcher, stop_file_watcher
 
-    return _start_file_watcher, _stop_file_watcher
+    return start_file_watcher, stop_file_watcher
 
 
 @bp.route("/watch/status", methods=["GET"])

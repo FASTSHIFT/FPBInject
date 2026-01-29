@@ -21,19 +21,19 @@ bp = Blueprint("connection", __name__)
 
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
-    from routes import (
-        add_tool_log,
-        get_fpb_inject,
-        _restart_file_watcher,
-        _stop_file_watcher,
-    )
+    from routes import get_fpb_inject
+    from services.file_watcher_manager import restart_file_watcher, stop_file_watcher
     from fpb_inject import scan_serial_ports, serial_open
+    from core.state import state
+
+    def add_tool_log(msg):
+        state.device.add_tool_log(msg)
 
     return (
         add_tool_log,
         get_fpb_inject,
-        _restart_file_watcher,
-        _stop_file_watcher,
+        restart_file_watcher,
+        stop_file_watcher,
         scan_serial_ports,
         serial_open,
     )
