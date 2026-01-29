@@ -11,14 +11,14 @@ from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import serial_utils
+from utils import serial as serial_utils
 
 
 class TestScanSerialPorts(unittest.TestCase):
     """scan_serial_ports test"""
 
-    @patch("serial_utils.serial.tools.list_ports.comports")
-    @patch("serial_utils.glob.glob")
+    @patch("utils.serial.serial.tools.list_ports.comports")
+    @patch("utils.serial.glob.glob")
     def test_scan_ports_basic(self, mock_glob, mock_comports):
         """Test scanning basic ports"""
         mock_port = Mock()
@@ -33,8 +33,8 @@ class TestScanSerialPorts(unittest.TestCase):
         self.assertEqual(result[0]["device"], "/dev/ttyUSB0")
         self.assertEqual(result[0]["description"], "USB Serial")
 
-    @patch("serial_utils.serial.tools.list_ports.comports")
-    @patch("serial_utils.glob.glob")
+    @patch("utils.serial.serial.tools.list_ports.comports")
+    @patch("utils.serial.glob.glob")
     def test_scan_ports_with_ch341(self, mock_glob, mock_comports):
         """Test scanning ports containing CH341"""
         mock_comports.return_value = []
@@ -45,8 +45,8 @@ class TestScanSerialPorts(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertTrue(all("CH341" in r["description"] for r in result))
 
-    @patch("serial_utils.serial.tools.list_ports.comports")
-    @patch("serial_utils.glob.glob")
+    @patch("utils.serial.serial.tools.list_ports.comports")
+    @patch("utils.serial.glob.glob")
     def test_scan_ports_no_duplicates(self, mock_glob, mock_comports):
         """Test no duplicate ports added"""
         mock_port = Mock()
@@ -60,8 +60,8 @@ class TestScanSerialPorts(unittest.TestCase):
         # Should have only one
         self.assertEqual(len(result), 1)
 
-    @patch("serial_utils.serial.tools.list_ports.comports")
-    @patch("serial_utils.glob.glob")
+    @patch("utils.serial.serial.tools.list_ports.comports")
+    @patch("utils.serial.glob.glob")
     def test_scan_ports_empty(self, mock_glob, mock_comports):
         """Test no available ports"""
         mock_comports.return_value = []
@@ -75,7 +75,7 @@ class TestScanSerialPorts(unittest.TestCase):
 class TestSerialOpen(unittest.TestCase):
     """serial_open test"""
 
-    @patch("serial_utils.serial.Serial")
+    @patch("utils.serial.serial.Serial")
     def test_open_success(self, mock_serial):
         """Test successfully opening port"""
         mock_ser = Mock()
@@ -88,7 +88,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(error)
         mock_serial.assert_called_with("/dev/ttyUSB0", 115200, timeout=1)
 
-    @patch("serial_utils.serial.Serial")
+    @patch("utils.serial.serial.Serial")
     def test_open_not_opened(self, mock_serial):
         """Test port failed to open"""
         mock_ser = Mock()
@@ -100,7 +100,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIn("Error opening", error)
 
-    @patch("serial_utils.serial.Serial")
+    @patch("utils.serial.serial.Serial")
     def test_open_serial_exception(self, mock_serial):
         """Test serial exception"""
         import serial
@@ -112,7 +112,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIn("Serial error", error)
 
-    @patch("serial_utils.serial.Serial")
+    @patch("utils.serial.serial.Serial")
     def test_open_generic_exception(self, mock_serial):
         """Test generic exception"""
         mock_serial.side_effect = Exception("Unknown error")
@@ -254,7 +254,7 @@ class TestSerialWriteDirect(unittest.TestCase):
 class TestDeviceWorkerFunctions(unittest.TestCase):
     """Device Worker related functions test"""
 
-    @patch("serial_utils.start_worker")
+    @patch("utils.serial.start_worker")
     def test_start_device_worker(self, mock_start):
         """Test starting device worker"""
         device = Mock()
@@ -265,7 +265,7 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
         mock_start.assert_called_with(device)
         self.assertTrue(result)
 
-    @patch("serial_utils.stop_worker")
+    @patch("utils.serial.stop_worker")
     def test_stop_device_worker(self, mock_stop):
         """Test stopping device worker"""
         device = Mock()
