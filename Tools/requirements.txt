@@ -11,4 +11,4 @@ tree_sitter
 coverage
 
 # Optional: Decompilation support (large dependency, ~500MB)
-angr
+# angr
