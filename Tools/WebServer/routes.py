@@ -1152,75 +1152,7 @@ Base Address: 0x{base_addr:08X}
         )
 
     # ============== File Watching ==============
-
-    @app.route("/api/watch/status", methods=["GET"])
-    def api_watch_status():
-        """Get file watcher status."""
-        changes = state.get_pending_changes()
-        return jsonify(
-            {
-                "success": True,
-                "watching": state.file_watcher is not None,
-                "watch_dirs": state.device.watch_dirs,
-                "pending_changes": changes,
-                "auto_compile": state.device.auto_compile,
-            }
-        )
-
-    @app.route("/api/watch/start", methods=["POST"])
-    def api_watch_start():
-        """Start file watching."""
-        data = request.json or {}
-        dirs = data.get("dirs", state.device.watch_dirs)
-
-        if not dirs:
-            return jsonify({"success": False, "error": "No directories to watch"})
-
-        state.device.watch_dirs = dirs
-        state.save_config()
-
-        success = _start_file_watcher(dirs)
-        return jsonify({"success": success})
-
-    @app.route("/api/watch/stop", methods=["POST"])
-    def api_watch_stop():
-        """Stop file watching."""
-        _stop_file_watcher()
-        state.save_config()
-        return jsonify({"success": True})
-
-    @app.route("/api/watch/clear", methods=["POST"])
-    def api_watch_clear():
-        """Clear pending changes."""
-        state.clear_pending_changes()
-        return jsonify({"success": True})
-
-    @app.route("/api/watch/auto_inject_status", methods=["GET"])
-    def api_auto_inject_status():
-        """Get auto inject status for real-time UI updates."""
-        device = state.device
-        return jsonify(
-            {
-                "success": True,
-                "status": device.auto_inject_status,
-                "message": device.auto_inject_message,
-                "source_file": device.auto_inject_source_file,
-                "modified_funcs": device.auto_inject_modified_funcs,
-                "progress": device.auto_inject_progress,
-                "last_update": device.auto_inject_last_update,
-                "result": device.auto_inject_result,  # Include injection statistics
-            }
-        )
-
-    @app.route("/api/watch/auto_inject_reset", methods=["POST"])
-    def api_auto_inject_reset():
-        """Reset auto inject status to idle."""
-        device = state.device
-        device.auto_inject_status = "idle"
-        device.auto_inject_message = ""
-        device.auto_inject_progress = 0
-        device.auto_inject_last_update = 0
-        return jsonify({"success": True})
+    # NOTE: Watch routes have been migrated to app/routes/watch.py
 
     # ============== Serial Log ==============
     # NOTE: Log routes have been migrated to app/routes/logs.py
