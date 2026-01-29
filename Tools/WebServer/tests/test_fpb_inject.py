@@ -1021,16 +1021,14 @@ class TestBuildTimeFeature(unittest.TestCase):
 
     def test_info_parse_build_time(self):
         """Test parsing build time from info response"""
-        self.fpb._send_cmd = Mock(
-            return_value="""FPBInject v1.0
+        self.fpb._send_cmd = Mock(return_value="""FPBInject v1.0
 Build: Jan 29 2026 14:30:00
 Alloc: static
 Base: 0x20000000
 Size: 1024
 Used: 100
 Slots: 0/6
-[OK] Info complete"""
-        )
+[OK] Info complete""")
 
         info, error = self.fpb.info()
 
@@ -1040,13 +1038,11 @@ Slots: 0/6
 
     def test_info_no_build_time(self):
         """Test info response without build time (old firmware)"""
-        self.fpb._send_cmd = Mock(
-            return_value="""FPBInject v1.0
+        self.fpb._send_cmd = Mock(return_value="""FPBInject v1.0
 Alloc: static
 Base: 0x20000000
 Size: 1024
-[OK] Info complete"""
-        )
+[OK] Info complete""")
 
         info, error = self.fpb.info()
 
@@ -1055,16 +1051,14 @@ Size: 1024
 
     def test_info_dynamic_mode_with_build_time(self):
         """Test info with dynamic allocation and build time"""
-        self.fpb._send_cmd = Mock(
-            return_value="""FPBInject v1.0
+        self.fpb._send_cmd = Mock(return_value="""FPBInject v1.0
 Build: Feb 15 2026 09:45:30
 Alloc: dynamic
 Used: 256
 Slots: 2/6
 Slot[0]: 0x08001000 -> 0x20001000, 128 bytes
 Slot[1]: 0x08002000 -> 0x20001080, 64 bytes
-[OK] Info complete"""
-        )
+[OK] Info complete""")
 
         info, error = self.fpb.info()
 
