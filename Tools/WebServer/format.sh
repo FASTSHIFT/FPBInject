@@ -28,7 +28,9 @@ format_python() {
     echo -e "\n${GREEN}📦 Formatting Python files (*.py)...${NC}"
     
     # Check for black via python -m
-    if ! python -m black --version &> /dev/null; then
+    if python -m black --version &> /dev/null; then
+        echo -e "   Using $(python -m black --version)"
+    else
         echo -e "${YELLOW}   Installing black...${NC}"
         pip install black -q
     fi
