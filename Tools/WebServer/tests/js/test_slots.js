@@ -177,63 +177,30 @@ module.exports = function (w) {
   });
 
   describe('updateMemoryInfo Function', () => {
-    it('handles dynamic memory', () => {
+    it('displays used memory', () => {
       const memEl = browserGlobals.document.getElementById('memoryInfo');
-      w.updateMemoryInfo({ is_dynamic: true, used: 1024 });
-      assertContains(memEl.innerHTML, 'Dynamic');
+      w.updateMemoryInfo({ used: 1024 });
+      assertContains(memEl.innerHTML, 'Used:');
       assertContains(memEl.innerHTML, '1024');
     });
 
-    it('handles static memory', () => {
+    it('handles zero used memory', () => {
       const memEl = browserGlobals.document.getElementById('memoryInfo');
-      w.updateMemoryInfo({
-        is_dynamic: false,
-        base: 0x20000000,
-        size: 4096,
-        used: 1024,
-      });
-      assertContains(memEl.innerHTML, 'Static');
-      assertContains(memEl.innerHTML, '20000000');
+      w.updateMemoryInfo({ used: 0 });
+      assertContains(memEl.innerHTML, 'Used:');
+      assertContains(memEl.innerHTML, '0');
     });
 
-    it('calculates percentage correctly', () => {
-      const memEl = browserGlobals.document.getElementById('memoryInfo');
-      w.updateMemoryInfo({ is_dynamic: false, base: 0, size: 100, used: 50 });
-      assertContains(memEl.innerHTML, '50%');
-    });
-
-    it('handles zero size', () => {
-      const memEl = browserGlobals.document.getElementById('memoryInfo');
-      w.updateMemoryInfo({ is_dynamic: false, base: 0, size: 0, used: 0 });
-      assertContains(memEl.innerHTML, '0%');
-    });
-
-    it('handles 100% usage', () => {
-      const memEl = browserGlobals.document.getElementById('memoryInfo');
-      w.updateMemoryInfo({ is_dynamic: false, base: 0, size: 100, used: 100 });
-      assertContains(memEl.innerHTML, '100%');
-    });
-
-    it('handles missing fields', () => {
+    it('handles missing used field', () => {
       const memEl = browserGlobals.document.getElementById('memoryInfo');
       w.updateMemoryInfo({});
-      assertContains(memEl.innerHTML, '0%');
-    });
-
-    it('formats base address with padding', () => {
-      const memEl = browserGlobals.document.getElementById('memoryInfo');
-      w.updateMemoryInfo({
-        is_dynamic: false,
-        base: 0x100,
-        size: 100,
-        used: 0,
-      });
-      assertContains(memEl.innerHTML, '00000100');
+      assertContains(memEl.innerHTML, 'Used:');
+      assertContains(memEl.innerHTML, '0');
     });
 
     it('handles missing memoryInfo element', () => {
       // This should not throw
-      w.updateMemoryInfo({ is_dynamic: true, used: 100 });
+      w.updateMemoryInfo({ used: 100 });
       assertTrue(true);
     });
   });
