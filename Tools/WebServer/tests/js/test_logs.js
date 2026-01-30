@@ -309,5 +309,182 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
       w.FPBState.rawTerminal = null;
     });
+
+    it('handles empty response text', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      // Simulate empty response
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        text: async () => '',
+      });
+      global.fetch = browserGlobals.fetch;
+      await w.fetchLogs();
+      assertTrue(true);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('handles invalid JSON response', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        text: async () => 'not valid json',
+      });
+      global.fetch = browserGlobals.fetch;
+      await w.fetchLogs();
+      assertTrue(true);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('handles non-json content type', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        headers: { get: () => 'text/html' },
+        text: async () => '<html></html>',
+      });
+      global.fetch = browserGlobals.fetch;
+      await w.fetchLogs();
+      assertTrue(true);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.fetchLogs();
+      assertTrue(true);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('handles whitespace-only response', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        text: async () => '   \n\t  ',
+      });
+      global.fetch = browserGlobals.fetch;
+      await w.fetchLogs();
+      assertTrue(true);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('handles null content-type header', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        headers: { get: () => null },
+        text: async () => '{}',
+      });
+      global.fetch = browserGlobals.fetch;
+      await w.fetchLogs();
+      assertTrue(true);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('updates all slot states from response', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.toolLogNextId = 0;
+      w.FPBState.rawLogNextId = 0;
+      w.FPBState.slotUpdateId = 0;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/logs', {
+        tool_next: 0,
+        raw_next: 0,
+        slot_update_id: 1,
+        slot_data: {
+          slots: [
+            {
+              occupied: true,
+              func: 'func0',
+              orig_addr: '0x1000',
+              target_addr: '0x2000',
+              code_size: 100,
+            },
+            {
+              occupied: true,
+              func: 'func1',
+              orig_addr: '0x1100',
+              target_addr: '0x2100',
+              code_size: 200,
+            },
+            { occupied: false },
+            { occupied: false },
+            { occupied: false },
+            { occupied: false },
+          ],
+        },
+      });
+      await w.fetchLogs();
+      assertTrue(w.FPBState.slotStates[0].occupied);
+      assertTrue(w.FPBState.slotStates[1].occupied);
+      assertEqual(w.FPBState.slotStates[0].func, 'func0');
+      assertEqual(w.FPBState.slotStates[1].func, 'func1');
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
   });
 };

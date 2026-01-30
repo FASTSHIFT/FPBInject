@@ -404,5 +404,261 @@ module.exports = function (w) {
       );
       w.FPBState.toolTerminal = null;
     });
+
+    it('sends POST with all flag', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      browserGlobals.confirm = () => true;
+      setFetchResponse('/api/fpb/unpatch', { success: true });
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      await w.fpbUnpatchAll();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/fpb/unpatch')));
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.confirm = () => true;
+    });
+
+    it('cancels on confirm rejection', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      browserGlobals.confirm = () => false;
+      await w.fpbUnpatchAll();
+      const calls = getFetchCalls();
+      assertTrue(!calls.some((c) => c.url.includes('/api/fpb/unpatch')));
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.confirm = () => true;
+    });
+
+    it('handles unpatch all failure', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      browserGlobals.confirm = () => true;
+      setFetchResponse('/api/fpb/unpatch', {
+        success: false,
+        message: 'Failed',
+      });
+      await w.fpbUnpatchAll();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.confirm = () => true;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      browserGlobals.confirm = () => true;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.fpbUnpatchAll();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.confirm = () => true;
+    });
+  });
+
+  describe('fpbUnpatch Function - Extended', () => {
+    it('handles fetch exception', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.fpbUnpatch(0);
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+  });
+
+  describe('fpbReinject Function - Extended', () => {
+    it('handles no patch source available', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: 'test_func',
+          orig_addr: '0x1000',
+          target_addr: '0x2000',
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      setFetchResponse('/api/patch/source', { success: false });
+      await w.fpbReinject(0);
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('No patch source'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles reinject failure', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: 'test_func',
+          orig_addr: '0x1000',
+          target_addr: '0x2000',
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      setFetchResponse('/api/patch/source', {
+        success: true,
+        content: 'void test() {}',
+      });
+      setFetchResponse('/api/fpb/inject', {
+        success: false,
+        error: 'Injection failed',
+      });
+      await w.fpbReinject(0);
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: 'test_func',
+          orig_addr: '0x1000',
+          target_addr: '0x2000',
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.fpbReinject(0);
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+  });
+
+  describe('selectSlot Function - Extended', () => {
+    it('opens disassembly for occupied slot', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [];
+      w.FPBState.aceEditors = new Map();
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: 'test_func',
+          addr: '0x1000',
+          orig_addr: '0x1000',
+          target_addr: '0x2000',
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      setFetchResponse('/api/symbols/disasm', { disasm: '; test' });
+      w.selectSlot(0);
+      assertTrue(true);
+      w.FPBState.toolTerminal = null;
+      w.FPBState.editorTabs = [];
+    });
+  });
+
+  describe('updateSlotUI Function - Extended', () => {
+    it('updates slot function display with code size', () => {
+      resetMocks();
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: 'test_func',
+          orig_addr: '0x1000',
+          target_addr: '0x2000',
+          code_size: 256,
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      w.updateSlotUI();
+      const funcSpan = browserGlobals.document.getElementById('slot0Func');
+      assertTrue(funcSpan.textContent.includes('256'));
+    });
+
+    it('sets empty text for unoccupied slots', () => {
+      resetMocks();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.updateSlotUI();
+      const funcSpan = browserGlobals.document.getElementById('slot0Func');
+      assertEqual(funcSpan.textContent, 'Empty');
+    });
   });
 };

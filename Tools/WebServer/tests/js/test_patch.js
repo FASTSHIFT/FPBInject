@@ -9,6 +9,13 @@ const {
   assertContains,
   assertDeepEqual,
 } = require('./framework');
+const {
+  resetMocks,
+  setFetchResponse,
+  getFetchCalls,
+  browserGlobals,
+  MockTerminal,
+} = require('./mocks');
 
 module.exports = function (w) {
   describe('Patch Functions (features/patch.js)', () => {
@@ -282,11 +289,306 @@ module.exports = function (w) {
     it('is a function', () => {
       assertTrue(typeof w.displayInjectionStats === 'function');
     });
+
+    it('displays compile time', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats(
+        { compile_time: 1.5, upload_time: 0.5, code_size: 100 },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('1.50')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays upload speed', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats(
+        { compile_time: 1.0, upload_time: 1.0, code_size: 1000 },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('B/s')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays code size', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats(
+        { compile_time: 1.0, upload_time: 0.5, code_size: 256 },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('256')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays total time', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats(
+        {
+          compile_time: 1.0,
+          upload_time: 0.5,
+          code_size: 100,
+          total_time: 2.0,
+        },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('2.00')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays patch mode', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      browserGlobals.document.getElementById('patchMode').value = 'trampoline';
+      w.displayInjectionStats(
+        { compile_time: 1.0, upload_time: 0.5, code_size: 100 },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('trampoline')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays target address', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats(
+        {
+          compile_time: 1.0,
+          upload_time: 0.5,
+          code_size: 100,
+          target_addr: '0x08001000',
+        },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('0x08001000')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays inject function address', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats(
+        {
+          compile_time: 1.0,
+          upload_time: 0.5,
+          code_size: 100,
+          inject_func: 'inject_test',
+          inject_addr: '0x20000100',
+        },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('inject_test')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles zero upload time', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats(
+        { compile_time: 1.0, upload_time: 0, code_size: 100 },
+        'test_func',
+      );
+      assertTrue(mockTerm._writes.length > 0);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles missing optional fields', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayInjectionStats({}, 'test_func');
+      assertTrue(mockTerm._writes.length > 0);
+      w.FPBState.toolTerminal = null;
+    });
   });
 
   describe('performInject Function', () => {
     it('is async function', () => {
       assertTrue(w.performInject.constructor.name === 'AsyncFunction');
+    });
+
+    it('returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.performInject();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns error if all slots occupied', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: true, func: 'test' }));
+      browserGlobals.confirm = () => false;
+      await w.performInject();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('slots are occupied'),
+        ),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+      browserGlobals.confirm = () => true;
+    });
+
+    it('returns error if no patch tab selected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.FPBState.currentPatchTab = null;
+      await w.performInject();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('No patch tab'),
+        ),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns error if no source code', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('patch_test', { getValue: () => '' });
+      await w.performInject();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('No patch source'),
+        ),
+      );
+      w.FPBState.aceEditors.delete('patch_test');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('prompts for overwrite if slot occupied', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.selectedSlot = 0;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map((_, i) => ({
+          occupied: i === 0,
+          func: i === 0 ? 'old_func' : '',
+        }));
+      w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('patch_test', {
+        getValue: () => 'void test() {}',
+      });
+      browserGlobals.confirm = () => false;
+      await w.performInject();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('cancelled')),
+      );
+      w.FPBState.aceEditors.delete('patch_test');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+      browserGlobals.confirm = () => true;
+    });
+
+    it('sends POST to /api/fpb/inject/stream', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.selectedSlot = 0;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('patch_test', {
+        getValue: () => 'void test() {}',
+      });
+      browserGlobals.document.getElementById('patchMode').value = 'trampoline';
+      setFetchResponse('/api/fpb/inject/stream', {
+        _stream: [
+          'data: {"type":"status","stage":"compiling"}\n',
+          'data: {"type":"progress","percent":50,"uploaded":50,"total":100}\n',
+          'data: {"type":"result","success":true,"compile_time":1.0,"upload_time":0.5,"code_size":100}\n',
+        ],
+      });
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      await w.performInject();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/fpb/inject/stream')));
+      w.FPBState.aceEditors.delete('patch_test');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles injection failure', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.selectedSlot = 0;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('patch_test', {
+        getValue: () => 'void test() {}',
+      });
+      setFetchResponse('/api/fpb/inject/stream', {
+        _stream: [
+          'data: {"type":"result","success":false,"error":"Compilation failed"}\n',
+        ],
+      });
+      await w.performInject();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Compilation failed'),
+        ),
+      );
+      w.FPBState.aceEditors.delete('patch_test');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
     });
   });
 };

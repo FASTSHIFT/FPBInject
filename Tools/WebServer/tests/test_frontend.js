@@ -24,6 +24,16 @@ const isCI =
   process.env.CI === 'true' ||
   process.env.GITHUB_ACTIONS === 'true';
 
+// Parse --threshold parameter (default: 70)
+let coverageThreshold = 70;
+const thresholdIdx = args.indexOf('--threshold');
+if (thresholdIdx !== -1 && args[thresholdIdx + 1]) {
+  const parsed = parseInt(args[thresholdIdx + 1], 10);
+  if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+    coverageThreshold = parsed;
+  }
+}
+
 // ===================== Coverage Setup =====================
 
 let instrumenter = null;
@@ -148,6 +158,8 @@ require('./js/test_connection')(w);
 require('./js/test_logs')(w);
 require('./js/test_slots')(w);
 require('./js/test_ui')(w);
+require('./js/test_sash')(w);
+require('./js/test_sidebar')(w);
 require('./js/test_patch')(w);
 require('./js/test_editor')(w);
 require('./js/test_config')(w);
@@ -197,6 +209,31 @@ if (enableCoverage && global.__coverage__) {
   reports.create('lcov').execute(context);
 
   console.log(`\nReports saved to: ${path.join(__dirname, 'coverage')}`);
+
+  // Calculate overall coverage and check threshold
+  const summary = coverageMap.getCoverageSummary();
+  const stmtCoverage = summary.statements.pct;
+
+  console.log('\n========================================');
+  console.log('    Coverage Threshold Check');
+  console.log('========================================');
+  console.log(`\n    Statement coverage: ${stmtCoverage.toFixed(2)}%`);
+  console.log(`    Required threshold: ${coverageThreshold}%`);
+
+  if (stmtCoverage < coverageThreshold) {
+    console.log(
+      isCI
+        ? `\n##[error]Coverage ${stmtCoverage.toFixed(2)}% is below threshold ${coverageThreshold}%`
+        : `\n\x1b[31m    ❌ Coverage is below threshold!\x1b[0m`,
+    );
+    process.exit(1);
+  } else {
+    console.log(
+      isCI
+        ? `\n    ✅ Coverage meets threshold`
+        : `\n\x1b[32m    ✅ Coverage meets threshold\x1b[0m`,
+    );
+  }
 }
 
 process.exit(stats.failCount > 0 ? 1 : 0);

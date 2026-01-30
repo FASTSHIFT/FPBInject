@@ -151,7 +151,7 @@ jobs:
         working-directory: Tools/WebServer
         run: |
           echo "🧪 Running frontend JavaScript tests with coverage..."
-          npm run test:ci
+          node tests/test_frontend.js --coverage --ci --threshold 60
           echo "✅ Frontend tests passed!"
 
       - name: Upload coverage report

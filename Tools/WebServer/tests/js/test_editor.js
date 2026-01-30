@@ -261,6 +261,46 @@ module.exports = function (w) {
       const result = w.initAceEditor('test_tab', 'content', 'c_cpp');
       assertTrue(result !== null);
     });
+
+    it('returns null when element not found', () => {
+      resetMocks();
+      // Override getElementById to return null for specific id
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'editor_missing_tab') return null;
+        return origGetById.call(browserGlobals.document, id);
+      };
+      const result = w.initAceEditor('missing_tab', 'content', 'c_cpp');
+      assertEqual(result, null);
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('sets editor theme based on current theme', () => {
+      resetMocks();
+      browserGlobals.document.documentElement._theme = 'light';
+      const result = w.initAceEditor('light_tab', 'content', 'c_cpp');
+      assertTrue(result !== null);
+      browserGlobals.document.documentElement._theme = 'dark';
+    });
+
+    it('sets readOnly option when specified', () => {
+      resetMocks();
+      const result = w.initAceEditor(
+        'readonly_tab',
+        'content',
+        'assembly_x86',
+        true,
+      );
+      assertTrue(result !== null);
+    });
+
+    it('stores editor in aceEditors map', () => {
+      resetMocks();
+      w.FPBState.aceEditors.clear();
+      w.initAceEditor('stored_tab', 'content', 'c_cpp');
+      assertTrue(w.FPBState.aceEditors.has('stored_tab'));
+      w.FPBState.aceEditors.delete('stored_tab');
+    });
   });
 
   describe('savePatchFile Function', () => {
@@ -283,6 +323,160 @@ module.exports = function (w) {
           (wr) => wr.msg && wr.msg.includes('No patch tab'),
         ),
       );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns error if editor not found', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.currentPatchTab = {
+        id: 'nonexistent_tab',
+        funcName: 'test_func',
+      };
+      w.FPBState.aceEditors.clear();
+      await w.savePatchFile();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Editor not found'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('sets fileBrowserCallback', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.currentPatchTab = { id: 'save_tab', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('save_tab', {
+        getValue: () => 'void test() {}',
+      });
+      w.FPBState.fileBrowserCallback = null;
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      await w.savePatchFile();
+      assertTrue(w.FPBState.fileBrowserCallback !== null);
+      w.FPBState.aceEditors.delete('save_tab');
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('sets fileBrowserMode to dir', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.currentPatchTab = { id: 'save_tab2', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('save_tab2', {
+        getValue: () => 'void test() {}',
+      });
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      await w.savePatchFile();
+      assertEqual(w.FPBState.fileBrowserMode, 'dir');
+      w.FPBState.aceEditors.delete('save_tab2');
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('openManualPatchTab Function - Extended', () => {
+    it('creates new tab with correct structure', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.aceEditors = new Map();
+      w.FPBState.selectedSlot = 2;
+      browserGlobals.document.getElementById('enableDecompile').checked = false;
+      setFetchResponse('/api/symbols/signature', {
+        success: true,
+        signature: 'int new_func(int x)',
+        source_file: 'main.c',
+      });
+      await w.openManualPatchTab('new_func');
+      assertTrue(w.FPBState.editorTabs.some((t) => t.id === 'patch_new_func'));
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('sets currentPatchTab', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.aceEditors = new Map();
+      browserGlobals.document.getElementById('enableDecompile').checked = false;
+      setFetchResponse('/api/symbols/signature', { success: false });
+      await w.openManualPatchTab('another_func');
+      assertEqual(w.FPBState.currentPatchTab.funcName, 'another_func');
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles decompilation when enabled', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [];
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.aceEditors = new Map();
+      browserGlobals.document.getElementById('enableDecompile').checked = true;
+      setFetchResponse('/api/symbols/signature', { success: false });
+      setFetchResponse('/api/symbols/decompile', {
+        success: true,
+        decompiled: 'int x = 0;\nreturn x;',
+      });
+      await w.openManualPatchTab('decompile_func');
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Decompiled')),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles angr not installed', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [];
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.aceEditors = new Map();
+      browserGlobals.document.getElementById('enableDecompile').checked = true;
+      setFetchResponse('/api/symbols/signature', { success: false });
+      setFetchResponse('/api/symbols/decompile', {
+        success: false,
+        error: 'ANGR_NOT_INSTALLED',
+      });
+      await w.openManualPatchTab('angr_func');
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('angr not installed'),
+        ),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('openDisassembly Function - Extended', () => {
+    it('creates tab with correct type', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.aceEditors = new Map();
+      setFetchResponse('/api/symbols/disasm', { disasm: '; test disasm code' });
+      await w.openDisassembly('disasm_func', '0x3000');
+      const tab = w.FPBState.editorTabs.find(
+        (t) => t.id === 'disasm_disasm_func',
+      );
+      assertEqual(tab.type, 'asm');
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles API error', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [];
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.aceEditors = new Map();
+      setFetchResponse('/api/symbols/disasm', { _ok: false, _status: 500 });
+      await w.openDisassembly('error_func', '0x4000');
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = null;
     });
   });

@@ -304,5 +304,97 @@ module.exports = function (w) {
       assertTrue(true);
       w.FPBState.toolTerminal = null;
     });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.checkConnectionStatus();
+      assertTrue(true);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('toggleConnect Function - Extended', () => {
+    it('handles disconnect failure', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.toggleConnect();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles connect fetch exception', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      browserGlobals.document.getElementById('portSelect').value =
+        '/dev/ttyUSB0';
+      browserGlobals.document.getElementById('baudrate').value = '115200';
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.toggleConnect();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('refreshPorts Function - Extended', () => {
+    it('preserves previous port selection', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const sel = browserGlobals.document.getElementById('portSelect');
+      sel.value = '/dev/ttyUSB0';
+      setFetchResponse('/api/ports', {
+        ports: ['/dev/ttyUSB0', '/dev/ttyUSB1'],
+      });
+      await w.refreshPorts();
+      assertTrue(true);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.refreshPorts();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
   });
 };

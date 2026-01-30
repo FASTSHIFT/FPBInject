@@ -228,5 +228,22 @@ module.exports = function (w) {
     it('is callable', () => {
       assertTrue(typeof w.initTerminals === 'function');
     });
+
+    it('initializes terminals when containers exist', () => {
+      resetMocks();
+      w.initTerminals();
+      assertTrue(true);
+    });
+  });
+
+  describe('Terminal Theme Integration', () => {
+    it('getTerminalTheme is a function', () => {
+      assertTrue(typeof w.getTerminalTheme === 'function');
+    });
+
+    it('returns theme object', () => {
+      const theme = w.getTerminalTheme();
+      assertTrue(theme !== null && typeof theme === 'object');
+    });
   });
 };
