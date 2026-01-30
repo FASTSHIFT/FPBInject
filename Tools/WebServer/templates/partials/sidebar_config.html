@@ -14,7 +14,7 @@
             title="Path to the compiled ELF file for symbol lookup and disassembly"
             >ELF Path</label
           >
-          <input type="text" id="elfPath" class="vscode-input" style="flex: 1" />
+          <input type="text" id="elfPath" class="vscode-input" style="flex: 1" placeholder="/path/to/firmware.elf" />
           <button class="vscode-btn icon-only secondary" onclick="browseFile('elfPath', '.elf')">
             <i class="codicon codicon-folder-opened"></i>
           </button>
@@ -26,7 +26,13 @@
             title="Path to compile_commands.json for accurate compile flags (include paths, defines, etc.)"
             >Compile DB</label
           >
-          <input type="text" id="compileCommandsPath" class="vscode-input" style="flex: 1" />
+          <input
+            type="text"
+            id="compileCommandsPath"
+            class="vscode-input"
+            style="flex: 1"
+            placeholder="/path/to/compile_commands.json"
+          />
           <button class="vscode-btn icon-only secondary" onclick="browseFile('compileCommandsPath', '.json')">
             <i class="codicon codicon-folder-opened"></i>
           </button>
@@ -38,7 +44,13 @@
             title="Path to cross-compiler toolchain bin directory (e.g., arm-none-eabi-gcc)"
             >Toolchain</label
           >
-          <input type="text" id="toolchainPath" class="vscode-input" style="flex: 1" />
+          <input
+            type="text"
+            id="toolchainPath"
+            class="vscode-input"
+            style="flex: 1"
+            placeholder="/path/to/toolchain/bin"
+          />
           <button class="vscode-btn icon-only secondary" onclick="browseDir('toolchainPath')">
             <i class="codicon codicon-folder-opened"></i>
           </button>

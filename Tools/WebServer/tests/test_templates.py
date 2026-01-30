@@ -110,6 +110,25 @@ class TestTemplateRendering(unittest.TestCase):
             self.assertIn('id="symbolSearch"', html)
             self.assertIn('id="symbolList"', html)
 
+    def test_config_input_placeholders(self):
+        """Test that configuration inputs have placeholder hints."""
+        with self.app.app_context():
+            from flask import render_template
+
+            html = render_template("index.html")
+
+            # ELF Path placeholder
+            self.assertIn('id="elfPath"', html)
+            self.assertIn('placeholder="/path/to/firmware.elf"', html)
+
+            # Compile DB placeholder
+            self.assertIn('id="compileCommandsPath"', html)
+            self.assertIn('placeholder="/path/to/compile_commands.json"', html)
+
+            # Toolchain placeholder
+            self.assertIn('id="toolchainPath"', html)
+            self.assertIn('placeholder="/path/to/toolchain/bin"', html)
+
     def test_sidebar_device_slots(self):
         """Test that all 6 FPB slots are rendered via Jinja2 loop."""
         with self.app.app_context():
