@@ -228,7 +228,7 @@ static void cmd_echo(fl_context_t* ctx, const char* data_str) {
         crc = calc_crc16((const uint8_t*)data_str, strlen(data_str));
     }
 
-    fl_response(ctx, true, "ECHO %zu Bytes, CRC 0x%04X", len, crc);
+    fl_response(ctx, true, "ECHO %u Bytes, CRC 0x%04X", (unsigned)len, crc);
 }
 
 static void cmd_info(fl_context_t* ctx) {
