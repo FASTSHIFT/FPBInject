@@ -140,11 +140,18 @@ jobs:
           python tests/run_tests.py --coverage --target 80
           echo "✅ Backend tests passed!"
 
+      - name: Install Node.js dependencies
+        working-directory: Tools/WebServer
+        run: |
+          echo "📦 Installing Node.js dependencies..."
+          npm install
+          echo "✅ Node.js dependencies installed!"
+
       - name: Run frontend tests
         working-directory: Tools/WebServer
         run: |
-          echo "🧪 Running frontend JavaScript tests..."
-          node tests/test_frontend.js
+          echo "🧪 Running frontend JavaScript tests with coverage..."
+          npm run test:ci
           echo "✅ Frontend tests passed!"
 
       - name: Upload coverage report
@@ -152,7 +159,9 @@ jobs:
         if: always()
         with:
           name: coverage-report
-          path: Tools/WebServer/tests/htmlcov/
+          path: |
+            Tools/WebServer/tests/htmlcov/
+            Tools/WebServer/tests/coverage/
           retention-days: 7
 
   # ============================================================

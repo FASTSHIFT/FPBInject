@@ -1,2 +1,11 @@
 config.json
 .coverage
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Coverage reports
+coverage/
+.nyc_output/
+tests/coverage/

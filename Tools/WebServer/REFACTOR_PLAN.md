@@ -822,3 +822,181 @@ Flask Request Thread          Device Worker Thread
 - `app/routes/fpb.py` - Added `_run_serial_op()`, updated all routes
 - `tests/test_fpb_routes.py` - Added worker mock in base class
 - `tests/test_routes.py` - Added worker mock in base class
+
+
+### 2025-01-30 Progress Update (Frontend Modularization)
+
+#### Split `static/js/app.js` into Modular Structure
+
+**Problem**: `app.js` was 3012 lines - too large and difficult to maintain.
+
+**Solution**: Split into 15 focused modules organized by functionality:
+
+```
+static/js/
+├── core/
+│   ├── state.js       (100 lines) - Global state management
+│   ├── theme.js       (85 lines)  - Theme toggle functionality
+│   ├── terminal.js    (145 lines) - Terminal management
+│   ├── connection.js  (110 lines) - Connection management
+│   ├── logs.js        (80 lines)  - Log polling
+│   └── slots.js       (200 lines) - Slot management
+├── ui/
+│   ├── sash.js        (145 lines) - Sash resize functionality
+│   └── sidebar.js     (85 lines)  - Sidebar state persistence
+├── features/
+│   ├── fpb.js         (145 lines) - FPB commands
+│   ├── patch.js       (280 lines) - Patch operations
+│   ├── symbols.js     (55 lines)  - Symbol search
+│   ├── editor.js      (290 lines) - Editor/tab management
+│   ├── config.js      (175 lines) - Configuration
+│   ├── autoinject.js  (250 lines) - Auto-inject polling
+│   └── filebrowser.js (145 lines) - File browser
+└── app.js             (35 lines)  - Main entry point
+```
+
+#### Module Organization
+
+**Core Modules** - Essential application state and functionality:
+- `state.js` - Global state with `window.FPBState` accessor
+- `theme.js` - Dark/light theme toggle
+- `terminal.js` - xterm.js terminal initialization and management
+- `connection.js` - Serial port connection handling
+- `logs.js` - Log polling from backend
+- `slots.js` - FPB slot management and UI updates
+
+**UI Modules** - User interface components:
+- `sash.js` - Resizable sidebar and panel
+- `sidebar.js` - Collapsible sidebar sections state
+
+**Feature Modules** - Application features:
+- `fpb.js` - FPB device commands (ping, info, test)
+- `patch.js` - Patch template generation and injection
+- `symbols.js` - Symbol search functionality
+- `editor.js` - Ace editor and tab management
+- `config.js` - Configuration loading/saving
+- `autoinject.js` - Auto-inject status polling
+- `filebrowser.js` - File browser modal
+
+#### Updated `templates/index.html`
+
+Changed from single script include to modular loading:
+```html
+<!-- Core Modules -->
+<script src="/static/js/core/state.js"></script>
+<script src="/static/js/core/theme.js"></script>
+<script src="/static/js/core/terminal.js"></script>
+<script src="/static/js/core/connection.js"></script>
+<script src="/static/js/core/logs.js"></script>
+<script src="/static/js/core/slots.js"></script>
+<!-- UI Modules -->
+<script src="/static/js/ui/sash.js"></script>
+<script src="/static/js/ui/sidebar.js"></script>
+<!-- Feature Modules -->
+<script src="/static/js/features/fpb.js"></script>
+<script src="/static/js/features/patch.js"></script>
+<script src="/static/js/features/symbols.js"></script>
+<script src="/static/js/features/editor.js"></script>
+<script src="/static/js/features/config.js"></script>
+<script src="/static/js/features/autoinject.js"></script>
+<script src="/static/js/features/filebrowser.js"></script>
+<!-- Main Entry Point -->
+<script src="/static/js/app.js"></script>
+```
+
+#### Key Design Decisions
+
+1. **Global State Pattern**: Used `window.FPBState` object with getters/setters to share state across modules while maintaining encapsulation.
+
+2. **Function Exports**: Each module exports its functions to `window` for global access, maintaining backward compatibility with inline event handlers in HTML.
+
+3. **No Build Step Required**: Modules are loaded directly via `<script>` tags - no bundler needed. This keeps the development workflow simple.
+
+4. **Dependency Order**: Scripts are loaded in dependency order (state first, then modules that depend on it).
+
+#### File Size Summary
+
+| File | Lines | Status |
+|------|-------|--------|
+| `app.js` (original) | 3012 | ❌ Too large |
+| `app.js` (new) | 35 | ✅ Entry point only |
+| Largest module | 290 | ✅ `features/editor.js` |
+| Average module | ~140 | ✅ Well-sized |
+
+#### Benefits
+
+1. **Maintainability**: Each module has a single responsibility
+2. **Readability**: Smaller files are easier to understand
+3. **Testability**: Modules can be tested in isolation (future)
+4. **Collaboration**: Multiple developers can work on different modules
+5. **Debugging**: Easier to locate issues in focused modules
+
+#### Next Steps (Frontend)
+
+1. Add JavaScript unit tests (Jest or similar)
+2. Consider bundling for production (optional)
+3. Add TypeScript type definitions (optional)
+
+
+#### Test Results
+
+**Python Backend Tests**: 696 passed ✅
+**JavaScript Frontend Tests**: 42 passed ✅ (increased from 17)
+
+New frontend tests added for:
+- Patch template generation (`parseSignature`, `extractParamNames`)
+- State management pattern
+- Theme functions
+- Slot management utilities
+- HTML escaping
+- Memory info formatting
+
+
+### 2025-01-30 Progress Update (Frontend Test Coverage)
+
+#### Added Code Coverage Support for Frontend Tests
+
+**Changes:**
+1. Created `package.json` with npm scripts for testing
+2. Extracted testable functions to `tests/lib/test_utils.js` module
+3. Refactored `tests/test_frontend.js` to use the module
+4. Added c8 for code coverage reporting
+
+**npm Scripts:**
+```bash
+npm test              # Run tests without coverage
+npm run test:coverage # Run with coverage report (text + HTML + lcov)
+npm run test:ci       # CI mode with coverage check (80% line threshold)
+```
+
+**Coverage Results:**
+```
+---------------|---------|----------|---------|---------|
+File           | % Stmts | % Branch | % Funcs | % Lines |
+---------------|---------|----------|---------|---------|
+All files      |     100 |    96.66 |     100 |     100 |
+ test_utils.js |     100 |    96.66 |     100 |     100 |
+---------------|---------|----------|---------|---------|
+```
+
+**CI Integration:**
+- Detects CI environment via `CI=true` or `GITHUB_ACTIONS=true`
+- Uses GitHub Actions grouping syntax (`##[group]`/`##[endgroup]`)
+- Outputs error annotations for failed tests (`##[error]`)
+- Generates lcov report for coverage upload to services like Codecov
+
+**Test Count:** 49 tests (up from 42)
+
+**New Testable Functions in `tests/lib/test_utils.js`:**
+- `parseSignature()` - Parse C function signatures
+- `extractParamNames()` - Extract parameter names from signature
+- `escapeHtml()` - Escape HTML special characters
+- `countOccupiedSlots()` - Count occupied FPB slots
+- `formatSlotInfo()` - Format slot info for display
+- `formatMemoryPercent()` - Calculate memory usage percentage
+- `formatHexAddress()` - Format address as hex string
+- `getTerminalTheme()` - Get terminal theme colors
+- `createSlotStates()` - Create initial slot states array
+- `sleep()` - Promise-based sleep
+- `validateConfig()` - Validate config object
+- `parseInjectionResult()` - Parse injection result for display
