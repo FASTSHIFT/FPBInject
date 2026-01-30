@@ -661,5 +661,124 @@ module.exports = function (w) {
       assertEqual(w.FPBState.autoInjectPollInterval, null);
       w.FPBState.toolTerminal = null;
     });
+
+    it('updates watcherStatus to On when enabled', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.autoInjectPollInterval = null;
+      const watcherStatus =
+        browserGlobals.document.getElementById('watcherStatus');
+      browserGlobals.document.getElementById('autoCompile').checked = true;
+      setFetchResponse('/api/config', { success: true });
+      w.onAutoCompileChange();
+      assertEqual(watcherStatus.textContent, 'Watcher: On');
+      w.stopAutoInjectPolling();
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('updates watcherStatus to Off when disabled', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const watcherStatus =
+        browserGlobals.document.getElementById('watcherStatus');
+      watcherStatus.textContent = 'Watcher: On';
+      browserGlobals.document.getElementById('autoCompile').checked = false;
+      setFetchResponse('/api/config', { success: true });
+      w.onAutoCompileChange();
+      assertEqual(watcherStatus.textContent, 'Watcher: Off');
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('updateWatcherStatus Function', () => {
+    it('is a function', () =>
+      assertTrue(typeof w.updateWatcherStatus === 'function'));
+
+    it('sets watcherStatus to On when enabled', () => {
+      resetMocks();
+      const watcherStatus =
+        browserGlobals.document.getElementById('watcherStatus');
+      w.updateWatcherStatus(true);
+      assertEqual(watcherStatus.textContent, 'Watcher: On');
+    });
+
+    it('sets watcherStatus to Off when disabled', () => {
+      resetMocks();
+      const watcherStatus =
+        browserGlobals.document.getElementById('watcherStatus');
+      watcherStatus.textContent = 'Watcher: On';
+      w.updateWatcherStatus(false);
+      assertEqual(watcherStatus.textContent, 'Watcher: Off');
+    });
+
+    it('sets watcherIcon to eye when enabled', () => {
+      resetMocks();
+      const watcherIcon = browserGlobals.document.getElementById('watcherIcon');
+      w.updateWatcherStatus(true);
+      assertEqual(watcherIcon.className, 'codicon codicon-eye');
+    });
+
+    it('sets watcherIcon to eye-closed when disabled', () => {
+      resetMocks();
+      const watcherIcon = browserGlobals.document.getElementById('watcherIcon');
+      watcherIcon.className = 'codicon codicon-eye';
+      w.updateWatcherStatus(false);
+      assertEqual(watcherIcon.className, 'codicon codicon-eye-closed');
+    });
+
+    it('handles missing watcherStatus element gracefully', () => {
+      resetMocks();
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'watcherStatus') return null;
+        return origGetById.call(browserGlobals.document, id);
+      };
+      // Should not throw
+      w.updateWatcherStatus(true);
+      assertTrue(true);
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('handles missing watcherIcon element gracefully', () => {
+      resetMocks();
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'watcherIcon') return null;
+        return origGetById.call(browserGlobals.document, id);
+      };
+      // Should not throw
+      w.updateWatcherStatus(true);
+      assertTrue(true);
+      browserGlobals.document.getElementById = origGetById;
+    });
+  });
+
+  describe('loadConfig Function - Watcher Status', () => {
+    it('updates watcherStatus to On when auto_compile is true', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.autoInjectPollInterval = null;
+      const watcherStatus =
+        browserGlobals.document.getElementById('watcherStatus');
+      setFetchResponse('/api/config', { auto_compile: true });
+      setFetchResponse('/api/status', { connected: false });
+      await w.loadConfig();
+      assertEqual(watcherStatus.textContent, 'Watcher: On');
+      w.stopAutoInjectPolling();
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('updates watcherStatus to Off when auto_compile is false', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const watcherStatus =
+        browserGlobals.document.getElementById('watcherStatus');
+      watcherStatus.textContent = 'Watcher: On';
+      setFetchResponse('/api/config', { auto_compile: false });
+      setFetchResponse('/api/status', { connected: false });
+      await w.loadConfig();
+      assertEqual(watcherStatus.textContent, 'Watcher: Off');
+      w.FPBState.toolTerminal = null;
+    });
   });
 };

@@ -64,6 +64,8 @@ async function loadConfig() {
       watchDirsSection.style.display = data.auto_compile ? 'block' : 'none';
     }
 
+    updateWatcherStatus(data.auto_compile);
+
     if (data.auto_compile) {
       startAutoInjectPolling();
     }
@@ -213,6 +215,8 @@ function onAutoCompileChange() {
     watchDirsSection.style.display = enabled ? 'block' : 'none';
   }
 
+  updateWatcherStatus(enabled);
+
   writeToOutput(
     `[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`,
     'info',
@@ -230,6 +234,20 @@ function onAutoCompileChange() {
   }
 }
 
+function updateWatcherStatus(enabled) {
+  const watcherStatusEl = document.getElementById('watcherStatus');
+  if (watcherStatusEl) {
+    watcherStatusEl.textContent = enabled ? 'Watcher: On' : 'Watcher: Off';
+  }
+
+  const watcherIconEl = document.getElementById('watcherIcon');
+  if (watcherIconEl) {
+    watcherIconEl.className = enabled
+      ? 'codicon codicon-eye'
+      : 'codicon codicon-eye-closed';
+  }
+}
+
 // Export for global access
 window.loadConfig = loadConfig;
 window.saveConfig = saveConfig;
@@ -242,3 +260,4 @@ window.addWatchDirItem = addWatchDirItem;
 window.browseWatchDir = browseWatchDir;
 window.removeWatchDir = removeWatchDir;
 window.onAutoCompileChange = onAutoCompileChange;
+window.updateWatcherStatus = updateWatcherStatus;
