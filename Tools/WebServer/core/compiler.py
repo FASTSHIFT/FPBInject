@@ -163,6 +163,9 @@ def compile_inject(
             return None, None, f"Compile error:\n{result.stderr}"
 
         # Create linker script
+        # Note: We include .bss in the binary by adding a marker section after it.
+        # This ensures that static/global variables with zero initialization
+        # are properly zeroed in the uploaded binary.
         ld_content = f"""
 ENTRY(inject_entry)
 SECTIONS
@@ -174,7 +177,16 @@ SECTIONS
     }}
     .rodata : {{ *(.rodata .rodata.*) }}
     .data : {{ *(.data .data.*) }}
-    .bss : {{ *(.bss .bss.* COMMON) }}
+    .bss : {{
+        __bss_start__ = .;
+        *(.bss .bss.* COMMON)
+        . = ALIGN(4);
+        __bss_end__ = .;
+    }}
+    /* Force objcopy to include BSS section (with zeros) in the binary */
+    .inject_end : {{
+        BYTE(0x00)
+    }}
 }}
 """
         ld_file = os.path.join(tmpdir, "inject.ld")

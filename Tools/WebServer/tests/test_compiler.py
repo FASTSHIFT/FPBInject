@@ -686,3 +686,315 @@ class TestCompileInjectExtended(unittest.TestCase):
             )
 
             self.assertIsNone(data)
+
+
+class TestStaticAndGlobalVariables(unittest.TestCase):
+    """Tests for static and global variable support in inject code."""
+
+    def setUp(self):
+        """Set up toolchain path."""
+        # Try to find toolchain
+        self.toolchain_path = None
+        possible_paths = [
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin",
+            "/usr/bin",
+        ]
+        for path in possible_paths:
+            gcc_path = os.path.join(path, "arm-none-eabi-gcc")
+            if os.path.exists(gcc_path):
+                self.toolchain_path = path
+                break
+
+    def _create_compile_commands(self, tmpdir):
+        """Create a minimal compile_commands.json."""
+        cc_path = os.path.join(tmpdir, "compile_commands.json")
+        with open(cc_path, "w") as f:
+            json.dump(
+                [
+                    {
+                        "directory": tmpdir,
+                        "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -o test.o test.c",
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+        return cc_path
+
+    @unittest.skipIf(
+        not os.path.exists(
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin/arm-none-eabi-gcc"
+        ),
+        "ARM toolchain not available",
+    )
+    def test_static_variable_with_initializer(self):
+        """Test that static variables with initializers are included in binary."""
+        source = """
+static int counter = 42;
+
+int inject_test(void) {
+    counter++;
+    return counter;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cc_path = self._create_compile_commands(tmpdir)
+
+            data, symbols, error = compiler.compile_inject(
+                source,
+                0x20001000,
+                compile_commands_path=cc_path,
+                toolchain_path=self.toolchain_path,
+            )
+
+            self.assertEqual(error, "", f"Compile failed: {error}")
+            self.assertIsNotNone(data)
+            self.assertGreater(len(data), 0)
+
+            # Check that inject_test symbol exists
+            self.assertIn("inject_test", symbols)
+
+            # The binary should contain the initialized value (42 = 0x2a)
+            # It should be somewhere in the data section
+            self.assertIn(b"\x2a\x00\x00\x00", data)
+
+    @unittest.skipIf(
+        not os.path.exists(
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin/arm-none-eabi-gcc"
+        ),
+        "ARM toolchain not available",
+    )
+    def test_static_variable_zero_initialized(self):
+        """Test that zero-initialized static variables (BSS) are included in binary."""
+        source = """
+static int zero_counter;
+
+int inject_test(void) {
+    zero_counter++;
+    return zero_counter;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cc_path = self._create_compile_commands(tmpdir)
+
+            data, symbols, error = compiler.compile_inject(
+                source,
+                0x20001000,
+                compile_commands_path=cc_path,
+                toolchain_path=self.toolchain_path,
+            )
+
+            self.assertEqual(error, "", f"Compile failed: {error}")
+            self.assertIsNotNone(data)
+            self.assertGreater(len(data), 0)
+
+            # Check that inject_test symbol exists
+            self.assertIn("inject_test", symbols)
+
+    @unittest.skipIf(
+        not os.path.exists(
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin/arm-none-eabi-gcc"
+        ),
+        "ARM toolchain not available",
+    )
+    def test_mixed_static_variables(self):
+        """Test code with both initialized and zero-initialized static variables."""
+        source = """
+static int initialized_var = 100;
+static int zero_var;
+
+int inject_test(void) {
+    initialized_var++;
+    zero_var++;
+    return initialized_var + zero_var;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cc_path = self._create_compile_commands(tmpdir)
+
+            data, symbols, error = compiler.compile_inject(
+                source,
+                0x20001000,
+                compile_commands_path=cc_path,
+                toolchain_path=self.toolchain_path,
+            )
+
+            self.assertEqual(error, "", f"Compile failed: {error}")
+            self.assertIsNotNone(data)
+            self.assertGreater(len(data), 0)
+
+            # Check that inject_test symbol exists
+            self.assertIn("inject_test", symbols)
+
+            # The binary should contain the initialized value (100 = 0x64)
+            self.assertIn(b"\x64\x00\x00\x00", data)
+
+    @unittest.skipIf(
+        not os.path.exists(
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin/arm-none-eabi-gcc"
+        ),
+        "ARM toolchain not available",
+    )
+    def test_static_array(self):
+        """Test static array with initializers."""
+        source = """
+static int lookup_table[4] = {1, 2, 3, 4};
+
+int inject_test(int index) {
+    if (index >= 0 && index < 4) {
+        return lookup_table[index];
+    }
+    return -1;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cc_path = self._create_compile_commands(tmpdir)
+
+            data, symbols, error = compiler.compile_inject(
+                source,
+                0x20001000,
+                compile_commands_path=cc_path,
+                toolchain_path=self.toolchain_path,
+            )
+
+            self.assertEqual(error, "", f"Compile failed: {error}")
+            self.assertIsNotNone(data)
+
+            # Check that inject_test symbol exists
+            self.assertIn("inject_test", symbols)
+
+            # The binary should contain the array values
+            self.assertIn(b"\x01\x00\x00\x00", data)
+            self.assertIn(b"\x02\x00\x00\x00", data)
+            self.assertIn(b"\x03\x00\x00\x00", data)
+            self.assertIn(b"\x04\x00\x00\x00", data)
+
+    @unittest.skipIf(
+        not os.path.exists(
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin/arm-none-eabi-gcc"
+        ),
+        "ARM toolchain not available",
+    )
+    def test_global_variable(self):
+        """Test global (non-static) variable."""
+        source = """
+int global_counter = 55;
+
+int inject_test(void) {
+    global_counter++;
+    return global_counter;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cc_path = self._create_compile_commands(tmpdir)
+
+            data, symbols, error = compiler.compile_inject(
+                source,
+                0x20001000,
+                compile_commands_path=cc_path,
+                toolchain_path=self.toolchain_path,
+            )
+
+            self.assertEqual(error, "", f"Compile failed: {error}")
+            self.assertIsNotNone(data)
+
+            # Check that inject_test symbol exists
+            self.assertIn("inject_test", symbols)
+
+            # The binary should contain the initialized value (55 = 0x37)
+            self.assertIn(b"\x37\x00\x00\x00", data)
+
+    @unittest.skipIf(
+        not os.path.exists(
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin/arm-none-eabi-gcc"
+        ),
+        "ARM toolchain not available",
+    )
+    def test_const_data(self):
+        """Test const data in rodata section."""
+        source = """
+static const int magic_numbers[] = {0xDEAD, 0xBEEF, 0xCAFE};
+
+int inject_test(int index) {
+    if (index >= 0 && index < 3) {
+        return magic_numbers[index];
+    }
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cc_path = self._create_compile_commands(tmpdir)
+
+            data, symbols, error = compiler.compile_inject(
+                source,
+                0x20001000,
+                compile_commands_path=cc_path,
+                toolchain_path=self.toolchain_path,
+            )
+
+            self.assertEqual(error, "", f"Compile failed: {error}")
+            self.assertIsNotNone(data)
+
+            # Check that inject_test symbol exists
+            self.assertIn("inject_test", symbols)
+
+            # The binary should contain the magic numbers (little-endian)
+            self.assertIn(b"\xad\xde\x00\x00", data)  # 0xDEAD
+            self.assertIn(b"\xef\xbe\x00\x00", data)  # 0xBEEF
+            self.assertIn(b"\xfe\xca\x00\x00", data)  # 0xCAFE
+
+
+class TestLinkerScriptBssHandling(unittest.TestCase):
+    """Tests specifically for BSS section handling in linker script."""
+
+    @unittest.skipIf(
+        not os.path.exists(
+            "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin/arm-none-eabi-gcc"
+        ),
+        "ARM toolchain not available",
+    )
+    def test_bss_is_zeroed_in_binary(self):
+        """Test that BSS section is included in binary with zeros."""
+        # Use volatile to prevent compiler from optimizing away the variables
+        source = """
+static volatile int bss_var1;
+static volatile int bss_var2;
+
+int inject_test(void) {
+    bss_var1++;
+    bss_var2++;
+    return bss_var1 + bss_var2;
+}
+"""
+        toolchain_path = "prebuilts/gcc/linux-x86_64/arm-none-eabi/bin"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cc_path = os.path.join(tmpdir, "compile_commands.json")
+            with open(cc_path, "w") as f:
+                json.dump(
+                    [
+                        {
+                            "directory": tmpdir,
+                            "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -o test.o test.c",
+                            "file": "test.c",
+                        }
+                    ],
+                    f,
+                )
+
+            data, symbols, error = compiler.compile_inject(
+                source,
+                0x20001000,
+                compile_commands_path=cc_path,
+                toolchain_path=toolchain_path,
+            )
+
+            self.assertEqual(error, "", f"Compile failed: {error}")
+            self.assertIsNotNone(data)
+
+            # The binary should be larger than just the code
+            # because it includes BSS with zeros
+            self.assertGreater(len(data), 30)
+
+            # Check that inject_test symbol exists
+            self.assertIn("inject_test", symbols)
