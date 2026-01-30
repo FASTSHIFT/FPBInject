@@ -1,8 +1,20 @@
 /**
  * Tests for features/fpb.js, features/symbols.js, features/autoinject.js, features/filebrowser.js
  */
-const { describe, it, assertEqual, assertTrue } = require('./framework');
-const { resetMocks } = require('./mocks');
+const {
+  describe,
+  it,
+  assertEqual,
+  assertTrue,
+  assertContains,
+} = require('./framework');
+const {
+  resetMocks,
+  setFetchResponse,
+  getFetchCalls,
+  browserGlobals,
+  MockTerminal,
+} = require('./mocks');
 
 module.exports = function (w) {
   describe('FPB Command Functions (features/fpb.js)', () => {
@@ -16,11 +28,439 @@ module.exports = function (w) {
       assertTrue(typeof w.fpbInjectMulti === 'function'));
   });
 
+  describe('fpbPing Function', () => {
+    it('is async function', () => {
+      assertTrue(w.fpbPing.constructor.name === 'AsyncFunction');
+    });
+
+    it('returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.fpbPing();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('sends POST to /api/fpb/ping', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/fpb/ping', { success: true, message: 'Pong!' });
+      await w.fpbPing();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/fpb/ping')));
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('writes success message on success', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/fpb/ping', { success: true, message: 'Pong!' });
+      await w.fpbPing();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Pong!')),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+  });
+
+  describe('fpbTestSerial Function', () => {
+    it('is async function', () => {
+      assertTrue(w.fpbTestSerial.constructor.name === 'AsyncFunction');
+    });
+
+    it('returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.fpbTestSerial();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('sends POST to /api/fpb/test-serial', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/fpb/test-serial', {
+        success: true,
+        tests: [],
+        max_working_size: 1024,
+        recommended_chunk_size: 128,
+      });
+      await w.fpbTestSerial();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/fpb/test-serial')));
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('displays test results', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/fpb/test-serial', {
+        success: true,
+        tests: [
+          { size: 16, passed: true, response_time_ms: 10, cmd_len: 20 },
+          { size: 32, passed: false, error: 'Timeout' },
+        ],
+        max_working_size: 16,
+        failed_size: 32,
+        recommended_chunk_size: 16,
+      });
+      await w.fpbTestSerial();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Max working size'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles test failure', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/fpb/test-serial', {
+        success: false,
+        error: 'Test failed',
+      });
+      await w.fpbTestSerial();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Test failed')),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+  });
+
+  describe('fpbInfo Function', () => {
+    it('is async function', () =>
+      assertTrue(w.fpbInfo.constructor.name === 'AsyncFunction'));
+
+    it('returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.fpbInfo();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('fetches from /api/fpb/info', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      await w.fpbInfo();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/fpb/info')));
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('updates slot states from response', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/fpb/info', {
+        success: true,
+        slots: [
+          {
+            occupied: true,
+            func: 'test_func',
+            orig_addr: '0x1000',
+            target_addr: '0x2000',
+            code_size: 100,
+          },
+          { occupied: false },
+          { occupied: false },
+          { occupied: false },
+          { occupied: false },
+          { occupied: false },
+        ],
+      });
+      await w.fpbInfo();
+      assertTrue(w.FPBState.slotStates[0].occupied);
+      assertEqual(w.FPBState.slotStates[0].func, 'test_func');
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('updates memory info from response', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/fpb/info', {
+        success: true,
+        slots: [],
+        memory: { is_dynamic: true, used: 512 },
+      });
+      await w.fpbInfo();
+      const memEl = browserGlobals.document.getElementById('memoryInfo');
+      assertContains(memEl.innerHTML, '512');
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles build time mismatch warning', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/fpb/info', {
+        success: true,
+        slots: [],
+        build_time_mismatch: true,
+        device_build_time: '2024-01-01 12:00:00',
+        elf_build_time: '2024-01-02 12:00:00',
+      });
+      await w.fpbInfo();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('mismatch')),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('displays device build time', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/fpb/info', {
+        success: true,
+        slots: [],
+        device_build_time: '2024-01-01 12:00:00',
+      });
+      await w.fpbInfo();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Device build'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles error response', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/fpb/info', {
+        success: false,
+        error: 'Device not responding',
+      });
+      await w.fpbInfo();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Device not responding'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+  });
+
+  describe('fpbInjectMulti Function', () => {
+    it('is async function', () =>
+      assertTrue(w.fpbInjectMulti.constructor.name === 'AsyncFunction'));
+
+    it('returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.fpbInjectMulti();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns error if no patch source', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      browserGlobals.document.getElementById('patchSource').value = '';
+      await w.fpbInjectMulti();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('No patch source'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('sends POST to /api/fpb/inject/multi', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      browserGlobals.document.getElementById('patchSource').value =
+        'void test() {}';
+      setFetchResponse('/api/fpb/inject/multi', {
+        success: true,
+        successful_count: 1,
+        total_count: 1,
+      });
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      await w.fpbInjectMulti();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/fpb/inject/multi')));
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('displays success message', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      browserGlobals.document.getElementById('patchSource').value =
+        'void test() {}';
+      setFetchResponse('/api/fpb/inject/multi', {
+        success: true,
+        successful_count: 2,
+        total_count: 2,
+        compile_time: 1.0,
+        upload_time: 0.5,
+        code_size: 100,
+      });
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      await w.fpbInjectMulti();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Injected')),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles injection failure', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      browserGlobals.document.getElementById('patchSource').value =
+        'void test() {}';
+      setFetchResponse('/api/fpb/inject/multi', {
+        success: false,
+        error: 'Compilation failed',
+      });
+      await w.fpbInjectMulti();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Compilation failed'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+  });
+
   describe('Symbol Functions (features/symbols.js)', () => {
     it('searchSymbols is a function', () =>
       assertTrue(typeof w.searchSymbols === 'function'));
     it('selectSymbol is a function', () =>
       assertTrue(typeof w.selectSymbol === 'function'));
+  });
+
+  describe('searchSymbols Function', () => {
+    it('is async function', () =>
+      assertTrue(w.searchSymbols.constructor.name === 'AsyncFunction'));
+
+    it('returns early if query too short', async () => {
+      resetMocks();
+      browserGlobals.document.getElementById('symbolSearch').value = 'a';
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, 'at least 2');
+    });
+
+    it('fetches from /api/symbols/search', async () => {
+      resetMocks();
+      browserGlobals.document.getElementById('symbolSearch').value = 'test';
+      setFetchResponse('/api/symbols/search', { symbols: [] });
+      await w.searchSymbols();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/symbols/search')));
+    });
+
+    it('displays found symbols', async () => {
+      resetMocks();
+      browserGlobals.document.getElementById('symbolSearch').value = 'test';
+      setFetchResponse('/api/symbols/search', {
+        symbols: [{ name: 'test_func', addr: '0x1000' }],
+      });
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, 'test_func');
+    });
+  });
+
+  describe('selectSymbol Function', () => {
+    it('writes info message', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.selectSymbol('test_func');
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('test_func')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
   });
 
   describe('Auto-Inject Functions (features/autoinject.js)', () => {
@@ -34,6 +474,379 @@ module.exports = function (w) {
       assertTrue(typeof w.displayAutoInjectStats === 'function'));
     it('createPatchPreviewTab is a function', () =>
       assertTrue(typeof w.createPatchPreviewTab === 'function'));
+    it('updateAutoInjectProgress is a function', () =>
+      assertTrue(typeof w.updateAutoInjectProgress === 'function'));
+    it('loadPatchSourceFromBackend is a function', () =>
+      assertTrue(typeof w.loadPatchSourceFromBackend === 'function'));
+  });
+
+  describe('startAutoInjectPolling Function', () => {
+    it('sets autoInjectPollInterval', () => {
+      resetMocks();
+      w.FPBState.autoInjectPollInterval = null;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.startAutoInjectPolling();
+      assertTrue(w.FPBState.autoInjectPollInterval !== null);
+      w.stopAutoInjectPolling();
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('writes system message', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.autoInjectPollInterval = null;
+      w.startAutoInjectPolling();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('monitoring started'),
+        ),
+      );
+      w.stopAutoInjectPolling();
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('stopAutoInjectPolling Function', () => {
+    it('clears autoInjectPollInterval', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.startAutoInjectPolling();
+      w.stopAutoInjectPolling();
+      assertEqual(w.FPBState.autoInjectPollInterval, null);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('writes system message when stopping', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.autoInjectPollInterval = 1;
+      w.stopAutoInjectPolling();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('monitoring stopped'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('does nothing if not polling', () => {
+      resetMocks();
+      w.FPBState.autoInjectPollInterval = null;
+      w.stopAutoInjectPolling();
+      assertEqual(w.FPBState.autoInjectPollInterval, null);
+    });
+  });
+
+  describe('pollAutoInjectStatus Function', () => {
+    it('is async function', () => {
+      assertTrue(w.pollAutoInjectStatus.constructor.name === 'AsyncFunction');
+    });
+
+    it('fetches from /api/watch/auto_inject_status', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.lastAutoInjectStatus = null;
+      setFetchResponse('/api/watch/auto_inject_status', {
+        success: true,
+        status: 'idle',
+      });
+      await w.pollAutoInjectStatus();
+      const calls = getFetchCalls();
+      assertTrue(
+        calls.some((c) => c.url.includes('/api/watch/auto_inject_status')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles detecting status', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.lastAutoInjectStatus = null;
+      setFetchResponse('/api/watch/auto_inject_status', {
+        success: true,
+        status: 'detecting',
+        message: 'Detecting changes...',
+      });
+      await w.pollAutoInjectStatus();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Detecting')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles generating status', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.lastAutoInjectStatus = null;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/watch/auto_inject_status', {
+        success: true,
+        status: 'generating',
+        message: 'Generating patch...',
+        modified_funcs: ['test_func'],
+      });
+      setFetchResponse('/api/patch/source', {
+        success: true,
+        content: 'void test() {}',
+      });
+      await w.pollAutoInjectStatus();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Generating')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles success status', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.lastAutoInjectStatus = null;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/watch/auto_inject_status', {
+        success: true,
+        status: 'success',
+        message: 'Injection complete!',
+        result: { compile_time: 1.0, upload_time: 0.5, code_size: 100 },
+      });
+      setFetchResponse('/api/patch/source', {
+        success: true,
+        content: 'void test() {}',
+      });
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      await w.pollAutoInjectStatus();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('complete')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles failed status', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.lastAutoInjectStatus = null;
+      setFetchResponse('/api/watch/auto_inject_status', {
+        success: true,
+        status: 'failed',
+        message: 'Compilation failed',
+      });
+      await w.pollAutoInjectStatus();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('failed')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('displayAutoInjectStats Function', () => {
+    it('displays compile time', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayAutoInjectStats(
+        { compile_time: 1.5, upload_time: 0.5, code_size: 100 },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('1.50')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays upload speed', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayAutoInjectStats(
+        { compile_time: 1.0, upload_time: 1.0, code_size: 1000 },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('B/s')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays code size', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayAutoInjectStats(
+        { compile_time: 1.0, upload_time: 0.5, code_size: 256 },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('256')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays total time', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayAutoInjectStats(
+        {
+          compile_time: 1.0,
+          upload_time: 0.5,
+          code_size: 100,
+          total_time: 2.0,
+        },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('2.00')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('displays patch mode', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayAutoInjectStats(
+        {
+          compile_time: 1.0,
+          upload_time: 0.5,
+          code_size: 100,
+          patch_mode: 'trampoline',
+        },
+        'test_func',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('trampoline')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles injections array', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayAutoInjectStats(
+        {
+          compile_time: 1.0,
+          upload_time: 0.5,
+          code_size: 100,
+          injections: [
+            {
+              success: true,
+              target_func: 'func1',
+              target_addr: '0x1000',
+              inject_func: 'inject_func1',
+              inject_addr: '0x2000',
+              slot: 0,
+            },
+          ],
+          successful_count: 1,
+          total_count: 1,
+        },
+        'func1',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('func1')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles failed injections', () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.displayAutoInjectStats(
+        {
+          compile_time: 1.0,
+          upload_time: 0.5,
+          code_size: 100,
+          injections: [
+            { success: false, target_func: 'func1', error: 'Slot full' },
+          ],
+          successful_count: 0,
+          total_count: 1,
+        },
+        'func1',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('func1')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('loadPatchSourceFromBackend Function', () => {
+    it('is async function', () => {
+      assertTrue(
+        w.loadPatchSourceFromBackend.constructor.name === 'AsyncFunction',
+      );
+    });
+
+    it('fetches from /api/patch/source', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/patch/source', {
+        success: true,
+        content: 'void test() {}',
+      });
+      await w.loadPatchSourceFromBackend();
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/patch/source')));
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns content on success', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/patch/source', {
+        success: true,
+        content: 'void test() {}',
+      });
+      const result = await w.loadPatchSourceFromBackend();
+      assertEqual(result, 'void test() {}');
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns null on failure', async () => {
+      resetMocks();
+      setFetchResponse('/api/patch/source', { success: false });
+      const result = await w.loadPatchSourceFromBackend();
+      assertEqual(result, null);
+    });
+  });
+
+  describe('updateAutoInjectProgress Function', () => {
+    it('handles idle status', () => {
+      resetMocks();
+      w.updateAutoInjectProgress(0, 'idle');
+      assertTrue(true);
+    });
+
+    it('handles compiling status', () => {
+      resetMocks();
+      w.updateAutoInjectProgress(50, 'compiling');
+      assertTrue(true);
+    });
+
+    it('handles success status', () => {
+      resetMocks();
+      w.FPBState.autoInjectProgressHideTimer = null;
+      w.updateAutoInjectProgress(100, 'success', true);
+      assertTrue(true);
+    });
+
+    it('handles failed status', () => {
+      resetMocks();
+      w.FPBState.autoInjectProgressHideTimer = null;
+      w.updateAutoInjectProgress(100, 'failed', true);
+      assertTrue(true);
+    });
   });
 
   describe('File Browser Functions (features/filebrowser.js)', () => {
@@ -60,19 +873,300 @@ module.exports = function (w) {
       assertTrue(typeof w.refreshSymbolsFromELF === 'function'));
   });
 
+  describe('browseFile Function', () => {
+    it('sets fileBrowserCallback', () => {
+      resetMocks();
+      w.FPBState.fileBrowserCallback = null;
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      w.browseFile('elfPath', '.elf');
+      assertTrue(w.FPBState.fileBrowserCallback !== null);
+    });
+
+    it('sets fileBrowserFilter', () => {
+      resetMocks();
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      w.browseFile('elfPath', '.elf');
+      assertEqual(w.FPBState.fileBrowserFilter, '.elf');
+    });
+
+    it('sets fileBrowserMode to file', () => {
+      resetMocks();
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      w.browseFile('elfPath', '.elf');
+      assertEqual(w.FPBState.fileBrowserMode, 'file');
+    });
+  });
+
+  describe('browseDir Function', () => {
+    it('sets fileBrowserCallback', () => {
+      resetMocks();
+      w.FPBState.fileBrowserCallback = null;
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      w.browseDir('toolchainPath');
+      assertTrue(w.FPBState.fileBrowserCallback !== null);
+    });
+
+    it('sets fileBrowserMode to dir', () => {
+      resetMocks();
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      w.browseDir('toolchainPath');
+      assertEqual(w.FPBState.fileBrowserMode, 'dir');
+    });
+
+    it('clears fileBrowserFilter', () => {
+      resetMocks();
+      w.FPBState.fileBrowserFilter = '.elf';
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      w.browseDir('toolchainPath');
+      assertEqual(w.FPBState.fileBrowserFilter, '');
+    });
+  });
+
+  describe('openFileBrowser Function', () => {
+    it('is async function', () => {
+      assertTrue(w.openFileBrowser.constructor.name === 'AsyncFunction');
+    });
+
+    it('fetches from /api/browse', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/browse', { items: [], current_path: '/home' });
+      await w.openFileBrowser('/home');
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/browse')));
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('sets currentBrowserPath', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/browse', {
+        items: [],
+        current_path: '/home/user',
+      });
+      await w.openFileBrowser('/home/user');
+      assertEqual(w.FPBState.currentBrowserPath, '/home/user');
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('shows modal', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const modal = browserGlobals.document.getElementById('fileBrowserModal');
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      await w.openFileBrowser('~');
+      assertTrue(modal.classList._classes.has('show'));
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('clears selectedBrowserItem', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.selectedBrowserItem = '/some/path';
+      setFetchResponse('/api/browse', { items: [], current_path: '~' });
+      await w.openFileBrowser('~');
+      assertEqual(w.FPBState.selectedBrowserItem, null);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles items in response', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.fileBrowserMode = 'file';
+      w.FPBState.fileBrowserFilter = '';
+      setFetchResponse('/api/browse', {
+        items: [
+          { name: 'file1.txt', type: 'file' },
+          { name: 'dir1', type: 'dir' },
+        ],
+        current_path: '/home',
+      });
+      await w.openFileBrowser('/home');
+      assertTrue(true);
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('closeFileBrowser Function', () => {
+    it('removes show class from modal', () => {
+      resetMocks();
+      const modal = browserGlobals.document.getElementById('fileBrowserModal');
+      modal.classList.add('show');
+      w.closeFileBrowser();
+      assertTrue(!modal.classList._classes.has('show'));
+    });
+
+    it('clears selectedBrowserItem', () => {
+      resetMocks();
+      w.FPBState.selectedBrowserItem = '/some/path';
+      w.closeFileBrowser();
+      assertEqual(w.FPBState.selectedBrowserItem, null);
+    });
+  });
+
+  describe('navigateTo Function', () => {
+    it('calls openFileBrowser', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/browse', { items: [], current_path: '/new/path' });
+      await w.navigateTo('/new/path');
+      assertEqual(w.FPBState.currentBrowserPath, '/new/path');
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('selectFileBrowserItem Function', () => {
+    it('sets selectedBrowserItem', () => {
+      resetMocks();
+      const mockElement = browserGlobals.document.createElement('div');
+      w.selectFileBrowserItem(mockElement, '/test/path');
+      assertEqual(w.FPBState.selectedBrowserItem, '/test/path');
+    });
+
+    it('adds selected class to element', () => {
+      resetMocks();
+      const mockElement = browserGlobals.document.createElement('div');
+      w.selectFileBrowserItem(mockElement, '/test/path');
+      assertTrue(mockElement.classList._classes.has('selected'));
+    });
+  });
+
+  describe('selectBrowserItem Function', () => {
+    it('calls callback with selected item in file mode', () => {
+      resetMocks();
+      let callbackPath = null;
+      w.FPBState.fileBrowserMode = 'file';
+      w.FPBState.selectedBrowserItem = '/test/file.txt';
+      w.FPBState.fileBrowserCallback = (path) => {
+        callbackPath = path;
+      };
+      w.selectBrowserItem();
+      assertEqual(callbackPath, '/test/file.txt');
+    });
+
+    it('calls callback with current path in dir mode', () => {
+      resetMocks();
+      let callbackPath = null;
+      w.FPBState.fileBrowserMode = 'dir';
+      w.FPBState.selectedBrowserItem = null;
+      w.FPBState.currentBrowserPath = '/test/dir';
+      w.FPBState.fileBrowserCallback = (path) => {
+        callbackPath = path;
+      };
+      w.selectBrowserItem();
+      assertEqual(callbackPath, '/test/dir');
+    });
+
+    it('uses selectedBrowserItem in dir mode if set', () => {
+      resetMocks();
+      let callbackPath = null;
+      w.FPBState.fileBrowserMode = 'dir';
+      w.FPBState.selectedBrowserItem = '/selected/dir';
+      w.FPBState.currentBrowserPath = '/current/dir';
+      w.FPBState.fileBrowserCallback = (path) => {
+        callbackPath = path;
+      };
+      w.selectBrowserItem();
+      assertEqual(callbackPath, '/selected/dir');
+    });
+
+    it('closes file browser after selection', () => {
+      resetMocks();
+      const modal = browserGlobals.document.getElementById('fileBrowserModal');
+      modal.classList.add('show');
+      w.FPBState.fileBrowserMode = 'file';
+      w.FPBState.selectedBrowserItem = '/test/file.txt';
+      w.FPBState.fileBrowserCallback = () => {};
+      w.selectBrowserItem();
+      assertTrue(!modal.classList._classes.has('show'));
+    });
+  });
+
+  describe('onBrowserPathKeyup Function', () => {
+    it('navigates on Enter key', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      browserGlobals.document.getElementById('browserPath').value = '/new/path';
+      setFetchResponse('/api/browse', { items: [], current_path: '/new/path' });
+      w.onBrowserPathKeyup({ key: 'Enter' });
+      assertTrue(true);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('does nothing on other keys', () => {
+      resetMocks();
+      w.onBrowserPathKeyup({ key: 'a' });
+      assertTrue(true);
+    });
+  });
+
+  describe('refreshSymbolsFromELF Function', () => {
+    it('is async function', () => {
+      assertTrue(w.refreshSymbolsFromELF.constructor.name === 'AsyncFunction');
+    });
+
+    it('sends config update', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/config', { success: true });
+      await w.refreshSymbolsFromELF('/path/to/file.elf');
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/config')));
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('writes success message', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/config', { success: true });
+      await w.refreshSymbolsFromELF('/path/to/file.elf');
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ELF loaded')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('sendTerminalCommand Function', () => {
+    it('is async function', () =>
+      assertTrue(w.sendTerminalCommand.constructor.name === 'AsyncFunction'));
+
+    it('returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      await w.sendTerminalCommand('test');
+      const calls = getFetchCalls();
+      assertTrue(!calls.some((c) => c.url.includes('/api/serial/send')));
+    });
+
+    it('sends POST to /api/serial/send when connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      setFetchResponse('/api/serial/send', { success: true });
+      await w.sendTerminalCommand('test command');
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/serial/send')));
+      w.FPBState.isConnected = false;
+    });
+  });
+
   describe('LocalStorage Integration', () => {
     it('stores and retrieves values', () => {
       w.localStorage.setItem('test-key', 'test-value');
       assertEqual(w.localStorage.getItem('test-key'), 'test-value');
     });
+
     it('returns null for non-existent keys', () => {
       assertEqual(w.localStorage.getItem('nonexistent-key'), null);
     });
+
     it('removes items correctly', () => {
       w.localStorage.setItem('remove-test', 'value');
       w.localStorage.removeItem('remove-test');
       assertEqual(w.localStorage.getItem('remove-test'), null);
     });
+
     it('clears all items', () => {
       w.localStorage.setItem('clear-test', 'value');
       w.localStorage.clear();

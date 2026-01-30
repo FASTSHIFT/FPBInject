@@ -109,6 +109,34 @@ modules.forEach(loadScript);
 // Get window reference (application code exports to window)
 const w = browserGlobals.window;
 
+// Make window functions available globally (for functions that call other functions directly)
+const globalFunctions = [
+  'writeToOutput',
+  'writeToSerial',
+  'startLogPolling',
+  'stopLogPolling',
+  'fpbInfo',
+  'updateDisabledState',
+  'updateSlotUI',
+  'updateMemoryInfo',
+  'openDisassembly',
+  'startAutoInjectPolling',
+  'stopAutoInjectPolling',
+  'checkConnectionStatus',
+  'saveConfig',
+  'openFileBrowser',
+  'switchEditorTab',
+  'escapeHtml',
+  'fitTerminals',
+  'getTerminalTheme',
+  'HOME_PATH',
+];
+globalFunctions.forEach((fn) => {
+  if (w[fn] !== undefined) {
+    global[fn] = w[fn];
+  }
+});
+
 // ===================== Run Test Modules =====================
 
 console.log('Running tests...\n');

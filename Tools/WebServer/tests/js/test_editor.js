@@ -9,7 +9,13 @@ const {
   assertFalse,
   assertContains,
 } = require('./framework');
-const { resetMocks, browserGlobals } = require('./mocks');
+const {
+  resetMocks,
+  browserGlobals,
+  setFetchResponse,
+  getFetchCalls,
+  MockTerminal,
+} = require('./mocks');
 
 module.exports = function (w) {
   describe('Editor Functions (features/editor.js)', () => {
@@ -194,17 +200,90 @@ module.exports = function (w) {
     it('is async function', () => {
       assertTrue(w.openDisassembly.constructor.name === 'AsyncFunction');
     });
+
+    it('switches to existing tab if already open', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [
+        { id: 'disasm_test_func', title: 'test_func.asm' },
+      ];
+      w.FPBState.toolTerminal = new MockTerminal();
+      await w.openDisassembly('test_func', '0x1000');
+      assertEqual(w.FPBState.activeEditorTab, 'disasm_test_func');
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('fetches disassembly from API', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.aceEditors = new Map();
+      setFetchResponse('/api/symbols/disasm', { disasm: '; test disasm' });
+      await w.openDisassembly('new_func', '0x2000');
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/symbols/disasm')));
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
   });
 
   describe('openManualPatchTab Function', () => {
     it('is a function', () => {
       assertTrue(typeof w.openManualPatchTab === 'function');
     });
+
+    it('switches to existing tab if already open', async () => {
+      resetMocks();
+      w.FPBState.editorTabs = [
+        {
+          id: 'patch_test_func',
+          title: 'patch_test_func.c',
+          type: 'c',
+          funcName: 'test_func',
+        },
+      ];
+      w.FPBState.toolTerminal = new MockTerminal();
+      await w.openManualPatchTab('test_func');
+      assertEqual(w.FPBState.activeEditorTab, 'patch_test_func');
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
   });
 
   describe('initAceEditor Function', () => {
     it('is a function', () => {
       assertTrue(typeof w.initAceEditor === 'function');
+    });
+
+    it('returns editor object when element exists', () => {
+      resetMocks();
+      // initAceEditor returns an editor object when ace is available
+      const result = w.initAceEditor('test_tab', 'content', 'c_cpp');
+      assertTrue(result !== null);
+    });
+  });
+
+  describe('savePatchFile Function', () => {
+    it('is a function', () => {
+      assertTrue(typeof w.savePatchFile === 'function');
+    });
+
+    it('is async function', () => {
+      assertTrue(w.savePatchFile.constructor.name === 'AsyncFunction');
+    });
+
+    it('returns error if no patch tab selected', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.currentPatchTab = null;
+      await w.savePatchFile();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('No patch tab'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
     });
   });
 };

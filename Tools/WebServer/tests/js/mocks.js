@@ -1,5 +1,5 @@
 /**
- * Browser Environment Mocks
+ * Browser Environment Mocks - Enhanced for better coverage
  */
 
 const mockLocalStorage = {
@@ -21,28 +21,44 @@ const mockLocalStorage = {
 const mockElements = {};
 
 function createMockElement(id) {
-  return {
+  const el = {
     id,
     value: '',
     _textContent: '',
+    _innerHTML: '',
+    _children: [],
+    className: '',
+    tagName: 'DIV',
+    title: '',
+    checked: false,
+    disabled: false,
+    open: false,
+    options: [],
+    selectedIndex: 0,
+    _eventListeners: {},
+    _attributes: {},
+
     get textContent() {
       return this._textContent;
     },
     set textContent(v) {
       this._textContent = v;
-      this._innerHTML = v
+      this._innerHTML = String(v)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
     },
-    _innerHTML: '',
     get innerHTML() {
       return this._innerHTML;
     },
     set innerHTML(v) {
       this._innerHTML = v;
+      this._children = [];
     },
-    className: '',
+    get children() {
+      return this._children;
+    },
+
     style: {
       display: '',
       opacity: '',
@@ -51,7 +67,10 @@ function createMockElement(id) {
       background: '',
       visibility: '',
       pointerEvents: '',
+      flex: '',
+      position: '',
     },
+
     classList: {
       _classes: new Set(),
       add(cls) {
@@ -64,16 +83,17 @@ function createMockElement(id) {
         return this._classes.has(cls);
       },
       toggle(cls, force) {
-        if (force !== undefined)
+        if (force !== undefined) {
           force ? this._classes.add(cls) : this._classes.delete(cls);
-        else
+        } else {
           this._classes.has(cls)
             ? this._classes.delete(cls)
             : this._classes.add(cls);
+        }
         return this._classes.has(cls);
       },
     },
-    _eventListeners: {},
+
     addEventListener(event, handler) {
       if (!this._eventListeners[event]) this._eventListeners[event] = [];
       this._eventListeners[event].push(handler);
@@ -85,103 +105,267 @@ function createMockElement(id) {
         );
       }
     },
+    dispatchEvent(event) {
+      const handlers = this._eventListeners[event.type] || [];
+      handlers.forEach((h) => h(event));
+    },
+
     appendChild(child) {
+      this._children.push(child);
       return child;
     },
     removeChild(child) {
+      const idx = this._children.indexOf(child);
+      if (idx >= 0) this._children.splice(idx, 1);
       return child;
     },
     remove() {},
-    querySelectorAll() {
+    insertBefore(newNode, refNode) {
+      return newNode;
+    },
+
+    querySelectorAll(selector) {
       return [];
     },
-    querySelector() {
+    querySelector(selector) {
       return null;
     },
+    getElementsByClassName(cls) {
+      return [];
+    },
+
     getAttribute(name) {
-      return this[`_attr_${name}`] || null;
+      return this._attributes[name] || null;
     },
     setAttribute(name, value) {
-      this[`_attr_${name}`] = value;
+      this._attributes[name] = value;
     },
-    closest() {
+    removeAttribute(name) {
+      delete this._attributes[name];
+    },
+    hasAttribute(name) {
+      return name in this._attributes;
+    },
+
+    closest(selector) {
       return null;
     },
-    checked: false,
-    disabled: false,
-    open: false,
-    tagName: 'DIV',
-    title: '',
-    options: [],
-    selectedIndex: 0,
+    focus() {},
+    blur() {},
+    click() {},
+
+    getBoundingClientRect() {
+      return {
+        top: 0,
+        left: 0,
+        right: 100,
+        bottom: 100,
+        width: 100,
+        height: 100,
+      };
+    },
   };
+  return el;
 }
 
+// Fetch mock with configurable responses
 let fetchCalls = [];
 let fetchResponses = {};
+let defaultFetchResponse = { success: true };
 
 const mockFetch = async (url, options = {}) => {
   fetchCalls.push({ url, options });
-  const response = fetchResponses[url] || { success: true };
+
+  // Find matching response (exact match or pattern match)
+  let response = fetchResponses[url];
+  if (!response) {
+    for (const pattern of Object.keys(fetchResponses)) {
+      if (url.includes(pattern)) {
+        response = fetchResponses[pattern];
+        break;
+      }
+    }
+  }
+  response = response || defaultFetchResponse;
+
+  // Handle SSE streaming response
+  if (response._stream) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'text/event-stream' },
+      body: {
+        getReader: () => ({
+          _index: 0,
+          _data: response._stream,
+          async read() {
+            if (this._index >= this._data.length) return { done: true };
+            const chunk = this._data[this._index++];
+            return { done: false, value: new TextEncoder().encode(chunk) };
+          },
+        }),
+      },
+    };
+  }
+
   return {
-    ok: true,
-    status: 200,
-    headers: { get: () => 'application/json' },
+    ok: response._ok !== false,
+    status: response._status || 200,
+    headers: { get: (h) => (h === 'content-type' ? 'application/json' : null) },
     json: async () => response,
     text: async () => JSON.stringify(response),
     body: { getReader: () => ({ read: async () => ({ done: true }) }) },
   };
 };
 
+// Enhanced document mock
+const mockDocument = {
+  getElementById(id) {
+    if (!mockElements[id]) mockElements[id] = createMockElement(id);
+    return mockElements[id];
+  },
+  querySelectorAll(selector) {
+    // Return elements matching common selectors
+    if (selector.startsWith('.')) {
+      const cls = selector.slice(1);
+      return Object.values(mockElements).filter((el) =>
+        el.classList._classes.has(cls),
+      );
+    }
+    return [];
+  },
+  querySelector(selector) {
+    const all = this.querySelectorAll(selector);
+    return all[0] || null;
+  },
+  createElement(tag) {
+    const el = createMockElement(
+      `_created_${tag}_${Date.now()}_${Math.random()}`,
+    );
+    el.tagName = tag.toUpperCase();
+    return el;
+  },
+  createTextNode(text) {
+    return { nodeType: 3, textContent: text };
+  },
+  addEventListener(event, handler) {},
+  removeEventListener(event, handler) {},
+  documentElement: {
+    _theme: 'dark',
+    getAttribute(name) {
+      return name === 'data-theme' ? this._theme : null;
+    },
+    setAttribute(name, value) {
+      if (name === 'data-theme') this._theme = value;
+    },
+    style: {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+    },
+  },
+  body: createMockElement('body'),
+};
+
+// Terminal mock with recording
+class MockTerminal {
+  constructor(opts) {
+    this.options = opts || {};
+    this._writes = [];
+    this._cleared = false;
+  }
+  open(container) {}
+  loadAddon(addon) {}
+  writeln(msg) {
+    this._writes.push({ type: 'line', msg });
+    this._lastWrite = msg;
+  }
+  write(msg) {
+    this._writes.push({ type: 'raw', msg });
+    this._lastWrite = msg;
+  }
+  clear() {
+    this._cleared = true;
+    this._writes = [];
+  }
+  getSelection() {
+    return '';
+  }
+  attachCustomKeyEventHandler(fn) {
+    this._keyHandler = fn;
+  }
+  onData(fn) {
+    this._dataHandler = fn;
+  }
+  getWrites() {
+    return this._writes;
+  }
+}
+
+// FitAddon mock
+class MockFitAddon {
+  constructor() {
+    this._fitted = false;
+  }
+  fit() {
+    this._fitted = true;
+  }
+}
+
+// Ace editor mock
+function createMockAceEditor() {
+  return {
+    _value: '',
+    _theme: '',
+    _mode: '',
+    _options: {},
+    _resized: false,
+    _destroyed: false,
+    setTheme(t) {
+      this._theme = t;
+    },
+    session: {
+      setMode(m) {
+        this._mode = m;
+      },
+    },
+    setOptions(o) {
+      this._options = o;
+    },
+    setValue(v, pos) {
+      this._value = v;
+    },
+    getValue() {
+      return this._value;
+    },
+    resize() {
+      this._resized = true;
+    },
+    destroy() {
+      this._destroyed = true;
+    },
+    focus() {},
+    blur() {},
+    getSession() {
+      return this.session;
+    },
+  };
+}
+
 const browserGlobals = {
   localStorage: mockLocalStorage,
-  document: {
-    getElementById(id) {
-      if (!mockElements[id]) mockElements[id] = createMockElement(id);
-      return mockElements[id];
-    },
-    querySelectorAll() {
-      return [];
-    },
-    querySelector() {
-      return null;
-    },
-    createElement(tag) {
-      const el = createMockElement(`_created_${tag}_${Date.now()}`);
-      el.tagName = tag.toUpperCase();
-      return el;
-    },
-    addEventListener() {},
-    documentElement: {
-      _theme: 'dark',
-      getAttribute(name) {
-        return name === 'data-theme' ? this._theme : null;
-      },
-      setAttribute(name, value) {
-        if (name === 'data-theme') this._theme = value;
-      },
-      style: {
-        setProperty(name, value) {
-          this[name] = value;
-        },
-      },
-    },
-  },
+  document: mockDocument,
   window: null,
-  navigator: {
-    clipboard: {
-      writeText() {
-        return Promise.resolve();
-      },
-    },
-  },
+  navigator: { clipboard: { writeText: () => Promise.resolve() } },
   console,
-  setTimeout: (fn) => {
+  setTimeout: (fn, ms) => {
     fn();
     return 1;
   },
   clearTimeout: () => {},
-  setInterval: () => 1,
+  setInterval: (fn, ms) => {
+    return 1;
+  },
   clearInterval: () => {},
   Promise,
   Map,
@@ -196,83 +380,41 @@ const browserGlobals = {
   parseInt,
   parseFloat,
   isNaN,
+  isFinite,
   encodeURIComponent,
   decodeURIComponent,
+  encodeURI,
+  decodeURI,
   fetch: mockFetch,
-  alert() {},
-  confirm() {
-    return true;
-  },
-  requestAnimationFrame(cb) {
+  alert: () => {},
+  confirm: () => true,
+  prompt: () => '',
+  requestAnimationFrame: (cb) => {
     cb();
     return 1;
   },
-  getComputedStyle() {
-    return { getPropertyValue: () => '300px' };
-  },
-  Terminal: class {
-    constructor(opts) {
-      this.options = opts || {};
-    }
-    open() {}
-    loadAddon() {}
-    writeln(msg) {
-      this._lastWrite = msg;
-    }
-    write(msg) {
-      this._lastWrite = msg;
-    }
-    clear() {
-      this._cleared = true;
-    }
-    getSelection() {
-      return '';
-    }
-    attachCustomKeyEventHandler(fn) {
-      this._keyHandler = fn;
-    }
-    onData(fn) {
-      this._dataHandler = fn;
-    }
-  },
-  FitAddon: {
-    FitAddon: class {
-      fit() {
-        this._fitted = true;
-      }
-    },
-  },
-  ace: {
-    edit() {
-      return {
-        _value: '',
-        setTheme(t) {
-          this._theme = t;
+  cancelAnimationFrame: () => {},
+  getComputedStyle: () => ({ getPropertyValue: () => '300px' }),
+  Terminal: MockTerminal,
+  FitAddon: { FitAddon: MockFitAddon },
+  ace: { edit: () => createMockAceEditor() },
+  hljs: { highlightElement: () => {} },
+  TextEncoder:
+    typeof TextEncoder !== 'undefined'
+      ? TextEncoder
+      : class {
+          encode(s) {
+            return Buffer.from(s);
+          }
         },
-        session: {
-          setMode(m) {
-            this._mode = m;
-          },
+  TextDecoder:
+    typeof TextDecoder !== 'undefined'
+      ? TextDecoder
+      : class {
+          decode(b) {
+            return b.toString();
+          }
         },
-        setOptions(o) {
-          this._options = o;
-        },
-        setValue(v) {
-          this._value = v;
-        },
-        getValue() {
-          return this._value;
-        },
-        resize() {
-          this._resized = true;
-        },
-        destroy() {
-          this._destroyed = true;
-        },
-      };
-    },
-  },
-  hljs: { highlightElement() {} },
 };
 
 browserGlobals.window = {
@@ -282,13 +424,34 @@ browserGlobals.window = {
   fetch: browserGlobals.fetch,
   alert: browserGlobals.alert,
   confirm: browserGlobals.confirm,
-  addEventListener() {},
+  addEventListener: () => {},
+  removeEventListener: () => {},
   FPBState: null,
+  getComputedStyle: browserGlobals.getComputedStyle,
+  // These will be populated when application code loads
+  writeToOutput: null,
+  writeToSerial: null,
+  startLogPolling: null,
+  stopLogPolling: null,
+  fpbInfo: null,
+  updateDisabledState: null,
+  updateSlotUI: null,
+  updateMemoryInfo: null,
+  openDisassembly: null,
+  startAutoInjectPolling: null,
+  stopAutoInjectPolling: null,
+  checkConnectionStatus: null,
+  saveConfig: null,
+  openFileBrowser: null,
+  switchEditorTab: null,
+  escapeHtml: null,
 };
 
 function resetMocks() {
   mockLocalStorage.clear();
   fetchCalls = [];
+  fetchResponses = {};
+  mockDocument.documentElement._theme = 'dark';
   Object.keys(mockElements).forEach((k) => delete mockElements[k]);
 }
 
@@ -297,6 +460,12 @@ function getFetchCalls() {
 }
 function setFetchResponse(url, response) {
   fetchResponses[url] = response;
+}
+function setDefaultFetchResponse(response) {
+  defaultFetchResponse = response;
+}
+function getElement(id) {
+  return mockElements[id];
 }
 
 module.exports = {
@@ -307,4 +476,9 @@ module.exports = {
   resetMocks,
   getFetchCalls,
   setFetchResponse,
+  setDefaultFetchResponse,
+  getElement,
+  MockTerminal,
+  MockFitAddon,
+  createMockAceEditor,
 };
