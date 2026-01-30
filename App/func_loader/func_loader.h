@@ -76,13 +76,8 @@ typedef struct fl_context_s {
     /* Cache flush callback (optional, for platforms with dcache) */
     fl_flush_dcache_cb_t flush_dcache_cb;
 
-    /* Static buffer (required if malloc_cb is NULL) */
-    void* static_buf;
-    size_t static_size;
-
     /* Internal state (managed by fl_init) */
-    bool is_inited; /* true after first fl_init() call */
-    size_t static_used;
+    bool is_inited;         /* true after first fl_init() call */
     uintptr_t last_alloc;   /* Last dynamic allocation address */
     size_t last_alloc_size; /* Last dynamic allocation size */
 

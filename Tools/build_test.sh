@@ -131,6 +131,7 @@ build_nuttx_config() {
     local no_asm="$3"
     local config_name="$4"
     local no_debugmon="${5:-OFF}"
+    local nuttx_buf_size="${6:-1024}"
     
     local build_subdir="$BUILD_DIR/$config_name"
     
@@ -150,6 +151,7 @@ build_nuttx_config() {
         -DFPB_TRAMPOLINE_NO_ASM="$no_asm"
         -DFPB_NO_DEBUGMON="$no_debugmon"
         -DFL_ALLOC_MODE="$alloc_mode"
+        -DFL_NUTTX_BUF_SIZE="$nuttx_buf_size"
     )
     
     # Configure
@@ -301,37 +303,55 @@ run_tests() {
     echo -e "${YELLOW}Testing NuttX platform (mock API)...${NC}"
     echo ""
     
-    # Test NuttX platform with different allocation modes
-    for alloc in "${ALLOC_MODES[@]}"; do
-        local config_name="NUTTX_${alloc}"
-        local config_desc="NuttX ALLOC=$alloc"
-        
-        TOTAL_TESTS=$((TOTAL_TESTS + 1))
-        
-        local start_time=$(date +%s)
-        
-        if build_nuttx_config "$alloc" "OFF" "ON" "$config_name" "OFF"; then
-            local end_time=$(date +%s)
-            local elapsed=$((end_time - start_time))
-            
-            print_result "$config_desc" "PASS" "$elapsed"
-            PASSED_TESTS=$((PASSED_TESTS + 1))
-        else
-            print_result "$config_desc" "FAIL" ""
-            FAILED_TESTS=$((FAILED_TESTS + 1))
-            FAILED_CONFIGS+=("$config_desc")
-        fi
-    done
-    
-    # Test NuttX with DebugMonitor disabled
-    local config_name="NUTTX_NO_DEBUGMON"
-    local config_desc="NuttX NO_DEBUGMON=ON"
+    # Test NuttX platform with FL_NUTTX_BUF_SIZE=1024 (static allocation)
+    local config_name="NUTTX_STATIC"
+    local config_desc="NuttX BUF_SIZE=1024"
     
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     
     local start_time=$(date +%s)
     
-    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "ON"; then
+    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024"; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+        
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
+    
+    # Test NuttX platform with FL_NUTTX_BUF_SIZE=0 (dynamic allocation)
+    config_name="NUTTX_DYNAMIC"
+    config_desc="NuttX BUF_SIZE=0"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    start_time=$(date +%s)
+    
+    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "0"; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+        
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
+    
+    # Test NuttX with DebugMonitor disabled (static allocation)
+    config_name="NUTTX_NO_DEBUGMON"
+    config_desc="NuttX NO_DEBUGMON=ON"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    start_time=$(date +%s)
+    
+    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "ON" "1024"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
         

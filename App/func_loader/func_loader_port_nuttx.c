@@ -66,6 +66,11 @@
 #define FL_NUTTX_LINE_SIZE 1024
 #endif
 
+/* Include func_allocator for static buffer mode */
+#if FL_NUTTX_BUF_SIZE > 0
+#include "func_allocator.h"
+#endif
+
 /* Output callback */
 static void nuttx_output_cb(void* user, const char* str) {
     (void)user;
@@ -76,6 +81,42 @@ static void nuttx_output_cb(void* user, const char* str) {
 static void nuttx_flush_dcache_cb(uintptr_t start, uintptr_t end) {
     up_flush_dcache(start, end);
 }
+
+/* ==========================================================================
+ * Memory Allocation Configuration
+ * ========================================================================== */
+
+#if FL_NUTTX_BUF_SIZE > 0
+/* Static allocation with func_allocator */
+static uint8_t s_code_buf[FL_NUTTX_BUF_SIZE] __attribute__((aligned(4)));
+static func_alloc_t s_alloc;
+
+static void* nuttx_malloc_cb(size_t size) {
+    return func_malloc(&s_alloc, size);
+}
+
+static void nuttx_free_cb(void* ptr) {
+    func_free(&s_alloc, ptr);
+}
+
+static void nuttx_alloc_init(void) {
+    func_alloc_init(&s_alloc, s_code_buf, sizeof(s_code_buf));
+}
+
+static void nuttx_print_alloc_info(void) {
+    printf("Buffer: %u bytes @ 0x%08lX (STATIC, blocks: %u)\n", (unsigned)sizeof(s_code_buf), (unsigned long)s_code_buf,
+           (unsigned)s_alloc.block_count);
+}
+#else
+/* Dynamic allocation with libc malloc/free */
+static void nuttx_alloc_init(void) {
+    /* Nothing to initialize for libc malloc */
+}
+
+static void nuttx_print_alloc_info(void) {
+    printf("Allocator: LIBC malloc/free\n");
+}
+#endif
 
 static int parse_line(char* line, const char** argv, int max_argc) {
     int argc = 0;
@@ -114,6 +155,7 @@ static int interactive_mode(fl_context_t* ctx) {
     static const char* argv[32];
 
     printf("FPBInject Function Loader (NuttX)\n");
+    nuttx_print_alloc_info();
     printf("Type --cmd <command> or 'quit' to exit\n\n");
 
     while (1) {
@@ -157,14 +199,18 @@ int main(int argc, char** argv) {
         fl_init(&ctx);
         ctx.output_cb = nuttx_output_cb;
         ctx.flush_dcache_cb = nuttx_flush_dcache_cb;
-#if FL_NUTTX_BUF_SIZE <= 0
+
+        /* Initialize allocator */
+        nuttx_alloc_init();
+
+#if FL_NUTTX_BUF_SIZE > 0
+        /* Static allocation mode */
+        ctx.malloc_cb = nuttx_malloc_cb;
+        ctx.free_cb = nuttx_free_cb;
+#else
+        /* Dynamic allocation mode */
         ctx.malloc_cb = malloc;
         ctx.free_cb = free;
-#else
-        /* Static code buffer */
-        static uint32_t code_buf[FL_NUTTX_BUF_SIZE / sizeof(uint32_t)];
-        ctx.static_buf = code_buf;
-        ctx.static_size = sizeof(code_buf);
 #endif
     }
 

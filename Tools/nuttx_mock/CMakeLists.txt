@@ -82,6 +82,9 @@ option(FPB_NO_DEBUGMON "Disable DebugMonitor" OFF)
 set(FL_ALLOC_MODE
     "STATIC"
     CACHE STRING "Allocation mode: STATIC, LIBC, UMM")
+set(FL_NUTTX_BUF_SIZE
+    "1024"
+    CACHE STRING "NuttX buffer size (>0=static, 0=dynamic)")
 
 # Configure definitions
 if(FPB_NO_TRAMPOLINE)
@@ -106,6 +109,9 @@ elseif(FL_ALLOC_MODE STREQUAL "UMM")
   list(APPEND FL_SOURCES ${UMM_SOURCES})
 endif()
 
+# NuttX buffer size
+add_definitions(-DFL_NUTTX_BUF_SIZE=${FL_NUTTX_BUF_SIZE})
+
 # Create static library (just to verify compilation)
 add_library(fpbinject_nuttx STATIC ${FPB_SOURCES} ${FL_SOURCES})
 
@@ -120,3 +126,4 @@ message(STATUS "  FPB_NO_TRAMPOLINE: ${FPB_NO_TRAMPOLINE}")
 message(STATUS "  FPB_TRAMPOLINE_NO_ASM: ${FPB_TRAMPOLINE_NO_ASM}")
 message(STATUS "  FPB_NO_DEBUGMON: ${FPB_NO_DEBUGMON}")
 message(STATUS "  FL_ALLOC_MODE: ${FL_ALLOC_MODE}")
+message(STATUS "  FL_NUTTX_BUF_SIZE: ${FL_NUTTX_BUF_SIZE}")

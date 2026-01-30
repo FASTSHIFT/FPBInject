@@ -226,36 +226,13 @@ function updateMemoryInfo(memory) {
   const memoryEl = document.getElementById('memoryInfo');
   if (!memoryEl) return;
 
-  const isDynamic = memory.is_dynamic || false;
-  const base = memory.base || 0;
-  const size = memory.size || 0;
   const used = memory.used || 0;
 
-  if (isDynamic) {
-    memoryEl.innerHTML = `
-      <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-        <span style="font-size: 10px; padding: 2px 6px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border-radius: 3px;">Dynamic</span>
-        <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">Used: ${used} Bytes</span>
-      </div>
-    `;
-  } else {
-    const free = size - used;
-    const usedPercent = size > 0 ? Math.round((used / size) * 100) : 0;
-    memoryEl.innerHTML = `
-      <div style="display: flex; flex-direction: column; gap: 4px;">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-          <span style="font-size: 10px; padding: 2px 6px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border-radius: 3px;">Static</span>
-          <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">Base: 0x${base.toString(16).toUpperCase().padStart(8, '0')}</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 4px;">
-          <div style="flex: 1; height: 4px; background: var(--vscode-input-background); border-radius: 2px; overflow: hidden;">
-            <div style="width: ${usedPercent}%; height: 100%; background: var(--vscode-progressBar-background);"></div>
-          </div>
-          <span style="font-size: 9px; color: var(--vscode-descriptionForeground); white-space: nowrap;">${used}/${size} (${usedPercent}%)</span>
-        </div>
-      </div>
-    `;
-  }
+  memoryEl.innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">Used: ${used} Bytes</span>
+    </div>
+  `;
 }
 
 // Export for global access

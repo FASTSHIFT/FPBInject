@@ -318,24 +318,11 @@ class FPBProtocol:
 
             if result.get("ok"):
                 raw = result.get("raw", "")
-                info = {"ok": True, "slots": [], "is_dynamic": False}
+                info = {"ok": True, "slots": []}
                 for line in raw.split("\n"):
                     line = line.strip()
                     if line.startswith("Build:"):
                         info["build_time"] = line.split(":", 1)[1].strip()
-                    elif line.startswith("Alloc:"):
-                        alloc_type = line.split(":")[1].strip().lower()
-                        info["is_dynamic"] = alloc_type == "dynamic"
-                    elif line.startswith("Base:"):
-                        try:
-                            info["base"] = int(line.split(":")[1].strip(), 0)
-                        except:
-                            pass
-                    elif line.startswith("Size:"):
-                        try:
-                            info["size"] = int(line.split(":")[1].strip())
-                        except:
-                            pass
                     elif line.startswith("Used:"):
                         try:
                             info["used"] = int(line.split(":")[1].strip())
