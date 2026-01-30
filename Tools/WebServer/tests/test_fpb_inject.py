@@ -681,23 +681,28 @@ class TestFPBInjectCoverage(unittest.TestCase):
         try:
             with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
                 self.fpb, "info"
-            ) as mock_info, patch.object(
+            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
                 self.fpb, "find_slot_for_target"
             ) as mock_find_slot:
 
                 mock_syms.return_value = {"target_func": 0x08000000}
-                mock_info.return_value = ({"base": 0x20000000}, "")
+                mock_info.return_value = ({"used": 0}, "")
+                mock_alloc.return_value = (0x20000000, "")
                 mock_find_slot.return_value = (
                     0,
                     False,
                 )  # Return slot 0, no unpatch needed
 
-                # compile_inject returns (data, symbols, error)
-                mock_compile.return_value = (
-                    b"\x01\x02",
-                    {"inject_target_func": 0x20000000},
-                    "",
-                )
+                # compile_inject called twice for dynamic allocation
+                # First for size calculation, second for actual address
+                mock_compile.side_effect = [
+                    (b"\x01\x02", {}, ""),  # First compilation
+                    (
+                        b"\x01\x02",
+                        {"inject_target_func": 0x20000000},
+                        "",
+                    ),  # Second compilation
+                ]
 
                 mock_upload.return_value = (True, {"time": 0.1})
                 mock_tpatch.return_value = (True, "")
@@ -710,6 +715,8 @@ class TestFPBInjectCoverage(unittest.TestCase):
                 )
 
                 self.assertTrue(success)
+                self.assertEqual(mock_compile.call_count, 2)
+                mock_alloc.assert_called()
                 mock_upload.assert_called()
                 mock_tpatch.assert_called()
         finally:
@@ -734,9 +741,9 @@ class TestFPBInjectCoverage(unittest.TestCase):
             ) as mock_tpatch:
 
                 mock_syms.return_value = {"target_func": 0x08000000}
-                # info returns is_dynamic=True to trigger dynamic alloc
+                # info returns used memory
                 mock_info.return_value = (
-                    {"base": 0, "size": 0, "is_dynamic": True},
+                    {"used": 0},
                     "",
                 )
                 mock_find_slot.return_value = (
@@ -794,15 +801,14 @@ class TestFPBInjectCommands(unittest.TestCase):
     def test_info_success(self):
         """Test info success"""
         self.fpb._protocol.send_cmd = Mock(
-            return_value="Base: 0x20000000\nSize: 1024\nUsed: 100\n[OK]"
+            return_value="FPBInject v1.0\nBuild: Jan 30 2026 10:00:00\nUsed: 100\nSlots: 0/6\n[OK] Info complete"
         )
 
         info, error = self.fpb.info()
 
         self.assertIsNotNone(info)
-        self.assertEqual(info["base"], 0x20000000)
-        self.assertEqual(info["size"], 1024)
         self.assertEqual(info["used"], 100)
+        self.assertEqual(info["build_time"], "Jan 30 2026 10:00:00")
 
     def test_info_failure(self):
         """Test info failure"""
@@ -1035,9 +1041,6 @@ class TestBuildTimeFeature(unittest.TestCase):
         """Test parsing build time from info response"""
         self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v1.0
 Build: Jan 29 2026 14:30:00
-Alloc: static
-Base: 0x20000000
-Size: 1024
 Used: 100
 Slots: 0/6
 [OK] Info complete""")
@@ -1046,14 +1049,13 @@ Slots: 0/6
 
         self.assertIsNotNone(info)
         self.assertEqual(info.get("build_time"), "Jan 29 2026 14:30:00")
-        self.assertEqual(info["base"], 0x20000000)
+        self.assertEqual(info["used"], 100)
 
     def test_info_no_build_time(self):
         """Test info response without build time (old firmware)"""
         self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v1.0
-Alloc: static
-Base: 0x20000000
-Size: 1024
+Used: 100
+Slots: 0/6
 [OK] Info complete""")
 
         info, error = self.fpb.info()
@@ -1062,10 +1064,9 @@ Size: 1024
         self.assertNotIn("build_time", info)
 
     def test_info_dynamic_mode_with_build_time(self):
-        """Test info with dynamic allocation and build time"""
+        """Test info with build time and active slots"""
         self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v1.0
 Build: Feb 15 2026 09:45:30
-Alloc: dynamic
 Used: 256
 Slots: 2/6
 Slot[0]: 0x08001000 -> 0x20001000, 128 bytes
@@ -1076,7 +1077,7 @@ Slot[1]: 0x08002000 -> 0x20001080, 64 bytes
 
         self.assertIsNotNone(info)
         self.assertEqual(info.get("build_time"), "Feb 15 2026 09:45:30")
-        self.assertTrue(info["is_dynamic"])
+        self.assertEqual(info["used"], 256)
         self.assertEqual(len(info["slots"]), 2)
 
     @patch("subprocess.run")

@@ -129,9 +129,6 @@ class TestBuildSlotResponse(unittest.TestCase):
         device = DeviceState()
         device.device_info = {
             "slots": [],
-            "is_dynamic": True,
-            "base": 0x20000000,
-            "size": 4096,
             "used": 1024,
         }
         app_state = AppState()
@@ -142,9 +139,6 @@ class TestBuildSlotResponse(unittest.TestCase):
         result = build_slot_response(device, app_state, lambda: mock_fpb)
 
         self.assertIsNotNone(result)
-        self.assertTrue(result["memory"]["is_dynamic"])
-        self.assertEqual(result["memory"]["base"], 0x20000000)
-        self.assertEqual(result["memory"]["size"], 4096)
         self.assertEqual(result["memory"]["used"], 1024)
 
 

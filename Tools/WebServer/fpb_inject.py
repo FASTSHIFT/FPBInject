@@ -382,59 +382,40 @@ class FPBInject:
         if error:
             return False, {"error": f"Failed to get device info: {error}"}
 
-        is_dynamic = info and info.get("is_dynamic", False)
-
         compile_start = time.time()
 
-        if is_dynamic:
-            data, inject_symbols, error = self.compile_inject(
-                source_content,
-                0x20000000,
-                elf_path,
-                self.device.compile_commands_path,
-                source_ext=source_ext,
-                original_source_file=original_source_file,
-            )
-            if error:
-                return False, {"error": error}
+        data, inject_symbols, error = self.compile_inject(
+            source_content,
+            0x20000000,
+            elf_path,
+            self.device.compile_commands_path,
+            source_ext=source_ext,
+            original_source_file=original_source_file,
+        )
+        if error:
+            return False, {"error": error}
 
-            code_size = len(data)
-            alloc_size = code_size + 8
+        code_size = len(data)
+        alloc_size = code_size + 8
 
-            raw_addr, error = self.alloc(alloc_size)
-            if error or raw_addr is None:
-                return False, {
-                    "error": f"Alloc failed: {error or 'No address returned'}"
-                }
+        raw_addr, error = self.alloc(alloc_size)
+        if error or raw_addr is None:
+            return False, {"error": f"Alloc failed: {error or 'No address returned'}"}
 
-            aligned_addr = (raw_addr + 7) & ~7
-            align_offset = aligned_addr - raw_addr
-            base_addr = aligned_addr
+        aligned_addr = (raw_addr + 7) & ~7
+        align_offset = aligned_addr - raw_addr
+        base_addr = aligned_addr
 
-            data, inject_symbols, error = self.compile_inject(
-                source_content,
-                base_addr,
-                elf_path,
-                self.device.compile_commands_path,
-                source_ext=source_ext,
-                original_source_file=original_source_file,
-            )
-            if error:
-                return False, {"error": error}
-        else:
-            base_addr = info.get("base", 0x20001000) if info else 0x20001000
-            align_offset = 0
-
-            data, inject_symbols, error = self.compile_inject(
-                source_content,
-                base_addr,
-                elf_path,
-                self.device.compile_commands_path,
-                source_ext=source_ext,
-                original_source_file=original_source_file,
-            )
-            if error:
-                return False, {"error": error}
+        data, inject_symbols, error = self.compile_inject(
+            source_content,
+            base_addr,
+            elf_path,
+            self.device.compile_commands_path,
+            source_ext=source_ext,
+            original_source_file=original_source_file,
+        )
+        if error:
+            return False, {"error": error}
 
         compile_time = time.time() - compile_start
         result["compile_time"] = round(compile_time, 2)

@@ -1082,7 +1082,6 @@ class TestBuildTimeVerification(TestRoutesBase):
             {
                 "ok": True,
                 "build_time": "Jan 29 2026 14:30:00",
-                "is_dynamic": False,
                 "slots": [],
             },
             "",
@@ -1114,7 +1113,6 @@ class TestBuildTimeVerification(TestRoutesBase):
             {
                 "ok": True,
                 "build_time": "Jan 29 2026 14:30:00",
-                "is_dynamic": False,
                 "slots": [],
             },
             "",
@@ -1145,7 +1143,6 @@ class TestBuildTimeVerification(TestRoutesBase):
         mock_fpb.info.return_value = (
             {
                 "ok": True,
-                "is_dynamic": False,
                 "slots": [],
                 # No build_time field
             },
@@ -1177,7 +1174,6 @@ class TestBuildTimeVerification(TestRoutesBase):
             {
                 "ok": True,
                 "build_time": "Jan 29 2026 14:30:00",
-                "is_dynamic": False,
                 "slots": [],
             },
             "",
@@ -1209,7 +1205,6 @@ class TestBuildTimeVerification(TestRoutesBase):
             {
                 "ok": True,
                 "build_time": "Jan 29 2026 14:30:00",
-                "is_dynamic": False,
                 "slots": [],
             },
             "",
