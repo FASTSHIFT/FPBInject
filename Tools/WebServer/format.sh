@@ -39,6 +39,9 @@ format_python() {
     local files=$(find . -name "*.py" \
         -not -path "./__pycache__/*" \
         -not -path "./htmlcov/*" \
+        -not -path "./coverage/*" \
+        -not -path "./tests/htmlcov/*" \
+        -not -path "./tests/coverage/*" \
         -not -path "./.venv/*" \
         -not -path "./venv/*" \
         2>/dev/null | sort)
@@ -68,6 +71,9 @@ format_javascript() {
         -not -path "./node_modules/*" \
         -not -path "./.venv/*" \
         -not -path "./htmlcov/*" \
+        -not -path "./coverage/*" \
+        -not -path "./tests/htmlcov/*" \
+        -not -path "./tests/coverage/*" \
         2>/dev/null | sort)
     
     if [ -z "$files" ]; then
@@ -114,6 +120,9 @@ format_html() {
     # Find all HTML files
     local files=$(find . -name "*.html" \
         -not -path "./htmlcov/*" \
+        -not -path "./coverage/*" \
+        -not -path "./tests/htmlcov/*" \
+        -not -path "./tests/coverage/*" \
         -not -path "./node_modules/*" \
         2>/dev/null | sort)
     
@@ -159,6 +168,9 @@ format_css() {
     # Find all CSS files
     local files=$(find . -name "*.css" \
         -not -path "./htmlcov/*" \
+        -not -path "./coverage/*" \
+        -not -path "./tests/htmlcov/*" \
+        -not -path "./tests/coverage/*" \
         -not -path "./node_modules/*" \
         2>/dev/null | sort)
     
@@ -209,6 +221,9 @@ lint_python() {
     local files=$(find . -name "*.py" \
         -not -path "./__pycache__/*" \
         -not -path "./htmlcov/*" \
+        -not -path "./coverage/*" \
+        -not -path "./tests/htmlcov/*" \
+        -not -path "./tests/coverage/*" \
         -not -path "./.venv/*" \
         -not -path "./venv/*" \
         2>/dev/null | sort)
