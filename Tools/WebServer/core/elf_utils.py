@@ -279,6 +279,14 @@ def decompile_function(elf_path: str, func_name: str) -> Tuple[bool, str]:
             return False, f"Decompilation failed: {str(e)}"
 
     except Exception as e:
+        err_msg = str(e)
+        # Handle angr/cle internal errors for complex embedded ELF files
+        if "backer" in err_msg.lower() or "Can't find" in err_msg:
+            logger.info(f"angr cannot load this ELF (complex memory layout): {err_msg}")
+            return (
+                False,
+                "Decompilation unavailable: ELF has complex memory layout not supported by angr",
+            )
         logger.error(f"Error decompiling function: {e}")
         return False, str(e)
 
