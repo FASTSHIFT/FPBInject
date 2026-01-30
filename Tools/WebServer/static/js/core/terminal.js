@@ -9,6 +9,16 @@ function initTerminals() {
   const termTheme = getTerminalTheme();
   const state = window.FPBState;
 
+  // Get both panels for proper initialization
+  const toolPanel = document.getElementById('terminalPanelTool');
+  const rawPanel = document.getElementById('terminalPanelRaw');
+
+  // Temporarily show both panels for proper terminal sizing
+  const toolDisplay = toolPanel ? toolPanel.style.display : '';
+  const rawDisplay = rawPanel ? rawPanel.style.display : '';
+  if (toolPanel) toolPanel.style.display = 'block';
+  if (rawPanel) rawPanel.style.display = 'block';
+
   // Tool Terminal (OUTPUT - Python logs)
   const toolContainer = document.getElementById('terminal-container');
   if (toolContainer && typeof Terminal !== 'undefined') {
@@ -77,6 +87,10 @@ function initTerminals() {
       }
     });
   }
+
+  // Restore original display states
+  if (toolPanel) toolPanel.style.display = toolDisplay || 'block';
+  if (rawPanel) rawPanel.style.display = rawDisplay || 'none';
 
   window.addEventListener('resize', fitTerminals);
 }
