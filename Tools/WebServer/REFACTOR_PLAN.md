@@ -765,3 +765,60 @@ WebServer/
 #### Remaining Work
 - `core/patch_generator.py` (512 lines) slightly over 500 target
 - Phase 1 (Thread Safety) still pending per original plan
+
+
+### 2025-01-30 Progress Update (Thread Safety for Serial Operations)
+
+#### Fixed Thread Safety Issue in FPB Routes
+
+**Problem**: FPB routes (`app/routes/fpb.py`) were directly calling serial operations from Flask request threads, which could cause race conditions when multiple requests access the serial port simultaneously.
+
+**Solution**: All serial operations now go through `device_worker` thread via `run_in_device_worker()`:
+
+1. Created `_run_serial_op()` helper function that:
+   - Wraps serial operations in a closure
+   - Executes them in the device worker thread
+   - Waits for completion with timeout
+   - Returns results or error dict
+
+2. Updated all FPB routes to use `_run_serial_op()`:
+   - `/fpb/ping` - ping device
+   - `/fpb/test-serial` - serial throughput test
+   - `/fpb/info` - get device info
+   - `/fpb/unpatch` - clear patches
+   - `/fpb/inject` - single function injection
+   - `/fpb/inject/multi` - multi-function injection
+   - `/fpb/inject/stream` - streaming injection with progress
+
+3. Updated tests to mock `run_in_device_worker`:
+   - Added `mock_run_in_device_worker()` helper that executes functions synchronously
+   - Updated `TestFPBRoutesBase` and `TestRoutesBase` to patch the worker
+
+#### Thread Safety Architecture
+
+```
+Flask Request Thread          Device Worker Thread
+       |                              |
+       |  _run_serial_op(func)        |
+       |----------------------------->|
+       |                              | func() executes
+       |                              | (serial I/O)
+       |<-----------------------------|
+       |  result                      |
+       v                              v
+```
+
+**Key Points**:
+- All serial port access is now serialized through the device worker queue
+- Flask routes only read device state (safe due to Python GIL)
+- State modifications happen in worker thread or are atomic (list.append)
+- Connection/disconnect already used worker pattern (unchanged)
+
+#### Test Results
+- 696 tests all pass ✅
+- No changes to test count (tests updated to mock worker)
+
+#### Files Modified
+- `app/routes/fpb.py` - Added `_run_serial_op()`, updated all routes
+- `tests/test_fpb_routes.py` - Added worker mock in base class
+- `tests/test_routes.py` - Added worker mock in base class

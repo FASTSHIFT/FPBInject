@@ -18,6 +18,12 @@ import routes
 from core.state import DeviceState, AppState, state
 
 
+def mock_run_in_device_worker(device, func, timeout=5.0):
+    """Mock run_in_device_worker that executes func synchronously."""
+    func()
+    return True
+
+
 class TestRoutesBase(unittest.TestCase):
     """Routes test base class"""
 
@@ -38,8 +44,15 @@ class TestRoutesBase(unittest.TestCase):
 
         self.client = self.app.test_client()
 
+        # Patch run_in_device_worker for FPB routes to execute synchronously
+        self.worker_patcher = patch(
+            "app.routes.fpb.run_in_device_worker", side_effect=mock_run_in_device_worker
+        )
+        self.mock_worker = self.worker_patcher.start()
+
     def tearDown(self):
         """Clean up test environment"""
+        self.worker_patcher.stop()
         state.device = self.original_device
         routes._fpb_inject = None
 

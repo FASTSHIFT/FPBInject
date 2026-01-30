@@ -7,6 +7,7 @@
 FPB Inject Operations API routes for FPBInject Web Server.
 
 Provides endpoints for FPB injection, unpatch, and device info.
+All serial operations are executed in the device worker thread for thread safety.
 """
 
 import json
@@ -18,6 +19,7 @@ import threading
 from flask import Blueprint, Response, jsonify, request
 
 from core.state import state
+from services.device_worker import run_in_device_worker
 
 bp = Blueprint("fpb", __name__)
 logger = logging.getLogger(__name__)
@@ -39,13 +41,50 @@ def _get_helpers():
     return add_tool_log, get_fpb_inject, _build_slot_response
 
 
+def _run_serial_op(func, timeout=10.0):
+    """
+    Run a serial operation in the device worker thread.
+
+    Args:
+        func: Function to execute (should return a result dict)
+        timeout: Maximum time to wait for completion
+
+    Returns:
+        Result dict from func, or error dict on timeout/failure
+    """
+    device = state.device
+    result = {"error": None, "data": None}
+
+    def wrapper():
+        try:
+            result["data"] = func()
+        except Exception as e:
+            result["error"] = str(e)
+            logger.exception(f"Serial operation error: {e}")
+
+    if not run_in_device_worker(device, wrapper, timeout=timeout):
+        return {"error": "Operation timeout - device worker not running"}
+
+    if result["error"]:
+        return {"error": result["error"]}
+
+    return result["data"]
+
+
 @bp.route("/fpb/ping", methods=["POST"])
 def api_fpb_ping():
     """Ping device to test connection."""
     _, get_fpb_inject, _ = _get_helpers()
     fpb = get_fpb_inject()
-    success, msg = fpb.ping()
-    return jsonify({"success": success, "message": msg})
+
+    def do_ping():
+        success, msg = fpb.ping()
+        return {"success": success, "message": msg}
+
+    result = _run_serial_op(do_ping, timeout=5.0)
+    if "error" in result and result.get("error"):
+        return jsonify({"success": False, "message": result["error"]})
+    return jsonify(result)
 
 
 @bp.route("/fpb/test-serial", methods=["POST"])
@@ -67,9 +106,16 @@ def api_fpb_test_serial():
 
     add_tool_log("[TEST] Starting serial throughput test...")
 
-    result = fpb.test_serial_throughput(
-        start_size=start_size, max_size=max_size, timeout=timeout
-    )
+    def do_test():
+        return fpb.test_serial_throughput(
+            start_size=start_size, max_size=max_size, timeout=timeout
+        )
+
+    result = _run_serial_op(do_test, timeout=30.0)
+
+    if "error" in result and result.get("error"):
+        add_tool_log(f"[ERROR] Serial test failed: {result['error']}")
+        return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
         max_working = result.get("max_working_size", 0)
@@ -96,8 +142,20 @@ def api_fpb_info():
     _, get_fpb_inject, _build_slot_response = _get_helpers()
 
     fpb = get_fpb_inject()
-    info, error = fpb.info()
-    fpb.exit_fl_mode()
+
+    def do_info():
+        info, error = fpb.info()
+        fpb.exit_fl_mode()
+        return {"info": info, "error": error}
+
+    result = _run_serial_op(do_info, timeout=5.0)
+
+    if "error" in result and result.get("error"):
+        return jsonify({"success": False, "error": result["error"]})
+
+    info = result.get("info")
+    error = result.get("error") if isinstance(result, dict) else None
+
     if error:
         return jsonify({"success": False, "error": error})
 
@@ -150,7 +208,16 @@ def api_fpb_unpatch():
         clear_all = data.get("all", False)
 
         fpb = get_fpb_inject()
-        success, msg = fpb.unpatch(comp=comp, all=clear_all)
+
+        def do_unpatch():
+            return fpb.unpatch(comp=comp, all=clear_all)
+
+        result = _run_serial_op(do_unpatch, timeout=5.0)
+
+        if "error" in result and result.get("error"):
+            return jsonify({"success": False, "message": result["error"]})
+
+        success, msg = result
 
         if success:
             if clear_all:
@@ -189,30 +256,40 @@ def api_fpb_inject():
 
     add_tool_log(f"[INJECT] Starting injection for {target_func} (mode: {patch_mode})")
 
-    fpb.enter_fl_mode()
+    def do_inject():
+        fpb.enter_fl_mode()
+        try:
+            success, result = fpb.inject(
+                source_content=source_content,
+                target_func=target_func,
+                inject_func=inject_func,
+                patch_mode=patch_mode,
+                comp=comp,
+                source_ext=source_ext,
+            )
+            return {"success": success, "result": result}
+        finally:
+            fpb.exit_fl_mode()
 
-    try:
-        success, result = fpb.inject(
-            source_content=source_content,
-            target_func=target_func,
-            inject_func=inject_func,
-            patch_mode=patch_mode,
-            comp=comp,
-            source_ext=source_ext,
-        )
-    finally:
-        fpb.exit_fl_mode()
+    result = _run_serial_op(do_inject, timeout=30.0)
+
+    if "error" in result and result.get("error"):
+        add_tool_log(f"[ERROR] Injection failed: {result['error']}")
+        return jsonify({"success": False, "error": result["error"]})
+
+    success = result.get("success", False)
+    inject_result = result.get("result", {})
 
     if success:
         add_tool_log(
-            f"[SUCCESS] Injection complete: {target_func} @ slot {result.get('slot', '?')}"
+            f"[SUCCESS] Injection complete: {target_func} @ slot {inject_result.get('slot', '?')}"
         )
     else:
         add_tool_log(
-            f"[ERROR] Injection failed: {result.get('error', 'unknown error')}"
+            f"[ERROR] Injection failed: {inject_result.get('error', 'unknown error')}"
         )
 
-    return jsonify({"success": success, **result})
+    return jsonify({"success": success, **inject_result})
 
 
 @bp.route("/fpb/inject/multi", methods=["POST"])
@@ -234,29 +311,39 @@ def api_fpb_inject_multi():
         f"[INJECT_MULTI] Starting multi-function injection (mode: {patch_mode})"
     )
 
-    fpb.enter_fl_mode()
+    def do_inject_multi():
+        fpb.enter_fl_mode()
+        try:
+            success, result = fpb.inject_multi(
+                source_content=source_content,
+                patch_mode=patch_mode,
+                source_ext=source_ext,
+            )
+            return {"success": success, "result": result}
+        finally:
+            fpb.exit_fl_mode()
 
-    try:
-        success, result = fpb.inject_multi(
-            source_content=source_content,
-            patch_mode=patch_mode,
-            source_ext=source_ext,
-        )
-    finally:
-        fpb.exit_fl_mode()
+    result = _run_serial_op(do_inject_multi, timeout=60.0)
+
+    if "error" in result and result.get("error"):
+        add_tool_log(f"[ERROR] Multi-injection failed: {result['error']}")
+        return jsonify({"success": False, "error": result["error"]})
+
+    success = result.get("success", False)
+    inject_result = result.get("result", {})
 
     if success:
-        successful = result.get("successful_count", 0)
-        total = result.get("total_count", 0)
+        successful = inject_result.get("successful_count", 0)
+        total = inject_result.get("total_count", 0)
         add_tool_log(
             f"[SUCCESS] Multi-injection complete: {successful}/{total} functions"
         )
     else:
         add_tool_log(
-            f"[ERROR] Multi-injection failed: {result.get('error', 'unknown error')}"
+            f"[ERROR] Multi-injection failed: {inject_result.get('error', 'unknown error')}"
         )
 
-    return jsonify({"success": success, **result})
+    return jsonify({"success": success, **inject_result})
 
 
 @bp.route("/fpb/inject/stream", methods=["POST"])
@@ -291,38 +378,47 @@ def api_fpb_inject_stream():
         )
 
     def inject_task():
+        """Execute injection in device worker thread."""
         fpb = get_fpb_inject()
         add_tool_log(
             f"[INJECT] Starting injection for {target_func} (mode: {patch_mode})"
         )
 
-        fpb.enter_fl_mode()
+        def do_inject():
+            fpb.enter_fl_mode()
+            try:
+                progress_queue.put({"type": "status", "stage": "compiling"})
 
-        try:
-            progress_queue.put({"type": "status", "stage": "compiling"})
-
-            success, result = fpb.inject(
-                source_content=source_content,
-                target_func=target_func,
-                inject_func=inject_func,
-                patch_mode=patch_mode,
-                comp=comp,
-                source_ext=source_ext,
-                progress_callback=progress_callback,
-            )
-
-            if success:
-                add_tool_log(f"[SUCCESS] Injection complete: {target_func}")
-                progress_queue.put({"type": "result", "success": True, **result})
-            else:
-                add_tool_log(
-                    f"[ERROR] Injection failed: {result.get('error', 'unknown')}"
+                success, result = fpb.inject(
+                    source_content=source_content,
+                    target_func=target_func,
+                    inject_func=inject_func,
+                    patch_mode=patch_mode,
+                    comp=comp,
+                    source_ext=source_ext,
+                    progress_callback=progress_callback,
                 )
-                progress_queue.put({"type": "result", "success": False, **result})
-        finally:
-            fpb.exit_fl_mode()
+
+                if success:
+                    add_tool_log(f"[SUCCESS] Injection complete: {target_func}")
+                    progress_queue.put({"type": "result", "success": True, **result})
+                else:
+                    add_tool_log(
+                        f"[ERROR] Injection failed: {result.get('error', 'unknown')}"
+                    )
+                    progress_queue.put({"type": "result", "success": False, **result})
+            finally:
+                fpb.exit_fl_mode()
+                progress_queue.put(None)
+
+        # Run in device worker for thread safety
+        if not run_in_device_worker(state.device, do_inject, timeout=60.0):
+            progress_queue.put(
+                {"type": "result", "success": False, "error": "Device worker timeout"}
+            )
             progress_queue.put(None)
 
+    # Start the injection task in a separate thread that will queue work to device worker
     thread = threading.Thread(target=inject_task, daemon=True)
     thread.start()
 

@@ -18,6 +18,12 @@ from app.routes import fpb
 from core.state import DeviceState, AppState, state
 
 
+def mock_run_in_device_worker(device, func, timeout=5.0):
+    """Mock run_in_device_worker that executes func synchronously."""
+    func()
+    return True
+
+
 class TestFPBRoutesBase(unittest.TestCase):
     """FPB routes test base class"""
 
@@ -35,8 +41,15 @@ class TestFPBRoutesBase(unittest.TestCase):
 
         self.client = self.app.test_client()
 
+        # Patch run_in_device_worker to execute synchronously
+        self.worker_patcher = patch(
+            "app.routes.fpb.run_in_device_worker", side_effect=mock_run_in_device_worker
+        )
+        self.mock_worker = self.worker_patcher.start()
+
     def tearDown(self):
         """Clean up test environment"""
+        self.worker_patcher.stop()
         state.device = self.original_device
 
 
