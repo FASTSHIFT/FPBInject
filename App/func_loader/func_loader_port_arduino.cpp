@@ -46,6 +46,11 @@
 #include <stdlib.h>
 #endif
 
+/* Include func_allocator for FL_ALLOC_STATIC */
+#if defined(FL_ALLOC_STATIC)
+#include "func_allocator.h"
+#endif
+
 #define LED_PIN PC13
 
 /* ==========================================================================
@@ -54,18 +59,28 @@
 
 #if defined(FL_ALLOC_STATIC)
 /* --------------------------------------------------------------------------
- * Static Allocation Mode
+ * Static Allocation Mode (with func_allocator)
  * -------------------------------------------------------------------------- */
 #define ALLOC_MODE_NAME "STATIC"
 
 static uint8_t s_code_buf[1024] __attribute__((aligned(4), section(".ram_code")));
+static func_alloc_t s_alloc;
+
+static void* malloc_cb(size_t size) {
+    return func_malloc(&s_alloc, size);
+}
+
+static void free_cb(void* ptr) {
+    func_free(&s_alloc, ptr);
+}
 
 static void alloc_init(void) {
-    /* Nothing to initialize for static allocation */
+    func_alloc_init(&s_alloc, s_code_buf, sizeof(s_code_buf));
 }
 
 static void print_alloc_info(void) {
-    printf("Buffer: %u bytes @ 0x%08lX (STATIC)\n", (unsigned)sizeof(s_code_buf), (unsigned long)s_code_buf);
+    printf("Buffer: %u bytes @ 0x%08lX (STATIC, blocks: %u)\n", (unsigned)sizeof(s_code_buf), (unsigned long)s_code_buf,
+           (unsigned)s_alloc.block_count);
 }
 
 #elif defined(FL_ALLOC_LIBC)
@@ -155,8 +170,8 @@ void func_loader_run(void) {
     static fl_context_t s_ctx;
     fl_init(&s_ctx);
 #ifdef FL_ALLOC_STATIC
-    s_ctx.static_buf = s_code_buf;
-    s_ctx.static_size = sizeof(s_code_buf);
+    s_ctx.malloc_cb = malloc_cb;
+    s_ctx.free_cb = free_cb;
 #elif defined(FL_ALLOC_LIBC)
     s_ctx.malloc_cb = malloc;
     s_ctx.free_cb = free;
