@@ -1,0 +1,22 @@
+<!-- TERMINAL PANEL -->
+<div class="panel-container" id="panelContainer">
+  <div class="panel-header">
+    <div class="panel-tab active" onclick="switchTerminalTab('tool')" id="tabBtnTool">OUTPUT</div>
+    <div class="panel-tab" onclick="switchTerminalTab('raw')" id="tabBtnRaw">SERIAL PORT</div>
+    <div class="panel-actions">
+      <button class="vscode-btn icon-only secondary" onclick="clearCurrentTerminal()" title="Clear">
+        <i class="codicon codicon-clear-all"></i>
+      </button>
+    </div>
+  </div>
+  <div class="panel-content">
+    <!-- Tool Terminal (Python logs) -->
+    <div id="terminalPanelTool" class="terminal-panel">
+      <div id="terminal-container" style="width: 100%; height: 100%"></div>
+    </div>
+    <!-- Raw Terminal (Serial Port - interactive) -->
+    <div id="terminalPanelRaw" class="terminal-panel" style="display: none">
+      <div id="raw-terminal-container" style="width: 100%; height: 100%"></div>
+    </div>
+  </div>
+</div>

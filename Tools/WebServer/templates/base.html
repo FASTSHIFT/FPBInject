@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}FPBInject Workbench{% endblock %}</title>
+    {% block head %}
+    <!-- VS Code Design System -->
+    <link rel="stylesheet" href="/static/css/workbench.css" />
+    <!-- Codicons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.32/dist/codicon.min.css" />
+    <!-- xterm.js -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <!-- highlight.js -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/vs2015.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <!-- Ace Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.6/src-min-noconflict/ace.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.6/src-min-noconflict/mode-c_cpp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.6/src-min-noconflict/mode-assembly_x86.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.6/src-min-noconflict/theme-tomorrow_night.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.6/src-min-noconflict/theme-tomorrow.min.js"></script>
+    {% endblock %}
+  </head>
+
+  <body>
+    {% block titlebar %}{% include 'partials/titlebar.html' %}{% endblock %} {% block activitybar %}{% include
+    'partials/activitybar.html' %}{% endblock %} {% block sidebar %}{% include 'partials/sidebar.html' %}{% endblock %}
+
+    <!-- Sidebar Resize Sash -->
+    <div class="sash sash-vertical" id="sashSidebar"></div>
+
+    {% block editor %}{% include 'partials/editor.html' %}{% endblock %}
+
+    <!-- Corner Resize Sash -->
+    <div class="sash sash-corner" id="sashCorner"></div>
+    <!-- Panel Resize Sash -->
+    <div class="sash sash-horizontal" id="sashPanel"></div>
+
+    {% block terminal %}{% include 'partials/terminal.html' %}{% endblock %} {% block statusbar %}{% include
+    'partials/statusbar.html' %}{% endblock %} {% block modals %}{% include 'partials/modals.html' %}{% endblock %} {%
+    block scripts %}{% include 'partials/scripts.html' %}{% endblock %}
+  </body>
+</html>

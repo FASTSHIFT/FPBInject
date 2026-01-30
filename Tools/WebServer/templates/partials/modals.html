@@ -1,0 +1,24 @@
+<!-- File Browser Modal -->
+<div class="modal-overlay" id="fileBrowserModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 style="margin: 0">File Browser</h3>
+      <button class="vscode-btn icon-only secondary" onclick="closeFileBrowser()">
+        <i class="codicon codicon-close"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="flex-row" style="margin-bottom: 10px">
+        <input type="text" id="browserPath" class="vscode-input" onkeyup="onBrowserPathKeyup(event)" />
+        <button class="vscode-btn secondary" onclick="navigateTo(document.getElementById('browserPath').value)">
+          Go
+        </button>
+      </div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="vscode-btn secondary" onclick="closeFileBrowser()">Cancel</button>
+      <button class="vscode-btn" onclick="selectBrowserItem()">Select</button>
+    </div>
+  </div>
+</div>

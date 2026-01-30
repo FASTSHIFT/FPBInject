@@ -1,0 +1,82 @@
+<!-- SIDEBAR -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-title">
+    <span>EXPLORER</span>
+    <i class="codicon codicon-ellipsis"></i>
+  </div>
+
+  <!-- Connection Section -->
+  <div class="sidebar-section">
+    <details id="details-connection" open>
+      <summary class="sidebar-header">
+        <i class="codicon codicon-chevron-right"></i>
+        <span>CONNECTION</span>
+      </summary>
+      <div class="sidebar-content">
+        <div class="flex-col">
+          <div class="flex-row">
+            <select id="portSelect" class="vscode-select" title="Serial Port"></select>
+            <button class="vscode-btn icon-only secondary" onclick="refreshPorts()" title="Refresh Ports">
+              <i class="codicon codicon-refresh"></i>
+            </button>
+          </div>
+          <div class="flex-row">
+            <input
+              type="text"
+              id="baudrate"
+              class="vscode-input"
+              value="115200"
+              placeholder="Baudrate"
+              list="baudrateList"
+            />
+            <datalist id="baudrateList">
+              <option value="9600"></option>
+              <option value="19200"></option>
+              <option value="38400"></option>
+              <option value="57600"></option>
+              <option value="115200"></option>
+              <option value="230400"></option>
+              <option value="460800"></option>
+              <option value="921600"></option>
+              <option value="1000000"></option>
+              <option value="1500000"></option>
+              <option value="2000000"></option>
+            </datalist>
+            <button id="connectBtn" class="vscode-btn" onclick="toggleConnect()" style="flex: 1">Connect</button>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- Device Info Section -->
+  {% include 'partials/sidebar_device.html' %}
+
+  <!-- Configuration Section -->
+  {% include 'partials/sidebar_config.html' %}
+
+  <!-- Symbols Section -->
+  <div class="sidebar-section">
+    <details id="details-symbols" open>
+      <summary class="sidebar-header" title="Single-click: view disassembly; Double-click: create patch">
+        <i class="codicon codicon-chevron-right"></i>
+        <span>SYMBOLS</span>
+      </summary>
+      <div class="sidebar-content" style="padding: 0">
+        <div style="padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border)">
+          <input
+            type="text"
+            id="symbolSearch"
+            class="vscode-input"
+            placeholder="Search by name or address"
+            oninput="searchSymbols()"
+            style="height: 22px; font-size: 11px"
+          />
+        </div>
+        <div id="symbolList" class="symbol-list">
+          <div style="padding: 8px; font-size: 11px; opacity: 0.7">No symbols loaded</div>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>

@@ -1,0 +1,64 @@
+<!-- Device Info Section -->
+<div class="sidebar-section">
+  <details id="details-device" open>
+    <summary class="sidebar-header">
+      <i class="codicon codicon-chevron-right"></i>
+      <span>DEVICE INFO</span>
+      <span class="badge" id="activeSlotCount">0/6</span>
+    </summary>
+    <div class="sidebar-content" id="deviceInfoContent">
+      <div class="flex-row" style="margin-bottom: 8px">
+        <button onclick="fpbPing()" class="vscode-btn secondary" style="flex: 1; font-size: 10px">Ping</button>
+        <button onclick="fpbInfo()" class="vscode-btn secondary" style="flex: 1; font-size: 10px">Info</button>
+        <button
+          onclick="fpbTestSerial()"
+          class="vscode-btn secondary"
+          style="flex: 1; font-size: 10px"
+          title="Test serial throughput to find max transfer size"
+        >
+          Test
+        </button>
+        <button onclick="fpbUnpatchAll()" class="vscode-btn secondary" style="flex: 1; font-size: 10px">
+          Clear All
+        </button>
+      </div>
+      <!-- Memory Info -->
+      <div
+        id="memoryInfo"
+        style="
+          margin-bottom: 8px;
+          padding: 4px;
+          background: var(--vscode-input-background);
+          border-radius: 3px;
+          text-align: center;
+        "
+      >
+        <div style="font-size: 10px; color: var(--vscode-descriptionForeground)">Memory info not available</div>
+      </div>
+      <!-- 6 FPB Slots -->
+      <div class="slot-container" id="slotContainer">
+        {% for i in range(6) %}
+        <div class="slot-item" data-slot="{{ i }}" onclick="selectSlot({{ i }})">
+          <div class="slot-header">
+            <span class="slot-indicator"></span>
+            <span class="slot-id">Slot {{ i }}</span>
+            <span class="slot-func" id="slot{{ i }}Func">Empty</span>
+          </div>
+          <div class="slot-actions">
+            <button
+              class="slot-btn"
+              onclick="event.stopPropagation(); fpbReinject({{ i }});"
+              title="Re-inject this slot"
+            >
+              <i class="codicon codicon-debug-restart"></i>
+            </button>
+            <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch({{ i }});" title="Clear slot">
+              <i class="codicon codicon-close"></i>
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+</div>

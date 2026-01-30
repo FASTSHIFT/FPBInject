@@ -1,0 +1,57 @@
+<!-- MAIN EDITOR AREA -->
+<div class="editor-container" id="editorContainer" style="position: relative">
+  <div class="editor-tabs-header" id="editorTabsHeader">
+    <!-- Tabs will be dynamically created -->
+  </div>
+
+  <div class="editor-toolbar" style="display: none">
+    <div class="flex-col" style="gap: 2px">
+      <label style="font-size: 10px; opacity: 0.7">SLOT</label>
+      <select id="slotSelect" class="vscode-select" style="width: 80px" onchange="onSlotSelectChange()">
+        <option value="0">Slot 0</option>
+        <option value="1">Slot 1</option>
+        <option value="2">Slot 2</option>
+        <option value="3">Slot 3</option>
+        <option value="4">Slot 4</option>
+        <option value="5">Slot 5</option>
+      </select>
+    </div>
+
+    <div class="spacer"></div>
+
+    <button class="vscode-btn secondary" onclick="savePatchFile()">
+      <i class="codicon codicon-save" style="margin-right: 4px"></i> Save
+    </button>
+
+    <div style="width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 4px"></div>
+
+    <button id="injectBtn" onclick="performInject()" class="vscode-btn">
+      <i class="codicon codicon-play" style="margin-right: 4px"></i> Inject
+    </button>
+  </div>
+
+  <div class="editor-tabs-content">
+    <!-- Empty state when no tabs are open -->
+    <div class="tab-content active" id="tabContent_empty">
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          color: var(--vscode-descriptionForeground);
+        "
+      >
+        <i class="codicon codicon-code" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3"></i>
+        <div style="font-size: 14px; margin-bottom: 8px">No file open</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global progress indicator -->
+  <div id="injectProgress" class="inject-progress" style="display: none">
+    <span id="injectProgressText">Injecting...</span>
+    <div id="injectProgressFill" class="progress-fill"></div>
+  </div>
+</div>
