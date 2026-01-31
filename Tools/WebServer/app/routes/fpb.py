@@ -437,7 +437,7 @@ def api_fpb_inject_stream():
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
+            "Connection": "close",  # Changed from keep-alive to close SSE connection immediately
             "X-Accel-Buffering": "no",
         },
     )
