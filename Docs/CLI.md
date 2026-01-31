@@ -199,7 +199,7 @@ fpb_cli.py --port /dev/ttyACM0 --elf firmware.elf --compile-commands build/compi
 
 ### Skills File
 
-See [SKILLS.md](../Tools/WebServer/SKILLS.md) for detailed AI integration documentation including prompts and workflows.
+See [SKILLS.md](../Tools/WebServer/docs/SKILLS.md) for detailed AI integration documentation including prompts and workflows.
 
 ## Writing Patch Code
 

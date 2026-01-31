@@ -158,4 +158,4 @@ WebServer/
 
 - [CLI Tool](CLI.md) - Command-line interface
 - [Architecture](Architecture.md) - Technical details
-- [SKILLS.md](../Tools/WebServer/SKILLS.md) - AI integration skills
+- [SKILLS.md](../Tools/WebServer/docs/SKILLS.md) - AI integration skills

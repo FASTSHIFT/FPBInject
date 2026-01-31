@@ -88,7 +88,7 @@ void inject_digitalWrite(uint8_t pin, uint8_t value) {
 - [CLI Tool Guide](Docs/CLI.md)
 - [WebServer Guide](Docs/WebServer.md)
 - [Architecture Details](Docs/Architecture.md)
-- [AI Skills](Tools/WebServer/SKILLS.md)
+- [AI Skills](Tools/WebServer/docs/SKILLS.md)
 
 ## Project Structure
 
