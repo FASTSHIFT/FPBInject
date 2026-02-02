@@ -379,11 +379,14 @@ async function refreshDeviceFiles() {
 
     const icon = entry.type === 'dir' ? 'codicon-folder' : 'codicon-file';
     const sizeStr =
-      entry.type === 'file' ? ` (${formatFileSize(entry.size)})` : '';
+      entry.type === 'file'
+        ? `<span class="file-size">${formatFileSize(entry.size)}</span>`
+        : '';
 
     item.innerHTML = `
       <i class="codicon ${icon}"></i>
-      <span class="file-name">${entry.name}${sizeStr}</span>
+      <span class="file-name">${entry.name}</span>
+      ${sizeStr}
     `;
 
     item.onclick = () => selectDeviceFile(item);

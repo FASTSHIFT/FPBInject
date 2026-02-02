@@ -1136,6 +1136,13 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
+.device-file-item .file-size {
+  flex-shrink: 0;
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: 8px;
+}
+
 .small-btn {
   padding: 4px 8px;
   font-size: 11px;
