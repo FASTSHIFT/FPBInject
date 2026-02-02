@@ -123,14 +123,17 @@ if(FL_USE_FILE)
   add_definitions(-DFL_USE_FILE)
   if(FL_FILE_BACKEND STREQUAL "POSIX")
     add_definitions(-DFL_FILE_USE_POSIX)
-    list(APPEND FL_SOURCES
-         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file.c
-         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file_posix.c)
+    list(
+      APPEND FL_SOURCES
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file_posix.c
+    )
   elseif(FL_FILE_BACKEND STREQUAL "LIBC")
     add_definitions(-DFL_FILE_USE_LIBC)
-    list(APPEND FL_SOURCES
-         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file.c
-         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file_libc.c)
+    list(
+      APPEND FL_SOURCES
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file_libc.c)
   endif()
 endif()
 
