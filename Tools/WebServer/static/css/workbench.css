@@ -1019,6 +1019,18 @@ input[type="checkbox"] {
   text-align: center;
 }
 
+.device-file-list .empty.clickable {
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+
+.device-file-list .empty.clickable:hover {
+  opacity: 1;
+  color: var(--vscode-textLink-fg, #3794ff);
+}
+
 .device-file-list .error {
   color: #f48771;
   opacity: 1;
