@@ -164,6 +164,7 @@ function createMockElement(id) {
     focus() {},
     blur() {},
     click() {},
+    scrollIntoView(options) {},
 
     getBoundingClientRect() {
       return {
@@ -232,7 +233,13 @@ const mockFetch = async (url, options = {}) => {
 // Enhanced document mock
 const mockDocument = {
   getElementById(id) {
-    if (!mockElements[id]) mockElements[id] = createMockElement(id);
+    if (!mockElements[id]) {
+      mockElements[id] = createMockElement(id);
+      // Set tagName for details elements
+      if (id.startsWith('details-')) {
+        mockElements[id].tagName = 'DETAILS';
+      }
+    }
     return mockElements[id];
   },
   querySelectorAll(selector) {
@@ -242,6 +249,20 @@ const mockDocument = {
       return Object.values(mockElements).filter((el) =>
         el.classList._classes.has(cls),
       );
+    }
+    // Handle attribute selectors like details[id^="details-"]
+    if (selector.includes('[id^="')) {
+      const match = selector.match(/\[id\^="([^"]+)"\]/);
+      if (match) {
+        const prefix = match[1];
+        const tagMatch = selector.match(/^(\w+)\[/);
+        const tag = tagMatch ? tagMatch[1].toUpperCase() : null;
+        return Object.values(mockElements).filter((el) => {
+          const idMatches = el.id.startsWith(prefix);
+          const tagMatches = !tag || el.tagName === tag;
+          return idMatches && tagMatches;
+        });
+      }
     }
     return [];
   },
