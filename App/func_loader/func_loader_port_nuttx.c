@@ -75,6 +75,7 @@
 static void nuttx_output_cb(void* user, const char* str) {
     (void)user;
     fputs(str, stdout);
+    fflush(stdout); /* Ensure output is sent immediately */
 }
 
 /* Flush dcache callback */

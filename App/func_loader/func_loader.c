@@ -656,25 +656,16 @@ typedef struct {
     int file_count;
 } flist_count_ctx_t;
 
-/* Callback for counting entries */
-static int flist_count_cb(const fl_dirent_t* entry, void* user_data) {
-    flist_count_ctx_t* c = user_data;
-    if (entry->type == FL_FILE_TYPE_DIR) {
-        c->dir_count++;
-    } else {
-        c->file_count++;
-    }
-    return 0;
-}
-
 /* Callback for printing entries */
 static int flist_print_cb(const fl_dirent_t* entry, void* user_data) {
-    (void)user_data;
+    flist_count_ctx_t* c = user_data;
     const char* type_char = (entry->type == FL_FILE_TYPE_DIR) ? "D" : "F";
     if (entry->type == FL_FILE_TYPE_DIR) {
         fl_println("  %s %s", type_char, entry->name);
+        c->dir_count++;
     } else {
         fl_println("  %s %s %u", type_char, entry->name, (unsigned)entry->size);
+        c->file_count++;
     }
     return 0;
 }
@@ -692,17 +683,13 @@ static void cmd_flist(fl_context_t* ctx, const char* path) {
 
     /* First pass: count dirs and files */
     flist_count_ctx_t count_ctx = {0, 0};
-
-    int total = fl_file_list_cb(&ctx->file_ctx, path, flist_count_cb, &count_ctx);
+    int total = fl_file_list_cb(&ctx->file_ctx, path, flist_print_cb, &count_ctx);
     if (total < 0) {
         fl_response(false, "List failed: %s", path);
         return;
     }
 
     fl_println("[OK] FLIST dir=%d file=%d", count_ctx.dir_count, count_ctx.file_count);
-
-    /* Second pass: print entries */
-    fl_file_list_cb(&ctx->file_ctx, path, flist_print_cb, NULL);
 }
 
 static void cmd_fremove(fl_context_t* ctx, const char* path) {
