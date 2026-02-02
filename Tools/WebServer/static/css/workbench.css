@@ -989,6 +989,15 @@ input[type="checkbox"] {
   border: 1px solid var(--vscode-panel-border);
   border-radius: 3px;
   background: var(--vscode-input-bg);
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.device-file-list.drag-over {
+  border-color: var(--vscode-focus-border);
+  background: rgba(0, 122, 204, 0.1);
+  border-style: dashed;
 }
 
 .device-file-list .loading,

@@ -236,6 +236,24 @@ class TestTransferRoutes(unittest.TestCase):
         self.assertFalse(data["success"])
         self.assertIn("Remote path not specified", data["error"])
 
+    def test_transfer_cancel_success(self):
+        """Test cancel transfer endpoint."""
+        response = self.client.post("/api/transfer/cancel")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("Cancel requested", data["message"])
+
+    def test_transfer_cancel_sets_flag(self):
+        """Test that cancel sets the _transfer_cancelled flag."""
+        from app.routes.transfer import _transfer_cancelled
+
+        _transfer_cancelled.clear()
+        self.assertFalse(_transfer_cancelled.is_set())
+        response = self.client.post("/api/transfer/cancel")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(_transfer_cancelled.is_set())
+
 
 class TestTransferHelpers(unittest.TestCase):
     """Tests for transfer helper functions."""

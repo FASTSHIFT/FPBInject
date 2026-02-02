@@ -116,6 +116,13 @@ class TestTemplateRendering(unittest.TestCase):
             self.assertIn('id="deviceFileList"', html)
             self.assertIn('id="transferProgress"', html)
 
+            # Transfer control buttons (cancel only - pause/resume removed)
+            self.assertIn('id="transferCancelBtn"', html)
+            self.assertIn("cancelTransfer()", html)
+
+            # Drag and drop initialization
+            self.assertIn("initTransferDragDrop", html)
+
     def test_config_input_placeholders(self):
         """Test that configuration inputs have placeholder hints."""
         with self.app.app_context():

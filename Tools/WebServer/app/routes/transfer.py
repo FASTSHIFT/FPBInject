@@ -23,6 +23,9 @@ from services.device_worker import run_in_device_worker
 bp = Blueprint("transfer", __name__)
 logger = logging.getLogger(__name__)
 
+# Global transfer cancel flag
+_transfer_cancelled = threading.Event()
+
 
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
@@ -62,6 +65,20 @@ def _get_file_transfer():
     fpb = get_fpb_inject()
     chunk_size = state.device.chunk_size or 256
     return FileTransfer(fpb, chunk_size=chunk_size)
+
+
+@bp.route("/transfer/cancel", methods=["POST"])
+def api_transfer_cancel():
+    """
+    Cancel ongoing file transfer.
+
+    Returns:
+        JSON with success status
+    """
+    add_tool_log, _ = _get_helpers()
+    _transfer_cancelled.set()
+    add_tool_log("[TRANSFER] Cancel requested")
+    return jsonify({"success": True, "message": "Cancel requested"})
 
 
 @bp.route("/transfer/list", methods=["GET"])
@@ -246,6 +263,9 @@ def api_transfer_upload():
         f"[UPLOAD] Starting upload: {file.filename} -> {remote_path} ({total_size} bytes)"
     )
 
+    # Clear cancel flag at start
+    _transfer_cancelled.clear()
+
     progress_queue = queue.Queue()
 
     def upload_task():
@@ -253,9 +273,16 @@ def api_transfer_upload():
         start_time = time.time()
         last_time = start_time
         last_bytes = 0
+        cancelled = False
 
         def progress_cb(uploaded, total):
-            nonlocal last_time, last_bytes
+            nonlocal last_time, last_bytes, cancelled
+
+            # Check for cancel
+            if _transfer_cancelled.is_set():
+                cancelled = True
+                return  # Don't raise, just set flag
+
             now = time.time()
             elapsed = now - start_time
             interval = now - last_time
@@ -285,31 +312,78 @@ def api_transfer_upload():
             )
 
         def do_upload():
+            nonlocal cancelled
             ft.fpb.enter_fl_mode()
             try:
-                success, msg = ft.upload(file_data, remote_path, progress_cb)
-                elapsed = time.time() - start_time
-                avg_speed = total_size / elapsed if elapsed > 0 else 0
-
-                if success:
-                    add_tool_log(
-                        f"[SUCCESS] Upload complete: {remote_path} "
-                        f"({total_size} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
-                    )
+                # Manual upload with cancel check
+                success, msg = ft.fopen(remote_path, "w")
+                if not success:
+                    add_tool_log(f"[ERROR] Upload failed to open: {msg}")
                     progress_queue.put(
                         {
                             "type": "result",
-                            "success": True,
-                            "message": msg,
-                            "elapsed": round(elapsed, 2),
-                            "avg_speed": round(avg_speed, 1),
+                            "success": False,
+                            "error": f"Failed to open: {msg}",
                         }
                     )
-                else:
-                    add_tool_log(f"[ERROR] Upload failed: {msg}")
-                    progress_queue.put(
-                        {"type": "result", "success": False, "error": msg}
-                    )
+                    return
+
+                uploaded = 0
+                chunk_size = ft.chunk_size
+                while uploaded < total_size:
+                    # Check cancel before each chunk
+                    if _transfer_cancelled.is_set():
+                        cancelled = True
+                        ft.fclose()
+                        add_tool_log("[UPLOAD] Cancelled by user")
+                        progress_queue.put(
+                            {
+                                "type": "result",
+                                "success": False,
+                                "error": "Cancelled",
+                                "cancelled": True,
+                            }
+                        )
+                        return
+
+                    chunk = file_data[uploaded : uploaded + chunk_size]
+                    success, msg = ft.fwrite(chunk)
+                    if not success:
+                        ft.fclose()
+                        add_tool_log(f"[ERROR] Upload write failed: {msg}")
+                        progress_queue.put(
+                            {
+                                "type": "result",
+                                "success": False,
+                                "error": f"Write failed: {msg}",
+                            }
+                        )
+                        return
+
+                    uploaded += len(chunk)
+                    progress_cb(uploaded, total_size)
+
+                    if cancelled:
+                        ft.fclose()
+                        return
+
+                success, msg = ft.fclose()
+                elapsed = time.time() - start_time
+                avg_speed = total_size / elapsed if elapsed > 0 else 0
+
+                add_tool_log(
+                    f"[SUCCESS] Upload complete: {remote_path} "
+                    f"({total_size} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
+                )
+                progress_queue.put(
+                    {
+                        "type": "result",
+                        "success": True,
+                        "message": f"Uploaded {total_size} bytes",
+                        "elapsed": round(elapsed, 2),
+                        "avg_speed": round(avg_speed, 1),
+                    }
+                )
             finally:
                 ft.fpb.exit_fl_mode()
                 progress_queue.put(None)
@@ -367,6 +441,9 @@ def api_transfer_download():
 
     add_tool_log(f"[DOWNLOAD] Starting download: {remote_path}")
 
+    # Clear cancel flag at start
+    _transfer_cancelled.clear()
+
     progress_queue = queue.Queue()
 
     def download_task():
@@ -374,9 +451,16 @@ def api_transfer_download():
         start_time = time.time()
         last_time = start_time
         last_bytes = 0
+        cancelled = False
 
         def progress_cb(downloaded, total):
-            nonlocal last_time, last_bytes
+            nonlocal last_time, last_bytes, cancelled
+
+            # Check for cancel
+            if _transfer_cancelled.is_set():
+                cancelled = True
+                return  # Don't raise, just set flag
+
             now = time.time()
             elapsed = now - start_time
             interval = now - last_time
@@ -406,36 +490,112 @@ def api_transfer_download():
             )
 
         def do_download():
+            nonlocal cancelled
             ft.fpb.enter_fl_mode()
             try:
-                success, file_data, msg = ft.download(remote_path, progress_cb)
-                elapsed = time.time() - start_time
-
-                if success:
-                    import base64
-
-                    b64_data = base64.b64encode(file_data).decode("ascii")
-                    avg_speed = len(file_data) / elapsed if elapsed > 0 else 0
+                # Get file size first
+                success, stat = ft.fstat(remote_path)
+                if not success:
                     add_tool_log(
-                        f"[SUCCESS] Download complete: {remote_path} "
-                        f"({len(file_data)} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
+                        f"[ERROR] Download failed to stat: {stat.get('error', 'unknown')}"
                     )
                     progress_queue.put(
                         {
                             "type": "result",
-                            "success": True,
-                            "message": msg,
-                            "data": b64_data,
-                            "size": len(file_data),
-                            "elapsed": round(elapsed, 2),
-                            "avg_speed": round(avg_speed, 1),
+                            "success": False,
+                            "error": f"Failed to stat: {stat.get('error', 'unknown')}",
                         }
                     )
-                else:
-                    add_tool_log(f"[ERROR] Download failed: {msg}")
+                    return
+
+                total_size = stat.get("size", 0)
+                if stat.get("type") == "dir":
                     progress_queue.put(
-                        {"type": "result", "success": False, "error": msg}
+                        {
+                            "type": "result",
+                            "success": False,
+                            "error": "Cannot download directory",
+                        }
                     )
+                    return
+
+                # Open file for reading
+                success, msg = ft.fopen(remote_path, "r")
+                if not success:
+                    add_tool_log(f"[ERROR] Download failed to open: {msg}")
+                    progress_queue.put(
+                        {
+                            "type": "result",
+                            "success": False,
+                            "error": f"Failed to open: {msg}",
+                        }
+                    )
+                    return
+
+                file_data = b""
+                chunk_size = ft.chunk_size
+                while True:
+                    # Check cancel before each chunk
+                    if _transfer_cancelled.is_set():
+                        cancelled = True
+                        ft.fclose()
+                        add_tool_log("[DOWNLOAD] Cancelled by user")
+                        progress_queue.put(
+                            {
+                                "type": "result",
+                                "success": False,
+                                "error": "Cancelled",
+                                "cancelled": True,
+                            }
+                        )
+                        return
+
+                    success, chunk, msg = ft.fread(chunk_size)
+                    if not success:
+                        ft.fclose()
+                        add_tool_log(f"[ERROR] Download read failed: {msg}")
+                        progress_queue.put(
+                            {
+                                "type": "result",
+                                "success": False,
+                                "error": f"Read failed: {msg}",
+                            }
+                        )
+                        return
+
+                    if msg == "EOF" or len(chunk) == 0:
+                        break
+
+                    file_data += chunk
+                    progress_cb(len(file_data), total_size)
+
+                    if cancelled:
+                        ft.fclose()
+                        return
+
+                ft.fclose()
+                elapsed = time.time() - start_time
+
+                import base64
+
+                b64_data = base64.b64encode(file_data).decode("ascii")
+                avg_speed = len(file_data) / elapsed if elapsed > 0 else 0
+
+                add_tool_log(
+                    f"[SUCCESS] Download complete: {remote_path} "
+                    f"({len(file_data)} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
+                )
+                progress_queue.put(
+                    {
+                        "type": "result",
+                        "success": True,
+                        "message": f"Downloaded {len(file_data)} bytes",
+                        "data": b64_data,
+                        "size": len(file_data),
+                        "elapsed": round(elapsed, 2),
+                        "avg_speed": round(avg_speed, 1),
+                    }
+                )
             finally:
                 ft.fpb.exit_fl_mode()
                 progress_queue.put(None)

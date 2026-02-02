@@ -6,6 +6,7 @@ const {
   it,
   assertEqual,
   assertTrue,
+  assertFalse,
   assertContains,
 } = require('./framework');
 const { browserGlobals, resetMocks, MockTerminal } = require('./mocks');
@@ -44,6 +45,24 @@ module.exports = function (w) {
       assertTrue(typeof w.formatSpeed === 'function'));
     it('formatETA is a function', () =>
       assertTrue(typeof w.formatETA === 'function'));
+    // Cancel function
+    it('cancelTransfer is a function', () =>
+      assertTrue(typeof w.cancelTransfer === 'function'));
+    it('isTransferInProgress is a function', () =>
+      assertTrue(typeof w.isTransferInProgress === 'function'));
+    it('updateTransferControls is a function', () =>
+      assertTrue(typeof w.updateTransferControls === 'function'));
+    // Drag and drop functions
+    it('initTransferDragDrop is a function', () =>
+      assertTrue(typeof w.initTransferDragDrop === 'function'));
+    it('preventDefaults is a function', () =>
+      assertTrue(typeof w.preventDefaults === 'function'));
+    it('highlightDropZone is a function', () =>
+      assertTrue(typeof w.highlightDropZone === 'function'));
+    it('handleDrop is a function', () =>
+      assertTrue(typeof w.handleDrop === 'function'));
+    it('uploadDroppedFile is a function', () =>
+      assertTrue(typeof w.uploadDroppedFile === 'function'));
   });
 
   describe('listDeviceDirectory Function', () => {
@@ -345,6 +364,25 @@ module.exports = function (w) {
       );
       w.FPBState.toolTerminal = null;
     });
+
+    it('returns early if directory selected', () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Select a directory
+      const item = browserGlobals.document.createElement('div');
+      item.className = 'device-file-item';
+      item.dataset = { path: '/testdir', type: 'dir' };
+      w.selectDeviceFile(item);
+      w.downloadFromDevice();
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('select a file'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
   });
 
   describe('deleteFromDevice Function', () => {
@@ -412,6 +450,226 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
       browserGlobals.prompt = () => 'test';
+    });
+  });
+
+  describe('isTransferInProgress Function', () => {
+    it('returns false initially', () => {
+      // Cancel any existing transfer first to reset state
+      w.cancelTransfer();
+      assertFalse(w.isTransferInProgress());
+    });
+  });
+
+  describe('cancelTransfer Function', () => {
+    it('does nothing when no transfer active', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Should not throw
+      w.cancelTransfer();
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('updateTransferControls Function', () => {
+    it('shows cancel button when transfer active', () => {
+      resetMocks();
+      const cancelBtn = browserGlobals.document.createElement('button');
+      cancelBtn.id = 'transferCancelBtn';
+      cancelBtn.style.display = 'none';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'transferCancelBtn') return cancelBtn;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      w.updateTransferControls(true);
+      assertEqual(cancelBtn.style.display, 'flex');
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('hides cancel button when show is false', () => {
+      resetMocks();
+      const cancelBtn = browserGlobals.document.createElement('button');
+      cancelBtn.id = 'transferCancelBtn';
+      cancelBtn.style.display = 'flex';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'transferCancelBtn') return cancelBtn;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      w.updateTransferControls(false);
+      assertEqual(cancelBtn.style.display, 'none');
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('handles missing cancel button gracefully', () => {
+      resetMocks();
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'transferCancelBtn') return null;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      // Should not throw
+      w.updateTransferControls(true);
+      browserGlobals.document.getElementById = origGetById;
+    });
+  });
+
+  describe('initTransferDragDrop Function', () => {
+    it('handles missing drop zone', () => {
+      resetMocks();
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return null;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      // Should not throw
+      w.initTransferDragDrop();
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('adds event listeners to drop zone', () => {
+      resetMocks();
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+      const listeners = {};
+      dropZone.addEventListener = (event, handler) => {
+        listeners[event] = handler;
+      };
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      w.initTransferDragDrop();
+
+      assertTrue('dragenter' in listeners);
+      assertTrue('dragover' in listeners);
+      assertTrue('dragleave' in listeners);
+      assertTrue('drop' in listeners);
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+  });
+
+  describe('preventDefaults Function', () => {
+    it('calls preventDefault and stopPropagation', () => {
+      let preventDefaultCalled = false;
+      let stopPropagationCalled = false;
+      const mockEvent = {
+        preventDefault: () => {
+          preventDefaultCalled = true;
+        },
+        stopPropagation: () => {
+          stopPropagationCalled = true;
+        },
+      };
+
+      w.preventDefaults(mockEvent);
+      assertTrue(preventDefaultCalled);
+      assertTrue(stopPropagationCalled);
+    });
+  });
+
+  describe('highlightDropZone Function', () => {
+    it('adds drag-over class when highlight is true', () => {
+      resetMocks();
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      w.highlightDropZone(true);
+      assertTrue(dropZone.classList.contains('drag-over'));
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('removes drag-over class when highlight is false', () => {
+      resetMocks();
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+      dropZone.classList.add('drag-over');
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      w.highlightDropZone(false);
+      assertFalse(dropZone.classList.contains('drag-over'));
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('handles missing drop zone', () => {
+      resetMocks();
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return null;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      // Should not throw
+      w.highlightDropZone(true);
+      browserGlobals.document.getElementById = origGetById;
+    });
+  });
+
+  describe('handleDrop Function', () => {
+    it('returns early if not connected', () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      const mockEvent = {
+        dataTransfer: { files: [] },
+      };
+
+      w.handleDrop(mockEvent);
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns early if no files dropped', () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      const mockEvent = {
+        dataTransfer: { files: [] },
+      };
+
+      // Should not throw, just return early
+      w.handleDrop(mockEvent);
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+  });
+
+  describe('uploadDroppedFile Function', () => {
+    it('is async function', () => {
+      assertTrue(w.uploadDroppedFile.constructor.name === 'AsyncFunction');
     });
   });
 };

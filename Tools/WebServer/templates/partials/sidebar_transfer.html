@@ -8,8 +8,8 @@
     <div class="sidebar-content">
       <!-- Device path input -->
       <div class="flex-row" style="margin-bottom: 8px">
-        <input type="text" id="devicePath" value="/" placeholder="/data" style="flex: 1" />
-        <button onclick="refreshDeviceFiles()" title="Refresh" class="icon-btn">
+        <input type="text" id="devicePath" value="/" placeholder="/data" class="vscode-input" style="flex: 1" />
+        <button onclick="refreshDeviceFiles()" title="Refresh" class="vscode-btn icon-only secondary">
           <i class="codicon codicon-refresh"></i>
         </button>
       </div>
@@ -44,6 +44,28 @@
         </div>
         <div class="progress-eta"></div>
       </div>
+
+      <!-- Transfer controls (cancel only) -->
+      <div class="flex-row" style="margin-top: 4px; gap: 4px">
+        <button
+          id="transferCancelBtn"
+          onclick="cancelTransfer()"
+          title="Cancel transfer"
+          class="small-btn"
+          style="display: none"
+        >
+          <i class="codicon codicon-close"></i> Cancel
+        </button>
+      </div>
     </div>
   </details>
 </div>
+
+<script>
+  // Initialize drag and drop when DOM is ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTransferDragDrop);
+  } else {
+    initTransferDragDrop();
+  }
+</script>

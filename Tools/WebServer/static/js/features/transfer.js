@@ -7,6 +7,7 @@
    =========================== */
 let transferCurrentPath = '/';
 let transferSelectedFile = null;
+let transferAbortController = null;
 
 /* ===========================
    DEVICE FILE OPERATIONS
@@ -105,13 +106,16 @@ async function deleteDeviceFile(path) {
 }
 
 /**
- * Upload file to device with progress
+ * Upload file to device with progress and cancel support
  * @param {File} file - File object to upload
  * @param {string} remotePath - Destination path on device
  * @param {Function} onProgress - Progress callback(uploaded, total, percent, speed, eta)
  * @returns {Promise<{success: boolean, message: string}>}
  */
 async function uploadFileToDevice(file, remotePath, onProgress) {
+  // Create abort controller for cancellation
+  transferAbortController = new AbortController();
+
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -120,6 +124,7 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
     fetch('/api/transfer/upload', {
       method: 'POST',
       body: formData,
+      signal: transferAbortController.signal,
     })
       .then((response) => {
         const reader = response.body.getReader();
@@ -127,6 +132,16 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
         let buffer = '';
 
         function processStream() {
+          // Check for abort
+          if (transferAbortController.signal.aborted) {
+            resolve({
+              success: false,
+              error: 'Transfer cancelled',
+              cancelled: true,
+            });
+            return;
+          }
+
           reader.read().then(({ done, value }) => {
             if (done) {
               resolve({ success: false, error: 'Stream ended unexpectedly' });
@@ -150,6 +165,7 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
                       data.eta,
                     );
                   } else if (data.type === 'result') {
+                    transferAbortController = null;
                     resolve(data);
                     return;
                   }
@@ -166,23 +182,36 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
         processStream();
       })
       .catch((e) => {
-        reject(e);
+        transferAbortController = null;
+        if (e.name === 'AbortError') {
+          resolve({
+            success: false,
+            error: 'Transfer cancelled',
+            cancelled: true,
+          });
+        } else {
+          reject(e);
+        }
       });
   });
 }
 
 /**
- * Download file from device with progress
+ * Download file from device with progress and cancel support
  * @param {string} remotePath - Source path on device
  * @param {Function} onProgress - Progress callback(downloaded, total, percent, speed, eta)
  * @returns {Promise<{success: boolean, data: Blob, message: string}>}
  */
 async function downloadFileFromDevice(remotePath, onProgress) {
+  // Create abort controller for cancellation
+  transferAbortController = new AbortController();
+
   return new Promise((resolve, reject) => {
     fetch('/api/transfer/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remote_path: remotePath }),
+      signal: transferAbortController.signal,
     })
       .then((response) => {
         const reader = response.body.getReader();
@@ -190,6 +219,16 @@ async function downloadFileFromDevice(remotePath, onProgress) {
         let buffer = '';
 
         function processStream() {
+          // Check for abort
+          if (transferAbortController.signal.aborted) {
+            resolve({
+              success: false,
+              error: 'Transfer cancelled',
+              cancelled: true,
+            });
+            return;
+          }
+
           reader.read().then(({ done, value }) => {
             if (done) {
               resolve({ success: false, error: 'Stream ended unexpectedly' });
@@ -222,6 +261,7 @@ async function downloadFileFromDevice(remotePath, onProgress) {
                       }
                       data.blob = new Blob([bytes]);
                     }
+                    transferAbortController = null;
                     resolve(data);
                     return;
                   }
@@ -238,7 +278,16 @@ async function downloadFileFromDevice(remotePath, onProgress) {
         processStream();
       })
       .catch((e) => {
-        reject(e);
+        transferAbortController = null;
+        if (e.name === 'AbortError') {
+          resolve({
+            success: false,
+            error: 'Transfer cancelled',
+            cancelled: true,
+          });
+        } else {
+          reject(e);
+        }
       });
   });
 }
@@ -411,6 +460,157 @@ function hideTransferProgress() {
   if (progressBar) {
     progressBar.style.display = 'none';
   }
+  // Reset control buttons
+  updateTransferControls(false);
+}
+
+/**
+ * Cancel current transfer
+ */
+async function cancelTransfer() {
+  if (transferAbortController) {
+    // Notify backend to cancel
+    try {
+      await fetch('/api/transfer/cancel', { method: 'POST' });
+    } catch (e) {
+      // Ignore errors
+    }
+
+    transferAbortController.abort();
+    transferAbortController = null;
+    writeToOutput('[TRANSFER] Cancelled', 'warning');
+    hideTransferProgress();
+  }
+}
+
+/**
+ * Check if transfer is in progress
+ */
+function isTransferInProgress() {
+  return transferAbortController !== null;
+}
+
+/**
+ * Update transfer control buttons visibility
+ */
+function updateTransferControls(show) {
+  const cancelBtn = document.getElementById('transferCancelBtn');
+  if (cancelBtn) cancelBtn.style.display = show ? 'flex' : 'none';
+}
+
+/* ===========================
+   DRAG AND DROP
+   =========================== */
+
+/**
+ * Initialize drag and drop for file upload
+ */
+function initTransferDragDrop() {
+  const dropZone = document.getElementById('deviceFileList');
+  if (!dropZone) return;
+
+  // Prevent default drag behaviors
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
+    dropZone.addEventListener(eventName, preventDefaults, false);
+    document.body.addEventListener(eventName, preventDefaults, false);
+  });
+
+  // Highlight drop zone when dragging over it
+  ['dragenter', 'dragover'].forEach((eventName) => {
+    dropZone.addEventListener(eventName, () => highlightDropZone(true), false);
+  });
+
+  ['dragleave', 'drop'].forEach((eventName) => {
+    dropZone.addEventListener(eventName, () => highlightDropZone(false), false);
+  });
+
+  // Handle dropped files
+  dropZone.addEventListener('drop', handleDrop, false);
+}
+
+function preventDefaults(e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function highlightDropZone(highlight) {
+  const dropZone = document.getElementById('deviceFileList');
+  if (dropZone) {
+    dropZone.classList.toggle('drag-over', highlight);
+  }
+}
+
+/**
+ * Handle dropped files
+ */
+async function handleDrop(e) {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
+
+  const dt = e.dataTransfer;
+  const files = dt.files;
+
+  if (files.length === 0) return;
+
+  // Upload files one by one
+  for (const file of files) {
+    await uploadDroppedFile(file);
+  }
+}
+
+/**
+ * Upload a dropped file
+ */
+async function uploadDroppedFile(file) {
+  // Determine remote path
+  let remotePath = transferCurrentPath;
+  if (remotePath === '/') {
+    remotePath = `/${file.name}`;
+  } else {
+    remotePath = `${remotePath}/${file.name}`;
+  }
+
+  writeToOutput(`[UPLOAD] Starting: ${file.name} -> ${remotePath}`, 'info');
+  updateTransferProgress(0, 'Uploading...');
+  updateTransferControls(true);
+
+  try {
+    const result = await uploadFileToDevice(
+      file,
+      remotePath,
+      (uploaded, total, percent, speed, eta) => {
+        updateTransferProgress(
+          percent,
+          `${percent}% (${formatFileSize(uploaded)}/${formatFileSize(total)})`,
+          speed,
+          eta,
+        );
+      },
+    );
+
+    hideTransferProgress();
+
+    if (result.cancelled) {
+      writeToOutput(`[INFO] Upload cancelled: ${file.name}`, 'warning');
+    } else if (result.success) {
+      const speedStr = result.avg_speed
+        ? ` (${formatSpeed(result.avg_speed)})`
+        : '';
+      writeToOutput(
+        `[SUCCESS] Upload complete: ${remotePath}${speedStr}`,
+        'success',
+      );
+      refreshDeviceFiles();
+    } else {
+      writeToOutput(`[ERROR] Upload failed: ${result.error}`, 'error');
+    }
+  } catch (e) {
+    hideTransferProgress();
+    writeToOutput(`[ERROR] Upload error: ${e}`, 'error');
+  }
 }
 
 /**
@@ -426,52 +626,13 @@ async function uploadToDevice() {
   // Create file input
   const input = document.createElement('input');
   input.type = 'file';
+  input.multiple = true; // Allow multiple file selection
   input.onchange = async () => {
-    const file = input.files[0];
-    if (!file) return;
+    const files = input.files;
+    if (!files || files.length === 0) return;
 
-    // Determine remote path
-    let remotePath = transferCurrentPath;
-    if (remotePath === '/') {
-      remotePath = `/${file.name}`;
-    } else {
-      remotePath = `${remotePath}/${file.name}`;
-    }
-
-    writeToOutput(`[UPLOAD] Starting: ${file.name} -> ${remotePath}`, 'info');
-    updateTransferProgress(0, 'Uploading...');
-
-    try {
-      const result = await uploadFileToDevice(
-        file,
-        remotePath,
-        (uploaded, total, percent, speed, eta) => {
-          updateTransferProgress(
-            percent,
-            `${percent}% (${formatFileSize(uploaded)}/${formatFileSize(total)})`,
-            speed,
-            eta,
-          );
-        },
-      );
-
-      hideTransferProgress();
-
-      if (result.success) {
-        const speedStr = result.avg_speed
-          ? ` (${formatSpeed(result.avg_speed)})`
-          : '';
-        writeToOutput(
-          `[SUCCESS] Upload complete: ${remotePath}${speedStr}`,
-          'success',
-        );
-        refreshDeviceFiles();
-      } else {
-        writeToOutput(`[ERROR] Upload failed: ${result.error}`, 'error');
-      }
-    } catch (e) {
-      hideTransferProgress();
-      writeToOutput(`[ERROR] Upload error: ${e}`, 'error');
+    for (const file of files) {
+      await uploadDroppedFile(file);
     }
   };
   input.click();
@@ -497,6 +658,7 @@ async function downloadFromDevice() {
 
   writeToOutput(`[DOWNLOAD] Starting: ${remotePath}`, 'info');
   updateTransferProgress(0, 'Downloading...');
+  updateTransferControls(true);
 
   try {
     const result = await downloadFileFromDevice(
@@ -513,7 +675,9 @@ async function downloadFromDevice() {
 
     hideTransferProgress();
 
-    if (result.success && result.blob) {
+    if (result.cancelled) {
+      writeToOutput(`[INFO] Download cancelled: ${fileName}`, 'warning');
+    } else if (result.success && result.blob) {
       // Trigger browser download
       const url = URL.createObjectURL(result.blob);
       const a = document.createElement('a');
@@ -611,3 +775,13 @@ window.updateTransferProgress = updateTransferProgress;
 window.hideTransferProgress = hideTransferProgress;
 window.formatSpeed = formatSpeed;
 window.formatETA = formatETA;
+// Cancel
+window.cancelTransfer = cancelTransfer;
+window.isTransferInProgress = isTransferInProgress;
+window.updateTransferControls = updateTransferControls;
+// Drag and drop
+window.initTransferDragDrop = initTransferDragDrop;
+window.preventDefaults = preventDefaults;
+window.highlightDropZone = highlightDropZone;
+window.handleDrop = handleDrop;
+window.uploadDroppedFile = uploadDroppedFile;
