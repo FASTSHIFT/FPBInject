@@ -307,9 +307,34 @@ async function refreshDeviceFiles() {
   const fileList = document.getElementById('deviceFileList');
   if (!fileList) return;
 
-  fileList.innerHTML = '<div class="loading">Loading...</div>';
+  // Only show loading if list is empty or has error/empty message
+  const hasContent = fileList.querySelector('.device-file-item');
+  let loadingIndicator = null;
+  let loadingTimeout = null;
+
+  if (!hasContent) {
+    fileList.innerHTML = '<div class="loading">Loading...</div>';
+  } else {
+    // Delay showing loading overlay by 500ms
+    loadingTimeout = setTimeout(() => {
+      loadingIndicator = document.createElement('div');
+      loadingIndicator.className = 'loading-overlay';
+      loadingIndicator.innerHTML = '<div class="loading-spinner"></div>';
+      fileList.style.position = 'relative';
+      fileList.appendChild(loadingIndicator);
+    }, 500);
+  }
 
   const result = await listDeviceDirectory(path);
+
+  // Clear timeout and remove loading overlay if it exists
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+  }
+  const loadingOverlay = fileList.querySelector('.loading-overlay');
+  if (loadingOverlay) {
+    loadingOverlay.remove();
+  }
 
   if (!result.success) {
     fileList.innerHTML = `<div class="error">Error: ${result.error || 'Failed to list'}</div>`;
