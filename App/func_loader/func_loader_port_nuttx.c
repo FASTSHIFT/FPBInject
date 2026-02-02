@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
     static fl_context_t ctx = {0};
 
     if (!fl_is_inited(&ctx)) {
-        fl_init(&ctx);
+        fl_init_default(&ctx);
         ctx.output_cb = nuttx_output_cb;
         ctx.flush_dcache_cb = nuttx_flush_dcache_cb;
 
@@ -212,6 +212,11 @@ int main(int argc, char** argv) {
         ctx.malloc_cb = malloc;
         ctx.free_cb = free;
 #endif
+#if FL_USE_FILE && FL_FILE_USE_POSIX
+        /* Initialize file transfer context with POSIX ops */
+        ctx.file_ctx.fs = fl_file_get_posix_ops();
+#endif
+        fl_init(&ctx);
     }
 
     if (argc > 1) {

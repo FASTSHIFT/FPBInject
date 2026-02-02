@@ -110,6 +110,12 @@ class TestTemplateRendering(unittest.TestCase):
             self.assertIn('id="symbolSearch"', html)
             self.assertIn('id="symbolList"', html)
 
+            # File transfer section
+            self.assertIn('id="details-transfer"', html)
+            self.assertIn('id="devicePath"', html)
+            self.assertIn('id="deviceFileList"', html)
+            self.assertIn('id="transferProgress"', html)
+
     def test_config_input_placeholders(self):
         """Test that configuration inputs have placeholder hints."""
         with self.app.app_context():
@@ -233,6 +239,7 @@ class TestTemplateRendering(unittest.TestCase):
                 "config.js",
                 "autoinject.js",
                 "filebrowser.js",
+                "transfer.js",
             ]
             for module in feature_modules:
                 self.assertIn(f"/static/js/features/{module}", html)

@@ -86,6 +86,12 @@ set(FL_NUTTX_BUF_SIZE
     "1024"
     CACHE STRING "NuttX buffer size (>0=static, 0=dynamic)")
 
+# File transfer options
+option(FL_USE_FILE "Enable file transfer feature" OFF)
+set(FL_FILE_BACKEND
+    "POSIX"
+    CACHE STRING "File backend: POSIX, LIBC")
+
 # Configure definitions
 if(FPB_NO_TRAMPOLINE)
   add_definitions(-DFPB_NO_TRAMPOLINE)
@@ -112,6 +118,22 @@ endif()
 # NuttX buffer size
 add_definitions(-DFL_NUTTX_BUF_SIZE=${FL_NUTTX_BUF_SIZE})
 
+# File transfer feature
+if(FL_USE_FILE)
+  add_definitions(-DFL_USE_FILE)
+  if(FL_FILE_BACKEND STREQUAL "POSIX")
+    add_definitions(-DFL_FILE_USE_POSIX)
+    list(APPEND FL_SOURCES
+         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file.c
+         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file_posix.c)
+  elseif(FL_FILE_BACKEND STREQUAL "LIBC")
+    add_definitions(-DFL_FILE_USE_LIBC)
+    list(APPEND FL_SOURCES
+         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file.c
+         ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_file_libc.c)
+  endif()
+endif()
+
 # Create static library (just to verify compilation)
 add_library(fpbinject_nuttx STATIC ${FPB_SOURCES} ${FL_SOURCES})
 
@@ -127,3 +149,5 @@ message(STATUS "  FPB_TRAMPOLINE_NO_ASM: ${FPB_TRAMPOLINE_NO_ASM}")
 message(STATUS "  FPB_NO_DEBUGMON: ${FPB_NO_DEBUGMON}")
 message(STATUS "  FL_ALLOC_MODE: ${FL_ALLOC_MODE}")
 message(STATUS "  FL_NUTTX_BUF_SIZE: ${FL_NUTTX_BUF_SIZE}")
+message(STATUS "  FL_USE_FILE: ${FL_USE_FILE}")
+message(STATUS "  FL_FILE_BACKEND: ${FL_FILE_BACKEND}")

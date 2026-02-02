@@ -1,0 +1,45 @@
+<!-- File Transfer Section -->
+<div class="sidebar-section">
+  <details id="details-transfer">
+    <summary class="sidebar-header">
+      <i class="codicon codicon-chevron-right"></i>
+      <span>FILE TRANSFER</span>
+    </summary>
+    <div class="sidebar-content">
+      <!-- Device path input -->
+      <div class="flex-row" style="margin-bottom: 8px">
+        <input type="text" id="devicePath" value="/" placeholder="/data" style="flex: 1" />
+        <button onclick="refreshDeviceFiles()" title="Refresh" class="icon-btn">
+          <i class="codicon codicon-refresh"></i>
+        </button>
+      </div>
+
+      <!-- Device file list -->
+      <div id="deviceFileList" class="device-file-list">
+        <div class="empty">Click refresh to load</div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="flex-row" style="margin-top: 8px; gap: 4px">
+        <button onclick="uploadToDevice()" title="Upload file to device" class="small-btn">
+          <i class="codicon codicon-cloud-upload"></i> Upload
+        </button>
+        <button onclick="downloadFromDevice()" title="Download selected file" class="small-btn">
+          <i class="codicon codicon-cloud-download"></i> Download
+        </button>
+        <button onclick="deleteFromDevice()" title="Delete selected file" class="small-btn">
+          <i class="codicon codicon-trash"></i>
+        </button>
+        <button onclick="createDeviceDir()" title="Create directory" class="small-btn">
+          <i class="codicon codicon-new-folder"></i>
+        </button>
+      </div>
+
+      <!-- Transfer progress -->
+      <div id="transferProgress" class="progress-bar" style="display: none; margin-top: 8px">
+        <div class="progress-fill"></div>
+        <span class="progress-text">0%</span>
+      </div>
+    </div>
+  </details>
+</div>

@@ -36,6 +36,9 @@ if(NUTTX_APPS_DIR)
       SRCS
       App/func_loader/func_loader_port_nuttx.c
       App/func_loader/func_loader.c
+      App/func_loader/func_loader_log.c
+      App/func_loader/func_loader_file.c
+      App/func_loader/func_loader_file_posix.c
       App/func_loader/func_loader_stream.c
       App/func_loader/argparse/argparse.c
       Source/fpb_inject.c
@@ -48,7 +51,8 @@ if(NUTTX_APPS_DIR)
       DEFINITIONS
       __NUTTX__
       FL_NUTTX_BUF_SIZE=${CONFIG_FPBINJECT_BUF_SIZE}
-      FL_NUTTX_LINE_SIZE=${CONFIG_FPBINJECT_LINE_SIZE})
+      FL_NUTTX_LINE_SIZE=${CONFIG_FPBINJECT_LINE_SIZE}
+      FL_FILE_USE_POSIX=1)
   endif()
 else()
   cmake_minimum_required(VERSION 3.16)

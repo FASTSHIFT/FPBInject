@@ -126,6 +126,24 @@ class FPBInject:
         except Exception as e:
             logger.warning(f"Failed to update slot state: {e}")
 
+    def send_fl_cmd(self, cmd: str, timeout: float = 2.0) -> Tuple[bool, str]:
+        """
+        Send a fl command and return parsed result.
+
+        Args:
+            cmd: Command string (with or without 'fl' prefix)
+            timeout: Response timeout in seconds
+
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            resp = self._protocol.send_cmd(cmd, timeout=timeout)
+            result = self._protocol.parse_response(resp)
+            return result.get("ok", False), result.get("raw", result.get("msg", ""))
+        except Exception as e:
+            return False, str(e)
+
     def ping(self) -> Tuple[bool, str]:
         """Ping device."""
         return self._protocol.ping()

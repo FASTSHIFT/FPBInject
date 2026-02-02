@@ -36,6 +36,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "func_loader_file.h"
 
 /* Maximum slot count */
 #ifndef FL_MAX_SLOTS
@@ -83,7 +84,27 @@ typedef struct fl_context_s {
 
     /* Slot tracking */
     fl_slot_state_t slots[FL_MAX_SLOTS];
+
+#ifdef FL_USE_FILE
+    /* File transfer context (embedded, no dynamic allocation) */
+    struct fl_file_ctx_s file_ctx;
+#endif
 } fl_context_t;
+
+#ifdef FL_USE_FILE
+/**
+ * @brief Initialize file transfer context for fl_context
+ * @param ctx Function loader context
+ * @param fs_ops Filesystem operations (NULL for default POSIX)
+ * @return 0 on success, -1 on error
+ */
+int fl_file_ctx_init(fl_context_t* ctx, const struct fl_fs_ops_s* fs_ops);
+#endif
+
+/**
+ * @brief Initialize context with default settings
+ */
+void fl_init_default(fl_context_t* ctx);
 
 /**
  * @brief Initialize context

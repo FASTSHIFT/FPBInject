@@ -168,7 +168,7 @@ void func_loader_run(void) {
     alloc_init();
 
     static fl_context_t s_ctx;
-    fl_init(&s_ctx);
+    fl_init_default(&s_ctx);
 #ifdef FL_ALLOC_STATIC
     s_ctx.malloc_cb = malloc_cb;
     s_ctx.free_cb = free_cb;
@@ -190,6 +190,7 @@ void func_loader_run(void) {
     /* Line buffer for stream processing */
     static char s_line_buf[512];
     fl_stream_init(&s_stream, &s_ctx, &s_serial, s_line_buf, sizeof(s_line_buf));
+    fl_init(&s_ctx);
 
     printf("=====================================\n");
     printf("FPBInject Function Loader v1.0\n");

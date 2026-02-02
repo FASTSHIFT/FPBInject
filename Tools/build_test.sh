@@ -132,6 +132,8 @@ build_nuttx_config() {
     local config_name="$4"
     local no_debugmon="${5:-OFF}"
     local nuttx_buf_size="${6:-1024}"
+    local use_file="${7:-OFF}"
+    local file_backend="${8:-POSIX}"
     
     local build_subdir="$BUILD_DIR/$config_name"
     
@@ -152,6 +154,8 @@ build_nuttx_config() {
         -DFPB_NO_DEBUGMON="$no_debugmon"
         -DFL_ALLOC_MODE="$alloc_mode"
         -DFL_NUTTX_BUF_SIZE="$nuttx_buf_size"
+        -DFL_USE_FILE="$use_file"
+        -DFL_FILE_BACKEND="$file_backend"
     )
     
     # Configure
@@ -352,6 +356,70 @@ run_tests() {
     start_time=$(date +%s)
     
     if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "ON" "1024"; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+        
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
+
+    echo ""
+    echo -e "${YELLOW}Testing File Transfer configurations (NuttX)...${NC}"
+    echo ""
+
+    # Test NuttX without file transfer (FL_USE_FILE=OFF)
+    config_name="NUTTX_NO_FILE"
+    config_desc="NuttX FL_USE_FILE=OFF"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    start_time=$(date +%s)
+    
+    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024" "OFF"; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+        
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
+
+    # Test NuttX with file transfer using POSIX backend
+    config_name="NUTTX_FILE_POSIX"
+    config_desc="NuttX FL_USE_FILE=ON FL_FILE_BACKEND=POSIX"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    start_time=$(date +%s)
+    
+    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024" "ON" "POSIX"; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+        
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
+
+    # Test NuttX with file transfer using LIBC backend
+    config_name="NUTTX_FILE_LIBC"
+    config_desc="NuttX FL_USE_FILE=ON FL_FILE_BACKEND=LIBC"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    start_time=$(date +%s)
+    
+    if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024" "ON" "LIBC"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
         
