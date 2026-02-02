@@ -38,7 +38,22 @@ function saveSidebarState() {
 
 function setupSidebarStateListeners() {
   document.querySelectorAll('details[id^="details-"]').forEach((details) => {
-    details.addEventListener('toggle', saveSidebarState);
+    details.addEventListener('toggle', () => {
+      saveSidebarState();
+      syncActivityBarState();
+    });
+  });
+}
+
+function syncActivityBarState() {
+  // Find the first open section and mark its activity item as active
+  const openSection = document.querySelector('details[id^="details-"][open]');
+  document.querySelectorAll('.activity-item[data-section]').forEach((item) => {
+    if (openSection && item.dataset.section === openSection.id) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
   });
 }
 
@@ -82,8 +97,40 @@ function updateDisabledState() {
   });
 }
 
+/* ===========================
+   ACTIVITY BAR SECTION NAVIGATION
+   =========================== */
+function activateSection(sectionId) {
+  // Close all details sections
+  document.querySelectorAll('details[id^="details-"]').forEach((details) => {
+    details.open = false;
+  });
+
+  // Open the target section
+  const targetSection = document.getElementById(sectionId);
+  if (targetSection) {
+    targetSection.open = true;
+    // Scroll section into view smoothly
+    targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Update activity bar active state
+  document.querySelectorAll('.activity-item[data-section]').forEach((item) => {
+    if (item.dataset.section === sectionId) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+
+  // Save state
+  saveSidebarState();
+}
+
 // Export for global access
 window.loadSidebarState = loadSidebarState;
 window.saveSidebarState = saveSidebarState;
 window.setupSidebarStateListeners = setupSidebarStateListeners;
 window.updateDisabledState = updateDisabledState;
+window.activateSection = activateSection;
+window.syncActivityBarState = syncActivityBarState;

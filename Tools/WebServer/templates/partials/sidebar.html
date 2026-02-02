@@ -1,10 +1,5 @@
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
-  <div class="sidebar-title">
-    <span>EXPLORER</span>
-    <i class="codicon codicon-ellipsis"></i>
-  </div>
-
   <!-- Connection Section -->
   <div class="sidebar-section">
     <details id="details-connection" open>
@@ -52,15 +47,12 @@
   <!-- Device Info Section -->
   {% include 'partials/sidebar_device.html' %}
 
-  <!-- Configuration Section -->
-  {% include 'partials/sidebar_config.html' %}
-
   <!-- File Transfer Section -->
   {% include 'partials/sidebar_transfer.html' %}
 
   <!-- Symbols Section -->
   <div class="sidebar-section">
-    <details id="details-symbols" open>
+    <details id="details-symbols">
       <summary class="sidebar-header" title="Single-click: view disassembly; Double-click: create patch">
         <i class="codicon codicon-chevron-right"></i>
         <span>SYMBOLS</span>
@@ -82,4 +74,7 @@
       </div>
     </details>
   </div>
+
+  <!-- Configuration Section -->
+  {% include 'partials/sidebar_config.html' %}
 </div>
