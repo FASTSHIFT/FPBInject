@@ -413,7 +413,10 @@ class TestFileTransferUpload(unittest.TestCase):
         """Test upload with write failure."""
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[OK] FOPEN /test.txt mode=w"),
-            (False, "[ERR] Disk full"),
+            (False, "[ERR] Disk full"),  # fwrite attempt 1
+            (False, "[ERR] Disk full"),  # fwrite retry 1
+            (False, "[ERR] Disk full"),  # fwrite retry 2
+            (False, "[ERR] Disk full"),  # fwrite retry 3
             (True, "[OK] FCLOSE"),
         ]
         success, msg = self.ft.upload(b"test data", "/test.txt")
@@ -530,7 +533,10 @@ class TestFileTransferDownload(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[OK] FSTAT /test.txt size=100 mtime=123 type=file"),
             (True, "[OK] FOPEN /test.txt mode=r"),
-            (False, "[ERR] Read error"),
+            (False, "[ERR] Read error"),  # fread attempt 1
+            (False, "[ERR] Read error"),  # fread retry 1
+            (False, "[ERR] Read error"),  # fread retry 2
+            (False, "[ERR] Read error"),  # fread retry 3
             (True, "[OK] FCLOSE"),
         ]
         success, data, msg = self.ft.download("/test.txt")
