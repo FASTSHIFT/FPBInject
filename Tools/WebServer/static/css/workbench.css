@@ -333,9 +333,38 @@ body {
   color: var(--vscode-sidebar-fg);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   border-right: 1px solid var(--vscode-border);
   min-width: 180px;
+}
+
+/* Scrollbar styling - VS Code style */
+.sidebar::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 0;
+  min-height: 40px;
+}
+
+.sidebar:hover::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-bg, rgba(121, 121, 121, 0.4));
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBg, rgba(100, 100, 100, 0.7));
+}
+
+.sidebar::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBg, rgba(191, 191, 191, 0.4));
 }
 
 .sidebar-title {
