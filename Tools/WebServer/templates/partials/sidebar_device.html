@@ -45,13 +45,6 @@
             <span class="slot-func" id="slot{{ i }}Func">Empty</span>
           </div>
           <div class="slot-actions">
-            <button
-              class="slot-btn"
-              onclick="event.stopPropagation(); fpbReinject({{ i }});"
-              title="Re-inject this slot"
-            >
-              <i class="codicon codicon-debug-restart"></i>
-            </button>
             <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch({{ i }});" title="Clear slot">
               <i class="codicon codicon-close"></i>
             </button>

@@ -110,74 +110,6 @@ async function fpbUnpatch(slotId) {
   }
 }
 
-async function fpbReinject(slotId) {
-  const state = window.FPBState;
-  if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
-    return;
-  }
-
-  const slotState = state.slotStates[slotId];
-  const targetFunc = slotState?.func;
-
-  if (!targetFunc) {
-    writeToOutput(
-      `[ERROR] Slot ${slotId} is empty, nothing to re-inject`,
-      'error',
-    );
-    return;
-  }
-
-  writeToOutput(
-    `[INFO] Re-injecting ${targetFunc} to Slot ${slotId}...`,
-    'info',
-  );
-
-  try {
-    const sourceRes = await fetch('/api/patch/source');
-    const sourceData = await sourceRes.json();
-
-    if (!sourceData.success || !sourceData.content?.trim()) {
-      writeToOutput(
-        '[ERROR] No patch source available. Please use Auto Inject on Save first.',
-        'error',
-      );
-      return;
-    }
-
-    const patchSource = sourceData.content;
-    const patchMode =
-      document.getElementById('patchMode')?.value || 'trampoline';
-
-    const res = await fetch('/api/fpb/inject', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_content: patchSource,
-        target_func: targetFunc,
-        patch_mode: patchMode,
-        comp: slotId,
-      }),
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      writeToOutput(
-        `[SUCCESS] Re-injected ${targetFunc} to Slot ${slotId}`,
-        'success',
-      );
-      await fpbInfo();
-    } else {
-      writeToOutput(
-        `[ERROR] Re-inject failed: ${data.error || 'Unknown error'}`,
-        'error',
-      );
-    }
-  } catch (e) {
-    writeToOutput(`[ERROR] Re-inject error: ${e}`, 'error');
-  }
-}
-
 async function fpbUnpatchAll() {
   const state = window.FPBState;
   if (!state.isConnected) {
@@ -241,6 +173,5 @@ window.selectSlot = selectSlot;
 window.onSlotSelectChange = onSlotSelectChange;
 window.initSlotSelectListener = initSlotSelectListener;
 window.fpbUnpatch = fpbUnpatch;
-window.fpbReinject = fpbReinject;
 window.fpbUnpatchAll = fpbUnpatchAll;
 window.updateMemoryInfo = updateMemoryInfo;

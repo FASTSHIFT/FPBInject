@@ -143,7 +143,6 @@ class TestTemplateRendering(unittest.TestCase):
                 self.assertIn(f'id="slot{i}Func"', html)
 
             # Check slot actions
-            self.assertIn("fpbReinject", html)
             self.assertIn("fpbUnpatch", html)
 
     def test_editor_partial(self):

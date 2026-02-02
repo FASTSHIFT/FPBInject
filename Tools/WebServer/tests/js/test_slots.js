@@ -24,8 +24,6 @@ module.exports = function (w) {
       assertTrue(typeof w.selectSlot === 'function'));
     it('fpbUnpatch is a function', () =>
       assertTrue(typeof w.fpbUnpatch === 'function'));
-    it('fpbReinject is a function', () =>
-      assertTrue(typeof w.fpbReinject === 'function'));
     it('fpbUnpatchAll is a function', () =>
       assertTrue(typeof w.fpbUnpatchAll === 'function'));
     it('updateMemoryInfo is a function', () =>
@@ -285,69 +283,23 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
     });
-  });
 
-  describe('fpbReinject Function', () => {
-    it('is async function', () => {
-      assertTrue(w.fpbReinject.constructor.name === 'AsyncFunction');
-    });
-
-    it('returns early if not connected', async () => {
-      resetMocks();
-      w.FPBState.isConnected = false;
-      const mockTerm = new MockTerminal();
-      w.FPBState.toolTerminal = mockTerm;
-      await w.fpbReinject(0);
-      assertTrue(
-        mockTerm._writes.some(
-          (wr) => wr.msg && wr.msg.includes('Not connected'),
-        ),
-      );
-      w.FPBState.toolTerminal = null;
-    });
-
-    it('returns error if slot is empty', async () => {
+    it('handles fetch exception', async () => {
       resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
-        .fill()
-        .map(() => ({ occupied: false, func: '' }));
-      await w.fpbReinject(0);
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.fpbUnpatch(0);
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('empty')),
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
       );
-      w.FPBState.toolTerminal = null;
-      w.FPBState.isConnected = false;
-    });
-
-    it('fetches patch source before reinject', async () => {
-      resetMocks();
-      w.FPBState.isConnected = true;
-      w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.slotStates = [
-        {
-          occupied: true,
-          func: 'test_func',
-          orig_addr: '0x1000',
-          target_addr: '0x2000',
-        },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-      ];
-      setFetchResponse('/api/patch/source', {
-        success: true,
-        content: 'void test_func() {}',
-      });
-      setFetchResponse('/api/fpb/inject', { success: true });
-      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
-      await w.fpbReinject(0);
-      const calls = getFetchCalls();
-      assertTrue(calls.some((c) => c.url.includes('/api/patch/source')));
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
     });
@@ -445,126 +397,6 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
       browserGlobals.confirm = () => true;
-    });
-  });
-
-  describe('fpbUnpatch Function - Extended', () => {
-    it('handles fetch exception', async () => {
-      resetMocks();
-      w.FPBState.isConnected = true;
-      const mockTerm = new MockTerminal();
-      w.FPBState.toolTerminal = mockTerm;
-      const origFetch = browserGlobals.fetch;
-      browserGlobals.fetch = async () => {
-        throw new Error('Network error');
-      };
-      global.fetch = browserGlobals.fetch;
-      await w.fpbUnpatch(0);
-      assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
-      );
-      browserGlobals.fetch = origFetch;
-      global.fetch = origFetch;
-      w.FPBState.toolTerminal = null;
-      w.FPBState.isConnected = false;
-    });
-  });
-
-  describe('fpbReinject Function - Extended', () => {
-    it('handles no patch source available', async () => {
-      resetMocks();
-      w.FPBState.isConnected = true;
-      const mockTerm = new MockTerminal();
-      w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = [
-        {
-          occupied: true,
-          func: 'test_func',
-          orig_addr: '0x1000',
-          target_addr: '0x2000',
-        },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-      ];
-      setFetchResponse('/api/patch/source', { success: false });
-      await w.fpbReinject(0);
-      assertTrue(
-        mockTerm._writes.some(
-          (wr) => wr.msg && wr.msg.includes('No patch source'),
-        ),
-      );
-      w.FPBState.toolTerminal = null;
-      w.FPBState.isConnected = false;
-    });
-
-    it('handles reinject failure', async () => {
-      resetMocks();
-      w.FPBState.isConnected = true;
-      const mockTerm = new MockTerminal();
-      w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = [
-        {
-          occupied: true,
-          func: 'test_func',
-          orig_addr: '0x1000',
-          target_addr: '0x2000',
-        },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-      ];
-      setFetchResponse('/api/patch/source', {
-        success: true,
-        content: 'void test() {}',
-      });
-      setFetchResponse('/api/fpb/inject', {
-        success: false,
-        error: 'Injection failed',
-      });
-      await w.fpbReinject(0);
-      assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
-      );
-      w.FPBState.toolTerminal = null;
-      w.FPBState.isConnected = false;
-    });
-
-    it('handles fetch exception', async () => {
-      resetMocks();
-      w.FPBState.isConnected = true;
-      const mockTerm = new MockTerminal();
-      w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = [
-        {
-          occupied: true,
-          func: 'test_func',
-          orig_addr: '0x1000',
-          target_addr: '0x2000',
-        },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-        { occupied: false },
-      ];
-      const origFetch = browserGlobals.fetch;
-      browserGlobals.fetch = async () => {
-        throw new Error('Network error');
-      };
-      global.fetch = browserGlobals.fetch;
-      await w.fpbReinject(0);
-      assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
-      );
-      browserGlobals.fetch = origFetch;
-      global.fetch = origFetch;
-      w.FPBState.toolTerminal = null;
-      w.FPBState.isConnected = false;
     });
   });
 
