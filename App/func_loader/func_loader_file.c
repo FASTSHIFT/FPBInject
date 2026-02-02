@@ -139,8 +139,8 @@ int fl_file_stat(fl_file_ctx_t* file_ctx, const char* path, fl_file_stat_t* st) 
     return file_ctx->fs->stat(path, st);
 }
 
-int fl_file_list(fl_file_ctx_t* file_ctx, const char* path, fl_dirent_t* entries, int max_entries) {
-    if (!file_ctx || !file_ctx->fs || !path || !entries || max_entries <= 0) {
+int fl_file_list_cb(fl_file_ctx_t* file_ctx, const char* path, fl_file_list_cb_t callback, void* user_data) {
+    if (!file_ctx || !file_ctx->fs || !path || !callback) {
         return -1;
     }
 
@@ -152,7 +152,7 @@ int fl_file_list(fl_file_ctx_t* file_ctx, const char* path, fl_dirent_t* entries
     int count = 0;
     fl_dirent_t entry;
 
-    while (count < max_entries && file_ctx->fs->readdir(dirp, &entry) == 0) {
+    while (file_ctx->fs->readdir(dirp, &entry) == 0) {
         /* Skip . and .. */
         if (strcmp(entry.name, ".") == 0 || strcmp(entry.name, "..") == 0) {
             continue;
@@ -168,11 +168,47 @@ int fl_file_list(fl_file_ctx_t* file_ctx, const char* path, fl_dirent_t* entries
             }
         }
 
-        entries[count++] = entry;
+        count++;
+
+        /* Call callback, stop if it returns non-zero */
+        if (callback(&entry, user_data) != 0) {
+            break;
+        }
     }
 
     file_ctx->fs->closedir(dirp);
     return count;
+}
+
+/* Helper struct for fl_file_list wrapper */
+typedef struct {
+    fl_dirent_t* entries;
+    int max_entries;
+    int count;
+} fl_file_list_ctx_t;
+
+static int fl_file_list_cb_wrapper(const fl_dirent_t* entry, void* user_data) {
+    fl_file_list_ctx_t* ctx = (fl_file_list_ctx_t*)user_data;
+    if (ctx->count >= ctx->max_entries) {
+        return 1; /* Stop iteration */
+    }
+    ctx->entries[ctx->count++] = *entry;
+    return 0; /* Continue */
+}
+
+int fl_file_list(fl_file_ctx_t* file_ctx, const char* path, fl_dirent_t* entries, int max_entries) {
+    if (!entries || max_entries <= 0) {
+        return -1;
+    }
+
+    fl_file_list_ctx_t ctx = {.entries = entries, .max_entries = max_entries, .count = 0};
+
+    int result = fl_file_list_cb(file_ctx, path, fl_file_list_cb_wrapper, &ctx);
+    if (result < 0) {
+        return result;
+    }
+
+    return ctx.count;
 }
 
 int fl_file_remove(fl_file_ctx_t* file_ctx, const char* path) {

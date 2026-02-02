@@ -222,12 +222,31 @@ int fl_file_close(fl_file_ctx_t* file_ctx);
 int fl_file_stat(fl_file_ctx_t* file_ctx, const char* path, fl_file_stat_t* st);
 
 /**
+ * @brief Directory entry callback function type
+ * @param entry Directory entry
+ * @param user_data User data passed to fl_file_list_cb
+ * @return 0 to continue, non-zero to stop iteration
+ */
+typedef int (*fl_file_list_cb_t)(const fl_dirent_t* entry, void* user_data);
+
+/**
+ * @brief List directory contents with callback
+ * @param file_ctx File context
+ * @param path Directory path
+ * @param callback Callback function for each entry
+ * @param user_data User data passed to callback
+ * @return Number of entries processed, or -1 on error
+ */
+int fl_file_list_cb(fl_file_ctx_t* file_ctx, const char* path, fl_file_list_cb_t callback, void* user_data);
+
+/**
  * @brief List directory contents
  * @param file_ctx File context
  * @param path Directory path
  * @param entries Array to fill with entries
  * @param max_entries Maximum entries to return
  * @return Number of entries, or -1 on error
+ * @note This is a convenience wrapper around fl_file_list_cb
  */
 int fl_file_list(fl_file_ctx_t* file_ctx, const char* path, fl_dirent_t* entries, int max_entries);
 
