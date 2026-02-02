@@ -1051,7 +1051,9 @@ input[type="checkbox"] {
 }
 
 .device-file-item.selected {
-  background: var(--vscode-list-active);
+  border-left: 2px solid var(--vscode-focus-border, #007acc);
+  background: var(--vscode-list-focus);
+  padding-left: 6px;
 }
 
 .device-file-item .codicon {

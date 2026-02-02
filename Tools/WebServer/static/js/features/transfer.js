@@ -323,13 +323,15 @@ async function refreshDeviceFiles() {
   if (path !== '/') {
     const parentItem = document.createElement('div');
     parentItem.className = 'device-file-item';
+    parentItem.dataset.path = path.split('/').slice(0, -1).join('/') || '/';
+    parentItem.dataset.type = 'dir';
     parentItem.innerHTML = `
       <i class="codicon codicon-folder"></i>
       <span class="file-name">..</span>
     `;
-    parentItem.onclick = () => {
-      const parentPath = path.split('/').slice(0, -1).join('/') || '/';
-      pathInput.value = parentPath;
+    parentItem.onclick = () => selectDeviceFile(parentItem);
+    parentItem.ondblclick = () => {
+      pathInput.value = parentItem.dataset.path;
       refreshDeviceFiles();
     };
     fileList.appendChild(parentItem);

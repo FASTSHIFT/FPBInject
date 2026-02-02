@@ -39,13 +39,17 @@ class FPBProtocol:
         """Get detected platform type."""
         return self._platform
 
-    def enter_fl_mode(self, timeout: float = 1.0) -> bool:
+    def enter_fl_mode(self, timeout: float = 0.5) -> bool:
         """Enter fl interactive mode by sending 'fl' command."""
         ser = self.device.ser
         if not ser:
             self._in_fl_mode = False
             self._platform = "unknown"
             return False
+
+        # If already in fl mode, just return
+        if self._in_fl_mode:
+            return True
 
         try:
             self._log_raw("TX", "fl")
@@ -97,7 +101,7 @@ class FPBProtocol:
             self._platform = "unknown"
             return False
 
-    def exit_fl_mode(self, timeout: float = 1.0) -> bool:
+    def exit_fl_mode(self, timeout: float = 0.3) -> bool:
         """Exit fl interactive mode by sending 'exit' command."""
         if not self._in_fl_mode:
             logger.debug("Not in fl mode, skipping exit")
@@ -109,20 +113,8 @@ class FPBProtocol:
 
         try:
             self._log_raw("TX", "exit")
-            ser.reset_input_buffer()
             ser.write(b"exit\n")
             ser.flush()
-
-            start = time.time()
-            response = ""
-            while time.time() - start < timeout:
-                if ser.in_waiting:
-                    chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
-                    response += chunk
-                time.sleep(0.01)
-
-            self._log_raw("RX", response.strip())
-            logger.debug(f"Exited fl mode: {response.strip()}")
             self._in_fl_mode = False
             return True
         except Exception as e:
