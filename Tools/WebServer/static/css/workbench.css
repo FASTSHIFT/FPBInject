@@ -216,6 +216,15 @@ body {
   gap: 10px;
 }
 
+.version-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--vscode-badge-bg, #4d4d4d);
+  color: var(--vscode-badge-fg, #ffffff);
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
 .title-bar-center {
   position: absolute;
   left: 50%;

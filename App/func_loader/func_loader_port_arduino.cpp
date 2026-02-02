@@ -33,6 +33,7 @@
 
 #include "func_loader.h"
 #include "func_loader_stream.h"
+#include "fpbinject_version.h"
 #include <Arduino.h>
 #include <stdio.h>
 
@@ -193,7 +194,7 @@ void func_loader_run(void) {
     fl_init(&s_ctx);
 
     printf("=====================================\n");
-    printf("FPBInject Function Loader v1.0\n");
+    printf("FPBInject Function Loader " FPBINJECT_VERSION_STRING "\n");
     printf("=====================================\n");
     printf("Type fl --cmd help for commands\n");
 

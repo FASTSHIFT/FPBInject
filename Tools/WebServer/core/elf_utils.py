@@ -48,7 +48,7 @@ def get_elf_build_time(elf_path: str) -> Optional[str]:
 
         # Strategy 1: Look for "FPBInject" marker and find date/time nearby
         for i, line in enumerate(lines):
-            if "FPBInject" in line and "v1.0" in line:
+            if "FPBInject" in line and re.search(r"v\d+\.\d+", line):
                 window_start = max(0, i - 3)
                 window_end = min(len(lines), i + 10)
                 window_text = "\n".join(lines[window_start:window_end])

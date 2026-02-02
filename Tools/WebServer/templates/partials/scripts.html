@@ -1,5 +1,6 @@
 <!-- Scripts - Modular JS -->
 <!-- Core Modules -->
+<script src="/static/js/core/version.js"></script>
 <script src="/static/js/core/state.js"></script>
 <script src="/static/js/core/theme.js"></script>
 <script src="/static/js/core/terminal.js"></script>
@@ -47,6 +48,11 @@
     // Initialize drag and drop for file transfer
     if (typeof initTransferDragDrop === "function") {
       initTransferDragDrop();
+    }
+    // Display version
+    const versionEl = document.getElementById("versionDisplay");
+    if (versionEl && window.FPBINJECT_VERSION) {
+      versionEl.textContent = window.FPBINJECT_VERSION.string;
     }
   });
 </script>

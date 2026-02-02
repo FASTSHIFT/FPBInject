@@ -28,6 +28,7 @@
 
 #include "func_loader.h"
 #include "func_loader_log.h"
+#include "fpbinject_version.h"
 #include "argparse/argparse.h"
 #include "fpb_inject.h"
 #include "fpb_trampoline.h"
@@ -249,7 +250,7 @@ static void cmd_info(fl_context_t* ctx) {
         }
     }
 
-    fl_println("FPBInject v1.0");
+    fl_println("FPBInject " FPBINJECT_VERSION_STRING);
     fl_println("Build: %s %s", __DATE__, __TIME__);
     fl_println("Used: %u", (unsigned)total_used);
     fl_println("Slots: %u/%u", (unsigned)active_count, (unsigned)num_comps);
