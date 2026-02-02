@@ -59,10 +59,18 @@ module.exports = function (w) {
       assertTrue(typeof w.preventDefaults === 'function'));
     it('highlightDropZone is a function', () =>
       assertTrue(typeof w.highlightDropZone === 'function'));
+    it('handleDragEnter is a function', () =>
+      assertTrue(typeof w.handleDragEnter === 'function'));
+    it('handleDragLeave is a function', () =>
+      assertTrue(typeof w.handleDragLeave === 'function'));
+    it('handleDragOver is a function', () =>
+      assertTrue(typeof w.handleDragOver === 'function'));
     it('handleDrop is a function', () =>
       assertTrue(typeof w.handleDrop === 'function'));
     it('uploadDroppedFile is a function', () =>
       assertTrue(typeof w.uploadDroppedFile === 'function'));
+    it('resetDragState is a function', () =>
+      assertTrue(typeof w.resetDragState === 'function'));
   });
 
   describe('listDeviceDirectory Function', () => {
@@ -542,7 +550,8 @@ module.exports = function (w) {
       dropZone.id = 'deviceFileList';
       const listeners = {};
       dropZone.addEventListener = (event, handler) => {
-        listeners[event] = handler;
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(handler);
       };
 
       const origGetById = browserGlobals.document.getElementById;
@@ -557,6 +566,94 @@ module.exports = function (w) {
       assertTrue('dragover' in listeners);
       assertTrue('dragleave' in listeners);
       assertTrue('drop' in listeners);
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+  });
+
+  describe('handleDragEnter Function', () => {
+    it('increments drag count and highlights', () => {
+      resetMocks();
+      w.resetDragState();
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      w.handleDragEnter({});
+      assertTrue(dropZone.classList.contains('drag-over'));
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+  });
+
+  describe('handleDragLeave Function', () => {
+    it('decrements drag count and removes highlight when zero', () => {
+      resetMocks();
+      w.resetDragState();
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+      dropZone.classList.add('drag-over');
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      // First enter, then leave
+      w.handleDragEnter({});
+      w.handleDragLeave({});
+      assertFalse(dropZone.classList.contains('drag-over'));
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+
+    it('keeps highlight when nested elements involved', () => {
+      resetMocks();
+      w.resetDragState();
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      // Enter twice (parent + child), leave once (child)
+      w.handleDragEnter({});
+      w.handleDragEnter({});
+      w.handleDragLeave({});
+      assertTrue(dropZone.classList.contains('drag-over'));
+
+      // Leave again (parent)
+      w.handleDragLeave({});
+      assertFalse(dropZone.classList.contains('drag-over'));
+
+      browserGlobals.document.getElementById = origGetById;
+    });
+  });
+
+  describe('handleDragOver Function', () => {
+    it('keeps highlight active', () => {
+      resetMocks();
+      w.resetDragState();
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      w.handleDragOver({});
+      assertTrue(dropZone.classList.contains('drag-over'));
 
       browserGlobals.document.getElementById = origGetById;
     });
@@ -632,29 +729,55 @@ module.exports = function (w) {
   });
 
   describe('handleDrop Function', () => {
-    it('returns early if not connected', () => {
+    it('resets drag state and shows error if not connected', () => {
       resetMocks();
+      w.resetDragState();
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = new MockTerminal();
+
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+      dropZone.classList.add('drag-over');
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
 
       const mockEvent = {
         dataTransfer: { files: [] },
       };
 
       w.handleDrop(mockEvent);
+
+      // Should remove highlight
+      assertFalse(dropZone.classList.contains('drag-over'));
+      // Should show error
       assertTrue(
         w.FPBState.toolTerminal._writes.some(
           (wr) => wr.msg && wr.msg.includes('Not connected'),
         ),
       );
 
+      browserGlobals.document.getElementById = origGetById;
       w.FPBState.toolTerminal = null;
     });
 
     it('returns early if no files dropped', () => {
       resetMocks();
+      w.resetDragState();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
+
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
 
       const mockEvent = {
         dataTransfer: { files: [] },
@@ -662,6 +785,8 @@ module.exports = function (w) {
 
       // Should not throw, just return early
       w.handleDrop(mockEvent);
+
+      browserGlobals.document.getElementById = origGetById;
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
     });

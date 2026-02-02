@@ -502,6 +502,16 @@ function updateTransferControls(show) {
    DRAG AND DROP
    =========================== */
 
+// Track drag enter/leave count to handle nested elements
+let dragEnterCount = 0;
+
+/**
+ * Reset drag state (for testing)
+ */
+function resetDragState() {
+  dragEnterCount = 0;
+}
+
 /**
  * Initialize drag and drop for file upload
  */
@@ -509,23 +519,48 @@ function initTransferDragDrop() {
   const dropZone = document.getElementById('deviceFileList');
   if (!dropZone) return;
 
-  // Prevent default drag behaviors
+  // Prevent default drag behaviors on body to allow drop
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
-    dropZone.addEventListener(eventName, preventDefaults, false);
     document.body.addEventListener(eventName, preventDefaults, false);
   });
 
-  // Highlight drop zone when dragging over it
-  ['dragenter', 'dragover'].forEach((eventName) => {
-    dropZone.addEventListener(eventName, () => highlightDropZone(true), false);
+  // Prevent default on drop zone
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
+    dropZone.addEventListener(eventName, preventDefaults, false);
   });
 
-  ['dragleave', 'drop'].forEach((eventName) => {
-    dropZone.addEventListener(eventName, () => highlightDropZone(false), false);
-  });
-
-  // Handle dropped files
+  // Track drag enter/leave to handle nested elements properly
+  dropZone.addEventListener('dragenter', handleDragEnter, false);
+  dropZone.addEventListener('dragleave', handleDragLeave, false);
+  dropZone.addEventListener('dragover', handleDragOver, false);
   dropZone.addEventListener('drop', handleDrop, false);
+}
+
+/**
+ * Handle drag enter event
+ */
+function handleDragEnter(e) {
+  dragEnterCount++;
+  highlightDropZone(true);
+}
+
+/**
+ * Handle drag leave event
+ */
+function handleDragLeave(e) {
+  dragEnterCount--;
+  if (dragEnterCount <= 0) {
+    dragEnterCount = 0;
+    highlightDropZone(false);
+  }
+}
+
+/**
+ * Handle drag over event (needed to allow drop)
+ */
+function handleDragOver(e) {
+  // Keep highlighting while dragging over
+  highlightDropZone(true);
 }
 
 function preventDefaults(e) {
@@ -544,9 +579,16 @@ function highlightDropZone(highlight) {
  * Handle dropped files
  */
 async function handleDrop(e) {
+  // Reset drag state
+  dragEnterCount = 0;
+  highlightDropZone(false);
+
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    writeToOutput(
+      '[ERROR] Not connected to device. Please connect first.',
+      'error',
+    );
     return;
   }
 
@@ -783,5 +825,9 @@ window.updateTransferControls = updateTransferControls;
 window.initTransferDragDrop = initTransferDragDrop;
 window.preventDefaults = preventDefaults;
 window.highlightDropZone = highlightDropZone;
+window.handleDragEnter = handleDragEnter;
+window.handleDragLeave = handleDragLeave;
+window.handleDragOver = handleDragOver;
 window.handleDrop = handleDrop;
 window.uploadDroppedFile = uploadDroppedFile;
+window.resetDragState = resetDragState;

@@ -44,5 +44,9 @@
     initSashResize();
     loadLayoutPreferences();
     loadThemePreference();
+    // Initialize drag and drop for file transfer
+    if (typeof initTransferDragDrop === "function") {
+      initTransferDragDrop();
+    }
   });
 </script>
