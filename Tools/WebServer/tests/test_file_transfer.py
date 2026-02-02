@@ -631,5 +631,161 @@ class TestSendCmd(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.assert_called_once_with("test cmd", timeout=2.0)
 
 
+class TestFileTransferRetry(unittest.TestCase):
+    """Tests for FileTransfer retry functionality."""
+
+    def setUp(self):
+        """Set up mock FPB and FileTransfer."""
+        self.mock_fpb = Mock()
+        self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
+        self.ft.max_retries = 3
+
+    def test_fwrite_retry_on_crc_mismatch(self):
+        """Test fwrite retries on CRC mismatch."""
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] CRC mismatch: 0x1234 != 0x5678"),
+            (False, "[ERR] CRC mismatch: 0x1234 != 0x5678"),
+            (True, "[OK] FWRITE 10 bytes"),
+        ]
+        success, msg = self.ft.fwrite(b"test data!")
+        self.assertTrue(success)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 3)
+
+    def test_fwrite_max_retries_exceeded(self):
+        """Test fwrite fails after max retries."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            False,
+            "[ERR] CRC mismatch: 0x1234 != 0x5678",
+        )
+        success, msg = self.ft.fwrite(b"test data!")
+        self.assertFalse(success)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 4)  # 1 + 3 retries
+
+    def test_fwrite_no_retry_on_other_error(self):
+        """Test fwrite does not retry on non-CRC errors."""
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Disk full")
+        success, msg = self.ft.fwrite(b"test data!")
+        self.assertFalse(success)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 1)
+
+    def test_fread_retry_on_crc_mismatch(self):
+        """Test fread retries on CRC mismatch."""
+        test_data = b"hello world"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        correct_crc = calc_crc16(test_data)
+        wrong_crc = 0x1234
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+            ),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+            ),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{correct_crc:04X} data={b64_data}",
+            ),
+        ]
+        success, data, msg = self.ft.fread(256)
+        self.assertTrue(success)
+        self.assertEqual(data, test_data)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 3)
+
+    def test_fread_retry_on_base64_error(self):
+        """Test fread retries on base64 decode error."""
+        test_data = b"hello world"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[OK] FREAD 10 bytes crc=0x1234 data=!!!invalid!!!"),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        success, data, msg = self.ft.fread(256)
+        self.assertTrue(success)
+        self.assertEqual(data, test_data)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+
+    def test_fread_retry_on_invalid_response(self):
+        """Test fread retries on invalid response format."""
+        test_data = b"hello world"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[OK] Invalid response format"),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        success, data, msg = self.ft.fread(256)
+        self.assertTrue(success)
+        self.assertEqual(data, test_data)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+
+    def test_fread_retry_on_failure(self):
+        """Test fread retries on command failure."""
+        test_data = b"hello world"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] Timeout"),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        success, data, msg = self.ft.fread(256)
+        self.assertTrue(success)
+        self.assertEqual(data, test_data)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+
+    def test_fread_max_retries_exceeded(self):
+        """Test fread fails after max retries."""
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Timeout")
+        success, data, msg = self.ft.fread(256)
+        self.assertFalse(success)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 4)  # 1 + 3 retries
+
+    def test_fread_uses_chunk_size_as_default(self):
+        """Test fread uses chunk_size as default read size."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+        )
+        self.ft.fread()  # No size argument
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("--len 256", call_args)  # chunk_size is 256
+
+    def test_fwrite_custom_max_retries(self):
+        """Test fwrite with custom max_retries."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            False,
+            "[ERR] CRC mismatch: 0x1234 != 0x5678",
+        )
+        success, msg = self.ft.fwrite(b"test", max_retries=1)
+        self.assertFalse(success)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)  # 1 + 1 retry
+
+    def test_fread_custom_max_retries(self):
+        """Test fread with custom max_retries."""
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Timeout")
+        success, data, msg = self.ft.fread(256, max_retries=1)
+        self.assertFalse(success)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)  # 1 + 1 retry
+
+
 if __name__ == "__main__":
     unittest.main()

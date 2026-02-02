@@ -16,6 +16,10 @@ Object.keys(require.cache).forEach((key) => {
   if (key.includes('tests/js/')) delete require.cache[key];
 });
 
+// Force reload of framework
+delete require.cache[require.resolve('./js/framework')];
+delete require.cache[require.resolve('./js/mocks')];
+
 // Parse command line arguments
 const args = process.argv.slice(2);
 const enableCoverage = args.includes('--coverage');
@@ -51,7 +55,8 @@ if (enableCoverage) {
 // ===================== Load Test Framework & Mocks =====================
 
 const framework = require('./js/framework');
-const { browserGlobals, resetMocks } = require('./js/mocks');
+const mocks = require('./js/mocks');
+const { browserGlobals, resetMocks } = mocks;
 
 framework.setCI(isCI);
 
@@ -68,6 +73,40 @@ global.window = browserGlobals.window;
 // ===================== Load Application Code =====================
 
 const jsDir = path.join(__dirname, '..', 'static', 'js');
+
+// Functions that need to be available globally for cross-module calls
+const globalFunctions = [
+  'writeToOutput',
+  'writeToSerial',
+  'startLogPolling',
+  'stopLogPolling',
+  'fpbInfo',
+  'updateDisabledState',
+  'updateSlotUI',
+  'updateMemoryInfo',
+  'openDisassembly',
+  'startAutoInjectPolling',
+  'stopAutoInjectPolling',
+  'checkConnectionStatus',
+  'saveConfig',
+  'openFileBrowser',
+  'switchEditorTab',
+  'escapeHtml',
+  'fitTerminals',
+  'getTerminalTheme',
+  'getAceEditorContent',
+  'HOME_PATH',
+];
+
+// Sync window exports to global scope after each module load
+function syncWindowToGlobal() {
+  const w = browserGlobals.window;
+  globalFunctions.forEach((fn) => {
+    if (w[fn] !== undefined) {
+      global[fn] = w[fn];
+    }
+  });
+}
 
 function loadScript(filename) {
   const filepath = path.join(jsDir, filename);
@@ -90,6 +129,8 @@ function loadScript(filename) {
   try {
     const fn = new Function(code);
     fn();
+    // Sync window exports to global after each module loads
+    syncWindowToGlobal();
   } catch (e) {
     console.error(`Error loading ${filename}: ${e.message}`);
   }
@@ -111,6 +152,7 @@ const modules = [
   'features/config.js',
   'features/autoinject.js',
   'features/filebrowser.js',
+  'features/transfer.js',
 ];
 
 console.log('Loading application modules...');
@@ -119,33 +161,8 @@ modules.forEach(loadScript);
 // Get window reference (application code exports to window)
 const w = browserGlobals.window;
 
-// Make window functions available globally (for functions that call other functions directly)
-const globalFunctions = [
-  'writeToOutput',
-  'writeToSerial',
-  'startLogPolling',
-  'stopLogPolling',
-  'fpbInfo',
-  'updateDisabledState',
-  'updateSlotUI',
-  'updateMemoryInfo',
-  'openDisassembly',
-  'startAutoInjectPolling',
-  'stopAutoInjectPolling',
-  'checkConnectionStatus',
-  'saveConfig',
-  'openFileBrowser',
-  'switchEditorTab',
-  'escapeHtml',
-  'fitTerminals',
-  'getTerminalTheme',
-  'HOME_PATH',
-];
-globalFunctions.forEach((fn) => {
-  if (w[fn] !== undefined) {
-    global[fn] = w[fn];
-  }
-});
+// Initialize framework with mocks and window reference for state isolation
+framework.init(mocks, w);
 
 // ===================== Run Test Modules =====================
 
@@ -164,76 +181,82 @@ require('./js/test_patch')(w);
 require('./js/test_editor')(w);
 require('./js/test_config')(w);
 require('./js/test_features')(w);
+require('./js/test_transfer')(w);
 
-// ===================== Results & Coverage Report =====================
+// Wait for all async tests to complete then report results
+(async () => {
+  await framework.waitForPendingTests();
 
-const stats = framework.getStats();
+  // ===================== Results & Coverage Report =====================
 
-console.log('\n========================================');
-console.log('    FPBInject Frontend Tests');
-console.log('========================================');
-console.log(`\n    Results: ${stats.passCount}/${stats.testCount} passed`);
-
-if (stats.failCount > 0) {
-  console.log(
-    isCI
-      ? `    ${stats.failCount} tests failed`
-      : `\x1b[31m    ${stats.failCount} tests failed\x1b[0m`,
-  );
-  console.log(isCI ? '\n##[error]Failed tests:' : '\nFailed tests:');
-  stats.failedTests.forEach((t) => {
-    console.log(
-      `  ${isCI ? '' : '\x1b[31m'}- ${t.name}: ${t.error}${isCI ? '' : '\x1b[0m'}`,
-    );
-  });
-}
-
-// Generate coverage report
-if (enableCoverage && global.__coverage__) {
-  const libCoverage = require('istanbul-lib-coverage');
-  const libReport = require('istanbul-lib-report');
-  const reports = require('istanbul-reports');
+  const stats = framework.getStats();
 
   console.log('\n========================================');
-  console.log('    Coverage Report');
-  console.log('========================================\n');
-
-  const coverageMap = libCoverage.createCoverageMap(global.__coverage__);
-  const context = libReport.createContext({
-    dir: path.join(__dirname, 'coverage'),
-    coverageMap,
-  });
-
-  reports.create('text').execute(context);
-  reports.create('html').execute(context);
-  reports.create('lcov').execute(context);
-
-  console.log(`\nReports saved to: ${path.join(__dirname, 'coverage')}`);
-
-  // Calculate overall coverage and check threshold
-  const summary = coverageMap.getCoverageSummary();
-  const stmtCoverage = summary.statements.pct;
-
-  console.log('\n========================================');
-  console.log('    Coverage Threshold Check');
+  console.log('    FPBInject Frontend Tests');
   console.log('========================================');
-  console.log(`\n    Statement coverage: ${stmtCoverage.toFixed(2)}%`);
-  console.log(`    Required threshold: ${coverageThreshold}%`);
+  console.log(`\n    Results: ${stats.passCount}/${stats.testCount} passed`);
 
-  if (stmtCoverage < coverageThreshold) {
+  if (stats.failCount > 0) {
     console.log(
       isCI
-        ? `\n##[error]Coverage ${stmtCoverage.toFixed(2)}% is below threshold ${coverageThreshold}%`
-        : `\n\x1b[31m    ❌ Coverage is below threshold!\x1b[0m`,
+        ? `    ${stats.failCount} tests failed`
+        : `\x1b[31m    ${stats.failCount} tests failed\x1b[0m`,
     );
-    process.exit(1);
-  } else {
-    console.log(
-      isCI
-        ? `\n    ✅ Coverage meets threshold`
-        : `\n\x1b[32m    ✅ Coverage meets threshold\x1b[0m`,
-    );
+    console.log(isCI ? '\n##[error]Failed tests:' : '\nFailed tests:');
+    stats.failedTests.forEach((t) => {
+      console.log(
+        `  ${isCI ? '' : '\x1b[31m'}- ${t.name}: ${t.error}${isCI ? '' : '\x1b[0m'}`,
+      );
+    });
   }
-}
 
-process.exit(stats.failCount > 0 ? 1 : 0);
+  // Generate coverage report
+  if (enableCoverage && global.__coverage__) {
+    const libCoverage = require('istanbul-lib-coverage');
+    const libReport = require('istanbul-lib-report');
+    const reports = require('istanbul-reports');
+
+    console.log('\n========================================');
+    console.log('    Coverage Report');
+    console.log('========================================\n');
+
+    const coverageMap = libCoverage.createCoverageMap(global.__coverage__);
+    const context = libReport.createContext({
+      dir: path.join(__dirname, 'coverage'),
+      coverageMap,
+    });
+
+    reports.create('text').execute(context);
+    reports.create('html').execute(context);
+    reports.create('lcov').execute(context);
+
+    console.log(`\nReports saved to: ${path.join(__dirname, 'coverage')}`);
+
+    // Calculate overall coverage and check threshold
+    const summary = coverageMap.getCoverageSummary();
+    const stmtCoverage = summary.statements.pct;
+
+    console.log('\n========================================');
+    console.log('    Coverage Threshold Check');
+    console.log('========================================');
+    console.log(`\n    Statement coverage: ${stmtCoverage.toFixed(2)}%`);
+    console.log(`    Required threshold: ${coverageThreshold}%`);
+
+    if (stmtCoverage < coverageThreshold) {
+      console.log(
+        isCI
+          ? `\n##[error]Coverage ${stmtCoverage.toFixed(2)}% is below threshold ${coverageThreshold}%`
+          : `\n\x1b[31m    ❌ Coverage is below threshold!\x1b[0m`,
+      );
+      process.exit(1);
+    } else {
+      console.log(
+        isCI
+          ? `\n    ✅ Coverage meets threshold`
+          : `\n\x1b[32m    ✅ Coverage meets threshold\x1b[0m`,
+      );
+    }
+  }
+
+  process.exit(stats.failCount > 0 ? 1 : 0);
+})();

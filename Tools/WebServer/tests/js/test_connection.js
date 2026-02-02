@@ -159,8 +159,8 @@ module.exports = function (w) {
       });
       w.FPBState.toolTerminal = new MockTerminal();
       await w.refreshPorts();
-      const calls = getFetchCalls();
-      assertTrue(calls.some((c) => c.url.includes('/api/ports')));
+      const sel = browserGlobals.document.getElementById('portSelect');
+      assertTrue(sel._children.length >= 2);
       w.FPBState.toolTerminal = null;
     });
 
@@ -172,7 +172,7 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = new MockTerminal();
       const sel = browserGlobals.document.getElementById('portSelect');
       await w.refreshPorts();
-      assertTrue(sel._children.length >= 0);
+      assertTrue(sel._children.length >= 2);
       w.FPBState.toolTerminal = null;
     });
 
@@ -181,7 +181,8 @@ module.exports = function (w) {
       setFetchResponse('/api/ports', { ports: [{ port: '/dev/ttyUSB0' }] });
       w.FPBState.toolTerminal = new MockTerminal();
       await w.refreshPorts();
-      assertTrue(true);
+      const sel = browserGlobals.document.getElementById('portSelect');
+      assertTrue(sel._children.length >= 1);
       w.FPBState.toolTerminal = null;
     });
 
@@ -190,7 +191,8 @@ module.exports = function (w) {
       setFetchResponse('/api/ports', { ports: [{ device: '/dev/ttyUSB0' }] });
       w.FPBState.toolTerminal = new MockTerminal();
       await w.refreshPorts();
-      assertTrue(true);
+      const sel = browserGlobals.document.getElementById('portSelect');
+      assertTrue(sel._children.length >= 1);
       w.FPBState.toolTerminal = null;
     });
 
@@ -199,7 +201,8 @@ module.exports = function (w) {
       setFetchResponse('/api/ports', { ports: [] });
       w.FPBState.toolTerminal = new MockTerminal();
       await w.refreshPorts();
-      assertTrue(true);
+      const sel = browserGlobals.document.getElementById('portSelect');
+      assertEqual(sel._children.length, 0);
       w.FPBState.toolTerminal = null;
     });
 
@@ -209,7 +212,9 @@ module.exports = function (w) {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       await w.refreshPorts();
-      assertTrue(true);
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
       w.FPBState.toolTerminal = null;
     });
   });
@@ -229,8 +234,7 @@ module.exports = function (w) {
         '/dev/ttyUSB0';
       browserGlobals.document.getElementById('baudrate').value = '115200';
       await w.toggleConnect();
-      const calls = getFetchCalls();
-      assertTrue(calls.some((c) => c.url.includes('/api/connect')));
+      assertTrue(w.FPBState.isConnected);
       w.FPBState.toolTerminal = null;
     });
 
@@ -240,10 +244,8 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/disconnect', { success: true });
       await w.toggleConnect();
-      const calls = getFetchCalls();
-      assertTrue(calls.some((c) => c.url.includes('/api/disconnect')));
+      assertTrue(!w.FPBState.isConnected);
       w.FPBState.toolTerminal = null;
-      w.FPBState.isConnected = false;
     });
 
     it('handles connection failure', async () => {
@@ -275,9 +277,10 @@ module.exports = function (w) {
       resetMocks();
       setFetchResponse('/api/status', { connected: false });
       w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.isConnected = true;
       await w.checkConnectionStatus();
-      const calls = getFetchCalls();
-      assertTrue(calls.some((c) => c.url.includes('/api/status')));
+      // When status says disconnected, should update state
+      assertTrue(!w.FPBState.isConnected);
       w.FPBState.toolTerminal = null;
     });
 
@@ -299,22 +302,30 @@ module.exports = function (w) {
     it('handles status check failure gracefully', async () => {
       resetMocks();
       setFetchResponse('/api/status', { _ok: false, _status: 500 });
-      w.FPBState.toolTerminal = new MockTerminal();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
       await w.checkConnectionStatus();
-      assertTrue(true);
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('failed')),
+      );
       w.FPBState.toolTerminal = null;
     });
 
     it('handles fetch exception', async () => {
       resetMocks();
-      w.FPBState.toolTerminal = new MockTerminal();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
       const origFetch = browserGlobals.fetch;
       browserGlobals.fetch = async () => {
         throw new Error('Network error');
       };
       global.fetch = browserGlobals.fetch;
       await w.checkConnectionStatus();
-      assertTrue(true);
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Network error'),
+        ),
+      );
       browserGlobals.fetch = origFetch;
       global.fetch = origFetch;
       w.FPBState.toolTerminal = null;
@@ -375,7 +386,7 @@ module.exports = function (w) {
         ports: ['/dev/ttyUSB0', '/dev/ttyUSB1'],
       });
       await w.refreshPorts();
-      assertTrue(true);
+      assertTrue(sel._children.length >= 2);
       w.FPBState.toolTerminal = null;
     });
 

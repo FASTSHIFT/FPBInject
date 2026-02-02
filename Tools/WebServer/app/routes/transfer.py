@@ -222,8 +222,10 @@ def api_transfer_upload():
         remote_path: Destination path on device
 
     Returns:
-        SSE stream with progress updates
+        SSE stream with progress updates including speed and ETA
     """
+    import time
+
     add_tool_log, _ = _get_helpers()
 
     # Get file from request
@@ -248,14 +250,37 @@ def api_transfer_upload():
 
     def upload_task():
         ft = _get_file_transfer()
+        start_time = time.time()
+        last_time = start_time
+        last_bytes = 0
 
         def progress_cb(uploaded, total):
+            nonlocal last_time, last_bytes
+            now = time.time()
+            elapsed = now - start_time
+            interval = now - last_time
+
+            # Calculate speed (bytes per second)
+            if interval > 0.1:  # Update speed every 100ms
+                speed = (uploaded - last_bytes) / interval
+                last_time = now
+                last_bytes = uploaded
+            else:
+                speed = uploaded / elapsed if elapsed > 0 else 0
+
+            # Calculate ETA
+            remaining = total - uploaded
+            eta = remaining / speed if speed > 0 else 0
+
             progress_queue.put(
                 {
                     "type": "progress",
                     "uploaded": uploaded,
                     "total": total,
                     "percent": round((uploaded / total) * 100, 1) if total > 0 else 0,
+                    "speed": round(speed, 1),
+                    "eta": round(eta, 1),
+                    "elapsed": round(elapsed, 1),
                 }
             )
 
@@ -263,10 +288,22 @@ def api_transfer_upload():
             ft.fpb.enter_fl_mode()
             try:
                 success, msg = ft.upload(file_data, remote_path, progress_cb)
+                elapsed = time.time() - start_time
+                avg_speed = total_size / elapsed if elapsed > 0 else 0
+
                 if success:
-                    add_tool_log(f"[SUCCESS] Upload complete: {remote_path}")
+                    add_tool_log(
+                        f"[SUCCESS] Upload complete: {remote_path} "
+                        f"({total_size} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
+                    )
                     progress_queue.put(
-                        {"type": "result", "success": True, "message": msg}
+                        {
+                            "type": "result",
+                            "success": True,
+                            "message": msg,
+                            "elapsed": round(elapsed, 2),
+                            "avg_speed": round(avg_speed, 1),
+                        }
                     )
                 else:
                     add_tool_log(f"[ERROR] Upload failed: {msg}")
@@ -316,8 +353,10 @@ def api_transfer_download():
         remote_path: Source path on device
 
     Returns:
-        SSE stream with progress updates, final result contains base64 data
+        SSE stream with progress updates including speed and ETA
     """
+    import time
+
     add_tool_log, _ = _get_helpers()
 
     data = request.json or {}
@@ -332,14 +371,37 @@ def api_transfer_download():
 
     def download_task():
         ft = _get_file_transfer()
+        start_time = time.time()
+        last_time = start_time
+        last_bytes = 0
 
         def progress_cb(downloaded, total):
+            nonlocal last_time, last_bytes
+            now = time.time()
+            elapsed = now - start_time
+            interval = now - last_time
+
+            # Calculate speed (bytes per second)
+            if interval > 0.1:  # Update speed every 100ms
+                speed = (downloaded - last_bytes) / interval
+                last_time = now
+                last_bytes = downloaded
+            else:
+                speed = downloaded / elapsed if elapsed > 0 else 0
+
+            # Calculate ETA
+            remaining = total - downloaded
+            eta = remaining / speed if speed > 0 else 0
+
             progress_queue.put(
                 {
                     "type": "progress",
                     "downloaded": downloaded,
                     "total": total,
                     "percent": round((downloaded / total) * 100, 1) if total > 0 else 0,
+                    "speed": round(speed, 1),
+                    "eta": round(eta, 1),
+                    "elapsed": round(elapsed, 1),
                 }
             )
 
@@ -347,12 +409,16 @@ def api_transfer_download():
             ft.fpb.enter_fl_mode()
             try:
                 success, file_data, msg = ft.download(remote_path, progress_cb)
+                elapsed = time.time() - start_time
+
                 if success:
                     import base64
 
                     b64_data = base64.b64encode(file_data).decode("ascii")
+                    avg_speed = len(file_data) / elapsed if elapsed > 0 else 0
                     add_tool_log(
-                        f"[SUCCESS] Download complete: {remote_path} ({len(file_data)} bytes)"
+                        f"[SUCCESS] Download complete: {remote_path} "
+                        f"({len(file_data)} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
                     )
                     progress_queue.put(
                         {
@@ -361,6 +427,8 @@ def api_transfer_download():
                             "message": msg,
                             "data": b64_data,
                             "size": len(file_data),
+                            "elapsed": round(elapsed, 2),
+                            "avg_speed": round(avg_speed, 1),
                         }
                     )
                 else:

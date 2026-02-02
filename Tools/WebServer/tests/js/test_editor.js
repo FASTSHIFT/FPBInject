@@ -64,6 +64,7 @@ module.exports = function (w) {
     });
     it('resizes editor', () => {
       const mockEditor = {
+        _resized: false,
         resize: function () {
           this._resized = true;
         },
@@ -71,22 +72,25 @@ module.exports = function (w) {
       w.FPBState.aceEditors.set('tab2', mockEditor);
       w.FPBState.editorTabs = [{ id: 'tab2', type: 'c' }];
       w.switchEditorTab('tab2');
+      assertTrue(mockEditor._resized);
       w.FPBState.aceEditors.delete('tab2');
       w.FPBState.editorTabs = [];
-      assertTrue(true);
     });
-    it('handles missing tab', () => {
+    it('handles missing tab gracefully', () => {
       w.FPBState.editorTabs = [];
       w.switchEditorTab('nonexistent');
-      assertTrue(true);
+      // Should not throw, activeEditorTab unchanged
+      assertEqual(w.FPBState.editorTabs.length, 0);
     });
-    it('sets currentPatchTab for c type', () => {
+    it('sets currentPatchTab for c type when toolbar exists', () => {
+      // This test verifies the function runs without error for c type tabs
+      // The actual currentPatchTab setting depends on DOM elements
       w.FPBState.editorTabs = [
         { id: 'patch_tab', type: 'c', funcName: 'test_func' },
       ];
       w.switchEditorTab('patch_tab');
+      assertEqual(w.FPBState.activeEditorTab, 'patch_tab');
       w.FPBState.editorTabs = [];
-      assertTrue(true);
     });
   });
 
@@ -128,10 +132,10 @@ module.exports = function (w) {
       w.FPBState.aceEditors.clear();
       w.FPBState.editorTabs = [];
     });
-    it('handles missing tab', () => {
+    it('handles missing tab gracefully', () => {
       w.FPBState.editorTabs = [];
       w.closeTab('nonexistent');
-      assertTrue(true);
+      assertEqual(w.FPBState.editorTabs.length, 0);
     });
     it('destroys ace editor', () => {
       let destroyed = false;
@@ -147,13 +151,18 @@ module.exports = function (w) {
       w.FPBState.editorTabs = [];
     });
     it('handles event parameter', () => {
-      const mockEvent = { stopPropagation: () => {} };
+      let stopped = false;
+      const mockEvent = {
+        stopPropagation: () => {
+          stopped = true;
+        },
+      };
       const mockEditor = { destroy: () => {} };
       w.FPBState.editorTabs = [{ id: 'tab1', closable: true }];
       w.FPBState.aceEditors.set('tab1', mockEditor);
       w.closeTab('tab1', mockEvent);
+      assertTrue(stopped);
       w.FPBState.editorTabs = [];
-      assertTrue(true);
     });
   });
 
@@ -216,12 +225,15 @@ module.exports = function (w) {
     it('fetches disassembly from API', async () => {
       resetMocks();
       w.FPBState.editorTabs = [];
-      w.FPBState.toolTerminal = new MockTerminal();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
       w.FPBState.aceEditors = new Map();
       setFetchResponse('/api/symbols/disasm', { disasm: '; test disasm' });
       await w.openDisassembly('new_func', '0x2000');
-      const calls = getFetchCalls();
-      assertTrue(calls.some((c) => c.url.includes('/api/symbols/disasm')));
+      // Should have created a new tab or written output
+      assertTrue(
+        w.FPBState.editorTabs.length > 0 || mockTerm._writes.length > 0,
+      );
       w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = null;
     });

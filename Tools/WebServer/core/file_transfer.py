@@ -292,7 +292,7 @@ class FileTransfer:
     """File transfer handler for device communication."""
 
     DEFAULT_CHUNK_SIZE = 256
-    DEFAULT_READ_SIZE = 256
+    DEFAULT_MAX_RETRIES = 3
 
     def __init__(self, fpb_inject, chunk_size: int = DEFAULT_CHUNK_SIZE):
         """
@@ -304,6 +304,7 @@ class FileTransfer:
         """
         self.fpb = fpb_inject
         self.chunk_size = chunk_size
+        self.max_retries = self.DEFAULT_MAX_RETRIES
 
     def _send_cmd(self, cmd: str, timeout: float = 2.0) -> Tuple[bool, str]:
         """
@@ -332,72 +333,128 @@ class FileTransfer:
         cmd = f'fl --cmd fopen --path "{path}" --mode {mode}'
         return self._send_cmd(cmd)
 
-    def fwrite(self, data: bytes) -> Tuple[bool, str]:
+    def fwrite(self, data: bytes, max_retries: int = None) -> Tuple[bool, str]:
         """
-        Write data to open file on device.
+        Write data to open file on device with retry support.
 
         Args:
             data: Data bytes to write
+            max_retries: Maximum retry attempts (default: self.max_retries)
 
         Returns:
             Tuple of (success, message)
         """
+        if max_retries is None:
+            max_retries = self.max_retries
+
         b64_data = base64.b64encode(data).decode("ascii")
         crc = calc_crc16(data)
         cmd = f"fl --cmd fwrite --data {b64_data} --crc {crc}"
-        return self._send_cmd(cmd)
 
-    def fread(self, size: int = DEFAULT_READ_SIZE) -> Tuple[bool, bytes, str]:
+        for attempt in range(max_retries + 1):
+            success, response = self._send_cmd(cmd)
+            if success:
+                return True, response
+
+            # Check if it's a CRC mismatch (retryable)
+            if "CRC mismatch" in response and attempt < max_retries:
+                logger.warning(
+                    f"fwrite CRC mismatch, retry {attempt + 1}/{max_retries}"
+                )
+                continue
+
+            return False, response
+
+        return False, "Max retries exceeded"
+
+    def fread(
+        self, size: int = None, max_retries: int = None
+    ) -> Tuple[bool, bytes, str]:
         """
-        Read data from open file on device.
+        Read data from open file on device with retry support.
 
         Args:
-            size: Maximum bytes to read
+            size: Maximum bytes to read (default: chunk_size)
+            max_retries: Maximum retry attempts (default: self.max_retries)
 
         Returns:
             Tuple of (success, data_bytes, message)
         """
+        if size is None:
+            size = self.chunk_size
+        if max_retries is None:
+            max_retries = self.max_retries
+
         cmd = f"fl --cmd fread --len {size}"
-        success, response = self._send_cmd(cmd)
 
-        if not success:
-            return False, b"", response
+        for attempt in range(max_retries + 1):
+            success, response = self._send_cmd(cmd)
 
-        # Parse response: [OK] FREAD <n> bytes crc=0x<crc> data=<base64>
-        # or: [OK] FREAD 0 bytes EOF
-        match = re.search(
-            r"FREAD\s+(\d+)\s+bytes(?:\s+crc=0x([0-9A-Fa-f]+)\s+data=(\S+))?", response
-        )
-        if not match:
-            if "EOF" in response:
+            if not success:
+                if attempt < max_retries:
+                    logger.warning(f"fread failed, retry {attempt + 1}/{max_retries}")
+                    continue
+                return False, b"", response
+
+            # Parse response: [OK] FREAD <n> bytes crc=0x<crc> data=<base64>
+            # or: [OK] FREAD 0 bytes EOF
+            match = re.search(
+                r"FREAD\s+(\d+)\s+bytes(?:\s+crc=0x([0-9A-Fa-f]+)\s+data=(\S+))?",
+                response,
+            )
+            if not match:
+                if "EOF" in response:
+                    return True, b"", "EOF"
+                if attempt < max_retries:
+                    logger.warning(
+                        f"fread invalid response, retry {attempt + 1}/{max_retries}"
+                    )
+                    continue
+                return False, b"", f"Invalid response: {response}"
+
+            nbytes = int(match.group(1))
+            if nbytes == 0:
                 return True, b"", "EOF"
-            return False, b"", f"Invalid response: {response}"
 
-        nbytes = int(match.group(1))
-        if nbytes == 0:
-            return True, b"", "EOF"
+            crc_str = match.group(2)
+            b64_data = match.group(3)
 
-        crc_str = match.group(2)
-        b64_data = match.group(3)
+            if not b64_data:
+                if attempt < max_retries:
+                    logger.warning(f"fread no data, retry {attempt + 1}/{max_retries}")
+                    continue
+                return False, b"", "No data in response"
 
-        if not b64_data:
-            return False, b"", "No data in response"
+            try:
+                data = base64.b64decode(b64_data)
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(
+                        f"fread base64 error, retry {attempt + 1}/{max_retries}: {e}"
+                    )
+                    continue
+                return False, b"", f"Base64 decode error: {e}"
 
-        try:
-            data = base64.b64decode(b64_data)
-        except Exception as e:
-            return False, b"", f"Base64 decode error: {e}"
+            # Verify CRC
+            if crc_str:
+                expected_crc = int(crc_str, 16)
+                actual_crc = calc_crc16(data)
+                if expected_crc != actual_crc:
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"fread CRC mismatch (0x{expected_crc:04X} vs 0x{actual_crc:04X}), "
+                            f"retry {attempt + 1}/{max_retries}"
+                        )
+                        continue
+                    return (
+                        False,
+                        b"",
+                        f"CRC mismatch: expected 0x{expected_crc:04X}, got 0x{actual_crc:04X}",
+                    )
 
-        # Verify CRC
-        if crc_str:
-            expected_crc = int(crc_str, 16)
-            actual_crc = calc_crc16(data)
-            if expected_crc != actual_crc:
-                return (
-                    False,
-                    b"",
-                    f"CRC mismatch: expected 0x{expected_crc:04X}, got 0x{actual_crc:04X}",
-                )
+            return True, data, f"Read {len(data)} bytes"
+
+        return False, b"", "Max retries exceeded"
 
         return True, data, f"Read {len(data)} bytes"
 
@@ -587,7 +644,7 @@ class FileTransfer:
         try:
             data = b""
             while True:
-                success, chunk, msg = self.fread(self.DEFAULT_READ_SIZE)
+                success, chunk, msg = self.fread(self.chunk_size)
                 if not success:
                     self.fclose()
                     return False, b"", f"Read failed: {msg}"

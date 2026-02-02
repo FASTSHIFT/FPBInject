@@ -108,7 +108,7 @@ async function deleteDeviceFile(path) {
  * Upload file to device with progress
  * @param {File} file - File object to upload
  * @param {string} remotePath - Destination path on device
- * @param {Function} onProgress - Progress callback(uploaded, total, percent)
+ * @param {Function} onProgress - Progress callback(uploaded, total, percent, speed, eta)
  * @returns {Promise<{success: boolean, message: string}>}
  */
 async function uploadFileToDevice(file, remotePath, onProgress) {
@@ -142,7 +142,13 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
                 try {
                   const data = JSON.parse(line.slice(6));
                   if (data.type === 'progress' && onProgress) {
-                    onProgress(data.uploaded, data.total, data.percent);
+                    onProgress(
+                      data.uploaded,
+                      data.total,
+                      data.percent,
+                      data.speed,
+                      data.eta,
+                    );
                   } else if (data.type === 'result') {
                     resolve(data);
                     return;
@@ -168,7 +174,7 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
 /**
  * Download file from device with progress
  * @param {string} remotePath - Source path on device
- * @param {Function} onProgress - Progress callback(downloaded, total, percent)
+ * @param {Function} onProgress - Progress callback(downloaded, total, percent, speed, eta)
  * @returns {Promise<{success: boolean, data: Blob, message: string}>}
  */
 async function downloadFileFromDevice(remotePath, onProgress) {
@@ -199,7 +205,13 @@ async function downloadFileFromDevice(remotePath, onProgress) {
                 try {
                   const data = JSON.parse(line.slice(6));
                   if (data.type === 'progress' && onProgress) {
-                    onProgress(data.downloaded, data.total, data.percent);
+                    onProgress(
+                      data.downloaded,
+                      data.total,
+                      data.percent,
+                      data.speed,
+                      data.eta,
+                    );
                   } else if (data.type === 'result') {
                     if (data.success && data.data) {
                       // Decode base64 to blob
@@ -339,12 +351,40 @@ function formatFileSize(bytes) {
 }
 
 /**
+ * Format speed for display (bytes per second)
+ */
+function formatSpeed(bytesPerSec) {
+  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+  if (bytesPerSec < 1024 * 1024)
+    return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
+/**
+ * Format ETA for display (seconds)
+ */
+function formatETA(seconds) {
+  if (seconds < 1) return '<1s';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}m ${secs}s`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.round((seconds % 3600) / 60);
+  return `${hours}h ${mins}m`;
+}
+
+/**
  * Update transfer progress bar
  */
-function updateTransferProgress(percent, text) {
+function updateTransferProgress(percent, text, speed, eta) {
   const progressBar = document.getElementById('transferProgress');
   const progressFill = progressBar?.querySelector('.progress-fill');
   const progressText = progressBar?.querySelector('.progress-text');
+  const progressSpeed = progressBar?.querySelector('.progress-speed');
+  const progressEta = progressBar?.querySelector('.progress-eta');
 
   if (progressBar) {
     progressBar.style.display = 'block';
@@ -354,6 +394,12 @@ function updateTransferProgress(percent, text) {
   }
   if (progressText) {
     progressText.textContent = text || `${percent}%`;
+  }
+  if (progressSpeed && speed !== undefined) {
+    progressSpeed.textContent = formatSpeed(speed);
+  }
+  if (progressEta && eta !== undefined) {
+    progressEta.textContent = `ETA: ${formatETA(eta)}`;
   }
 }
 
@@ -399,10 +445,12 @@ async function uploadToDevice() {
       const result = await uploadFileToDevice(
         file,
         remotePath,
-        (uploaded, total, percent) => {
+        (uploaded, total, percent, speed, eta) => {
           updateTransferProgress(
             percent,
             `${percent}% (${formatFileSize(uploaded)}/${formatFileSize(total)})`,
+            speed,
+            eta,
           );
         },
       );
@@ -410,7 +458,13 @@ async function uploadToDevice() {
       hideTransferProgress();
 
       if (result.success) {
-        writeToOutput(`[SUCCESS] Upload complete: ${remotePath}`, 'success');
+        const speedStr = result.avg_speed
+          ? ` (${formatSpeed(result.avg_speed)})`
+          : '';
+        writeToOutput(
+          `[SUCCESS] Upload complete: ${remotePath}${speedStr}`,
+          'success',
+        );
         refreshDeviceFiles();
       } else {
         writeToOutput(`[ERROR] Upload failed: ${result.error}`, 'error');
@@ -447,10 +501,12 @@ async function downloadFromDevice() {
   try {
     const result = await downloadFileFromDevice(
       remotePath,
-      (downloaded, total, percent) => {
+      (downloaded, total, percent, speed, eta) => {
         updateTransferProgress(
           percent,
           `${percent}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
+          speed,
+          eta,
         );
       },
     );
@@ -466,7 +522,13 @@ async function downloadFromDevice() {
       a.click();
       URL.revokeObjectURL(url);
 
-      writeToOutput(`[SUCCESS] Download complete: ${fileName}`, 'success');
+      const speedStr = result.avg_speed
+        ? ` (${formatSpeed(result.avg_speed)})`
+        : '';
+      writeToOutput(
+        `[SUCCESS] Download complete: ${fileName}${speedStr}`,
+        'success',
+      );
     } else {
       writeToOutput(`[ERROR] Download failed: ${result.error}`, 'error');
     }
@@ -547,3 +609,5 @@ window.deleteFromDevice = deleteFromDevice;
 window.createDeviceDir = createDeviceDir;
 window.updateTransferProgress = updateTransferProgress;
 window.hideTransferProgress = hideTransferProgress;
+window.formatSpeed = formatSpeed;
+window.formatETA = formatETA;

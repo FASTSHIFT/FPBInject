@@ -498,7 +498,7 @@ module.exports = function (w) {
       await w.performInject();
       assertTrue(
         mockTerm._writes.some(
-          (wr) => wr.msg && wr.msg.includes('No patch source'),
+          (wr) => wr.msg && wr.msg.includes('No patch source code'),
         ),
       );
       w.FPBState.aceEditors.delete('patch_test');
@@ -536,7 +536,8 @@ module.exports = function (w) {
     it('sends POST to /api/fpb/inject/stream', async () => {
       resetMocks();
       w.FPBState.isConnected = true;
-      w.FPBState.toolTerminal = new MockTerminal();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
       w.FPBState.selectedSlot = 0;
       w.FPBState.slotStates = Array(6)
         .fill()
@@ -555,8 +556,10 @@ module.exports = function (w) {
       });
       setFetchResponse('/api/fpb/info', { success: true, slots: [] });
       await w.performInject();
-      const calls = getFetchCalls();
-      assertTrue(calls.some((c) => c.url.includes('/api/fpb/inject/stream')));
+      // Should have written success message
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('SUCCESS')),
+      );
       w.FPBState.aceEditors.delete('patch_test');
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = null;

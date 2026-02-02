@@ -37,6 +37,7 @@ function createMockElement(id) {
     selectedIndex: 0,
     _eventListeners: {},
     _attributes: {},
+    dataset: {},
 
     get textContent() {
       return this._textContent;
@@ -49,6 +50,16 @@ function createMockElement(id) {
         .replace(/>/g, '&gt;');
     },
     get innerHTML() {
+      // If we have children, build innerHTML from them
+      if (this._children.length > 0) {
+        return this._children
+          .map((c) => {
+            if (c._innerHTML) return c._innerHTML;
+            if (c.textContent) return c.textContent;
+            return '';
+          })
+          .join('');
+      }
       return this._innerHTML;
     },
     set innerHTML(v) {

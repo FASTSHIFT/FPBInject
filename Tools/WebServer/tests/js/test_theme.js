@@ -123,7 +123,7 @@ module.exports = function (w) {
     it('updateAceEditorsTheme handles empty editors map', () => {
       w.FPBState.aceEditors.clear();
       w.updateAceEditorsTheme(true);
-      assertTrue(true);
+      assertEqual(w.FPBState.aceEditors.size, 0);
     });
     it('updateThemeIcon is a function', () =>
       assertTrue(typeof w.updateThemeIcon === 'function'));
@@ -146,11 +146,12 @@ module.exports = function (w) {
       w.FPBState.rawTerminal = null;
       browserGlobals.document.documentElement._theme = 'dark';
     });
-    it('updateTerminalTheme handles null terminals', () => {
+    it('updateTerminalTheme handles null terminals gracefully', () => {
       w.FPBState.toolTerminal = null;
       w.FPBState.rawTerminal = null;
       w.updateTerminalTheme();
-      assertTrue(true);
+      assertEqual(w.FPBState.toolTerminal, null);
+      assertEqual(w.FPBState.rawTerminal, null);
     });
   });
 };
