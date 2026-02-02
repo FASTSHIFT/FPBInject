@@ -165,7 +165,6 @@ static void* posix_opendir(const char* path) {
 static int posix_readdir(void* dirp, fl_dirent_t* entry) {
     struct dirent* de = readdir((DIR*)dirp);
     if (!de) {
-        fl_println("Failed to read dir: errno: %d", errno);
         return -1;
     }
 
