@@ -26,7 +26,7 @@ config FPBINJECT_PRIORITY
 
 config FPBINJECT_STACKSIZE
 	int "FPBInject stack size"
-	default 4096
+	default 8192
 
 config FPBINJECT_BUF_SIZE
 	int "Static code buffer size"

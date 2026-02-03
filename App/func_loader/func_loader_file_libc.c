@@ -204,6 +204,11 @@ static int libc_unlink(const char* path) {
     return remove(path);
 }
 
+static int libc_rmdir(const char* path) {
+    (void)path;
+    return -1; /* Not supported in pure libc */
+}
+
 static int libc_mkdir(const char* path, int mode) {
     (void)path;
     (void)mode;
@@ -227,6 +232,7 @@ static const fl_fs_ops_t s_libc_fs_ops = {
     .readdir = libc_readdir,
     .closedir = libc_closedir,
     .unlink = libc_unlink,
+    .rmdir = libc_rmdir,
     .mkdir = libc_mkdir,
     .rename = libc_rename,
 };

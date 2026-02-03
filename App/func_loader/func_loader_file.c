@@ -228,12 +228,70 @@ int fl_file_list(fl_file_ctx_t* file_ctx, const char* path, fl_dirent_t* entries
     return ctx.count;
 }
 
+/**
+ * @brief Internal recursive remove implementation
+ * @param file_ctx File context
+ * @param path Path buffer (will be modified in place, must be FL_FILE_PATH_MAX size)
+ * @param st Stat buffer (reused across calls)
+ * @return 0 on success, -1 on error
+ */
+static int fl_file_remove_recursive(fl_file_ctx_t* file_ctx, char* path, fl_file_stat_t* st) {
+    if (file_ctx->fs->stat(path, st) != 0) {
+        return -1;
+    }
+
+    if (st->type != FL_FILE_TYPE_DIR) {
+        return file_ctx->fs->unlink(path);
+    }
+
+    void* dirp = file_ctx->fs->opendir(path);
+    if (!dirp) {
+        return -1;
+    }
+
+    size_t len = strlen(path);
+    if (len > 0 && path[len - 1] == '/') {
+        path[--len] = '\0';
+    }
+
+    fl_dirent_t entry;
+    int ret = 0;
+
+    while (file_ctx->fs->readdir(dirp, &entry) == 0) {
+        if (strcmp(entry.name, ".") == 0 || strcmp(entry.name, "..") == 0) {
+            continue;
+        }
+
+        snprintf(&path[len], FL_FILE_PATH_MAX - len, "/%s", entry.name);
+        ret = fl_file_remove_recursive(file_ctx, path, st);
+        if (ret < 0) {
+            file_ctx->fs->closedir(dirp);
+            return ret;
+        }
+    }
+
+    ret = file_ctx->fs->closedir(dirp);
+    if (ret >= 0) {
+        path[len] = '\0';
+        ret = file_ctx->fs->rmdir(path);
+    }
+
+    return ret;
+}
+
 int fl_file_remove(fl_file_ctx_t* file_ctx, const char* path) {
     if (!file_ctx || !file_ctx->fs || !path) {
         return -1;
     }
 
-    return file_ctx->fs->unlink(path);
+    /* Use a local buffer for path manipulation */
+    char pathbuf[FL_FILE_PATH_MAX];
+    fl_file_stat_t st;
+
+    strncpy(pathbuf, path, FL_FILE_PATH_MAX - 1);
+    pathbuf[FL_FILE_PATH_MAX - 1] = '\0';
+
+    return fl_file_remove_recursive(file_ctx, pathbuf, &st);
 }
 
 int fl_file_mkdir(fl_file_ctx_t* file_ctx, const char* path) {

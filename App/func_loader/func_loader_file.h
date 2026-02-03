@@ -139,6 +139,7 @@ typedef struct fl_fs_ops_s {
 
     /* File management */
     int (*unlink)(const char* path);
+    int (*rmdir)(const char* path);
     int (*mkdir)(const char* path, int mode);
     int (*rename)(const char* oldpath, const char* newpath);
 } fl_fs_ops_t;

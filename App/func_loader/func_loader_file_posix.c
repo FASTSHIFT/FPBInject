@@ -198,6 +198,14 @@ static int posix_unlink(const char* path) {
     return ret;
 }
 
+static int posix_rmdir(const char* path) {
+    int ret = rmdir(path);
+    if (ret < 0) {
+        fl_println("Failed to rmdir %s: errno: %d", path, errno);
+    }
+    return ret;
+}
+
 static int posix_mkdir(const char* path, int mode) {
     int ret = mkdir(path, mode);
     if (ret < 0) {
@@ -227,6 +235,7 @@ static const fl_fs_ops_t s_posix_fs_ops = {
     .readdir = posix_readdir,
     .closedir = posix_closedir,
     .unlink = posix_unlink,
+    .rmdir = posix_rmdir,
     .mkdir = posix_mkdir,
     .rename = posix_rename,
 };

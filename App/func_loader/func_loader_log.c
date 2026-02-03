@@ -35,6 +35,7 @@
 /* Global output callback */
 static fl_output_cb_t g_output_cb = NULL;
 static void* g_output_user = NULL;
+static char log_buf[PRINT_BUF_SIZE];
 
 void fl_log_init(fl_output_cb_t output_cb, void* output_user) {
     g_output_cb = output_cb;
@@ -42,35 +43,32 @@ void fl_log_init(fl_output_cb_t output_cb, void* output_user) {
 }
 
 void fl_response(bool ok, const char* fmt, ...) {
-    char buf[PRINT_BUF_SIZE];
     va_list args;
 
     fl_print_raw(ok ? "[FLOK] " : "[FLERR] ");
     va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
+    vsnprintf(log_buf, sizeof(log_buf), fmt, args);
     va_end(args);
-    fl_print_raw(buf);
+    fl_print_raw(log_buf);
     fl_print_raw("\n[FLEND]\n");
 }
 
 void fl_print(const char* fmt, ...) {
-    char buf[PRINT_BUF_SIZE];
     va_list args;
 
     va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
+    vsnprintf(log_buf, sizeof(log_buf), fmt, args);
     va_end(args);
-    fl_print_raw(buf);
+    fl_print_raw(log_buf);
 }
 
 void fl_println(const char* fmt, ...) {
-    char buf[PRINT_BUF_SIZE];
     va_list args;
 
     va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
+    vsnprintf(log_buf, sizeof(log_buf), fmt, args);
     va_end(args);
-    fl_print_raw(buf);
+    fl_print_raw(log_buf);
     fl_print_raw("\n");
 }
 
