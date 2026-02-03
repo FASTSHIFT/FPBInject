@@ -302,4 +302,12 @@ int fl_file_mkdir(fl_file_ctx_t* file_ctx, const char* path) {
     return file_ctx->fs->mkdir(path, 0755);
 }
 
+int fl_file_rename(fl_file_ctx_t* file_ctx, const char* oldpath, const char* newpath) {
+    if (!file_ctx || !file_ctx->fs || !oldpath || !newpath) {
+        return -1;
+    }
+
+    return file_ctx->fs->rename(oldpath, newpath);
+}
+
 #endif /* FL_USE_FILE */

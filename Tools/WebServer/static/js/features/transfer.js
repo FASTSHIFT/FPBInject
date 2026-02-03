@@ -106,6 +106,35 @@ async function deleteDeviceFile(path) {
 }
 
 /**
+ * Rename file or directory on device
+ * @param {string} oldPath - Current path
+ * @param {string} newPath - New path
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function renameDeviceFile(oldPath, newPath) {
+  try {
+    const res = await fetch('/api/transfer/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      writeToOutput(`[SUCCESS] Renamed: ${oldPath} -> ${newPath}`, 'success');
+    } else {
+      writeToOutput(
+        `[ERROR] Rename failed: ${data.error || data.message}`,
+        'error',
+      );
+    }
+    return data;
+  } catch (e) {
+    writeToOutput(`[ERROR] Rename failed: ${e}`, 'error');
+    return { success: false, error: e.message };
+  }
+}
+
+/**
  * Upload file to device with progress and cancel support
  * @param {File} file - File object to upload
  * @param {string} remotePath - Destination path on device
@@ -1168,6 +1197,40 @@ async function createDeviceDir() {
   }
 }
 
+/**
+ * Rename file or directory on device (UI handler)
+ */
+async function renameOnDevice() {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
+
+  if (!transferSelectedFile) {
+    writeToOutput(
+      '[ERROR] Please select a file or directory to rename',
+      'error',
+    );
+    return;
+  }
+
+  const oldPath = transferSelectedFile.path;
+  const oldName = oldPath.split('/').pop();
+  const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || '/';
+
+  const newName = prompt('Enter new name:', oldName);
+  if (!newName || newName === oldName) return;
+
+  const newPath =
+    parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`;
+
+  const result = await renameDeviceFile(oldPath, newPath);
+  if (result.success) {
+    refreshDeviceFiles();
+  }
+}
+
 /* ===========================
    EXPORTS
    =========================== */
@@ -1175,6 +1238,7 @@ window.listDeviceDirectory = listDeviceDirectory;
 window.statDeviceFile = statDeviceFile;
 window.createDeviceDirectory = createDeviceDirectory;
 window.deleteDeviceFile = deleteDeviceFile;
+window.renameDeviceFile = renameDeviceFile;
 window.uploadFileToDevice = uploadFileToDevice;
 window.downloadFileFromDevice = downloadFileFromDevice;
 window.refreshDeviceFiles = refreshDeviceFiles;
@@ -1183,6 +1247,7 @@ window.uploadToDevice = uploadToDevice;
 window.uploadFolderToDevice = uploadFolderToDevice;
 window.downloadFromDevice = downloadFromDevice;
 window.deleteFromDevice = deleteFromDevice;
+window.renameOnDevice = renameOnDevice;
 window.createDeviceDir = createDeviceDir;
 window.updateTransferProgress = updateTransferProgress;
 window.hideTransferProgress = hideTransferProgress;

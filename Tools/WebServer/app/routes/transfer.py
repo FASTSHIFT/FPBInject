@@ -236,6 +236,50 @@ def api_transfer_delete():
     return jsonify(result)
 
 
+@bp.route("/transfer/rename", methods=["POST"])
+def api_transfer_rename():
+    """
+    Rename file or directory on device.
+
+    JSON body:
+        old_path: Current path
+        new_path: New path
+
+    Returns:
+        JSON with success status
+    """
+    add_tool_log, _ = _get_helpers()
+    data = request.json or {}
+    old_path = data.get("old_path")
+    new_path = data.get("new_path")
+
+    if not old_path:
+        return jsonify({"success": False, "error": "Old path not specified"})
+    if not new_path:
+        return jsonify({"success": False, "error": "New path not specified"})
+
+    ft = _get_file_transfer()
+
+    def do_rename():
+        ft.fpb.enter_fl_mode()
+        try:
+            success, msg = ft.frename(old_path, new_path)
+            return {"success": success, "message": msg}
+        finally:
+            ft.fpb.exit_fl_mode()
+
+    result = _run_serial_op(do_rename, timeout=5.0)
+
+    if "error" in result and result.get("error"):
+        add_tool_log(f"[ERROR] Rename failed: {result['error']}")
+        return jsonify({"success": False, "error": result["error"]})
+
+    if result.get("success"):
+        add_tool_log(f"[SUCCESS] Renamed: {old_path} -> {new_path}")
+
+    return jsonify(result)
+
+
 @bp.route("/transfer/upload", methods=["POST"])
 def api_transfer_upload():
     """

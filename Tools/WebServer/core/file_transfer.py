@@ -672,6 +672,20 @@ class FileTransfer:
         cmd = f'fl -c fmkdir --path "{path}"'
         return self._send_cmd(cmd)
 
+    def frename(self, old_path: str, new_path: str) -> Tuple[bool, str]:
+        """
+        Rename a file or directory on device.
+
+        Args:
+            old_path: Current path
+            new_path: New path
+
+        Returns:
+            Tuple of (success, message)
+        """
+        cmd = f'fl -c frename --path "{old_path}" --newpath "{new_path}"'
+        return self._send_cmd(cmd)
+
     def upload(
         self,
         local_data: bytes,

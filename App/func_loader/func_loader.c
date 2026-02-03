@@ -745,6 +745,30 @@ static void cmd_fmkdir(fl_context_t* ctx, const char* path) {
     fl_response(true, "FMKDIR %s", path);
 }
 
+static void cmd_frename(fl_context_t* ctx, const char* oldpath, const char* newpath) {
+    if (!ctx->file_ctx.fs) {
+        fl_response(false, "File context not initialized");
+        return;
+    }
+
+    if (!oldpath) {
+        fl_response(false, "Missing path");
+        return;
+    }
+
+    if (!newpath) {
+        fl_response(false, "Missing newpath");
+        return;
+    }
+
+    if (fl_file_rename(&ctx->file_ctx, oldpath, newpath) != 0) {
+        fl_response(false, "Rename failed: %s -> %s", oldpath, newpath);
+        return;
+    }
+
+    fl_response(true, "FRENAME %s -> %s", oldpath, newpath);
+}
+
 #endif /* FL_USE_FILE */
 
 int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
@@ -764,6 +788,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     int entry = 0;
     int all = 0;
     const char* path = NULL;
+    const char* newpath = NULL;
     const char* mode = NULL;
 
     struct argparse_option opts[] = {
@@ -781,6 +806,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_POINTER(0, "target", &target, "Target addr", NULL, 0, 0),
         OPT_BOOLEAN(0, "all", &all, "Clear all", NULL, 0, 0),
         OPT_STRING('p', "path", &path, "File path", NULL, 0, 0),
+        OPT_STRING('n', "newpath", &newpath, "New file path", NULL, 0, 0),
         OPT_STRING('m', "mode", &mode, "File mode (r/w/a)", NULL, 0, 0),
         OPT_END(),
     };
@@ -858,6 +884,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         cmd_fremove(ctx, path);
     } else if (strcmp(cmd, "fmkdir") == 0) {
         cmd_fmkdir(ctx, path);
+    } else if (strcmp(cmd, "frename") == 0) {
+        cmd_frename(ctx, path, newpath);
 #endif /* FL_USE_FILE */
     } else {
         fl_response(false, "Unknown: %s", cmd);

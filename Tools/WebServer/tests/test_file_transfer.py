@@ -374,6 +374,24 @@ class TestFileTransferRemoveMkdir(unittest.TestCase):
         success, msg = self.ft.fmkdir("/existing")
         self.assertFalse(success)
 
+    def test_frename_success(self):
+        """Test successful file rename."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FRENAME /old.txt -> /new.txt",
+        )
+        success, msg = self.ft.frename("/old.txt", "/new.txt")
+        self.assertTrue(success)
+        self.mock_fpb.send_fl_cmd.assert_called_with(
+            'fl -c frename --path "/old.txt" --newpath "/new.txt"', timeout=2.0
+        )
+
+    def test_frename_failure(self):
+        """Test rename failure."""
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] File not found")
+        success, msg = self.ft.frename("/nonexistent.txt", "/new.txt")
+        self.assertFalse(success)
+
 
 class TestFileTransferUpload(unittest.TestCase):
     """Tests for FileTransfer upload operations."""

@@ -269,12 +269,21 @@ int fl_file_list(fl_file_ctx_t* file_ctx, const char* path, fl_dirent_t* entries
 int fl_file_remove(fl_file_ctx_t* file_ctx, const char* path);
 
 /**
- * @brief Create a directory
+ * Create a directory
  * @param file_ctx File context
  * @param path Directory path
  * @return 0 on success, -1 on error
  */
 int fl_file_mkdir(fl_file_ctx_t* file_ctx, const char* path);
+
+/**
+ * Rename a file or directory
+ * @param file_ctx File context
+ * @param oldpath Current path
+ * @param newpath New path
+ * @return 0 on success, -1 on error
+ */
+int fl_file_rename(fl_file_ctx_t* file_ctx, const char* oldpath, const char* newpath);
 
 #ifdef __cplusplus
 }

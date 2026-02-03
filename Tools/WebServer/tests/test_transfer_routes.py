@@ -207,6 +207,218 @@ class TestTransferRoutes(unittest.TestCase):
         data = response.get_json()
         self.assertFalse(data["success"])
 
+    def test_transfer_rename_success(self):
+        """Test successful file rename."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FRENAME /old.txt -> /new.txt",
+        )
+        response = self.client.post(
+            "/api/transfer/rename",
+            json={"old_path": "/old.txt", "new_path": "/new.txt"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+
+    def test_transfer_rename_no_old_path(self):
+        """Test rename without old_path."""
+        response = self.client.post(
+            "/api/transfer/rename",
+            json={"new_path": "/new.txt"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("Old path not specified", data["error"])
+
+    def test_transfer_rename_no_new_path(self):
+        """Test rename without new_path."""
+        response = self.client.post(
+            "/api/transfer/rename",
+            json={"old_path": "/old.txt"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("New path not specified", data["error"])
+
+    def test_transfer_rename_failure(self):
+        """Test rename failure."""
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] File not found")
+        response = self.client.post(
+            "/api/transfer/rename",
+            json={"old_path": "/nonexistent.txt", "new_path": "/new.txt"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertFalse(data["success"])
+
+    def test_transfer_rename_worker_timeout(self):
+        """Test rename with worker timeout."""
+        self.worker_patcher.stop()
+        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+            response = self.client.post(
+                "/api/transfer/rename",
+                json={"old_path": "/old.txt", "new_path": "/new.txt"},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("timeout", data["error"].lower())
+        self.mock_worker = self.worker_patcher.start()
+
+    def test_transfer_rename_empty_json(self):
+        """Test rename with empty JSON body."""
+        response = self.client.post(
+            "/api/transfer/rename",
+            json={},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("Old path not specified", data["error"])
+
+    def test_transfer_stat_worker_timeout(self):
+        """Test stat with worker timeout."""
+        self.worker_patcher.stop()
+        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+            response = self.client.get("/api/transfer/stat?path=/test.txt")
+            self.assertEqual(response.status_code, 200)
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("timeout", data["error"].lower())
+        self.mock_worker = self.worker_patcher.start()
+
+    def test_transfer_mkdir_worker_timeout(self):
+        """Test mkdir with worker timeout."""
+        self.worker_patcher.stop()
+        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+            response = self.client.post(
+                "/api/transfer/mkdir",
+                json={"path": "/newdir"},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("timeout", data["error"].lower())
+        self.mock_worker = self.worker_patcher.start()
+
+    def test_transfer_delete_worker_timeout(self):
+        """Test delete with worker timeout."""
+        self.worker_patcher.stop()
+        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+            response = self.client.post(
+                "/api/transfer/delete",
+                json={"path": "/test.txt"},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("timeout", data["error"].lower())
+        self.mock_worker = self.worker_patcher.start()
+
+    def test_transfer_list_with_empty_entries(self):
+        """Test listing with empty directory."""
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FLIST dir=0 file=0\n")
+        response = self.client.get("/api/transfer/list?path=/empty")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["entries"]), 0)
+
+    def test_transfer_stat_directory(self):
+        """Test stat on directory."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FSTAT /mydir size=0 mtime=1234567890 type=dir",
+        )
+        response = self.client.get("/api/transfer/stat?path=/mydir")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["stat"]["type"], "dir")
+        self.assertEqual(data["stat"]["size"], 0)
+
+    def test_transfer_rename_logs_success(self):
+        """Test rename logs success message."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FRENAME /old.txt -> /new.txt",
+        )
+        response = self.client.post(
+            "/api/transfer/rename",
+            json={"old_path": "/old.txt", "new_path": "/new.txt"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        # Verify add_tool_log was called with success message
+        self.mock_device.add_tool_log.assert_called()
+        calls = [str(c) for c in self.mock_device.add_tool_log.call_args_list]
+        self.assertTrue(any("SUCCESS" in c and "Renamed" in c for c in calls))
+
+    def test_transfer_delete_logs_success(self):
+        """Test delete logs success message."""
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FREMOVE /test.txt")
+        response = self.client.post(
+            "/api/transfer/delete",
+            json={"path": "/test.txt"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        # Verify add_tool_log was called with success message
+        self.mock_device.add_tool_log.assert_called()
+        calls = [str(c) for c in self.mock_device.add_tool_log.call_args_list]
+        self.assertTrue(any("SUCCESS" in c and "Deleted" in c for c in calls))
+
+    def test_transfer_mkdir_logs_success(self):
+        """Test mkdir logs success message."""
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FMKDIR /newdir")
+        response = self.client.post(
+            "/api/transfer/mkdir",
+            json={"path": "/newdir"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        # Verify add_tool_log was called with success message
+        self.mock_device.add_tool_log.assert_called()
+        calls = [str(c) for c in self.mock_device.add_tool_log.call_args_list]
+        self.assertTrue(any("SUCCESS" in c and "Created" in c for c in calls))
+
+    def test_transfer_list_with_files_only(self):
+        """Test listing directory with only files."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FLIST dir=0 file=2\n  F file1.txt 100\n  F file2.txt 200",
+        )
+        response = self.client.get("/api/transfer/list?path=/files")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["entries"]), 2)
+        self.assertEqual(data["entries"][0]["type"], "file")
+
+    def test_transfer_list_with_dirs_only(self):
+        """Test listing directory with only subdirectories."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FLIST dir=2 file=0\n  D subdir1\n  D subdir2",
+        )
+        response = self.client.get("/api/transfer/list?path=/dirs")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["entries"]), 2)
+        self.assertEqual(data["entries"][0]["type"], "dir")
+
     def test_transfer_upload_no_file(self):
         """Test upload without file."""
         response = self.client.post("/api/transfer/upload")

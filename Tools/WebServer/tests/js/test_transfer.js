@@ -1343,4 +1343,177 @@ module.exports = function (w) {
       assertTrue(w.uploadFolderEntry.constructor.name === 'AsyncFunction');
     });
   });
+
+  describe('Rename Functions', () => {
+    it('renameDeviceFile is a function', () =>
+      assertTrue(typeof w.renameDeviceFile === 'function'));
+
+    it('renameOnDevice is a function', () =>
+      assertTrue(typeof w.renameOnDevice === 'function'));
+
+    it('renameDeviceFile is async function', () => {
+      assertTrue(w.renameDeviceFile.constructor.name === 'AsyncFunction');
+    });
+
+    it('renameOnDevice is async function', () => {
+      assertTrue(w.renameOnDevice.constructor.name === 'AsyncFunction');
+    });
+
+    it('renameOnDevice returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.renameOnDevice();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('renameOnDevice returns early if no file selected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      // Clear any selected file by selecting nothing
+      browserGlobals.document.querySelector = () => null;
+      await w.renameOnDevice();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('select a file'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('renameOnDevice returns early if prompt cancelled', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Select a file first
+      const item = browserGlobals.document.createElement('div');
+      item.className = 'device-file-item';
+      item.dataset = { path: '/test.txt', type: 'file' };
+      w.selectDeviceFile(item);
+      // Cancel prompt
+      browserGlobals.prompt = () => null;
+      await w.renameOnDevice();
+      // Should not throw, just return early
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.prompt = () => 'test';
+    });
+
+    it('renameOnDevice returns early if same name entered', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Select a file first
+      const item = browserGlobals.document.createElement('div');
+      item.className = 'device-file-item';
+      item.dataset = { path: '/test.txt', type: 'file' };
+      w.selectDeviceFile(item);
+      // Return same name
+      browserGlobals.prompt = () => 'test.txt';
+      await w.renameOnDevice();
+      // Should not throw, just return early
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.prompt = () => 'test';
+    });
+
+    it('renameOnDevice handles nested path correctly', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Select a file in nested path
+      const item = browserGlobals.document.createElement('div');
+      item.className = 'device-file-item';
+      item.dataset = { path: '/data/subdir/test.txt', type: 'file' };
+      w.selectDeviceFile(item);
+      // Return new name
+      browserGlobals.prompt = () => 'newname.txt';
+      // Mock fetch to return success
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        json: async () => ({ success: true, message: 'Renamed' }),
+      });
+      await w.renameOnDevice();
+      browserGlobals.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.prompt = () => 'test';
+    });
+
+    it('renameOnDevice handles root path correctly', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Select a file at root
+      const item = browserGlobals.document.createElement('div');
+      item.className = 'device-file-item';
+      item.dataset = { path: '/rootfile.txt', type: 'file' };
+      w.selectDeviceFile(item);
+      // Return new name
+      browserGlobals.prompt = () => 'newroot.txt';
+      // Mock fetch to return success
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        json: async () => ({ success: true, message: 'Renamed' }),
+      });
+      await w.renameOnDevice();
+      browserGlobals.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+      browserGlobals.prompt = () => 'test';
+    });
+
+    it('renameDeviceFile handles success response', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        json: async () => ({ success: true, message: 'Renamed' }),
+      });
+      const result = await w.renameDeviceFile('/old.txt', '/new.txt');
+      assertTrue(result.success);
+      browserGlobals.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('renameDeviceFile handles error response', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => ({
+        ok: true,
+        json: async () => ({ success: false, error: 'File not found' }),
+      });
+      const result = await w.renameDeviceFile('/old.txt', '/new.txt');
+      assertFalse(result.success);
+      browserGlobals.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('renameDeviceFile handles fetch exception', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      const result = await w.renameDeviceFile('/old.txt', '/new.txt');
+      assertFalse(result.success);
+      assertTrue(result.error.includes('Network error'));
+      browserGlobals.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
+  });
 };
