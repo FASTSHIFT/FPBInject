@@ -62,9 +62,7 @@ async function createDeviceDirectory(path) {
       body: JSON.stringify({ path }),
     });
     const data = await res.json();
-    if (data.success) {
-      writeToOutput(`[SUCCESS] Created directory: ${path}`, 'success');
-    } else {
+    if (!data.success) {
       writeToOutput(
         `[ERROR] Create directory failed: ${data.error || data.message}`,
         'error',
@@ -90,9 +88,7 @@ async function deleteDeviceFile(path) {
       body: JSON.stringify({ path }),
     });
     const data = await res.json();
-    if (data.success) {
-      writeToOutput(`[SUCCESS] Deleted: ${path}`, 'success');
-    } else {
+    if (!data.success) {
       writeToOutput(
         `[ERROR] Delete failed: ${data.error || data.message}`,
         'error',
@@ -119,9 +115,7 @@ async function renameDeviceFile(oldPath, newPath) {
       body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
     });
     const data = await res.json();
-    if (data.success) {
-      writeToOutput(`[SUCCESS] Renamed: ${oldPath} -> ${newPath}`, 'success');
-    } else {
+    if (!data.success) {
       writeToOutput(
         `[ERROR] Rename failed: ${data.error || data.message}`,
         'error',
