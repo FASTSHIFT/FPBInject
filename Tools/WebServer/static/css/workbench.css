@@ -1095,7 +1095,8 @@ input[type="checkbox"] {
    FILE TRANSFER
    =========================== */
 .device-file-list {
-  max-height: 200px;
+  flex: 1;
+  min-height: 100px;
   overflow-y: auto;
   border: 1px solid var(--vscode-panel-border);
   border-radius: 3px;
