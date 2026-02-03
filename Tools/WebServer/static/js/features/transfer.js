@@ -633,7 +633,7 @@ function highlightDropZone(highlight) {
 }
 
 /**
- * Handle dropped files
+ * Handle dropped files or folders
  */
 async function handleDrop(e) {
   // Reset drag state
@@ -650,14 +650,229 @@ async function handleDrop(e) {
   }
 
   const dt = e.dataTransfer;
-  const files = dt.files;
 
+  // Check if we have items (for folder support)
+  if (dt.items && dt.items.length > 0) {
+    const entries = [];
+    for (let i = 0; i < dt.items.length; i++) {
+      const item = dt.items[i];
+      if (item.webkitGetAsEntry) {
+        const entry = item.webkitGetAsEntry();
+        if (entry) entries.push(entry);
+      }
+    }
+
+    if (entries.length > 0) {
+      for (const entry of entries) {
+        if (entry.isDirectory) {
+          await uploadFolderEntry(entry, transferCurrentPath);
+        } else if (entry.isFile) {
+          const file = await getFileFromEntry(entry);
+          if (file) await uploadDroppedFile(file);
+        }
+      }
+      return;
+    }
+  }
+
+  // Fallback to files (no folder support)
+  const files = dt.files;
   if (files.length === 0) return;
 
-  // Upload files one by one
   for (const file of files) {
     await uploadDroppedFile(file);
   }
+}
+
+/**
+ * Get File object from FileEntry
+ */
+function getFileFromEntry(fileEntry) {
+  return new Promise((resolve) => {
+    fileEntry.file(resolve, () => resolve(null));
+  });
+}
+
+/**
+ * Read all entries from a directory entry
+ */
+function readDirectoryEntries(dirReader) {
+  return new Promise((resolve) => {
+    const entries = [];
+    function readBatch() {
+      dirReader.readEntries(
+        (batch) => {
+          if (batch.length === 0) {
+            resolve(entries);
+          } else {
+            entries.push(...batch);
+            readBatch(); // Continue reading (readEntries returns max 100 at a time)
+          }
+        },
+        () => resolve(entries),
+      );
+    }
+    readBatch();
+  });
+}
+
+/**
+ * Collect all files from a directory entry recursively
+ * @returns {Promise<Array<{file: File, relativePath: string}>>}
+ */
+async function collectFilesFromEntry(entry, basePath = '') {
+  const files = [];
+
+  if (entry.isFile) {
+    const file = await getFileFromEntry(entry);
+    if (file) {
+      files.push({ file, relativePath: basePath + entry.name });
+    }
+  } else if (entry.isDirectory) {
+    const dirPath = basePath + entry.name + '/';
+    const dirReader = entry.createReader();
+    const entries = await readDirectoryEntries(dirReader);
+
+    for (const childEntry of entries) {
+      const childFiles = await collectFilesFromEntry(childEntry, dirPath);
+      files.push(...childFiles);
+    }
+  }
+
+  return files;
+}
+
+/**
+ * Upload a folder entry to device
+ */
+async function uploadFolderEntry(dirEntry, remotePath) {
+  const folderName = dirEntry.name;
+  const targetPath =
+    remotePath === '/' ? `/${folderName}` : `${remotePath}/${folderName}`;
+
+  writeToOutput(`[UPLOAD] Scanning folder: ${folderName}...`, 'info');
+
+  // Collect all files first
+  const files = await collectFilesFromEntry(dirEntry);
+
+  if (files.length === 0) {
+    writeToOutput(`[INFO] Folder is empty: ${folderName}`, 'warning');
+    // Still create the empty directory
+    await createDeviceDirectory(targetPath);
+    refreshDeviceFiles();
+    return;
+  }
+
+  writeToOutput(
+    `[UPLOAD] Found ${files.length} files in ${folderName}`,
+    'info',
+  );
+
+  // Upload folder
+  await uploadFolderFiles(files, targetPath, folderName);
+}
+
+/**
+ * Upload collected files to device with folder structure
+ * @param {Array<{file: File, relativePath: string}>} files - Files to upload
+ * @param {string} targetPath - Base target path on device
+ * @param {string} folderName - Folder name for display
+ */
+async function uploadFolderFiles(files, targetPath, folderName) {
+  const totalFiles = files.length;
+  let uploadedFiles = 0;
+  let totalBytes = files.reduce((sum, f) => sum + f.file.size, 0);
+  let uploadedBytes = 0;
+  const startTime = Date.now();
+
+  // Track created directories to avoid duplicates
+  const createdDirs = new Set();
+
+  updateTransferProgress(0, `Uploading folder: 0/${totalFiles} files`);
+  updateTransferControls(true);
+
+  for (const { file, relativePath } of files) {
+    // Check if cancelled
+    if (transferAbortController && transferAbortController.signal.aborted) {
+      writeToOutput(`[INFO] Folder upload cancelled`, 'warning');
+      hideTransferProgress();
+      return;
+    }
+
+    const remoteFilePath = `${targetPath}/${relativePath}`;
+
+    // Create parent directories if needed
+    const parentDir = remoteFilePath.substring(
+      0,
+      remoteFilePath.lastIndexOf('/'),
+    );
+    if (parentDir && !createdDirs.has(parentDir)) {
+      // Create all parent directories
+      const parts = parentDir.split('/').filter((p) => p);
+      let currentPath = '';
+      for (const part of parts) {
+        currentPath += '/' + part;
+        if (!createdDirs.has(currentPath)) {
+          await createDeviceDirectory(currentPath);
+          createdDirs.add(currentPath);
+        }
+      }
+    }
+
+    // Upload file
+    const fileStartBytes = uploadedBytes;
+    try {
+      const result = await uploadFileToDevice(
+        file,
+        remoteFilePath,
+        (uploaded, total, percent, speed, eta, stats) => {
+          const currentBytes = fileStartBytes + uploaded;
+          const overallPercent = (currentBytes / totalBytes) * 100;
+          const elapsed = (Date.now() - startTime) / 1000;
+          const overallSpeed = elapsed > 0 ? currentBytes / elapsed : 0;
+          const remainingBytes = totalBytes - currentBytes;
+          const overallEta =
+            overallSpeed > 0 ? remainingBytes / overallSpeed : 0;
+
+          updateTransferProgress(
+            overallPercent,
+            `Folder: ${uploadedFiles}/${totalFiles} files (${overallPercent.toFixed(1)}%)`,
+            overallSpeed,
+            overallEta,
+            stats,
+          );
+        },
+      );
+
+      if (result.success) {
+        uploadedBytes += file.size;
+        uploadedFiles++;
+      } else if (result.cancelled) {
+        writeToOutput(`[INFO] Folder upload cancelled`, 'warning');
+        hideTransferProgress();
+        return;
+      } else {
+        writeToOutput(
+          `[ERROR] Failed to upload ${relativePath}: ${result.error}`,
+          'error',
+        );
+      }
+    } catch (e) {
+      writeToOutput(`[ERROR] Upload error for ${relativePath}: ${e}`, 'error');
+    }
+  }
+
+  hideTransferProgress();
+
+  const elapsed = (Date.now() - startTime) / 1000;
+  const avgSpeed = elapsed > 0 ? uploadedBytes / elapsed : 0;
+
+  writeToOutput(
+    `[SUCCESS] Folder upload complete: ${folderName} (${uploadedFiles}/${totalFiles} files, ${formatSpeed(avgSpeed)})`,
+    'success',
+  );
+
+  refreshDeviceFiles();
 }
 
 /**
@@ -778,6 +993,54 @@ async function uploadToDevice() {
 
     for (const file of files) {
       await uploadDroppedFile(file);
+    }
+  };
+  input.click();
+}
+
+/**
+ * Upload folder to device (UI handler)
+ */
+async function uploadFolderToDevice() {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    writeToOutput('[ERROR] Not connected', 'error');
+    return;
+  }
+
+  // Create folder input
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.webkitdirectory = true;
+  input.onchange = async () => {
+    const files = input.files;
+    if (!files || files.length === 0) return;
+
+    // Group files by folder structure
+    // webkitRelativePath gives us "folderName/subdir/file.txt"
+    const fileMap = new Map(); // folderName -> [{file, relativePath}]
+
+    for (const file of files) {
+      const relativePath = file.webkitRelativePath;
+      if (!relativePath) continue;
+
+      const parts = relativePath.split('/');
+      const folderName = parts[0];
+      const fileRelativePath = parts.slice(1).join('/');
+
+      if (!fileMap.has(folderName)) {
+        fileMap.set(folderName, []);
+      }
+      fileMap.get(folderName).push({ file, relativePath: fileRelativePath });
+    }
+
+    // Upload each folder
+    for (const [folderName, folderFiles] of fileMap) {
+      const targetPath =
+        transferCurrentPath === '/'
+          ? `/${folderName}`
+          : `${transferCurrentPath}/${folderName}`;
+      await uploadFolderFiles(folderFiles, targetPath, folderName);
     }
   };
   input.click();
@@ -917,6 +1180,7 @@ window.downloadFileFromDevice = downloadFileFromDevice;
 window.refreshDeviceFiles = refreshDeviceFiles;
 window.selectDeviceFile = selectDeviceFile;
 window.uploadToDevice = uploadToDevice;
+window.uploadFolderToDevice = uploadFolderToDevice;
 window.downloadFromDevice = downloadFromDevice;
 window.deleteFromDevice = deleteFromDevice;
 window.createDeviceDir = createDeviceDir;
@@ -940,3 +1204,9 @@ window.handleDrop = handleDrop;
 window.uploadDroppedFile = uploadDroppedFile;
 window.resetDragState = resetDragState;
 window.showTransferErrorAlert = showTransferErrorAlert;
+// Folder upload helpers
+window.getFileFromEntry = getFileFromEntry;
+window.readDirectoryEntries = readDirectoryEntries;
+window.collectFilesFromEntry = collectFilesFromEntry;
+window.uploadFolderEntry = uploadFolderEntry;
+window.uploadFolderFiles = uploadFolderFiles;

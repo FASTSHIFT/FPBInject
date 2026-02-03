@@ -31,6 +31,8 @@ module.exports = function (w) {
       assertTrue(typeof w.selectDeviceFile === 'function'));
     it('uploadToDevice is a function', () =>
       assertTrue(typeof w.uploadToDevice === 'function'));
+    it('uploadFolderToDevice is a function', () =>
+      assertTrue(typeof w.uploadFolderToDevice === 'function'));
     it('downloadFromDevice is a function', () =>
       assertTrue(typeof w.downloadFromDevice === 'function'));
     it('deleteFromDevice is a function', () =>
@@ -73,6 +75,17 @@ module.exports = function (w) {
       assertTrue(typeof w.resetDragState === 'function'));
     it('formatTransferStats is a function', () =>
       assertTrue(typeof w.formatTransferStats === 'function'));
+    // Folder upload functions
+    it('getFileFromEntry is a function', () =>
+      assertTrue(typeof w.getFileFromEntry === 'function'));
+    it('readDirectoryEntries is a function', () =>
+      assertTrue(typeof w.readDirectoryEntries === 'function'));
+    it('collectFilesFromEntry is a function', () =>
+      assertTrue(typeof w.collectFilesFromEntry === 'function'));
+    it('uploadFolderEntry is a function', () =>
+      assertTrue(typeof w.uploadFolderEntry === 'function'));
+    it('uploadFolderFiles is a function', () =>
+      assertTrue(typeof w.uploadFolderFiles === 'function'));
   });
 
   describe('formatTransferStats Function', () => {
@@ -936,6 +949,131 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
     });
+
+    it('handles folder drop with webkitGetAsEntry', async () => {
+      resetMocks();
+      w.resetDragState();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      // Mock directory entry
+      const mockDirEntry = {
+        isFile: false,
+        isDirectory: true,
+        name: 'testfolder',
+        createReader: () => ({
+          readEntries: (callback) => callback([]),
+        }),
+      };
+
+      const mockEvent = {
+        dataTransfer: {
+          files: [],
+          items: [
+            {
+              webkitGetAsEntry: () => mockDirEntry,
+            },
+          ],
+        },
+      };
+
+      await w.handleDrop(mockEvent);
+
+      browserGlobals.document.getElementById = origGetById;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles file drop with webkitGetAsEntry', async () => {
+      resetMocks();
+      w.resetDragState();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      // Mock file entry
+      const mockFile = { name: 'test.txt', size: 100 };
+      const mockFileEntry = {
+        isFile: true,
+        isDirectory: false,
+        name: 'test.txt',
+        file: (callback) => callback(mockFile),
+      };
+
+      const mockEvent = {
+        dataTransfer: {
+          files: [],
+          items: [
+            {
+              webkitGetAsEntry: () => mockFileEntry,
+            },
+          ],
+        },
+      };
+
+      // This will try to upload, but we don't have full mock setup
+      // Just verify it doesn't throw
+      try {
+        await w.handleDrop(mockEvent);
+      } catch (e) {
+        // Expected - upload will fail without full mock
+      }
+
+      browserGlobals.document.getElementById = origGetById;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('handles null entry from webkitGetAsEntry', async () => {
+      resetMocks();
+      w.resetDragState();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      const dropZone = browserGlobals.document.createElement('div');
+      dropZone.id = 'deviceFileList';
+
+      const origGetById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return dropZone;
+        return origGetById.call(browserGlobals.document, id);
+      };
+
+      const mockEvent = {
+        dataTransfer: {
+          files: [],
+          items: [
+            {
+              webkitGetAsEntry: () => null,
+            },
+          ],
+        },
+      };
+
+      // Should not throw
+      await w.handleDrop(mockEvent);
+
+      browserGlobals.document.getElementById = origGetById;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
   });
 
   describe('uploadDroppedFile Function', () => {
@@ -1032,6 +1170,177 @@ module.exports = function (w) {
       assertFalse(alertMessage.includes('Transfer Statistics'));
 
       global.alert = origAlert;
+    });
+  });
+
+  describe('Folder Upload Functions', () => {
+    it('getFileFromEntry returns promise', () => {
+      const mockEntry = {
+        file: (callback) => callback({ name: 'test.txt', size: 100 }),
+      };
+      const result = w.getFileFromEntry(mockEntry);
+      assertTrue(result instanceof Promise);
+    });
+
+    it('getFileFromEntry resolves with file', async () => {
+      const mockFile = { name: 'test.txt', size: 100 };
+      const mockEntry = {
+        file: (callback) => callback(mockFile),
+      };
+      const result = await w.getFileFromEntry(mockEntry);
+      assertEqual(result.name, 'test.txt');
+    });
+
+    it('getFileFromEntry resolves null on error', async () => {
+      const mockEntry = {
+        file: (success, error) => error(new Error('Read error')),
+      };
+      const result = await w.getFileFromEntry(mockEntry);
+      assertEqual(result, null);
+    });
+
+    it('readDirectoryEntries returns promise', () => {
+      const mockReader = {
+        readEntries: (callback) => callback([]),
+      };
+      const result = w.readDirectoryEntries(mockReader);
+      assertTrue(result instanceof Promise);
+    });
+
+    it('readDirectoryEntries collects all entries', async () => {
+      let callCount = 0;
+      const mockReader = {
+        readEntries: (callback) => {
+          callCount++;
+          if (callCount === 1) {
+            callback([{ name: 'file1.txt' }, { name: 'file2.txt' }]);
+          } else {
+            callback([]);
+          }
+        },
+      };
+      const result = await w.readDirectoryEntries(mockReader);
+      assertEqual(result.length, 2);
+    });
+
+    it('readDirectoryEntries handles error', async () => {
+      const mockReader = {
+        readEntries: (success, error) => error(new Error('Read error')),
+      };
+      const result = await w.readDirectoryEntries(mockReader);
+      assertEqual(result.length, 0);
+    });
+
+    it('collectFilesFromEntry handles file entry', async () => {
+      const mockFile = { name: 'test.txt', size: 100 };
+      const mockEntry = {
+        isFile: true,
+        isDirectory: false,
+        name: 'test.txt',
+        file: (callback) => callback(mockFile),
+      };
+      const result = await w.collectFilesFromEntry(mockEntry);
+      assertEqual(result.length, 1);
+      assertEqual(result[0].relativePath, 'test.txt');
+    });
+
+    it('collectFilesFromEntry handles directory entry', async () => {
+      const mockFile = { name: 'inner.txt', size: 50 };
+      const mockFileEntry = {
+        isFile: true,
+        isDirectory: false,
+        name: 'inner.txt',
+        file: (callback) => callback(mockFile),
+      };
+      const mockDirEntry = {
+        isFile: false,
+        isDirectory: true,
+        name: 'subdir',
+        createReader: () => ({
+          readEntries: (callback) => callback([mockFileEntry]),
+        }),
+      };
+      const result = await w.collectFilesFromEntry(mockDirEntry);
+      assertEqual(result.length, 1);
+      assertEqual(result[0].relativePath, 'subdir/inner.txt');
+    });
+
+    it('collectFilesFromEntry handles nested directories', async () => {
+      const mockFile = { name: 'deep.txt', size: 30 };
+      const mockDeepFileEntry = {
+        isFile: true,
+        isDirectory: false,
+        name: 'deep.txt',
+        file: (callback) => callback(mockFile),
+      };
+      let innerCallCount = 0;
+      const mockInnerDirEntry = {
+        isFile: false,
+        isDirectory: true,
+        name: 'inner',
+        createReader: () => ({
+          readEntries: (callback) => {
+            innerCallCount++;
+            if (innerCallCount === 1) callback([mockDeepFileEntry]);
+            else callback([]);
+          },
+        }),
+      };
+      let outerCallCount = 0;
+      const mockOuterDirEntry = {
+        isFile: false,
+        isDirectory: true,
+        name: 'outer',
+        createReader: () => ({
+          readEntries: (callback) => {
+            outerCallCount++;
+            if (outerCallCount === 1) callback([mockInnerDirEntry]);
+            else callback([]);
+          },
+        }),
+      };
+      const result = await w.collectFilesFromEntry(mockOuterDirEntry);
+      assertEqual(result.length, 1);
+      assertEqual(result[0].relativePath, 'outer/inner/deep.txt');
+    });
+
+    it('collectFilesFromEntry with basePath', async () => {
+      const mockFile = { name: 'test.txt', size: 100 };
+      const mockEntry = {
+        isFile: true,
+        isDirectory: false,
+        name: 'test.txt',
+        file: (callback) => callback(mockFile),
+      };
+      const result = await w.collectFilesFromEntry(mockEntry, 'prefix/');
+      assertEqual(result.length, 1);
+      assertEqual(result[0].relativePath, 'prefix/test.txt');
+    });
+
+    it('uploadFolderToDevice is async function', () => {
+      assertTrue(w.uploadFolderToDevice.constructor.name === 'AsyncFunction');
+    });
+
+    it('uploadFolderToDevice returns early if not connected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.uploadFolderToDevice();
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('uploadFolderFiles is async function', () => {
+      assertTrue(w.uploadFolderFiles.constructor.name === 'AsyncFunction');
+    });
+
+    it('uploadFolderEntry is async function', () => {
+      assertTrue(w.uploadFolderEntry.constructor.name === 'AsyncFunction');
     });
   });
 };
