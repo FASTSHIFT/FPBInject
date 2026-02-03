@@ -535,12 +535,9 @@ class FileTransfer:
                 actual_crc = calc_crc16(data)
                 if expected_crc != actual_crc:
                     if attempt < max_retries:
-                        log_msg = f"[TRANSFER] fread CRC mismatch (0x{expected_crc:04X} vs 0x{actual_crc:04X}) at offset={current_offset}, len={len(data)}, retry {attempt + 1}/{max_retries}"
-                        self._log(log_msg)
-                        logger.warning(
-                            f"fread CRC mismatch (0x{expected_crc:04X} vs 0x{actual_crc:04X}), "
-                            f"retry {attempt + 1}/{max_retries}"
-                        )
+                        log_msg = f"fread CRC mismatch: expected 0x{expected_crc:04X}, got 0x{actual_crc:04X}, at offset={current_offset}, len={len(data)}, retry {attempt + 1}/{max_retries}"
+                        self._log("[TRANSFER] " + log_msg)
+                        logger.warning(log_msg)
                         self.stats["crc_errors"] += 1
                         continue
                     return (
