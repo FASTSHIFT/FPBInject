@@ -281,7 +281,8 @@ def api_transfer_upload():
         def log_callback(msg):
             """Send log messages to frontend via progress queue."""
             progress_queue.put({"type": "log", "message": msg})
-            add_tool_log(msg)
+            # Note: Don't call add_tool_log here to avoid duplicate logs
+            # Frontend will display via SSE, backend tool_log is separate channel
 
         ft = _get_file_transfer(log_callback=log_callback)
         start_time = time.time()
@@ -490,7 +491,8 @@ def api_transfer_download():
         def log_callback(msg):
             """Send log messages to frontend via progress queue."""
             progress_queue.put({"type": "log", "message": msg})
-            add_tool_log(msg)
+            # Note: Don't call add_tool_log here to avoid duplicate logs
+            # Frontend will display via SSE, backend tool_log is separate channel
 
         ft = _get_file_transfer(log_callback=log_callback)
         start_time = time.time()
