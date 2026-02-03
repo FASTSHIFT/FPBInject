@@ -330,7 +330,7 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f'fl --cmd fopen --path "{path}" --mode {mode}'
+        cmd = f'fl -c fopen --path "{path}" --mode {mode}'
         return self._send_cmd(cmd)
 
     def fwrite(self, data: bytes, max_retries: int = None) -> Tuple[bool, str]:
@@ -349,7 +349,7 @@ class FileTransfer:
 
         b64_data = base64.b64encode(data).decode("ascii")
         crc = calc_crc16(data)
-        cmd = f"fl --cmd fwrite --data {b64_data} --crc {crc}"
+        cmd = f"fl -c fwrite --data {b64_data} --crc {crc}"
 
         for attempt in range(max_retries + 1):
             success, response = self._send_cmd(cmd)
@@ -385,7 +385,7 @@ class FileTransfer:
         if max_retries is None:
             max_retries = self.max_retries
 
-        cmd = f"fl --cmd fread --len {size}"
+        cmd = f"fl -c fread --len {size}"
 
         for attempt in range(max_retries + 1):
             success, response = self._send_cmd(cmd)
@@ -465,7 +465,7 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        return self._send_cmd("fl --cmd fclose")
+        return self._send_cmd("fl -c fclose")
 
     def fstat(self, path: str) -> Tuple[bool, Dict[str, Any]]:
         """
@@ -478,7 +478,7 @@ class FileTransfer:
             Tuple of (success, stat_dict)
             stat_dict contains: size, mtime, type
         """
-        cmd = f'fl --cmd fstat --path "{path}"'
+        cmd = f'fl -c fstat --path "{path}"'
         success, response = self._send_cmd(cmd)
 
         if not success:
@@ -508,7 +508,7 @@ class FileTransfer:
             Tuple of (success, entries_list)
             Each entry contains: name, type, size
         """
-        cmd = f'fl --cmd flist --path "{path}"'
+        cmd = f'fl -c flist --path "{path}"'
         success, response = self._send_cmd(cmd, timeout=5.0)
 
         if not success:
@@ -548,7 +548,7 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f'fl --cmd fremove --path "{path}"'
+        cmd = f'fl -c fremove --path "{path}"'
         return self._send_cmd(cmd)
 
     def fmkdir(self, path: str) -> Tuple[bool, str]:
@@ -561,7 +561,7 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f'fl --cmd fmkdir --path "{path}"'
+        cmd = f'fl -c fmkdir --path "{path}"'
         return self._send_cmd(cmd)
 
     def upload(
