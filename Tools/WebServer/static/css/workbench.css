@@ -1273,17 +1273,33 @@ input[type="checkbox"] {
   font-weight: 500;
 }
 
+.progress-bar .progress-info-secondary {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  z-index: 1;
+}
+
 .progress-bar .progress-speed {
   color: var(--vscode-descriptionForeground);
   font-size: 10px;
 }
 
 .progress-bar .progress-eta {
-  position: relative;
   font-size: 10px;
   color: var(--vscode-descriptionForeground);
-  z-index: 1;
-  text-align: right;
+}
+
+.progress-bar .progress-stats {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.progress-bar .progress-loss {
+  font-size: 10px;
 }
 
 /* ===========================

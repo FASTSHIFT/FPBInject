@@ -37,6 +37,7 @@ PERSISTENT_KEYS = [
     "auto_connect",
     "auto_compile",
     "enable_decompile",
+    "transfer_max_retries",
 ]
 
 
@@ -59,6 +60,7 @@ class DeviceState:
         self.chunk_size = 128
         self.tx_chunk_size = 0  # 0 = disabled, >0 = chunk size for TX
         self.tx_chunk_delay = 0.005  # Delay between TX chunks (seconds)
+        self.transfer_max_retries = 10  # Max retries for file transfer
 
         # Patch source settings
         self.patch_source_path = ""  # Current patch source file path

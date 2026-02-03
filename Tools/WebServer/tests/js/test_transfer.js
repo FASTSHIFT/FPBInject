@@ -71,6 +71,50 @@ module.exports = function (w) {
       assertTrue(typeof w.uploadDroppedFile === 'function'));
     it('resetDragState is a function', () =>
       assertTrue(typeof w.resetDragState === 'function'));
+    it('formatTransferStats is a function', () =>
+      assertTrue(typeof w.formatTransferStats === 'function'));
+  });
+
+  describe('formatTransferStats Function', () => {
+    it('returns empty string for null stats', () => {
+      assertEqual(w.formatTransferStats(null), '');
+    });
+
+    it('returns empty string for undefined stats', () => {
+      assertEqual(w.formatTransferStats(undefined), '');
+    });
+
+    it('formats packet loss rate', () => {
+      const stats = { packet_loss_rate: 2.5, retry_count: 0, crc_errors: 0 };
+      const result = w.formatTransferStats(stats);
+      assertTrue(result.includes('loss: 2.5%'));
+    });
+
+    it('formats retry count', () => {
+      const stats = { packet_loss_rate: 0, retry_count: 3, crc_errors: 0 };
+      const result = w.formatTransferStats(stats);
+      assertTrue(result.includes('retries: 3'));
+    });
+
+    it('formats CRC errors', () => {
+      const stats = { packet_loss_rate: 0, retry_count: 0, crc_errors: 2 };
+      const result = w.formatTransferStats(stats);
+      assertTrue(result.includes('CRC errors: 2'));
+    });
+
+    it('formats multiple stats', () => {
+      const stats = { packet_loss_rate: 1.5, retry_count: 2, crc_errors: 1 };
+      const result = w.formatTransferStats(stats);
+      assertTrue(result.includes('loss: 1.5%'));
+      assertTrue(result.includes('retries: 2'));
+      assertTrue(result.includes('CRC errors: 1'));
+    });
+
+    it('returns empty string when all stats are zero', () => {
+      const stats = { packet_loss_rate: 0, retry_count: 0, crc_errors: 0 };
+      const result = w.formatTransferStats(stats);
+      assertEqual(result, '');
+    });
   });
 
   describe('listDeviceDirectory Function', () => {
@@ -281,6 +325,93 @@ module.exports = function (w) {
       assertTrue(progressSpeed.textContent.includes('KB/s'));
       assertTrue(progressEta.textContent.includes('ETA'));
     });
+
+    it('updates packet loss stats when provided', () => {
+      resetMocks();
+      const progressBar =
+        browserGlobals.document.getElementById('transferProgress');
+      const progressStats = browserGlobals.document.createElement('div');
+      progressStats.className = 'progress-stats';
+      progressStats.style.display = 'none';
+      const progressLoss = browserGlobals.document.createElement('span');
+      progressLoss.className = 'progress-loss';
+      progressBar.querySelector = (sel) => {
+        if (sel === '.progress-stats') return progressStats;
+        if (sel === '.progress-loss') return progressLoss;
+        return null;
+      };
+
+      const stats = { packet_loss_rate: 2.5, retry_count: 3 };
+      w.updateTransferProgress(50, '50%', 1024, 30, stats);
+      assertEqual(progressStats.style.display, 'block');
+      assertTrue(progressLoss.textContent.includes('Loss: 2.5%'));
+      assertTrue(progressLoss.textContent.includes('Retries: 3'));
+    });
+
+    it('shows stats even when loss rate and retries are zero', () => {
+      resetMocks();
+      const progressBar =
+        browserGlobals.document.getElementById('transferProgress');
+      const progressStats = browserGlobals.document.createElement('div');
+      progressStats.className = 'progress-stats';
+      progressStats.style.display = 'none';
+      const progressLoss = browserGlobals.document.createElement('span');
+      progressLoss.className = 'progress-loss';
+      progressBar.querySelector = (sel) => {
+        if (sel === '.progress-stats') return progressStats;
+        if (sel === '.progress-loss') return progressLoss;
+        return null;
+      };
+
+      const stats = { packet_loss_rate: 0, retry_count: 0 };
+      w.updateTransferProgress(50, '50%', 1024, 30, stats);
+      assertEqual(progressStats.style.display, 'block');
+      assertTrue(progressLoss.textContent.includes('Loss: 0.0%'));
+    });
+
+    it('shows stats with only loss rate (no retries text)', () => {
+      resetMocks();
+      const progressBar =
+        browserGlobals.document.getElementById('transferProgress');
+      const progressStats = browserGlobals.document.createElement('div');
+      progressStats.className = 'progress-stats';
+      progressStats.style.display = 'none';
+      const progressLoss = browserGlobals.document.createElement('span');
+      progressLoss.className = 'progress-loss';
+      progressBar.querySelector = (sel) => {
+        if (sel === '.progress-stats') return progressStats;
+        if (sel === '.progress-loss') return progressLoss;
+        return null;
+      };
+
+      const stats = { packet_loss_rate: 1.5, retry_count: 0 };
+      w.updateTransferProgress(50, '50%', 1024, 30, stats);
+      assertEqual(progressStats.style.display, 'block');
+      assertTrue(progressLoss.textContent.includes('Loss: 1.5%'));
+      assertFalse(progressLoss.textContent.includes('Retries'));
+    });
+
+    it('shows stats with retries (includes loss rate)', () => {
+      resetMocks();
+      const progressBar =
+        browserGlobals.document.getElementById('transferProgress');
+      const progressStats = browserGlobals.document.createElement('div');
+      progressStats.className = 'progress-stats';
+      progressStats.style.display = 'none';
+      const progressLoss = browserGlobals.document.createElement('span');
+      progressLoss.className = 'progress-loss';
+      progressBar.querySelector = (sel) => {
+        if (sel === '.progress-stats') return progressStats;
+        if (sel === '.progress-loss') return progressLoss;
+        return null;
+      };
+
+      const stats = { packet_loss_rate: 0, retry_count: 5 };
+      w.updateTransferProgress(50, '50%', 1024, 30, stats);
+      assertEqual(progressStats.style.display, 'block');
+      assertTrue(progressLoss.textContent.includes('Loss: 0.0%'));
+      assertTrue(progressLoss.textContent.includes('Retries: 5'));
+    });
   });
 
   describe('hideTransferProgress Function', () => {
@@ -291,6 +422,21 @@ module.exports = function (w) {
       progressBar.style.display = 'block';
       w.hideTransferProgress();
       assertEqual(progressBar.style.display, 'none');
+    });
+
+    it('hides stats display', () => {
+      resetMocks();
+      const progressBar =
+        browserGlobals.document.getElementById('transferProgress');
+      const progressStats = browserGlobals.document.createElement('div');
+      progressStats.className = 'progress-stats';
+      progressStats.style.display = 'block';
+      progressBar.querySelector = (sel) => {
+        if (sel === '.progress-stats') return progressStats;
+        return null;
+      };
+      w.hideTransferProgress();
+      assertEqual(progressStats.style.display, 'none');
     });
 
     it('handles missing progress bar', () => {
@@ -795,6 +941,97 @@ module.exports = function (w) {
   describe('uploadDroppedFile Function', () => {
     it('is async function', () => {
       assertTrue(w.uploadDroppedFile.constructor.name === 'AsyncFunction');
+    });
+  });
+
+  describe('showTransferErrorAlert Function', () => {
+    it('is a function', () => {
+      assertTrue(typeof w.showTransferErrorAlert === 'function');
+    });
+
+    it('shows alert with operation and filename', () => {
+      resetMocks();
+      let alertMessage = null;
+      const origAlert = global.alert;
+      global.alert = (msg) => {
+        alertMessage = msg;
+      };
+
+      w.showTransferErrorAlert('Upload', 'test.txt', 'Connection lost');
+      assertTrue(alertMessage !== null);
+      assertTrue(alertMessage.includes('Upload'));
+      assertTrue(alertMessage.includes('test.txt'));
+      assertTrue(alertMessage.includes('Connection lost'));
+
+      global.alert = origAlert;
+    });
+
+    it('includes stats in alert message when provided', () => {
+      resetMocks();
+      let alertMessage = null;
+      const origAlert = global.alert;
+      global.alert = (msg) => {
+        alertMessage = msg;
+      };
+
+      const stats = {
+        retry_count: 5,
+        crc_errors: 2,
+        timeout_errors: 1,
+        packet_loss_rate: 3.5,
+      };
+      w.showTransferErrorAlert(
+        'Download',
+        'data.bin',
+        'Max retries exceeded',
+        stats,
+      );
+      assertTrue(alertMessage !== null);
+      assertTrue(alertMessage.includes('Download'));
+      assertTrue(alertMessage.includes('data.bin'));
+      assertTrue(alertMessage.includes('Retries: 5'));
+      assertTrue(alertMessage.includes('CRC errors: 2'));
+      assertTrue(alertMessage.includes('Timeout errors: 1'));
+      assertTrue(alertMessage.includes('Packet loss: 3.5%'));
+
+      global.alert = origAlert;
+    });
+
+    it('handles stats with zero values', () => {
+      resetMocks();
+      let alertMessage = null;
+      const origAlert = global.alert;
+      global.alert = (msg) => {
+        alertMessage = msg;
+      };
+
+      const stats = {
+        retry_count: 0,
+        crc_errors: 0,
+        timeout_errors: 0,
+        packet_loss_rate: 0,
+      };
+      w.showTransferErrorAlert('Upload', 'file.txt', 'Error', stats);
+      assertTrue(alertMessage !== null);
+      // Should not include stats section when all are zero
+      assertFalse(alertMessage.includes('Transfer Statistics'));
+
+      global.alert = origAlert;
+    });
+
+    it('handles null stats', () => {
+      resetMocks();
+      let alertMessage = null;
+      const origAlert = global.alert;
+      global.alert = (msg) => {
+        alertMessage = msg;
+      };
+
+      w.showTransferErrorAlert('Upload', 'file.txt', 'Error', null);
+      assertTrue(alertMessage !== null);
+      assertFalse(alertMessage.includes('Transfer Statistics'));
+
+      global.alert = origAlert;
     });
   });
 };

@@ -52,6 +52,9 @@ async function loadConfig() {
       document.getElementById('txChunkDelay').value = Math.round(
         data.tx_chunk_delay * 1000,
       );
+    if (data.transfer_max_retries !== undefined)
+      document.getElementById('transferMaxRetries').value =
+        data.transfer_max_retries;
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
     if (data.auto_compile !== undefined)
       document.getElementById('autoCompile').checked = data.auto_compile;
@@ -86,6 +89,8 @@ async function saveConfig(silent = false) {
     tx_chunk_size: parseInt(document.getElementById('txChunkSize').value) || 0,
     tx_chunk_delay:
       (parseInt(document.getElementById('txChunkDelay').value) || 5) / 1000,
+    transfer_max_retries:
+      parseInt(document.getElementById('transferMaxRetries').value) || 3,
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile').checked,
     enable_decompile: document.getElementById('enableDecompile').checked,
@@ -123,6 +128,7 @@ function setupAutoSave() {
     'chunkSize',
     'txChunkSize',
     'txChunkDelay',
+    'transferMaxRetries',
   ];
   selectInputs.forEach((id) => {
     const el = document.getElementById(id);

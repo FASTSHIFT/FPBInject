@@ -411,11 +411,16 @@ class TestFileTransferUpload(unittest.TestCase):
 
     def test_upload_write_failure(self):
         """Test upload with write failure."""
+        # Set max_retries to 3 for this test
+        self.ft.max_retries = 3
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[OK] FOPEN /test.txt mode=w"),
             (False, "[ERR] Disk full"),  # fwrite attempt 1
+            (True, "[OK] FSEEK"),  # fseek before retry 1
             (False, "[ERR] Disk full"),  # fwrite retry 1
+            (True, "[OK] FSEEK"),  # fseek before retry 2
             (False, "[ERR] Disk full"),  # fwrite retry 2
+            (True, "[OK] FSEEK"),  # fseek before retry 3
             (False, "[ERR] Disk full"),  # fwrite retry 3
             (True, "[OK] FCLOSE"),
         ]
@@ -530,12 +535,17 @@ class TestFileTransferDownload(unittest.TestCase):
 
     def test_download_read_failure(self):
         """Test download with read failure."""
+        # Set max_retries to 3 for this test
+        self.ft.max_retries = 3
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[OK] FSTAT /test.txt size=100 mtime=123 type=file"),
             (True, "[OK] FOPEN /test.txt mode=r"),
             (False, "[ERR] Read error"),  # fread attempt 1
+            (True, "[OK] FSEEK"),  # fseek before retry 1
             (False, "[ERR] Read error"),  # fread retry 1
+            (True, "[OK] FSEEK"),  # fseek before retry 2
             (False, "[ERR] Read error"),  # fread retry 2
+            (True, "[OK] FSEEK"),  # fseek before retry 3
             (False, "[ERR] Read error"),  # fread retry 3
             (True, "[OK] FCLOSE"),
         ]
@@ -668,11 +678,12 @@ class TestFileTransferRetry(unittest.TestCase):
         self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 4)  # 1 + 3 retries
 
     def test_fwrite_no_retry_on_other_error(self):
-        """Test fwrite does not retry on non-CRC errors."""
+        """Test fwrite retries on non-CRC errors too (all errors are retried)."""
         self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Disk full")
         success, msg = self.ft.fwrite(b"test data!")
         self.assertFalse(success)
-        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 1)
+        # All errors are retried: 1 initial + 3 retries = 4 calls
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 4)
 
     def test_fread_retry_on_crc_mismatch(self):
         """Test fread retries on CRC mismatch."""
@@ -791,6 +802,426 @@ class TestFileTransferRetry(unittest.TestCase):
         success, data, msg = self.ft.fread(256, max_retries=1)
         self.assertFalse(success)
         self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)  # 1 + 1 retry
+
+
+class TestFileTransferStats(unittest.TestCase):
+    """Tests for FileTransfer statistics functionality."""
+
+    def setUp(self):
+        """Set up mock FPB and FileTransfer."""
+        self.mock_fpb = Mock()
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
+
+    def test_initial_stats(self):
+        """Test initial stats are all zero."""
+        stats = self.ft.stats
+        self.assertEqual(stats["total_chunks"], 0)
+        self.assertEqual(stats["retry_count"], 0)
+        self.assertEqual(stats["crc_errors"], 0)
+        self.assertEqual(stats["timeout_errors"], 0)
+        self.assertEqual(stats["other_errors"], 0)
+
+    def test_reset_stats(self):
+        """Test reset_stats clears all counters."""
+        # Modify stats
+        self.ft.stats["total_chunks"] = 10
+        self.ft.stats["retry_count"] = 5
+        self.ft.stats["crc_errors"] = 2
+        self.ft.stats["timeout_errors"] = 1
+        self.ft.stats["other_errors"] = 1
+
+        # Reset
+        self.ft.reset_stats()
+
+        # Verify all reset to zero
+        self.assertEqual(self.ft.stats["total_chunks"], 0)
+        self.assertEqual(self.ft.stats["retry_count"], 0)
+        self.assertEqual(self.ft.stats["crc_errors"], 0)
+        self.assertEqual(self.ft.stats["timeout_errors"], 0)
+        self.assertEqual(self.ft.stats["other_errors"], 0)
+
+    def test_get_stats_returns_copy(self):
+        """Test get_stats returns a copy of stats."""
+        self.ft.stats["total_chunks"] = 5
+        stats = self.ft.get_stats()
+        stats["total_chunks"] = 100
+        # Original should be unchanged
+        self.assertEqual(self.ft.stats["total_chunks"], 5)
+
+    def test_get_stats_includes_packet_loss_rate(self):
+        """Test get_stats calculates packet_loss_rate."""
+        self.ft.stats["total_chunks"] = 10
+        self.ft.stats["retry_count"] = 2
+        stats = self.ft.get_stats()
+        # packet_loss_rate = retries / (total + retries) * 100 = 2 / 12 * 100 = 16.67
+        self.assertIn("packet_loss_rate", stats)
+        self.assertAlmostEqual(stats["packet_loss_rate"], 16.67, places=2)
+
+    def test_get_stats_zero_total_chunks(self):
+        """Test get_stats with zero total_chunks returns 0 packet_loss_rate."""
+        self.ft.stats["total_chunks"] = 0
+        self.ft.stats["retry_count"] = 0
+        stats = self.ft.get_stats()
+        self.assertEqual(stats["packet_loss_rate"], 0.0)
+
+    def test_fwrite_increments_total_chunks(self):
+        """Test fwrite increments total_chunks counter."""
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FWRITE 10 bytes")
+        self.ft.fwrite(b"test data!")
+        self.assertEqual(self.ft.stats["total_chunks"], 1)
+
+    def test_fread_increments_total_chunks(self):
+        """Test fread increments total_chunks counter."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+        )
+        self.ft.fread(256)
+        self.assertEqual(self.ft.stats["total_chunks"], 1)
+
+    def test_fwrite_retry_increments_stats(self):
+        """Test fwrite retry increments retry_count and crc_errors."""
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] CRC mismatch: 0x1234 != 0x5678"),
+            (True, "[OK] FWRITE 10 bytes"),
+        ]
+        self.ft.fwrite(b"test data!")
+        self.assertEqual(self.ft.stats["total_chunks"], 1)
+        self.assertEqual(self.ft.stats["retry_count"], 1)
+        self.assertEqual(self.ft.stats["crc_errors"], 1)
+
+    def test_fread_retry_increments_timeout_errors(self):
+        """Test fread retry on failure increments timeout_errors."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] Timeout"),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        self.ft.fread(256)
+        self.assertEqual(self.ft.stats["retry_count"], 1)
+        self.assertEqual(self.ft.stats["timeout_errors"], 1)
+
+    def test_fread_retry_increments_crc_errors(self):
+        """Test fread retry on CRC mismatch increments crc_errors."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        correct_crc = calc_crc16(test_data)
+        wrong_crc = 0x1234
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+            ),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{correct_crc:04X} data={b64_data}",
+            ),
+        ]
+        self.ft.fread(256)
+        self.assertEqual(self.ft.stats["retry_count"], 1)
+        self.assertEqual(self.ft.stats["crc_errors"], 1)
+
+    def test_fread_retry_increments_other_errors(self):
+        """Test fread retry on invalid response increments other_errors."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[OK] Invalid response format"),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        self.ft.fread(256)
+        self.assertEqual(self.ft.stats["retry_count"], 1)
+        self.assertEqual(self.ft.stats["other_errors"], 1)
+
+    def test_fwrite_other_error_increments_stats(self):
+        """Test fwrite with non-CRC error increments other_errors."""
+        # Set max_retries to 3 for this test
+        self.ft.max_retries = 3
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] Some other error"),
+            (False, "[ERR] Some other error"),
+            (False, "[ERR] Some other error"),
+            (False, "[ERR] Some other error"),
+        ]
+        self.ft.fwrite(b"test")
+        self.assertEqual(self.ft.stats["other_errors"], 3)  # 3 retries
+
+
+class TestFileTransferSeek(unittest.TestCase):
+    """Tests for FileTransfer fseek functionality."""
+
+    def setUp(self):
+        """Set up mock FPB and FileTransfer."""
+        self.mock_fpb = Mock()
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] FSEEK"))
+        self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
+
+    def test_fseek_success(self):
+        """Test successful fseek."""
+        success, msg = self.ft.fseek(100, 0)
+        self.assertTrue(success)
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("-a 100", call_args)
+
+    def test_fseek_from_current(self):
+        """Test fseek from current position (whence=1)."""
+        success, msg = self.ft.fseek(50, 1)
+        self.assertTrue(success)
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("-a 50", call_args)
+
+    def test_fseek_from_end(self):
+        """Test fseek from end (whence=2)."""
+        success, msg = self.ft.fseek(-10, 2)
+        self.assertTrue(success)
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("-a -10", call_args)
+
+    def test_fseek_failure(self):
+        """Test fseek failure."""
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Seek failed")
+        success, msg = self.ft.fseek(100, 0)
+        self.assertFalse(success)
+
+    def test_fseek_default_whence(self):
+        """Test fseek with default whence (SEEK_SET)."""
+        success, msg = self.ft.fseek(200)
+        self.assertTrue(success)
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("-a 200", call_args)
+
+    def test_fwrite_with_seek_on_retry(self):
+        """Test fwrite seeks to correct position on retry."""
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] CRC mismatch"),  # First attempt fails
+            (True, "[OK] FSEEK"),  # Seek on retry
+            (True, "[OK] FWRITE 10 bytes"),  # Retry succeeds
+        ]
+        success, msg = self.ft.fwrite(b"test data!", current_offset=100)
+        self.assertTrue(success)
+        # Check that fseek was called with correct offset
+        calls = self.mock_fpb.send_fl_cmd.call_args_list
+        self.assertEqual(len(calls), 3)
+        self.assertIn("fseek", calls[1][0][0])
+        self.assertIn("-a 100", calls[1][0][0])
+
+    def test_fread_with_seek_on_retry(self):
+        """Test fread seeks to correct position on retry."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] Timeout"),  # First attempt fails
+            (True, "[OK] FSEEK"),  # Seek on retry
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        success, data, msg = self.ft.fread(256, current_offset=200)
+        self.assertTrue(success)
+        self.assertEqual(data, test_data)
+        # Check that fseek was called with correct offset
+        calls = self.mock_fpb.send_fl_cmd.call_args_list
+        self.assertEqual(len(calls), 3)
+        self.assertIn("fseek", calls[1][0][0])
+        self.assertIn("-a 200", calls[1][0][0])
+
+    def test_fwrite_no_seek_without_offset(self):
+        """Test fwrite does not seek when current_offset is None."""
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] CRC mismatch"),
+            (True, "[OK] FWRITE 10 bytes"),
+        ]
+        success, msg = self.ft.fwrite(b"test data!")  # No current_offset
+        self.assertTrue(success)
+        # Should only have 2 calls (no fseek)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+        # Neither call should be fseek
+        for call in self.mock_fpb.send_fl_cmd.call_args_list:
+            self.assertNotIn("fseek", call[0][0])
+
+    def test_fread_no_seek_without_offset(self):
+        """Test fread does not seek when current_offset is None."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] Timeout"),
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        success, data, msg = self.ft.fread(256)  # No current_offset
+        self.assertTrue(success)
+        # Should only have 2 calls (no fseek)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+
+
+class TestFileTransferMaxRetries(unittest.TestCase):
+    """Tests for FileTransfer max_retries configuration."""
+
+    def setUp(self):
+        """Set up mock FPB."""
+        self.mock_fpb = Mock()
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+
+    def test_default_max_retries(self):
+        """Test default max_retries value."""
+        ft = FileTransfer(self.mock_fpb)
+        self.assertEqual(ft.max_retries, FileTransfer.DEFAULT_MAX_RETRIES)
+
+    def test_custom_max_retries(self):
+        """Test custom max_retries in constructor."""
+        ft = FileTransfer(self.mock_fpb, max_retries=5)
+        self.assertEqual(ft.max_retries, 5)
+
+    def test_max_retries_used_in_fwrite(self):
+        """Test max_retries is used in fwrite."""
+        ft = FileTransfer(self.mock_fpb, max_retries=2)
+        self.mock_fpb.send_fl_cmd.return_value = (
+            False,
+            "[ERR] CRC mismatch",
+        )
+        ft.fwrite(b"test")
+        # 1 initial + 2 retries = 3 calls
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 3)
+
+    def test_max_retries_used_in_fread(self):
+        """Test max_retries is used in fread."""
+        ft = FileTransfer(self.mock_fpb, max_retries=2)
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Timeout")
+        ft.fread(256)
+        # 1 initial + 2 retries = 3 calls
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 3)
+
+
+class TestFileTransferLogCallback(unittest.TestCase):
+    """Tests for FileTransfer log_callback functionality."""
+
+    def setUp(self):
+        """Set up mock FPB."""
+        self.mock_fpb = Mock()
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+
+    def test_log_callback_none_by_default(self):
+        """Test log_callback is None by default."""
+        ft = FileTransfer(self.mock_fpb)
+        self.assertIsNone(ft.log_callback)
+
+    def test_log_callback_set_in_constructor(self):
+        """Test log_callback can be set in constructor."""
+        callback = Mock()
+        ft = FileTransfer(self.mock_fpb, log_callback=callback)
+        self.assertEqual(ft.log_callback, callback)
+
+    def test_log_method_calls_callback(self):
+        """Test _log method calls log_callback."""
+        callback = Mock()
+        ft = FileTransfer(self.mock_fpb, log_callback=callback)
+        ft._log("Test message")
+        callback.assert_called_once_with("Test message")
+
+    def test_log_method_without_callback(self):
+        """Test _log method works without callback."""
+        ft = FileTransfer(self.mock_fpb)
+        # Should not raise
+        ft._log("Test message")
+
+    def test_log_callback_called_on_fwrite_retry(self):
+        """Test log_callback is called during fwrite retry."""
+        callback = Mock()
+        ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] CRC mismatch"),
+            (True, "[OK] FSEEK"),  # fseek on retry
+            (True, "[OK] FWRITE 10 bytes"),
+        ]
+        ft.fwrite(b"test data!", current_offset=100)
+        # Should have logged the CRC mismatch
+        self.assertTrue(callback.called)
+        log_messages = [call[0][0] for call in callback.call_args_list]
+        self.assertTrue(any("CRC mismatch" in msg for msg in log_messages))
+
+    def test_log_callback_called_on_fread_retry(self):
+        """Test log_callback is called during fread retry."""
+        callback = Mock()
+        ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+        wrong_crc = 0x1234
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+            ),
+            (True, "[OK] FSEEK"),  # fseek on retry
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        ft.fread(256, current_offset=200)
+        # Should have logged the CRC mismatch
+        self.assertTrue(callback.called)
+        log_messages = [call[0][0] for call in callback.call_args_list]
+        self.assertTrue(any("CRC mismatch" in msg for msg in log_messages))
+
+    def test_log_callback_includes_offset_and_length(self):
+        """Test log messages include offset and length info."""
+        callback = Mock()
+        ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] CRC mismatch"),
+            (True, "[OK] FSEEK"),  # fseek on retry
+            (True, "[OK] FWRITE 10 bytes"),
+        ]
+        ft.fwrite(b"test data!", current_offset=512)
+        # Check log message contains offset info
+        log_messages = [call[0][0] for call in callback.call_args_list]
+        self.assertTrue(any("offset=512" in msg for msg in log_messages))
+
+    def test_log_callback_on_fread_timeout(self):
+        """Test log_callback is called on fread timeout retry."""
+        callback = Mock()
+        ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = calc_crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (False, "[ERR] Timeout"),
+            (True, "[OK] FSEEK"),  # fseek on retry
+            (
+                True,
+                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+        ]
+        ft.fread(256, current_offset=100)
+        # Should have logged the timeout
+        self.assertTrue(callback.called)
+        log_messages = [call[0][0] for call in callback.call_args_list]
+        self.assertTrue(any("timeout" in msg.lower() for msg in log_messages))
 
 
 if __name__ == "__main__":

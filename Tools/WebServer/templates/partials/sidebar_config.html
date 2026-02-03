@@ -126,6 +126,25 @@
           <span style="font-size: 10px; opacity: 0.6; margin-left: 4px">ms</span>
         </div>
         <div class="flex-row">
+          <label
+            for="transferMaxRetries"
+            style="font-size: 11px; width: 80px"
+            title="Maximum retry attempts for file transfer when CRC mismatch or transmission error occurs."
+            >Max Retries</label
+          >
+          <input
+            type="number"
+            id="transferMaxRetries"
+            class="vscode-input"
+            value="3"
+            min="0"
+            max="10"
+            step="1"
+            style="width: 60px"
+          />
+          <span style="font-size: 10px; opacity: 0.6; margin-left: 4px">times</span>
+        </div>
+        <div class="flex-row">
           <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
           <label for="autoCompile" style="font-size: 11px">Auto Inject on Save</label>
         </div>

@@ -59,6 +59,7 @@ class DeviceState:
         self.chunk_size = 128  # Default chunk size for upload
         self.tx_chunk_size = 0  # 0 = disabled, >0 = chunk size for TX
         self.tx_chunk_delay = 0.005  # Delay between TX chunks (seconds)
+        self.transfer_max_retries = 10  # Max retries for file transfer
 
     def connect(self, port: str, baudrate: int = 115200) -> bool:
         """Connect to device via serial port"""
@@ -94,6 +95,7 @@ class FPBCLI:
         compile_commands: Optional[str] = None,
         tx_chunk_size: int = 0,
         tx_chunk_delay: float = 0.005,
+        max_retries: int = 10,
     ):
         self.verbose = verbose
         self.setup_logging()
@@ -103,6 +105,7 @@ class FPBCLI:
         self._device_state.compile_commands_path = compile_commands
         self._device_state.tx_chunk_size = tx_chunk_size
         self._device_state.tx_chunk_delay = tx_chunk_delay
+        self._device_state.transfer_max_retries = max_retries
         self._fpb = FPBInject(self._device_state)
 
         # Connect to serial if port specified
@@ -538,6 +541,12 @@ Examples:
         default=0.005,
         help="Delay between TX chunks in seconds (default: 0.005). Only used when --tx-chunk-size > 0.",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=10,
+        help="Maximum retry attempts for file transfer operations (default: 10).",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -652,6 +661,7 @@ Examples:
         compile_commands=args.compile_commands,
         tx_chunk_size=args.tx_chunk_size,
         tx_chunk_delay=args.tx_chunk_delay,
+        max_retries=args.max_retries,
     )
 
     try:

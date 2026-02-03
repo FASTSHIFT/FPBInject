@@ -28,6 +28,46 @@ module.exports = function (w) {
       assertTrue(typeof w.handleDisconnected === 'function'));
     it('checkConnectionStatus is a function', () =>
       assertTrue(typeof w.checkConnectionStatus === 'function'));
+    it('getConnectionMaxRetries is a function', () =>
+      assertTrue(typeof w.getConnectionMaxRetries === 'function'));
+  });
+
+  describe('getConnectionMaxRetries Function', () => {
+    it('returns default value when no config', () => {
+      resetMocks();
+      const origConfig = w.FPBState.config;
+      w.FPBState.config = null;
+      const result = w.getConnectionMaxRetries();
+      assertEqual(result, 10);
+      w.FPBState.config = origConfig;
+    });
+
+    it('returns default value when config has no transferMaxRetries', () => {
+      resetMocks();
+      const origConfig = w.FPBState.config;
+      w.FPBState.config = {};
+      const result = w.getConnectionMaxRetries();
+      assertEqual(result, 10);
+      w.FPBState.config = origConfig;
+    });
+
+    it('returns config value when set', () => {
+      resetMocks();
+      const origConfig = w.FPBState.config;
+      w.FPBState.config = { transferMaxRetries: 5 };
+      const result = w.getConnectionMaxRetries();
+      assertEqual(result, 5);
+      w.FPBState.config = origConfig;
+    });
+
+    it('returns default when transferMaxRetries is not a number', () => {
+      resetMocks();
+      const origConfig = w.FPBState.config;
+      w.FPBState.config = { transferMaxRetries: 'invalid' };
+      const result = w.getConnectionMaxRetries();
+      assertEqual(result, 10);
+      w.FPBState.config = origConfig;
+    });
   });
 
   describe('handleConnected Function', () => {

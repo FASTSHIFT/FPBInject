@@ -163,7 +163,11 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
                       data.percent,
                       data.speed,
                       data.eta,
+                      data.stats,
                     );
+                  } else if (data.type === 'log') {
+                    // Display transfer log in OUTPUT
+                    writeToOutput(data.message, 'warning');
                   } else if (data.type === 'result') {
                     transferAbortController = null;
                     resolve(data);
@@ -250,7 +254,11 @@ async function downloadFileFromDevice(remotePath, onProgress) {
                       data.percent,
                       data.speed,
                       data.eta,
+                      data.stats,
                     );
+                  } else if (data.type === 'log') {
+                    // Display transfer log in OUTPUT
+                    writeToOutput(data.message, 'warning');
                   } else if (data.type === 'result') {
                     if (data.success && data.data) {
                       // Decode base64 to blob
@@ -458,12 +466,14 @@ function formatETA(seconds) {
 /**
  * Update transfer progress bar
  */
-function updateTransferProgress(percent, text, speed, eta) {
+function updateTransferProgress(percent, text, speed, eta, stats) {
   const progressBar = document.getElementById('transferProgress');
   const progressFill = progressBar?.querySelector('.progress-fill');
   const progressText = progressBar?.querySelector('.progress-text');
   const progressSpeed = progressBar?.querySelector('.progress-speed');
   const progressEta = progressBar?.querySelector('.progress-eta');
+  const progressStats = progressBar?.querySelector('.progress-stats');
+  const progressLoss = progressBar?.querySelector('.progress-loss');
 
   if (progressBar) {
     progressBar.style.display = 'block';
@@ -480,6 +490,15 @@ function updateTransferProgress(percent, text, speed, eta) {
   if (progressEta && eta !== undefined) {
     progressEta.textContent = `ETA: ${formatETA(eta)}`;
   }
+  // Update packet loss stats - always show
+  if (progressStats && progressLoss && stats) {
+    const lossRate = stats.packet_loss_rate || 0;
+    const retries = stats.retry_count || 0;
+    progressStats.style.display = 'block';
+    let lossText = [`Loss: ${lossRate.toFixed(1)}%`];
+    if (retries > 0) lossText.push(`Retries: ${retries}`);
+    progressLoss.textContent = lossText.join(' | ');
+  }
 }
 
 /**
@@ -489,6 +508,11 @@ function hideTransferProgress() {
   const progressBar = document.getElementById('transferProgress');
   if (progressBar) {
     progressBar.style.display = 'none';
+    // Also hide stats
+    const progressStats = progressBar.querySelector('.progress-stats');
+    if (progressStats) {
+      progressStats.style.display = 'none';
+    }
   }
   // Reset control buttons
   updateTransferControls(false);
@@ -634,6 +658,48 @@ async function handleDrop(e) {
 }
 
 /**
+ * Format transfer stats for display
+ */
+function formatTransferStats(stats) {
+  if (!stats) return '';
+  const parts = [];
+  if (stats.packet_loss_rate !== undefined && stats.packet_loss_rate > 0) {
+    parts.push(`loss: ${stats.packet_loss_rate}%`);
+  }
+  if (stats.retry_count > 0) {
+    parts.push(`retries: ${stats.retry_count}`);
+  }
+  if (stats.crc_errors > 0) {
+    parts.push(`CRC errors: ${stats.crc_errors}`);
+  }
+  return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
+}
+
+/**
+ * Show transfer error alert dialog
+ * @param {string} operation - 'Upload' or 'Download'
+ * @param {string} fileName - File name
+ * @param {string} error - Error message
+ * @param {object} stats - Transfer statistics (optional)
+ */
+function showTransferErrorAlert(operation, fileName, error, stats) {
+  let message = `${operation} failed for "${fileName}":\n\n${error}`;
+  if (stats) {
+    const statParts = [];
+    if (stats.retry_count > 0) statParts.push(`Retries: ${stats.retry_count}`);
+    if (stats.crc_errors > 0) statParts.push(`CRC errors: ${stats.crc_errors}`);
+    if (stats.timeout_errors > 0)
+      statParts.push(`Timeout errors: ${stats.timeout_errors}`);
+    if (stats.packet_loss_rate > 0)
+      statParts.push(`Packet loss: ${stats.packet_loss_rate}%`);
+    if (statParts.length > 0) {
+      message += `\n\nTransfer Statistics:\n${statParts.join('\n')}`;
+    }
+  }
+  alert(message);
+}
+
+/**
  * Upload a dropped file
  */
 async function uploadDroppedFile(file) {
@@ -653,12 +719,13 @@ async function uploadDroppedFile(file) {
     const result = await uploadFileToDevice(
       file,
       remotePath,
-      (uploaded, total, percent, speed, eta) => {
+      (uploaded, total, percent, speed, eta, stats) => {
         updateTransferProgress(
           percent,
           `${percent}% (${formatFileSize(uploaded)}/${formatFileSize(total)})`,
           speed,
           eta,
+          stats,
         );
       },
     );
@@ -671,17 +738,20 @@ async function uploadDroppedFile(file) {
       const speedStr = result.avg_speed
         ? ` (${formatSpeed(result.avg_speed)})`
         : '';
+      const statsStr = formatTransferStats(result.stats);
       writeToOutput(
-        `[SUCCESS] Upload complete: ${remotePath}${speedStr}`,
+        `[SUCCESS] Upload complete: ${remotePath}${speedStr}${statsStr}`,
         'success',
       );
       refreshDeviceFiles();
     } else {
       writeToOutput(`[ERROR] Upload failed: ${result.error}`, 'error');
+      showTransferErrorAlert('Upload', file.name, result.error, result.stats);
     }
   } catch (e) {
     hideTransferProgress();
     writeToOutput(`[ERROR] Upload error: ${e}`, 'error');
+    showTransferErrorAlert('Upload', file.name, e.message || String(e));
   }
 }
 
@@ -735,12 +805,13 @@ async function downloadFromDevice() {
   try {
     const result = await downloadFileFromDevice(
       remotePath,
-      (downloaded, total, percent, speed, eta) => {
+      (downloaded, total, percent, speed, eta, stats) => {
         updateTransferProgress(
           percent,
           `${percent}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
           speed,
           eta,
+          stats,
         );
       },
     );
@@ -761,16 +832,19 @@ async function downloadFromDevice() {
       const speedStr = result.avg_speed
         ? ` (${formatSpeed(result.avg_speed)})`
         : '';
+      const statsStr = formatTransferStats(result.stats);
       writeToOutput(
-        `[SUCCESS] Download complete: ${fileName}${speedStr}`,
+        `[SUCCESS] Download complete: ${fileName}${speedStr}${statsStr}`,
         'success',
       );
     } else {
       writeToOutput(`[ERROR] Download failed: ${result.error}`, 'error');
+      showTransferErrorAlert('Download', fileName, result.error, result.stats);
     }
   } catch (e) {
     hideTransferProgress();
     writeToOutput(`[ERROR] Download error: ${e}`, 'error');
+    showTransferErrorAlert('Download', fileName, e.message || String(e));
   }
 }
 
@@ -847,6 +921,7 @@ window.updateTransferProgress = updateTransferProgress;
 window.hideTransferProgress = hideTransferProgress;
 window.formatSpeed = formatSpeed;
 window.formatETA = formatETA;
+window.formatTransferStats = formatTransferStats;
 // Cancel
 window.cancelTransfer = cancelTransfer;
 window.isTransferInProgress = isTransferInProgress;
@@ -861,3 +936,4 @@ window.handleDragOver = handleDragOver;
 window.handleDrop = handleDrop;
 window.uploadDroppedFile = uploadDroppedFile;
 window.resetDragState = resetDragState;
+window.showTransferErrorAlert = showTransferErrorAlert;

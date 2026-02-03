@@ -59,12 +59,19 @@ def _run_serial_op(func, timeout=10.0):
     return result["data"]
 
 
-def _get_file_transfer():
+def _get_file_transfer(log_callback=None):
     """Get FileTransfer instance."""
     _, get_fpb_inject = _get_helpers()
     fpb = get_fpb_inject()
     chunk_size = state.device.chunk_size or 256
-    return FileTransfer(fpb, chunk_size=chunk_size)
+    max_retries = (
+        state.device.transfer_max_retries
+        if hasattr(state.device, "transfer_max_retries")
+        else 10
+    )
+    return FileTransfer(
+        fpb, chunk_size=chunk_size, max_retries=max_retries, log_callback=log_callback
+    )
 
 
 @bp.route("/transfer/cancel", methods=["POST"])
@@ -269,7 +276,12 @@ def api_transfer_upload():
     progress_queue = queue.Queue()
 
     def upload_task():
-        ft = _get_file_transfer()
+        def log_callback(msg):
+            """Send log messages to frontend via progress queue."""
+            progress_queue.put({"type": "log", "message": msg})
+            add_tool_log(msg)
+
+        ft = _get_file_transfer(log_callback=log_callback)
         start_time = time.time()
         last_time = start_time
         last_bytes = 0
@@ -308,6 +320,7 @@ def api_transfer_upload():
                     "speed": round(speed, 1),
                     "eta": round(eta, 1),
                     "elapsed": round(elapsed, 1),
+                    "stats": ft.get_stats(),
                 }
             )
 
@@ -330,6 +343,7 @@ def api_transfer_upload():
 
                 uploaded = 0
                 chunk_size = ft.chunk_size
+                ft.reset_stats()  # Reset stats before transfer
                 while uploaded < total_size:
                     # Check cancel before each chunk
                     if _transfer_cancelled.is_set():
@@ -347,7 +361,7 @@ def api_transfer_upload():
                         return
 
                     chunk = file_data[uploaded : uploaded + chunk_size]
-                    success, msg = ft.fwrite(chunk)
+                    success, msg = ft.fwrite(chunk, current_offset=uploaded)
                     if not success:
                         ft.fclose()
                         add_tool_log(f"[ERROR] Upload write failed: {msg}")
@@ -370,10 +384,12 @@ def api_transfer_upload():
                 success, msg = ft.fclose()
                 elapsed = time.time() - start_time
                 avg_speed = total_size / elapsed if elapsed > 0 else 0
+                transfer_stats = ft.get_stats()
 
                 add_tool_log(
                     f"[SUCCESS] Upload complete: {remote_path} "
-                    f"({total_size} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
+                    f"({total_size} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s, "
+                    f"loss rate: {transfer_stats['packet_loss_rate']}%)"
                 )
                 progress_queue.put(
                     {
@@ -382,6 +398,7 @@ def api_transfer_upload():
                         "message": f"Uploaded {total_size} bytes",
                         "elapsed": round(elapsed, 2),
                         "avg_speed": round(avg_speed, 1),
+                        "stats": transfer_stats,
                     }
                 )
             finally:
@@ -447,7 +464,12 @@ def api_transfer_download():
     progress_queue = queue.Queue()
 
     def download_task():
-        ft = _get_file_transfer()
+        def log_callback(msg):
+            """Send log messages to frontend via progress queue."""
+            progress_queue.put({"type": "log", "message": msg})
+            add_tool_log(msg)
+
+        ft = _get_file_transfer(log_callback=log_callback)
         start_time = time.time()
         last_time = start_time
         last_bytes = 0
@@ -486,6 +508,7 @@ def api_transfer_download():
                     "speed": round(speed, 1),
                     "eta": round(eta, 1),
                     "elapsed": round(elapsed, 1),
+                    "stats": ft.get_stats(),
                 }
             )
 
@@ -534,6 +557,8 @@ def api_transfer_download():
 
                 file_data = b""
                 chunk_size = ft.chunk_size
+                current_offset = 0
+                ft.reset_stats()  # Reset stats before transfer
                 while True:
                     # Check cancel before each chunk
                     if _transfer_cancelled.is_set():
@@ -550,7 +575,9 @@ def api_transfer_download():
                         )
                         return
 
-                    success, chunk, msg = ft.fread(chunk_size)
+                    success, chunk, msg = ft.fread(
+                        chunk_size, current_offset=current_offset
+                    )
                     if not success:
                         ft.fclose()
                         add_tool_log(f"[ERROR] Download read failed: {msg}")
@@ -567,6 +594,7 @@ def api_transfer_download():
                         break
 
                     file_data += chunk
+                    current_offset += len(chunk)
                     progress_cb(len(file_data), total_size)
 
                     if cancelled:
@@ -580,10 +608,12 @@ def api_transfer_download():
 
                 b64_data = base64.b64encode(file_data).decode("ascii")
                 avg_speed = len(file_data) / elapsed if elapsed > 0 else 0
+                transfer_stats = ft.get_stats()
 
                 add_tool_log(
                     f"[SUCCESS] Download complete: {remote_path} "
-                    f"({len(file_data)} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s)"
+                    f"({len(file_data)} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s, "
+                    f"loss rate: {transfer_stats['packet_loss_rate']}%)"
                 )
                 progress_queue.put(
                     {
@@ -594,6 +624,7 @@ def api_transfer_download():
                         "size": len(file_data),
                         "elapsed": round(elapsed, 2),
                         "avg_speed": round(avg_speed, 1),
+                        "stats": transfer_stats,
                     }
                 )
             finally:

@@ -116,6 +116,16 @@ class TestTemplateRendering(unittest.TestCase):
             self.assertIn('id="deviceFileList"', html)
             self.assertIn('id="transferProgress"', html)
 
+            # Transfer progress bar structure
+            self.assertIn('class="progress-fill"', html)
+            self.assertIn('class="progress-info"', html)
+            self.assertIn('class="progress-info-secondary"', html)
+            self.assertIn('class="progress-text"', html)
+            self.assertIn('class="progress-stats"', html)
+            self.assertIn('class="progress-loss"', html)
+            self.assertIn('class="progress-speed"', html)
+            self.assertIn('class="progress-eta"', html)
+
             # Transfer control buttons (cancel only - pause/resume removed)
             self.assertIn('id="transferCancelBtn"', html)
             self.assertIn("cancelTransfer()", html)
@@ -299,6 +309,39 @@ class TestTemplateRendering(unittest.TestCase):
             self.assertIn("loadLayoutPreferences", html)
             self.assertIn("loadThemePreference", html)
             self.assertIn("DOMContentLoaded", html)
+
+    def test_transfer_progress_bar_structure(self):
+        """Test that transfer progress bar has correct nested structure for stats display."""
+        with self.app.app_context():
+            from flask import render_template
+
+            html = render_template("index.html")
+
+            # Progress bar container
+            self.assertIn('id="transferProgress"', html)
+            self.assertIn('class="progress-bar"', html)
+
+            # Progress fill for visual indicator
+            self.assertIn('class="progress-fill"', html)
+
+            # Progress info container (first row: text and speed)
+            self.assertIn('class="progress-info"', html)
+
+            # Progress text for percentage display
+            self.assertIn('class="progress-text"', html)
+
+            # Speed display
+            self.assertIn('class="progress-speed"', html)
+
+            # Progress info secondary (second row: stats and ETA)
+            self.assertIn('class="progress-info-secondary"', html)
+
+            # Progress stats for packet loss (left side of second row)
+            self.assertIn('class="progress-stats"', html)
+            self.assertIn('class="progress-loss"', html)
+
+            # ETA display (right side of second row)
+            self.assertIn('class="progress-eta"', html)
 
 
 class TestPartialTemplates(unittest.TestCase):
