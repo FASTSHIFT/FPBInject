@@ -775,8 +775,15 @@ async function uploadFolderEntry(dirEntry, remotePath) {
 
   writeToOutput(`[UPLOAD] Scanning folder: ${folderName}...`, 'info');
 
-  // Collect all files first
-  const files = await collectFilesFromEntry(dirEntry);
+  // Collect all files first (only collect contents, not the root folder itself)
+  const dirReader = dirEntry.createReader();
+  const entries = await readDirectoryEntries(dirReader);
+
+  const files = [];
+  for (const childEntry of entries) {
+    const childFiles = await collectFilesFromEntry(childEntry, '');
+    files.push(...childFiles);
+  }
 
   if (files.length === 0) {
     writeToOutput(`[INFO] Folder is empty: ${folderName}`, 'warning');

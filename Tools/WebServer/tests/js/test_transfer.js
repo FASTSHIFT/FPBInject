@@ -1342,6 +1342,123 @@ module.exports = function (w) {
     it('uploadFolderEntry is async function', () => {
       assertTrue(w.uploadFolderEntry.constructor.name === 'AsyncFunction');
     });
+
+    it('uploadFolderEntry collects files without duplicating folder name', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      // Mock file inside folder
+      const mockFile = { name: 'test.txt', size: 100 };
+      const mockFileEntry = {
+        isFile: true,
+        isDirectory: false,
+        name: 'test.txt',
+        file: (callback) => callback(mockFile),
+      };
+
+      // Mock folder entry with one file
+      let readCount = 0;
+      const mockDirEntry = {
+        isFile: false,
+        isDirectory: true,
+        name: 'myFolder',
+        createReader: () => ({
+          readEntries: (callback) => {
+            readCount++;
+            if (readCount === 1) callback([mockFileEntry]);
+            else callback([]);
+          },
+        }),
+      };
+
+      // Track what paths are used for upload
+      const uploadedPaths = [];
+      const origUploadFolderFiles = w.uploadFolderFiles;
+      w.uploadFolderFiles = async (files, targetPath, folderName) => {
+        for (const { relativePath } of files) {
+          uploadedPaths.push(`${targetPath}/${relativePath}`);
+        }
+      };
+
+      await w.uploadFolderEntry(mockDirEntry, '/data');
+
+      // Restore
+      w.uploadFolderFiles = origUploadFolderFiles;
+
+      // Should be /data/myFolder/test.txt, NOT /data/myFolder/myFolder/test.txt
+      assertEqual(uploadedPaths.length, 1);
+      assertEqual(uploadedPaths[0], '/data/myFolder/test.txt');
+
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('uploadFolderEntry handles nested subdirectories correctly', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      // Mock file in nested folder
+      const mockFile = { name: 'deep.txt', size: 50 };
+      const mockFileEntry = {
+        isFile: true,
+        isDirectory: false,
+        name: 'deep.txt',
+        file: (callback) => callback(mockFile),
+      };
+
+      // Mock inner subdirectory
+      let innerReadCount = 0;
+      const mockInnerDir = {
+        isFile: false,
+        isDirectory: true,
+        name: 'subdir',
+        createReader: () => ({
+          readEntries: (callback) => {
+            innerReadCount++;
+            if (innerReadCount === 1) callback([mockFileEntry]);
+            else callback([]);
+          },
+        }),
+      };
+
+      // Mock root folder entry
+      let rootReadCount = 0;
+      const mockRootDir = {
+        isFile: false,
+        isDirectory: true,
+        name: 'rootFolder',
+        createReader: () => ({
+          readEntries: (callback) => {
+            rootReadCount++;
+            if (rootReadCount === 1) callback([mockInnerDir]);
+            else callback([]);
+          },
+        }),
+      };
+
+      // Track what paths are used for upload
+      const uploadedPaths = [];
+      const origUploadFolderFiles = w.uploadFolderFiles;
+      w.uploadFolderFiles = async (files, targetPath, folderName) => {
+        for (const { relativePath } of files) {
+          uploadedPaths.push(`${targetPath}/${relativePath}`);
+        }
+      };
+
+      await w.uploadFolderEntry(mockRootDir, '/');
+
+      // Restore
+      w.uploadFolderFiles = origUploadFolderFiles;
+
+      // Should be /rootFolder/subdir/deep.txt
+      assertEqual(uploadedPaths.length, 1);
+      assertEqual(uploadedPaths[0], '/rootFolder/subdir/deep.txt');
+
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
   });
 
   describe('Rename Functions', () => {
