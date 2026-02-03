@@ -82,6 +82,9 @@ function createMockElement(id) {
       position: '',
     },
 
+    offsetHeight: 300,
+    offsetWidth: 200,
+
     classList: {
       _classes: new Set(),
       add(cls) {
@@ -159,6 +162,12 @@ function createMockElement(id) {
     },
 
     closest(selector) {
+      // Simple implementation for .sidebar-section
+      if (selector === '.sidebar-section') {
+        if (this.classList._classes.has('sidebar-section')) {
+          return this;
+        }
+      }
       return null;
     },
     focus() {},
@@ -230,6 +239,9 @@ const mockFetch = async (url, options = {}) => {
   };
 };
 
+// Document event listeners storage
+const documentEventListeners = {};
+
 // Enhanced document mock
 const mockDocument = {
   getElementById(id) {
@@ -264,6 +276,16 @@ const mockDocument = {
         });
       }
     }
+    // Handle attribute selectors like .sidebar-section[data-section-id="device"]
+    if (selector.includes('[data-section-id=')) {
+      const match = selector.match(/\[data-section-id="([^"]+)"\]/);
+      if (match) {
+        const sectionId = match[1];
+        return Object.values(mockElements).filter((el) => {
+          return el.dataset && el.dataset.sectionId === sectionId;
+        });
+      }
+    }
     return [];
   },
   querySelector(selector) {
@@ -280,8 +302,21 @@ const mockDocument = {
   createTextNode(text) {
     return { nodeType: 3, textContent: text };
   },
-  addEventListener(event, handler) {},
-  removeEventListener(event, handler) {},
+  addEventListener(event, handler) {
+    if (!documentEventListeners[event]) documentEventListeners[event] = [];
+    documentEventListeners[event].push(handler);
+  },
+  removeEventListener(event, handler) {
+    if (documentEventListeners[event]) {
+      documentEventListeners[event] = documentEventListeners[event].filter(
+        (h) => h !== handler,
+      );
+    }
+  },
+  dispatchEvent(event) {
+    const handlers = documentEventListeners[event.type] || [];
+    handlers.forEach((h) => h(event));
+  },
   documentElement: {
     _theme: 'dark',
     getAttribute(name) {
@@ -458,6 +493,8 @@ browserGlobals.window = {
   confirm: browserGlobals.confirm,
   addEventListener: () => {},
   removeEventListener: () => {},
+  innerHeight: 1000,
+  innerWidth: 1200,
   FPBState: null,
   getComputedStyle: browserGlobals.getComputedStyle,
   // These will be populated when application code loads
@@ -485,6 +522,14 @@ function resetMocks() {
   fetchResponses = {};
   mockDocument.documentElement._theme = 'dark';
   Object.keys(mockElements).forEach((k) => delete mockElements[k]);
+  // Clear document event listeners
+  Object.keys(documentEventListeners).forEach(
+    (k) => delete documentEventListeners[k],
+  );
+}
+
+function getDocumentEventListeners() {
+  return documentEventListeners;
 }
 
 function getFetchCalls() {
@@ -513,4 +558,5 @@ module.exports = {
   MockTerminal,
   MockFitAddon,
   createMockAceEditor,
+  getDocumentEventListeners,
 };

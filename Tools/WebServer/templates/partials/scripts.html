@@ -45,6 +45,13 @@
     initSashResize();
     loadLayoutPreferences();
     loadThemePreference();
+    // Initialize sidebar section heights and resize
+    if (typeof loadSidebarSectionHeights === "function") {
+      loadSidebarSectionHeights();
+    }
+    if (typeof setupSidebarSectionResize === "function") {
+      setupSidebarSectionResize();
+    }
     // Initialize drag and drop for file transfer
     if (typeof initTransferDragDrop === "function") {
       initTransferDragDrop();

@@ -163,7 +163,7 @@ body {
   user-select: none;
 }
 
-/* Scrollbar Styling */
+/* Scrollbar Styling - VS Code style (no border-radius) */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -171,7 +171,7 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--vscode-scrollbar-thumb);
-  border-radius: 5px;
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-track {
@@ -367,6 +367,46 @@ body {
   background: var(--vscode-scrollbarSlider-activeBg, rgba(191, 191, 191, 0.4));
 }
 
+/* Sidebar content and nested scrollable elements - unified scrollbar style */
+.sidebar-content::-webkit-scrollbar,
+.symbol-list::-webkit-scrollbar,
+.watch-dirs-list::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+
+.sidebar-content::-webkit-scrollbar-track,
+.symbol-list::-webkit-scrollbar-track,
+.watch-dirs-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb,
+.symbol-list::-webkit-scrollbar-thumb,
+.watch-dirs-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 0;
+  min-height: 40px;
+}
+
+.sidebar-content:hover::-webkit-scrollbar-thumb,
+.symbol-list:hover::-webkit-scrollbar-thumb,
+.watch-dirs-list:hover::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-bg, rgba(121, 121, 121, 0.4));
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:hover,
+.symbol-list::-webkit-scrollbar-thumb:hover,
+.watch-dirs-list::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBg, rgba(100, 100, 100, 0.7));
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:active,
+.symbol-list::-webkit-scrollbar-thumb:active,
+.watch-dirs-list::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBg, rgba(191, 191, 191, 0.4));
+}
+
 .sidebar-title {
   padding: 8px 14px;
   font-size: 11px;
@@ -381,6 +421,39 @@ body {
 
 .sidebar-section {
   border-bottom: 1px solid var(--vscode-panel-border);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.sidebar-section details {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar-section .sidebar-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 100px;
+}
+
+.sidebar-section-resize-handle {
+  height: 4px;
+  cursor: ns-resize;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sidebar-section-resize-handle:hover {
+  background: var(--vscode-focus-border, #007acc);
+}
+
+.sidebar-section-resize-handle.resizing {
+  background: var(--vscode-focus-border, #007acc);
 }
 
 .sidebar-header {

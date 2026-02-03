@@ -127,6 +127,103 @@ function activateSection(sectionId) {
   saveSidebarState();
 }
 
+/* ===========================
+   SIDEBAR SECTION HEIGHT RESIZE
+   =========================== */
+const SIDEBAR_SECTION_HEIGHTS_KEY = 'fpbinject-sidebar-section-heights';
+let resizingSection = null;
+let resizeStartY = 0;
+let resizeStartHeight = 0;
+
+function loadSidebarSectionHeights() {
+  try {
+    const savedHeights = localStorage.getItem(SIDEBAR_SECTION_HEIGHTS_KEY);
+    if (savedHeights) {
+      const heights = JSON.parse(savedHeights);
+      for (const [sectionId, height] of Object.entries(heights)) {
+        const section = document.querySelector(
+          `.sidebar-section[data-section-id="${sectionId}"] .sidebar-content`,
+        );
+        if (section) {
+          section.style.height = height;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load sidebar section heights:', e);
+  }
+}
+
+function saveSidebarSectionHeight(sectionId, height) {
+  try {
+    const savedHeights = localStorage.getItem(SIDEBAR_SECTION_HEIGHTS_KEY);
+    const heights = savedHeights ? JSON.parse(savedHeights) : {};
+    heights[sectionId] = height;
+    localStorage.setItem(SIDEBAR_SECTION_HEIGHTS_KEY, JSON.stringify(heights));
+  } catch (e) {
+    console.warn('Failed to save sidebar section height:', e);
+  }
+}
+
+function setupSidebarSectionResize() {
+  const handles = document.querySelectorAll('.sidebar-section-resize-handle');
+
+  handles.forEach((handle) => {
+    const section = handle.closest('.sidebar-section');
+    if (!section) return;
+
+    const sectionId = section.dataset.sectionId;
+    const content = section.querySelector('.sidebar-content');
+    if (!content) return;
+
+    handle.addEventListener('mousedown', (e) => {
+      resizingSection = { section, content, sectionId };
+      resizeStartY = e.clientY;
+      resizeStartHeight = content.offsetHeight;
+      handle.classList.add('resizing');
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!resizingSection) return;
+
+    const deltaY = e.clientY - resizeStartY;
+    const newHeight = resizeStartHeight + deltaY;
+    const minHeight = 100;
+    const maxHeight = window.innerHeight * 0.6;
+
+    if (newHeight >= minHeight && newHeight <= maxHeight) {
+      resizingSection.content.style.height = `${newHeight}px`;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (resizingSection) {
+      const handle = resizingSection.section.querySelector(
+        '.sidebar-section-resize-handle',
+      );
+      if (handle) {
+        handle.classList.remove('resizing');
+      }
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      // Save the new height
+      if (resizingSection.content.style.height) {
+        saveSidebarSectionHeight(
+          resizingSection.sectionId,
+          resizingSection.content.style.height,
+        );
+      }
+
+      resizingSection = null;
+    }
+  });
+}
+
 // Export for global access
 window.loadSidebarState = loadSidebarState;
 window.saveSidebarState = saveSidebarState;
@@ -134,3 +231,6 @@ window.setupSidebarStateListeners = setupSidebarStateListeners;
 window.updateDisabledState = updateDisabledState;
 window.activateSection = activateSection;
 window.syncActivityBarState = syncActivityBarState;
+window.loadSidebarSectionHeights = loadSidebarSectionHeights;
+window.saveSidebarSectionHeight = saveSidebarSectionHeight;
+window.setupSidebarSectionResize = setupSidebarSectionResize;

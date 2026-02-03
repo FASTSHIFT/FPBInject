@@ -1,7 +1,7 @@
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
   <!-- Connection Section -->
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-section-id="connection">
     <details id="details-connection" open>
       <summary class="sidebar-header">
         <i class="codicon codicon-chevron-right"></i>
@@ -41,6 +41,7 @@
           </div>
         </div>
       </div>
+      <div class="sidebar-section-resize-handle"></div>
     </details>
   </div>
 
@@ -51,7 +52,7 @@
   {% include 'partials/sidebar_transfer.html' %}
 
   <!-- Symbols Section -->
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-section-id="symbols">
     <details id="details-symbols">
       <summary class="sidebar-header" title="Single-click: view disassembly; Double-click: create patch">
         <i class="codicon codicon-chevron-right"></i>
@@ -72,6 +73,7 @@
           <div style="padding: 8px; font-size: 11px; opacity: 0.7">No symbols loaded</div>
         </div>
       </div>
+      <div class="sidebar-section-resize-handle"></div>
     </details>
   </div>
 
