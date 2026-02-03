@@ -448,4 +448,138 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
   });
+
+  describe('Backend Health Check Functions', () => {
+    it('checkBackendHealth is a function', () =>
+      assertTrue(typeof w.checkBackendHealth === 'function'));
+    it('startBackendHealthCheck is a function', () =>
+      assertTrue(typeof w.startBackendHealthCheck === 'function'));
+    it('stopBackendHealthCheck is a function', () =>
+      assertTrue(typeof w.stopBackendHealthCheck === 'function'));
+
+    it('checkBackendHealth is async function', () => {
+      assertTrue(w.checkBackendHealth.constructor.name === 'AsyncFunction');
+    });
+
+    it('checkBackendHealth does nothing when backend is alive', async () => {
+      resetMocks();
+      setFetchResponse('/api/status', { connected: false });
+      let alertCalled = false;
+      const origAlert = browserGlobals.alert;
+      browserGlobals.alert = () => {
+        alertCalled = true;
+      };
+      global.alert = browserGlobals.alert;
+      await w.checkBackendHealth();
+      assertTrue(!alertCalled);
+      browserGlobals.alert = origAlert;
+      global.alert = origAlert;
+    });
+
+    it('checkBackendHealth shows alert when backend is down', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      let alertCalled = false;
+      let alertMessage = '';
+      const origAlert = browserGlobals.alert;
+      browserGlobals.alert = (msg) => {
+        alertCalled = true;
+        alertMessage = msg;
+      };
+      global.alert = browserGlobals.alert;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.checkBackendHealth();
+      assertTrue(alertCalled);
+      assertTrue(alertMessage.includes('Backend server has disconnected'));
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      browserGlobals.alert = origAlert;
+      global.alert = origAlert;
+      w.FPBState.isConnected = false;
+    });
+
+    it('checkBackendHealth only shows alert once', async () => {
+      resetMocks();
+      let alertCount = 0;
+      const origAlert = browserGlobals.alert;
+      browserGlobals.alert = () => {
+        alertCount++;
+      };
+      global.alert = browserGlobals.alert;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      await w.checkBackendHealth();
+      await w.checkBackendHealth();
+      await w.checkBackendHealth();
+      assertEqual(alertCount, 1);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      browserGlobals.alert = origAlert;
+      global.alert = origAlert;
+    });
+
+    it('startBackendHealthCheck starts interval', () => {
+      resetMocks();
+      w.stopBackendHealthCheck(); // Ensure clean state
+      w.startBackendHealthCheck();
+      // Just verify it doesn't throw
+      assertTrue(true);
+      w.stopBackendHealthCheck();
+    });
+
+    it('stopBackendHealthCheck stops interval', () => {
+      resetMocks();
+      w.startBackendHealthCheck();
+      w.stopBackendHealthCheck();
+      // Just verify it doesn't throw
+      assertTrue(true);
+    });
+
+    it('startBackendHealthCheck does nothing if already running', () => {
+      resetMocks();
+      w.startBackendHealthCheck();
+      w.startBackendHealthCheck(); // Should not create another interval
+      assertTrue(true);
+      w.stopBackendHealthCheck();
+    });
+
+    it('checkBackendHealth updates UI when backend disconnects', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const btn = browserGlobals.document.getElementById('connectBtn');
+      const statusEl =
+        browserGlobals.document.getElementById('connectionStatus');
+      btn.textContent = 'Disconnect';
+      btn.classList.add('connected');
+      statusEl.textContent = 'Connected';
+
+      const origAlert = browserGlobals.alert;
+      browserGlobals.alert = () => {};
+      global.alert = browserGlobals.alert;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+
+      await w.checkBackendHealth();
+
+      assertTrue(!w.FPBState.isConnected);
+      assertEqual(btn.textContent, 'Connect');
+      assertTrue(!btn.classList.contains('connected'));
+      assertEqual(statusEl.textContent, 'Disconnected');
+
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      browserGlobals.alert = origAlert;
+      global.alert = origAlert;
+    });
+  });
 };

@@ -42,4 +42,5 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDisabledState();
   setupAutoSave();
   setupSidebarStateListeners();
+  startBackendHealthCheck();
 });

@@ -6,6 +6,10 @@
    CONNECTION CONFIGURATION
    =========================== */
 const CONNECTION_DEFAULT_MAX_RETRIES = 10;
+const BACKEND_HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
+
+let backendHealthCheckTimer = null;
+let backendDisconnectAlertShown = false;
 
 /**
  * Get max retries from config or use default
@@ -161,6 +165,72 @@ async function checkConnectionStatus() {
   }
 }
 
+/**
+ * Check if backend server is alive
+ * Shows alert if backend becomes unavailable
+ */
+async function checkBackendHealth() {
+  try {
+    const res = await fetch('/api/status', {
+      method: 'GET',
+      signal: AbortSignal.timeout(3000), // 3 second timeout
+    });
+    if (res.ok) {
+      // Backend is alive, reset alert flag
+      backendDisconnectAlertShown = false;
+    }
+  } catch (e) {
+    // Backend is not responding
+    if (!backendDisconnectAlertShown) {
+      backendDisconnectAlertShown = true;
+      stopBackendHealthCheck();
+      stopLogPolling();
+
+      // Update UI to show disconnected state
+      const state = window.FPBState;
+      if (state.isConnected) {
+        state.isConnected = false;
+        const btn = document.getElementById('connectBtn');
+        const statusEl = document.getElementById('connectionStatus');
+        if (btn) {
+          btn.textContent = 'Connect';
+          btn.classList.remove('connected');
+        }
+        if (statusEl) {
+          statusEl.textContent = 'Disconnected';
+        }
+        updateDisabledState();
+      }
+
+      // Show alert to user
+      alert(
+        'Backend server has disconnected.\n\nPlease restart the server and refresh the page.',
+      );
+    }
+  }
+}
+
+/**
+ * Start periodic backend health check
+ */
+function startBackendHealthCheck() {
+  if (backendHealthCheckTimer) return;
+  backendHealthCheckTimer = setInterval(
+    checkBackendHealth,
+    BACKEND_HEALTH_CHECK_INTERVAL,
+  );
+}
+
+/**
+ * Stop backend health check
+ */
+function stopBackendHealthCheck() {
+  if (backendHealthCheckTimer) {
+    clearInterval(backendHealthCheckTimer);
+    backendHealthCheckTimer = null;
+  }
+}
+
 // Export for global access
 window.refreshPorts = refreshPorts;
 window.handleConnected = handleConnected;
@@ -168,3 +238,6 @@ window.handleDisconnected = handleDisconnected;
 window.toggleConnect = toggleConnect;
 window.checkConnectionStatus = checkConnectionStatus;
 window.getConnectionMaxRetries = getConnectionMaxRetries;
+window.checkBackendHealth = checkBackendHealth;
+window.startBackendHealthCheck = startBackendHealthCheck;
+window.stopBackendHealthCheck = stopBackendHealthCheck;
