@@ -610,9 +610,9 @@ static void cmd_fread(fl_context_t* ctx, int len) {
     uint16_t crc = calc_crc16(ctx->file_ctx.buf, nread);
 
     /* Output in parts to avoid buffer overflow */
-    fl_print("[OK] FREAD %d bytes crc=0x%04X data=", (int)nread, (unsigned)crc);
+    fl_print("[FLOK] FREAD %d bytes crc=0x%04X data=", (int)nread, (unsigned)crc);
     fl_print_raw(ctx->file_ctx.b64_buf);
-    fl_print_raw("\n");
+    fl_print_raw("\n[FLEND]\n");
 }
 
 static void cmd_fclose(fl_context_t* ctx) {
@@ -704,7 +704,7 @@ static void cmd_flist(fl_context_t* ctx, const char* path) {
         return;
     }
 
-    fl_println("[OK] FLIST dir=%d file=%d", count_ctx.dir_count, count_ctx.file_count);
+    fl_response(true, "FLIST dir=%d file=%d", count_ctx.dir_count, count_ctx.file_count);
 }
 
 static void cmd_fremove(fl_context_t* ctx, const char* path) {

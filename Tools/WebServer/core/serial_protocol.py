@@ -63,7 +63,11 @@ class FPBProtocol:
                 if ser.in_waiting:
                     chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
                     response += chunk
-                    if "fl>" in response or "[OK]" in response or "[ERR]" in response:
+                    if (
+                        "fl>" in response
+                        or "[FLOK]" in response
+                        or "[FLERR]" in response
+                    ):
                         break
                 time.sleep(0.01)
 
@@ -169,21 +173,21 @@ class FPBProtocol:
                 if ser.in_waiting:
                     chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
                     response += chunk
-                    if "[OK]" in response or "[ERR]" in response:
-                        time.sleep(0.005)
-                        if ser.in_waiting:
-                            response += ser.read(ser.in_waiting).decode(
-                                "utf-8", errors="replace"
-                            )
+                    # Check for explicit end marker first (fast path)
+                    if "[FLEND]" in response:
                         break
-                time.sleep(0.002)
+                time.sleep(0.001)
 
+            # Log raw response first (with [FLEND] marker)
             response = response.strip()
-            last_response = response
             logger.debug(f"RX: {response}")
             self._log_raw("RX", response)
 
-            if "[OK]" in response or "[ERR]" in response:
+            # Remove [FLEND] marker from response for processing
+            response = response.replace("[FLEND]", "").strip()
+            last_response = response
+
+            if "[FLOK]" in response or "[FLERR]" in response:
                 if "Enter" in response and "interactive mode" in response:
                     break
                 if self._is_response_complete(response, cmd):
@@ -195,7 +199,7 @@ class FPBProtocol:
             elif "Missing --cmd" in response:
                 break
             else:
-                logger.warning("No valid response marker ([OK]/[ERR]), retrying...")
+                logger.warning("No valid response marker ([FLOK]/[FLERR]), retrying...")
                 self._log_raw("WARN", "No response marker, retrying...")
                 continue
 
@@ -218,13 +222,13 @@ class FPBProtocol:
 
     def _is_response_complete(self, response: str, cmd: str) -> bool:
         """Check if response appears complete."""
-        has_marker = "[OK]" in response or "[ERR]" in response
+        has_marker = "[FLOK]" in response or "[FLERR]" in response
         if not has_marker:
             return False
 
         if "-c read" in cmd or "-c info" in cmd:
-            if "[OK]" in response:
-                parts = response.split("[OK]", 1)
+            if "[FLOK]" in response:
+                parts = response.split("[FLOK]", 1)
                 if len(parts) > 1:
                     data_part = parts[1].strip()
                     if data_part:
@@ -262,7 +266,7 @@ class FPBProtocol:
             pass
 
     def parse_response(self, resp: str) -> dict:
-        """Parse response - format: [OK] msg or [ERR] msg"""
+        """Parse response - format: [FLOK] msg or [FLERR] msg"""
         resp = resp.strip()
 
         clean_resp = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", resp)
@@ -273,13 +277,13 @@ class FPBProtocol:
         lines = resp.split("\n")
         for line in reversed(lines):
             line = line.strip()
-            if "[OK]" in line:
-                idx = line.find("[OK]")
-                msg = line[idx + 4 :].strip()
+            if "[FLOK]" in line:
+                idx = line.find("[FLOK]")
+                msg = line[idx + 6 :].strip()
                 return {"ok": True, "msg": msg, "raw": resp}
-            elif "[ERR]" in line:
-                idx = line.find("[ERR]")
-                msg = line[idx + 5 :].strip()
+            elif "[FLERR]" in line:
+                idx = line.find("[FLERR]")
+                msg = line[idx + 7 :].strip()
                 return {"ok": False, "msg": msg, "raw": resp}
 
         lower_resp = clean_resp.lower()
@@ -521,7 +525,7 @@ class FPBProtocol:
                     elapsed_ms = (time.time() - start_time) * 1000
                     test_result["response_time_ms"] = round(elapsed_ms, 2)
 
-                    if "[OK]" in response:
+                    if "[FLOK]" in response:
                         expected_crc = crc16(hex_data.encode("ascii"))
                         crc_match = re.search(r"0x([0-9A-Fa-f]{4})", response)
                         if crc_match:
@@ -543,7 +547,7 @@ class FPBProtocol:
                             max_working = test_size
                     else:
                         test_result["passed"] = False
-                        if "[ERR]" in response:
+                        if "[FLERR]" in response:
                             test_result["error"] = "Device returned error"
                         elif not response:
                             test_result["error"] = "No response (timeout)"

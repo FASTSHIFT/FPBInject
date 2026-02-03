@@ -45,12 +45,12 @@ void fl_response(bool ok, const char* fmt, ...) {
     char buf[PRINT_BUF_SIZE];
     va_list args;
 
-    fl_print_raw(ok ? "[OK] " : "[ERR] ");
+    fl_print_raw(ok ? "[FLOK] " : "[FLERR] ");
     va_start(args, fmt);
     vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
     fl_print_raw(buf);
-    fl_print_raw("\n");
+    fl_print_raw("\n[FLEND]\n");
 }
 
 void fl_print(const char* fmt, ...) {

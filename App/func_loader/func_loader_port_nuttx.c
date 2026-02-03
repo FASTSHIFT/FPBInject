@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
     }
 
     if (argc > 1) {
-        printf("[ERR] Enter '%s' to start interactive mode\n", argv[0]);
+        printf("[FLERR] Enter '%s' to start interactive mode\n", argv[0]);
         return 0;
     }
 

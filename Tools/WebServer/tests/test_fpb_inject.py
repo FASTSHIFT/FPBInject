@@ -171,7 +171,7 @@ class TestFPBInject(unittest.TestCase):
 
     def test_parse_response_ok(self):
         """Test parsing OK response"""
-        resp = "[OK] Operation successful"
+        resp = "[FLOK] Operation successful"
 
         result = self.fpb._parse_response(resp)
 
@@ -180,7 +180,7 @@ class TestFPBInject(unittest.TestCase):
 
     def test_parse_response_err(self):
         """Test parsing ERR response"""
-        resp = "[ERR] Something went wrong"
+        resp = "[FLERR] Something went wrong"
 
         result = self.fpb._parse_response(resp)
 
@@ -191,7 +191,7 @@ class TestFPBInject(unittest.TestCase):
         """Test parsing multiline response"""
         resp = """Info line 1
 Info line 2
-[OK] Done
+[FLOK] Done
 fl>"""
 
         result = self.fpb._parse_response(resp)
@@ -201,7 +201,7 @@ fl>"""
 
     def test_parse_response_with_ansi(self):
         """Test parsing response with ANSI escape sequences"""
-        resp = "\x1b[0m[OK] Success\x1b[K"
+        resp = "\x1b[0m[FLOK] Success\x1b[K"
 
         result = self.fpb._parse_response(resp)
 
@@ -209,7 +209,7 @@ fl>"""
 
     def test_parse_response_with_prompt(self):
         """Test parsing response with prompt"""
-        resp = """[OK] Success
+        resp = """[FLOK] Success
 fl>"""
 
         result = self.fpb._parse_response(resp)
@@ -342,7 +342,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
     def test_enter_fl_mode_bare_metal(self):
         """Test entering fl mode on bare-metal (no fl> prompt)"""
-        self.device.ser.read.return_value = b"[OK] some response"
+        self.device.ser.read.return_value = b"[FLOK] some response"
         self.device.ser.in_waiting = 18
 
         result = self.fpb.enter_fl_mode(timeout=0.1)
@@ -354,7 +354,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         """Test detecting NuttX platform via hint message"""
         # Simulate NuttX returning the hint message
         responses = [
-            b"[ERR] Enter 'fl' to start interactive mode",
+            b"[FLERR] Enter 'fl' to start interactive mode",
             b"fl>",
         ]
         call_count = [0]
@@ -385,7 +385,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
     def test_exit_fl_mode(self):
         """Test exiting fl mode"""
-        self.device.ser.read.return_value = b"[OK]\nap>"
+        self.device.ser.read.return_value = b"[FLOK]\nap>"
         self.device.ser.in_waiting = 8
 
         result = self.fpb.exit_fl_mode(timeout=0.1)
@@ -397,7 +397,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
         def mock_read(n):
             self.device.ser.in_waiting = 0
-            return b"[OK] Pong\n"
+            return b"[FLOK] Pong\n"
 
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 10
@@ -406,6 +406,88 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         result = self.fpb._send_cmd("--cmd ping", timeout=0.1)
 
         self.assertIn("OK", result)
+
+    def test_send_cmd_with_flend_marker(self):
+        """Test sending command with [FLEND] marker for fast response"""
+
+        def mock_read(n):
+            self.device.ser.in_waiting = 0
+            return b"[FLOK] Pong\n[FLEND]\n"
+
+        self.device.ser.read.side_effect = mock_read
+        self.device.ser.in_waiting = 20
+
+        result = self.fpb._send_cmd("--cmd ping", timeout=0.1)
+
+        self.assertIn("FLOK", result)
+        self.assertNotIn("FLEND", result)  # FLEND should be stripped
+
+    def test_send_cmd_flend_after_flok(self):
+        """Test [FLEND] arriving after [FLOK] in separate read"""
+        call_count = [0]
+
+        def mock_read(n):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return b"[FLOK] Success"
+            elif call_count[0] == 2:
+                return b"\n[FLEND]\n"
+            return b""
+
+        def mock_in_waiting():
+            if call_count[0] == 0:
+                return 14
+            elif call_count[0] == 1:
+                return 9
+            return 0
+
+        self.device.ser.read.side_effect = mock_read
+        type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
+
+        result = self.fpb._send_cmd("--cmd test", timeout=0.1)
+
+        self.assertIn("FLOK", result)
+        self.assertNotIn("FLEND", result)
+
+    def test_send_cmd_no_response_marker_retry(self):
+        """Test retry when no [FLOK]/[FLERR] marker in response"""
+        call_count = [0]
+
+        def mock_read(n):
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return b"some garbage data"
+            return b"[FLOK] Success\n[FLEND]\n"
+
+        def mock_in_waiting():
+            if call_count[0] < 3:
+                return 17
+            return 25
+
+        self.device.ser.read.side_effect = mock_read
+        type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
+
+        result = self.fpb._send_cmd("--cmd test", timeout=0.1, max_retries=3)
+
+        self.assertIn("FLOK", result)
+
+    def test_send_cmd_incomplete_response_detected(self):
+        """Test that incomplete response is detected and logged"""
+
+        # Response with log pattern after [FLOK] is considered incomplete
+        def mock_read(n):
+            self.device.ser.in_waiting = 0
+            return b"[FLOK] Data [I] some log"
+
+        self.device.ser.read.side_effect = mock_read
+        self.device.ser.in_waiting = 24
+
+        # Use -c info command which triggers incomplete check
+        # With max_retries=0, it should return the incomplete response
+        result = self.fpb._send_cmd("-c info", timeout=0.1, max_retries=0)
+
+        # The response should still be returned even if incomplete
+        self.assertIn("FLOK", result)
 
 
 class TestFPBInjectCompile(unittest.TestCase):
@@ -590,7 +672,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     def test_upload_success(self):
         """Test upload success"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK]")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK]")
 
         data = b"\x01" * 100
         success, result = self.fpb.upload(data, 0x20000000)
@@ -602,7 +684,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     def test_upload_fail(self):
         """Test upload failure"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] Write error")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLERR] Write error")
 
         data = b"\x01" * 10
         success, result = self.fpb.upload(data, 0x20000000)
@@ -612,7 +694,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
 
     def test_upload_callback(self):
         """Test upload callback"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK]")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK]")
         callback = Mock()
 
         data = b"\x01" * 100
@@ -784,7 +866,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_ping_success(self):
         """Test ping success"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Pong")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] Pong")
 
         success, msg = self.fpb.ping()
 
@@ -792,7 +874,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_ping_failure(self):
         """Test ping failure"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] No response")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLERR] No response")
 
         success, msg = self.fpb.ping()
 
@@ -801,7 +883,7 @@ class TestFPBInjectCommands(unittest.TestCase):
     def test_info_success(self):
         """Test info success"""
         self.fpb._protocol.send_cmd = Mock(
-            return_value="FPBInject v1.0\nBuild: Jan 30 2026 10:00:00\nUsed: 100\nSlots: 0/6\n[OK] Info complete"
+            return_value="FPBInject v1.0\nBuild: Jan 30 2026 10:00:00\nUsed: 100\nSlots: 0/6\n[FLOK] Info complete"
         )
 
         info, error = self.fpb.info()
@@ -812,7 +894,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_info_failure(self):
         """Test info failure"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] Device not ready")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLERR] Device not ready")
 
         info, error = self.fpb.info()
 
@@ -821,9 +903,9 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_alloc_success(self):
         """Test alloc success"""
-        # alloc response format: "[OK] Allocated buffer at 0x20001000"
+        # alloc response format: "[FLOK] Allocated buffer at 0x20001000"
         self.fpb._protocol.send_cmd = Mock(
-            return_value="[OK] Allocated buffer at 0x20001000"
+            return_value="[FLOK] Allocated buffer at 0x20001000"
         )
 
         addr, error = self.fpb.alloc(1024)
@@ -833,7 +915,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_alloc_failure(self):
         """Test alloc failure"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[ERR] Out of memory")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLERR] Out of memory")
 
         addr, error = self.fpb.alloc(1024)
 
@@ -841,7 +923,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_unpatch_all_success(self):
         """Test unpatch all success"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Cleared")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] Cleared")
 
         success, msg = self.fpb.unpatch(all=True)
 
@@ -849,7 +931,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_patch_success(self):
         """Test patch success"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Patched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] Patched")
 
         success, msg = self.fpb.patch(0, 0x08000000, 0x20001000)
 
@@ -857,7 +939,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_tpatch_success(self):
         """Test tpatch success"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Trampoline patched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] Trampoline patched")
 
         success, msg = self.fpb.tpatch(0, 0x08000000, 0x20001000)
 
@@ -865,7 +947,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_dpatch_success(self):
         """Test dpatch success"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] DebugMonitor patched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] DebugMonitor patched")
 
         success, msg = self.fpb.dpatch(0, 0x08000000, 0x20001000)
 
@@ -873,7 +955,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
     def test_unpatch_success(self):
         """Test unpatch success"""
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Unpatched")
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] Unpatched")
 
         success, msg = self.fpb.unpatch(0)
 
@@ -886,7 +968,7 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         def mock_read(size=None):
             self.device.ser.in_waiting = 0
-            return b"[OK]\nap>"
+            return b"[FLOK]\nap>"
 
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 10
@@ -975,8 +1057,8 @@ class TestSerialThroughput(unittest.TestCase):
 
     def test_test_serial_all_pass(self):
         """Test serial throughput with all tests passing"""
-        # Mock send_cmd to return [OK] without CRC (CRC check will be skipped)
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Echo received")
+        # Mock send_cmd to return [FLOK] without CRC (CRC check will be skipped)
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] Echo received")
 
         result = self.fpb.test_serial_throughput(start_size=16, max_size=64)
 
@@ -992,7 +1074,7 @@ class TestSerialThroughput(unittest.TestCase):
         def mock_send_cmd(cmd, timeout=2.0):
             call_count[0] += 1
             if call_count[0] <= 2:
-                return "[OK] Echo received"
+                return "[FLOK] Echo received"
             return ""  # Timeout
 
         self.fpb._protocol.send_cmd = Mock(side_effect=mock_send_cmd)
@@ -1006,8 +1088,8 @@ class TestSerialThroughput(unittest.TestCase):
 
     def test_test_serial_recommended_size(self):
         """Test that recommended chunk size is calculated correctly"""
-        # Mock send_cmd to return [OK]
-        self.fpb._protocol.send_cmd = Mock(return_value="[OK] Echo received")
+        # Mock send_cmd to return [FLOK]
+        self.fpb._protocol.send_cmd = Mock(return_value="[FLOK] Echo received")
 
         result = self.fpb.test_serial_throughput(start_size=16, max_size=128)
 
@@ -1043,7 +1125,7 @@ class TestBuildTimeFeature(unittest.TestCase):
 Build: Jan 29 2026 14:30:00
 Used: 100
 Slots: 0/6
-[OK] Info complete""")
+[FLOK] Info complete""")
 
         info, error = self.fpb.info()
 
@@ -1056,7 +1138,7 @@ Slots: 0/6
         self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v1.0
 Used: 100
 Slots: 0/6
-[OK] Info complete""")
+[FLOK] Info complete""")
 
         info, error = self.fpb.info()
 
@@ -1071,7 +1153,7 @@ Used: 256
 Slots: 2/6
 Slot[0]: 0x08001000 -> 0x20001000, 128 bytes
 Slot[1]: 0x08002000 -> 0x20001080, 64 bytes
-[OK] Info complete""")
+[FLOK] Info complete""")
 
         info, error = self.fpb.info()
 

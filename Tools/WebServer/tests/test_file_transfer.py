@@ -67,7 +67,7 @@ class TestFileTransferInit(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
 
     def test_init(self):
         """Test FileTransfer initialization."""
@@ -87,12 +87,12 @@ class TestFileTransferBasicOps(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_fopen_success(self):
         """Test successful file open."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FOPEN /test.txt mode=w")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FOPEN /test.txt mode=w")
         success, msg = self.ft.fopen("/test.txt", "w")
         self.assertTrue(success)
         self.assertIn("FOPEN", msg)
@@ -100,13 +100,13 @@ class TestFileTransferBasicOps(unittest.TestCase):
 
     def test_fopen_failure(self):
         """Test file open failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] File not found")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] File not found")
         success, msg = self.ft.fopen("/nonexistent.txt", "r")
         self.assertFalse(success)
 
     def test_fopen_read_mode(self):
         """Test file open in read mode."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FOPEN /test.txt mode=r")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FOPEN /test.txt mode=r")
         success, msg = self.ft.fopen("/test.txt", "r")
         self.assertTrue(success)
         call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
@@ -114,7 +114,7 @@ class TestFileTransferBasicOps(unittest.TestCase):
 
     def test_fopen_append_mode(self):
         """Test file open in append mode."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FOPEN /test.txt mode=a")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FOPEN /test.txt mode=a")
         success, msg = self.ft.fopen("/test.txt", "a")
         self.assertTrue(success)
         call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
@@ -122,7 +122,7 @@ class TestFileTransferBasicOps(unittest.TestCase):
 
     def test_fwrite_success(self):
         """Test successful file write."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FWRITE 10 bytes")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FWRITE 10 bytes")
         data = b"test data!"
         success, msg = self.ft.fwrite(data)
         self.assertTrue(success)
@@ -132,25 +132,25 @@ class TestFileTransferBasicOps(unittest.TestCase):
 
     def test_fwrite_empty_data(self):
         """Test write with empty data."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FWRITE 0 bytes")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FWRITE 0 bytes")
         success, msg = self.ft.fwrite(b"")
         self.assertTrue(success)
 
     def test_fwrite_failure(self):
         """Test write failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Disk full")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Disk full")
         success, msg = self.ft.fwrite(b"test")
         self.assertFalse(success)
 
     def test_fclose_success(self):
         """Test successful file close."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FCLOSE")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FCLOSE")
         success, msg = self.ft.fclose()
         self.assertTrue(success)
 
     def test_fclose_failure(self):
         """Test close failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] No file open")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] No file open")
         success, msg = self.ft.fclose()
         self.assertFalse(success)
 
@@ -161,7 +161,7 @@ class TestFileTransferRead(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_fread_success(self):
@@ -171,7 +171,7 @@ class TestFileTransferRead(unittest.TestCase):
         crc = calc_crc16(test_data)
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
         )
         success, data, msg = self.ft.fread(256)
         self.assertTrue(success)
@@ -179,7 +179,7 @@ class TestFileTransferRead(unittest.TestCase):
 
     def test_fread_eof(self):
         """Test read at EOF."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FREAD 0 bytes EOF")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FREAD 0 bytes EOF")
         success, data, msg = self.ft.fread(256)
         self.assertTrue(success)
         self.assertEqual(data, b"")
@@ -192,7 +192,7 @@ class TestFileTransferRead(unittest.TestCase):
         wrong_crc = 0x1234
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+            f"[FLOK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
         )
         success, data, msg = self.ft.fread(256)
         self.assertFalse(success)
@@ -200,14 +200,14 @@ class TestFileTransferRead(unittest.TestCase):
 
     def test_fread_failure(self):
         """Test read failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Read failed")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Read failed")
         success, data, msg = self.ft.fread(256)
         self.assertFalse(success)
         self.assertEqual(data, b"")
 
     def test_fread_invalid_response(self):
         """Test read with invalid response format."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] Invalid response")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] Invalid response")
         success, data, msg = self.ft.fread(256)
         self.assertFalse(success)
         self.assertIn("Invalid response", msg)
@@ -216,7 +216,7 @@ class TestFileTransferRead(unittest.TestCase):
         """Test read with missing data in response."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FREAD 10 bytes crc=0x1234",
+            "[FLOK] FREAD 10 bytes crc=0x1234",
         )
         success, data, msg = self.ft.fread(256)
         self.assertFalse(success)
@@ -226,7 +226,7 @@ class TestFileTransferRead(unittest.TestCase):
         """Test read with invalid base64 data."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FREAD 10 bytes crc=0x1234 data=!!!invalid!!!",
+            "[FLOK] FREAD 10 bytes crc=0x1234 data=!!!invalid!!!",
         )
         success, data, msg = self.ft.fread(256)
         self.assertFalse(success)
@@ -239,14 +239,14 @@ class TestFileTransferStat(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_fstat_success(self):
         """Test successful file stat."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FSTAT /test.txt size=1024 mtime=1234567890 type=file",
+            "[FLOK] FSTAT /test.txt size=1024 mtime=1234567890 type=file",
         )
         success, stat = self.ft.fstat("/test.txt")
         self.assertTrue(success)
@@ -258,7 +258,7 @@ class TestFileTransferStat(unittest.TestCase):
         """Test stat on directory."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FSTAT /data size=0 mtime=1234567890 type=dir",
+            "[FLOK] FSTAT /data size=0 mtime=1234567890 type=dir",
         )
         success, stat = self.ft.fstat("/data")
         self.assertTrue(success)
@@ -266,14 +266,14 @@ class TestFileTransferStat(unittest.TestCase):
 
     def test_fstat_failure(self):
         """Test stat failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] File not found")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] File not found")
         success, stat = self.ft.fstat("/nonexistent")
         self.assertFalse(success)
         self.assertIn("error", stat)
 
     def test_fstat_invalid_response(self):
         """Test stat with invalid response format."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] Invalid response")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] Invalid response")
         success, stat = self.ft.fstat("/test.txt")
         self.assertFalse(success)
         self.assertIn("error", stat)
@@ -285,14 +285,14 @@ class TestFileTransferList(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_flist_success(self):
         """Test successful directory listing."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FLIST dir=1 file=2\n  D subdir\n  F test.txt 100\n  F data.bin 256",
+            "[FLOK] FLIST dir=1 file=2\n  D subdir\n  F test.txt 100\n  F data.bin 256",
         )
         success, entries = self.ft.flist("/data")
         self.assertTrue(success)
@@ -305,14 +305,14 @@ class TestFileTransferList(unittest.TestCase):
 
     def test_flist_empty(self):
         """Test listing empty directory."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FLIST dir=0 file=0")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FLIST dir=0 file=0")
         success, entries = self.ft.flist("/empty")
         self.assertTrue(success)
         self.assertEqual(len(entries), 0)
 
     def test_flist_failure(self):
         """Test listing failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Not a directory")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Not a directory")
         success, entries = self.ft.flist("/test.txt")
         self.assertFalse(success)
         self.assertEqual(entries, [])
@@ -321,7 +321,7 @@ class TestFileTransferList(unittest.TestCase):
         """Test listing with file entry without size."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FLIST\n  F nosize",
+            "[FLOK] FLIST\n  F nosize",
         )
         success, entries = self.ft.flist("/data")
         self.assertTrue(success)
@@ -333,7 +333,7 @@ class TestFileTransferList(unittest.TestCase):
         """Test listing with file entry with invalid size."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FLIST\n  F test.txt abc",
+            "[FLOK] FLIST\n  F test.txt abc",
         )
         success, entries = self.ft.flist("/data")
         self.assertTrue(success)
@@ -347,30 +347,30 @@ class TestFileTransferRemoveMkdir(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_fremove_success(self):
         """Test successful file removal."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FREMOVE /test.txt")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FREMOVE /test.txt")
         success, msg = self.ft.fremove("/test.txt")
         self.assertTrue(success)
 
     def test_fremove_failure(self):
         """Test removal failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Permission denied")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Permission denied")
         success, msg = self.ft.fremove("/protected.txt")
         self.assertFalse(success)
 
     def test_fmkdir_success(self):
         """Test successful directory creation."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FMKDIR /newdir")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FMKDIR /newdir")
         success, msg = self.ft.fmkdir("/newdir")
         self.assertTrue(success)
 
     def test_fmkdir_failure(self):
         """Test directory creation failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Already exists")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Already exists")
         success, msg = self.ft.fmkdir("/existing")
         self.assertFalse(success)
 
@@ -381,16 +381,16 @@ class TestFileTransferUpload(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_upload_success(self):
         """Test successful file upload."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FOPEN /test.txt mode=w"),
-            (True, "[OK] FWRITE 256 bytes"),
-            (True, "[OK] FWRITE 44 bytes"),
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FWRITE 256 bytes"),
+            (True, "[FLOK] FWRITE 44 bytes"),
+            (True, "[FLOK] FCLOSE"),
         ]
         data = b"x" * 300
         progress_calls = []
@@ -404,7 +404,7 @@ class TestFileTransferUpload(unittest.TestCase):
 
     def test_upload_open_failure(self):
         """Test upload with open failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Cannot create file")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Cannot create file")
         success, msg = self.ft.upload(b"test", "/readonly/test.txt")
         self.assertFalse(success)
         self.assertIn("Failed to open", msg)
@@ -414,15 +414,15 @@ class TestFileTransferUpload(unittest.TestCase):
         # Set max_retries to 3 for this test
         self.ft.max_retries = 3
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FOPEN /test.txt mode=w"),
-            (False, "[ERR] Disk full"),  # fwrite attempt 1
-            (True, "[OK] FSEEK"),  # fseek before retry 1
-            (False, "[ERR] Disk full"),  # fwrite retry 1
-            (True, "[OK] FSEEK"),  # fseek before retry 2
-            (False, "[ERR] Disk full"),  # fwrite retry 2
-            (True, "[OK] FSEEK"),  # fseek before retry 3
-            (False, "[ERR] Disk full"),  # fwrite retry 3
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (False, "[FLERR] Disk full"),  # fwrite attempt 1
+            (True, "[FLOK] FSEEK"),  # fseek before retry 1
+            (False, "[FLERR] Disk full"),  # fwrite retry 1
+            (True, "[FLOK] FSEEK"),  # fseek before retry 2
+            (False, "[FLERR] Disk full"),  # fwrite retry 2
+            (True, "[FLOK] FSEEK"),  # fseek before retry 3
+            (False, "[FLERR] Disk full"),  # fwrite retry 3
+            (True, "[FLOK] FCLOSE"),
         ]
         success, msg = self.ft.upload(b"test data", "/test.txt")
         self.assertFalse(success)
@@ -431,9 +431,9 @@ class TestFileTransferUpload(unittest.TestCase):
     def test_upload_close_failure(self):
         """Test upload with close failure."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FOPEN /test.txt mode=w"),
-            (True, "[OK] FWRITE 4 bytes"),
-            (False, "[ERR] Close failed"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FWRITE 4 bytes"),
+            (False, "[FLERR] Close failed"),
         ]
         success, msg = self.ft.upload(b"test", "/test.txt")
         self.assertFalse(success)
@@ -442,8 +442,8 @@ class TestFileTransferUpload(unittest.TestCase):
     def test_upload_empty_data(self):
         """Test upload with empty data."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FOPEN /test.txt mode=w"),
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FCLOSE"),
         ]
         success, msg = self.ft.upload(b"", "/test.txt")
         self.assertTrue(success)
@@ -451,9 +451,9 @@ class TestFileTransferUpload(unittest.TestCase):
     def test_upload_exception(self):
         """Test upload with exception during write."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
             Exception("Connection lost"),
-            (True, "[OK] FCLOSE"),  # fclose in exception handler
+            (True, "[FLOK] FCLOSE"),  # fclose in exception handler
         ]
         success, msg = self.ft.upload(b"test", "/test.txt")
         self.assertFalse(success)
@@ -462,9 +462,9 @@ class TestFileTransferUpload(unittest.TestCase):
     def test_upload_no_progress_callback(self):
         """Test upload without progress callback."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FOPEN /test.txt mode=w"),
-            (True, "[OK] FWRITE 4 bytes"),
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FWRITE 4 bytes"),
+            (True, "[FLOK] FCLOSE"),
         ]
         success, msg = self.ft.upload(b"test", "/test.txt")
         self.assertTrue(success)
@@ -476,7 +476,7 @@ class TestFileTransferDownload(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_download_success(self):
@@ -486,14 +486,14 @@ class TestFileTransferDownload(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, f"[OK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
-            (True, "[OK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
-            (True, "[OK] FREAD 0 bytes EOF"),
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FREAD 0 bytes EOF"),
+            (True, "[FLOK] FCLOSE"),
         ]
 
         progress_calls = []
@@ -508,7 +508,7 @@ class TestFileTransferDownload(unittest.TestCase):
 
     def test_download_stat_failure(self):
         """Test download with stat failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] File not found")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] File not found")
         success, data, msg = self.ft.download("/nonexistent.txt")
         self.assertFalse(success)
         self.assertEqual(data, b"")
@@ -517,7 +517,7 @@ class TestFileTransferDownload(unittest.TestCase):
         """Test download of directory (should fail)."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FSTAT /data size=0 mtime=123 type=dir",
+            "[FLOK] FSTAT /data size=0 mtime=123 type=dir",
         )
         success, data, msg = self.ft.download("/data")
         self.assertFalse(success)
@@ -526,8 +526,8 @@ class TestFileTransferDownload(unittest.TestCase):
     def test_download_open_failure(self):
         """Test download with open failure."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FSTAT /test.txt size=100 mtime=123 type=file"),
-            (False, "[ERR] Cannot open file"),
+            (True, "[FLOK] FSTAT /test.txt size=100 mtime=123 type=file"),
+            (False, "[FLERR] Cannot open file"),
         ]
         success, data, msg = self.ft.download("/test.txt")
         self.assertFalse(success)
@@ -538,16 +538,16 @@ class TestFileTransferDownload(unittest.TestCase):
         # Set max_retries to 3 for this test
         self.ft.max_retries = 3
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FSTAT /test.txt size=100 mtime=123 type=file"),
-            (True, "[OK] FOPEN /test.txt mode=r"),
-            (False, "[ERR] Read error"),  # fread attempt 1
-            (True, "[OK] FSEEK"),  # fseek before retry 1
-            (False, "[ERR] Read error"),  # fread retry 1
-            (True, "[OK] FSEEK"),  # fseek before retry 2
-            (False, "[ERR] Read error"),  # fread retry 2
-            (True, "[OK] FSEEK"),  # fseek before retry 3
-            (False, "[ERR] Read error"),  # fread retry 3
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FSTAT /test.txt size=100 mtime=123 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (False, "[FLERR] Read error"),  # fread attempt 1
+            (True, "[FLOK] FSEEK"),  # fseek before retry 1
+            (False, "[FLERR] Read error"),  # fread retry 1
+            (True, "[FLOK] FSEEK"),  # fseek before retry 2
+            (False, "[FLERR] Read error"),  # fread retry 2
+            (True, "[FLOK] FSEEK"),  # fseek before retry 3
+            (False, "[FLERR] Read error"),  # fread retry 3
+            (True, "[FLOK] FCLOSE"),
         ]
         success, data, msg = self.ft.download("/test.txt")
         self.assertFalse(success)
@@ -556,10 +556,10 @@ class TestFileTransferDownload(unittest.TestCase):
     def test_download_exception(self):
         """Test download with exception during read."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FSTAT /test.txt size=100 mtime=123 type=file"),
-            (True, "[OK] FOPEN /test.txt mode=r"),
+            (True, "[FLOK] FSTAT /test.txt size=100 mtime=123 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
             Exception("Connection lost"),
-            (True, "[OK] FCLOSE"),  # fclose in exception handler
+            (True, "[FLOK] FCLOSE"),  # fclose in exception handler
         ]
         success, data, msg = self.ft.download("/test.txt")
         self.assertFalse(success)
@@ -572,14 +572,14 @@ class TestFileTransferDownload(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, f"[OK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
-            (True, "[OK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
-            (True, "[OK] FREAD 0 bytes EOF"),
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FREAD 0 bytes EOF"),
+            (True, "[FLOK] FCLOSE"),
         ]
         success, data, msg = self.ft.download("/test.txt")
         self.assertTrue(success)
@@ -600,9 +600,9 @@ class TestFileTransferIntegration(unittest.TestCase):
 
         # Upload
         mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FOPEN /test.txt mode=w"),
-            (True, f"[OK] FWRITE {len(original_data)} bytes"),
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, f"[FLOK] FWRITE {len(original_data)} bytes"),
+            (True, "[FLOK] FCLOSE"),
         ]
         success, _ = ft.upload(original_data, "/test.txt")
         self.assertTrue(success)
@@ -611,15 +611,15 @@ class TestFileTransferIntegration(unittest.TestCase):
         mock_fpb.send_fl_cmd.side_effect = [
             (
                 True,
-                f"[OK] FSTAT /test.txt size={len(original_data)} mtime=123 type=file",
+                f"[FLOK] FSTAT /test.txt size={len(original_data)} mtime=123 type=file",
             ),
-            (True, "[OK] FOPEN /test.txt mode=r"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
             (
                 True,
-                f"[OK] FREAD {len(original_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(original_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
-            (True, "[OK] FREAD 0 bytes EOF"),
-            (True, "[OK] FCLOSE"),
+            (True, "[FLOK] FREAD 0 bytes EOF"),
+            (True, "[FLOK] FCLOSE"),
         ]
         success, downloaded_data, _ = ft.download("/test.txt")
         self.assertTrue(success)
@@ -636,13 +636,13 @@ class TestSendCmd(unittest.TestCase):
 
     def test_send_cmd_with_timeout(self):
         """Test _send_cmd passes timeout correctly."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK]")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK]")
         self.ft._send_cmd("test cmd", timeout=5.0)
         self.mock_fpb.send_fl_cmd.assert_called_once_with("test cmd", timeout=5.0)
 
     def test_send_cmd_default_timeout(self):
         """Test _send_cmd uses default timeout."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK]")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK]")
         self.ft._send_cmd("test cmd")
         self.mock_fpb.send_fl_cmd.assert_called_once_with("test cmd", timeout=2.0)
 
@@ -659,9 +659,9 @@ class TestFileTransferRetry(unittest.TestCase):
     def test_fwrite_retry_on_crc_mismatch(self):
         """Test fwrite retries on CRC mismatch."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] CRC mismatch: 0x1234 != 0x5678"),
-            (False, "[ERR] CRC mismatch: 0x1234 != 0x5678"),
-            (True, "[OK] FWRITE 10 bytes"),
+            (False, "[FLERR] CRC mismatch: 0x1234 != 0x5678"),
+            (False, "[FLERR] CRC mismatch: 0x1234 != 0x5678"),
+            (True, "[FLOK] FWRITE 10 bytes"),
         ]
         success, msg = self.ft.fwrite(b"test data!")
         self.assertTrue(success)
@@ -671,7 +671,7 @@ class TestFileTransferRetry(unittest.TestCase):
         """Test fwrite fails after max retries."""
         self.mock_fpb.send_fl_cmd.return_value = (
             False,
-            "[ERR] CRC mismatch: 0x1234 != 0x5678",
+            "[FLERR] CRC mismatch: 0x1234 != 0x5678",
         )
         success, msg = self.ft.fwrite(b"test data!")
         self.assertFalse(success)
@@ -679,7 +679,7 @@ class TestFileTransferRetry(unittest.TestCase):
 
     def test_fwrite_no_retry_on_other_error(self):
         """Test fwrite retries on non-CRC errors too (all errors are retried)."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Disk full")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Disk full")
         success, msg = self.ft.fwrite(b"test data!")
         self.assertFalse(success)
         # All errors are retried: 1 initial + 3 retries = 4 calls
@@ -695,15 +695,15 @@ class TestFileTransferRetry(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
             ),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
             ),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{correct_crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{correct_crc:04X} data={b64_data}",
             ),
         ]
         success, data, msg = self.ft.fread(256)
@@ -718,10 +718,10 @@ class TestFileTransferRetry(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] FREAD 10 bytes crc=0x1234 data=!!!invalid!!!"),
+            (True, "[FLOK] FREAD 10 bytes crc=0x1234 data=!!!invalid!!!"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         success, data, msg = self.ft.fread(256)
@@ -736,10 +736,10 @@ class TestFileTransferRetry(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] Invalid response format"),
+            (True, "[FLOK] Invalid response format"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         success, data, msg = self.ft.fread(256)
@@ -754,10 +754,10 @@ class TestFileTransferRetry(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] Timeout"),
+            (False, "[FLERR] Timeout"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         success, data, msg = self.ft.fread(256)
@@ -767,7 +767,7 @@ class TestFileTransferRetry(unittest.TestCase):
 
     def test_fread_max_retries_exceeded(self):
         """Test fread fails after max retries."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Timeout")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Timeout")
         success, data, msg = self.ft.fread(256)
         self.assertFalse(success)
         self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 4)  # 1 + 3 retries
@@ -780,7 +780,7 @@ class TestFileTransferRetry(unittest.TestCase):
 
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
         )
         self.ft.fread()  # No size argument
         call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
@@ -790,7 +790,7 @@ class TestFileTransferRetry(unittest.TestCase):
         """Test fwrite with custom max_retries."""
         self.mock_fpb.send_fl_cmd.return_value = (
             False,
-            "[ERR] CRC mismatch: 0x1234 != 0x5678",
+            "[FLERR] CRC mismatch: 0x1234 != 0x5678",
         )
         success, msg = self.ft.fwrite(b"test", max_retries=1)
         self.assertFalse(success)
@@ -798,7 +798,7 @@ class TestFileTransferRetry(unittest.TestCase):
 
     def test_fread_custom_max_retries(self):
         """Test fread with custom max_retries."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Timeout")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Timeout")
         success, data, msg = self.ft.fread(256, max_retries=1)
         self.assertFalse(success)
         self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)  # 1 + 1 retry
@@ -810,7 +810,7 @@ class TestFileTransferStats(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_initial_stats(self):
@@ -867,7 +867,7 @@ class TestFileTransferStats(unittest.TestCase):
 
     def test_fwrite_increments_total_chunks(self):
         """Test fwrite increments total_chunks counter."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FWRITE 10 bytes")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FWRITE 10 bytes")
         self.ft.fwrite(b"test data!")
         self.assertEqual(self.ft.stats["total_chunks"], 1)
 
@@ -878,7 +878,7 @@ class TestFileTransferStats(unittest.TestCase):
         crc = calc_crc16(test_data)
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
         )
         self.ft.fread(256)
         self.assertEqual(self.ft.stats["total_chunks"], 1)
@@ -886,8 +886,8 @@ class TestFileTransferStats(unittest.TestCase):
     def test_fwrite_retry_increments_stats(self):
         """Test fwrite retry increments retry_count and crc_errors."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] CRC mismatch: 0x1234 != 0x5678"),
-            (True, "[OK] FWRITE 10 bytes"),
+            (False, "[FLERR] CRC mismatch: 0x1234 != 0x5678"),
+            (True, "[FLOK] FWRITE 10 bytes"),
         ]
         self.ft.fwrite(b"test data!")
         self.assertEqual(self.ft.stats["total_chunks"], 1)
@@ -900,10 +900,10 @@ class TestFileTransferStats(unittest.TestCase):
         b64_data = base64.b64encode(test_data).decode("ascii")
         crc = calc_crc16(test_data)
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] Timeout"),
+            (False, "[FLERR] Timeout"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         self.ft.fread(256)
@@ -920,11 +920,11 @@ class TestFileTransferStats(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
             ),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{correct_crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{correct_crc:04X} data={b64_data}",
             ),
         ]
         self.ft.fread(256)
@@ -938,10 +938,10 @@ class TestFileTransferStats(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[OK] Invalid response format"),
+            (True, "[FLOK] Invalid response format"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         self.ft.fread(256)
@@ -953,10 +953,10 @@ class TestFileTransferStats(unittest.TestCase):
         # Set max_retries to 3 for this test
         self.ft.max_retries = 3
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] Some other error"),
-            (False, "[ERR] Some other error"),
-            (False, "[ERR] Some other error"),
-            (False, "[ERR] Some other error"),
+            (False, "[FLERR] Some other error"),
+            (False, "[FLERR] Some other error"),
+            (False, "[FLERR] Some other error"),
+            (False, "[FLERR] Some other error"),
         ]
         self.ft.fwrite(b"test")
         self.assertEqual(self.ft.stats["other_errors"], 3)  # 3 retries
@@ -968,7 +968,7 @@ class TestFileTransferSeek(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] FSEEK"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] FSEEK"))
         self.ft = FileTransfer(self.mock_fpb, chunk_size=256)
 
     def test_fseek_success(self):
@@ -994,7 +994,7 @@ class TestFileTransferSeek(unittest.TestCase):
 
     def test_fseek_failure(self):
         """Test fseek failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Seek failed")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Seek failed")
         success, msg = self.ft.fseek(100, 0)
         self.assertFalse(success)
 
@@ -1008,9 +1008,9 @@ class TestFileTransferSeek(unittest.TestCase):
     def test_fwrite_with_seek_on_retry(self):
         """Test fwrite seeks to correct position on retry."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] CRC mismatch"),  # First attempt fails
-            (True, "[OK] FSEEK"),  # Seek on retry
-            (True, "[OK] FWRITE 10 bytes"),  # Retry succeeds
+            (False, "[FLERR] CRC mismatch"),  # First attempt fails
+            (True, "[FLOK] FSEEK"),  # Seek on retry
+            (True, "[FLOK] FWRITE 10 bytes"),  # Retry succeeds
         ]
         success, msg = self.ft.fwrite(b"test data!", current_offset=100)
         self.assertTrue(success)
@@ -1027,11 +1027,11 @@ class TestFileTransferSeek(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] Timeout"),  # First attempt fails
-            (True, "[OK] FSEEK"),  # Seek on retry
+            (False, "[FLERR] Timeout"),  # First attempt fails
+            (True, "[FLOK] FSEEK"),  # Seek on retry
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         success, data, msg = self.ft.fread(256, current_offset=200)
@@ -1046,8 +1046,8 @@ class TestFileTransferSeek(unittest.TestCase):
     def test_fwrite_no_seek_without_offset(self):
         """Test fwrite does not seek when current_offset is None."""
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] CRC mismatch"),
-            (True, "[OK] FWRITE 10 bytes"),
+            (False, "[FLERR] CRC mismatch"),
+            (True, "[FLOK] FWRITE 10 bytes"),
         ]
         success, msg = self.ft.fwrite(b"test data!")  # No current_offset
         self.assertTrue(success)
@@ -1064,10 +1064,10 @@ class TestFileTransferSeek(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] Timeout"),
+            (False, "[FLERR] Timeout"),
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         success, data, msg = self.ft.fread(256)  # No current_offset
@@ -1082,7 +1082,7 @@ class TestFileTransferMaxRetries(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
 
     def test_default_max_retries(self):
         """Test default max_retries value."""
@@ -1099,7 +1099,7 @@ class TestFileTransferMaxRetries(unittest.TestCase):
         ft = FileTransfer(self.mock_fpb, max_retries=2)
         self.mock_fpb.send_fl_cmd.return_value = (
             False,
-            "[ERR] CRC mismatch",
+            "[FLERR] CRC mismatch",
         )
         ft.fwrite(b"test")
         # 1 initial + 2 retries = 3 calls
@@ -1108,7 +1108,7 @@ class TestFileTransferMaxRetries(unittest.TestCase):
     def test_max_retries_used_in_fread(self):
         """Test max_retries is used in fread."""
         ft = FileTransfer(self.mock_fpb, max_retries=2)
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Timeout")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Timeout")
         ft.fread(256)
         # 1 initial + 2 retries = 3 calls
         self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 3)
@@ -1120,7 +1120,7 @@ class TestFileTransferLogCallback(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
 
     def test_log_callback_none_by_default(self):
         """Test log_callback is None by default."""
@@ -1151,9 +1151,9 @@ class TestFileTransferLogCallback(unittest.TestCase):
         callback = Mock()
         ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] CRC mismatch"),
-            (True, "[OK] FSEEK"),  # fseek on retry
-            (True, "[OK] FWRITE 10 bytes"),
+            (False, "[FLERR] CRC mismatch"),
+            (True, "[FLOK] FSEEK"),  # fseek on retry
+            (True, "[FLOK] FWRITE 10 bytes"),
         ]
         ft.fwrite(b"test data!", current_offset=100)
         # Should have logged the CRC mismatch
@@ -1173,12 +1173,12 @@ class TestFileTransferLogCallback(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
             ),
-            (True, "[OK] FSEEK"),  # fseek on retry
+            (True, "[FLOK] FSEEK"),  # fseek on retry
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         ft.fread(256, current_offset=200)
@@ -1192,9 +1192,9 @@ class TestFileTransferLogCallback(unittest.TestCase):
         callback = Mock()
         ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] CRC mismatch"),
-            (True, "[OK] FSEEK"),  # fseek on retry
-            (True, "[OK] FWRITE 10 bytes"),
+            (False, "[FLERR] CRC mismatch"),
+            (True, "[FLOK] FSEEK"),  # fseek on retry
+            (True, "[FLOK] FWRITE 10 bytes"),
         ]
         ft.fwrite(b"test data!", current_offset=512)
         # Check log message contains offset info
@@ -1210,11 +1210,11 @@ class TestFileTransferLogCallback(unittest.TestCase):
         crc = calc_crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (False, "[ERR] Timeout"),
-            (True, "[OK] FSEEK"),  # fseek on retry
+            (False, "[FLERR] Timeout"),
+            (True, "[FLOK] FSEEK"),  # fseek on retry
             (
                 True,
-                f"[OK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
         ]
         ft.fread(256, current_offset=100)

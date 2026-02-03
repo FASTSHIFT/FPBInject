@@ -37,7 +37,7 @@ class TestTransferRoutes(unittest.TestCase):
 
         # Create mock FPB
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[OK] Test"))
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
         self.mock_fpb.enter_fl_mode = Mock()
         self.mock_fpb.exit_fl_mode = Mock()
 
@@ -74,7 +74,7 @@ class TestTransferRoutes(unittest.TestCase):
         """Test successful directory listing."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FLIST dir=1 file=2\n  D subdir\n  F test.txt 100\n  F data.bin 256",
+            "[FLOK] FLIST dir=1 file=2\n  D subdir\n  F test.txt 100\n  F data.bin 256",
         )
         response = self.client.get("/api/transfer/list?path=/data")
         self.assertEqual(response.status_code, 200)
@@ -85,7 +85,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_list_default_path(self):
         """Test listing with default path."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FLIST dir=0 file=0")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FLIST dir=0 file=0")
         response = self.client.get("/api/transfer/list")
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
@@ -93,7 +93,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_list_failure(self):
         """Test listing failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Not a directory")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Not a directory")
         response = self.client.get("/api/transfer/list?path=/test.txt")
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
@@ -114,7 +114,7 @@ class TestTransferRoutes(unittest.TestCase):
         """Test successful file stat."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[OK] FSTAT /test.txt size=1024 mtime=1234567890 type=file",
+            "[FLOK] FSTAT /test.txt size=1024 mtime=1234567890 type=file",
         )
         response = self.client.get("/api/transfer/stat?path=/test.txt")
         self.assertEqual(response.status_code, 200)
@@ -133,7 +133,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_stat_failure(self):
         """Test stat failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] File not found")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] File not found")
         response = self.client.get("/api/transfer/stat?path=/nonexistent")
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
@@ -141,7 +141,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_mkdir_success(self):
         """Test successful directory creation."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FMKDIR /newdir")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FMKDIR /newdir")
         response = self.client.post(
             "/api/transfer/mkdir",
             json={"path": "/newdir"},
@@ -163,7 +163,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_mkdir_failure(self):
         """Test mkdir failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Already exists")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Already exists")
         response = self.client.post(
             "/api/transfer/mkdir",
             json={"path": "/existing"},
@@ -175,7 +175,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_delete_success(self):
         """Test successful file deletion."""
-        self.mock_fpb.send_fl_cmd.return_value = (True, "[OK] FREMOVE /test.txt")
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FREMOVE /test.txt")
         response = self.client.post(
             "/api/transfer/delete",
             json={"path": "/test.txt"},
@@ -197,7 +197,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_delete_failure(self):
         """Test delete failure."""
-        self.mock_fpb.send_fl_cmd.return_value = (False, "[ERR] Permission denied")
+        self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Permission denied")
         response = self.client.post(
             "/api/transfer/delete",
             json={"path": "/protected.txt"},
@@ -265,11 +265,13 @@ class TestTransferHelpers(unittest.TestCase):
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
             with patch("app.routes.transfer.state") as mock_state:
                 mock_state.device.chunk_size = 512
+                mock_state.device.transfer_max_retries = 5
                 from app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
                 self.assertEqual(ft.fpb, mock_fpb)
                 self.assertEqual(ft.chunk_size, 512)
+                self.assertEqual(ft.max_retries, 5)
 
     def test_get_file_transfer_default_chunk_size(self):
         """Test _get_file_transfer with default chunk size."""
@@ -278,10 +280,25 @@ class TestTransferHelpers(unittest.TestCase):
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
             with patch("app.routes.transfer.state") as mock_state:
                 mock_state.device.chunk_size = None
+                mock_state.device.transfer_max_retries = 10
                 from app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
                 self.assertEqual(ft.chunk_size, 256)
+
+    def test_get_file_transfer_default_max_retries(self):
+        """Test _get_file_transfer with default max_retries when not set."""
+        mock_fpb = Mock()
+        with patch("app.routes.transfer._get_helpers") as mock_helpers:
+            mock_helpers.return_value = (Mock(), lambda: mock_fpb)
+            with patch("app.routes.transfer.state") as mock_state:
+                mock_state.device.chunk_size = 256
+                # Simulate missing transfer_max_retries attribute
+                del mock_state.device.transfer_max_retries
+                from app.routes.transfer import _get_file_transfer
+
+                ft = _get_file_transfer()
+                self.assertEqual(ft.max_retries, 10)  # Default value
 
     def test_run_serial_op_success(self):
         """Test _run_serial_op with successful operation."""

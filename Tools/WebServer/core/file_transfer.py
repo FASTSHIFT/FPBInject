@@ -487,8 +487,8 @@ class FileTransfer:
                     continue
                 return False, b"", response
 
-            # Parse response: [OK] FREAD <n> bytes crc=0x<crc> data=<base64>
-            # or: [OK] FREAD 0 bytes EOF
+            # Parse response: [FLOK] FREAD <n> bytes crc=0x<crc> data=<base64>
+            # or: [FLOK] FREAD 0 bytes EOF
             match = re.search(
                 r"FREAD\s+(\d+)\s+bytes(?:\s+crc=0x([0-9A-Fa-f]+)\s+data=(\S+))?",
                 response,
@@ -595,7 +595,7 @@ class FileTransfer:
         if not success:
             return False, {"error": response}
 
-        # Parse: [OK] FSTAT <path> size=<n> mtime=<t> type=<file|dir>
+        # Parse: [FLOK] FSTAT <path> size=<n> mtime=<t> type=<file|dir>
         match = re.search(
             r"FSTAT\s+\S+\s+size=(\d+)\s+mtime=(\d+)\s+type=(\w+)", response
         )

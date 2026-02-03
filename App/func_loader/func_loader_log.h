@@ -47,7 +47,7 @@ void fl_log_init(fl_output_cb_t output_cb, void* output_user);
 
 /**
  * @brief Send a response with OK/ERR prefix
- * @param ok true for [OK], false for [ERR]
+ * @param ok true for [FLOK], false for [FLERR]
  * @param fmt Printf-style format string
  * @param ... Format arguments
  */

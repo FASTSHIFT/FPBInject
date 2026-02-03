@@ -274,6 +274,8 @@ def api_transfer_upload():
     _transfer_cancelled.clear()
 
     progress_queue = queue.Queue()
+    # Track last activity time for timeout
+    last_activity = {"time": time.time()}
 
     def upload_task():
         def log_callback(msg):
@@ -289,6 +291,9 @@ def api_transfer_upload():
 
         def progress_cb(uploaded, total):
             nonlocal last_time, last_bytes, cancelled
+
+            # Update activity time
+            last_activity["time"] = time.time()
 
             # Check for cancel
             if _transfer_cancelled.is_set():
@@ -405,9 +410,14 @@ def api_transfer_upload():
                 ft.fpb.exit_fl_mode()
                 progress_queue.put(None)
 
-        if not run_in_device_worker(state.device, do_upload, timeout=120.0):
+        # Use very long timeout - actual timeout is managed by activity tracking
+        if not run_in_device_worker(state.device, do_upload, timeout=86400.0):
             progress_queue.put(
-                {"type": "result", "success": False, "error": "Device worker timeout"}
+                {
+                    "type": "result",
+                    "success": False,
+                    "error": "Device worker not running",
+                }
             )
             progress_queue.put(None)
 
@@ -415,13 +425,24 @@ def api_transfer_upload():
     thread.start()
 
     def generate():
+        # Inactivity timeout: 120 seconds without any progress
+        INACTIVITY_TIMEOUT = 120.0
         while True:
             try:
-                item = progress_queue.get(timeout=60)
+                item = progress_queue.get(timeout=5.0)
                 if item is None:
                     break
+                # Update activity time on any message
+                last_activity["time"] = time.time()
                 yield f"data: {json.dumps(item)}\n\n"
             except queue.Empty:
+                # Check if transfer is still active
+                inactive_time = time.time() - last_activity["time"]
+                if inactive_time > INACTIVITY_TIMEOUT:
+                    # No activity for too long, timeout
+                    yield f"data: {json.dumps({'type': 'result', 'success': False, 'error': 'Transfer timeout - no activity'})}\n\n"
+                    break
+                # Send heartbeat to keep connection alive
                 yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
 
     return Response(
@@ -462,6 +483,8 @@ def api_transfer_download():
     _transfer_cancelled.clear()
 
     progress_queue = queue.Queue()
+    # Track last activity time for timeout
+    last_activity = {"time": time.time()}
 
     def download_task():
         def log_callback(msg):
@@ -477,6 +500,9 @@ def api_transfer_download():
 
         def progress_cb(downloaded, total):
             nonlocal last_time, last_bytes, cancelled
+
+            # Update activity time
+            last_activity["time"] = time.time()
 
             # Check for cancel
             if _transfer_cancelled.is_set():
@@ -538,6 +564,16 @@ def api_transfer_download():
                             "type": "result",
                             "success": False,
                             "error": "Cannot download directory",
+                        }
+                    )
+                    return
+
+                if total_size == 0:
+                    progress_queue.put(
+                        {
+                            "type": "result",
+                            "success": False,
+                            "error": "File is empty",
                         }
                     )
                     return
@@ -631,9 +667,14 @@ def api_transfer_download():
                 ft.fpb.exit_fl_mode()
                 progress_queue.put(None)
 
-        if not run_in_device_worker(state.device, do_download, timeout=120.0):
+        # Use very long timeout - actual timeout is managed by activity tracking
+        if not run_in_device_worker(state.device, do_download, timeout=86400.0):
             progress_queue.put(
-                {"type": "result", "success": False, "error": "Device worker timeout"}
+                {
+                    "type": "result",
+                    "success": False,
+                    "error": "Device worker not running",
+                }
             )
             progress_queue.put(None)
 
@@ -641,13 +682,24 @@ def api_transfer_download():
     thread.start()
 
     def generate():
+        # Inactivity timeout: 120 seconds without any progress
+        INACTIVITY_TIMEOUT = 120.0
         while True:
             try:
-                item = progress_queue.get(timeout=60)
+                item = progress_queue.get(timeout=5.0)
                 if item is None:
                     break
+                # Update activity time on any message
+                last_activity["time"] = time.time()
                 yield f"data: {json.dumps(item)}\n\n"
             except queue.Empty:
+                # Check if transfer is still active
+                inactive_time = time.time() - last_activity["time"]
+                if inactive_time > INACTIVITY_TIMEOUT:
+                    # No activity for too long, timeout
+                    yield f"data: {json.dumps({'type': 'result', 'success': False, 'error': 'Transfer timeout - no activity'})}\n\n"
+                    break
+                # Send heartbeat to keep connection alive
                 yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
 
     return Response(

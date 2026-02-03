@@ -181,6 +181,7 @@ def api_get_config():
             "chunk_size": device.chunk_size,
             "tx_chunk_size": device.tx_chunk_size,
             "tx_chunk_delay": device.tx_chunk_delay,
+            "transfer_max_retries": device.transfer_max_retries,
             "auto_compile": device.auto_compile,
             "enable_decompile": device.enable_decompile,
         }
@@ -233,6 +234,9 @@ def api_config():
 
     if "tx_chunk_delay" in data:
         device.tx_chunk_delay = data["tx_chunk_delay"]
+
+    if "transfer_max_retries" in data:
+        device.transfer_max_retries = data["transfer_max_retries"]
 
     if "auto_compile" in data:
         device.auto_compile = data["auto_compile"]

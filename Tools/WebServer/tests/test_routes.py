@@ -276,6 +276,15 @@ class TestRoutesFPB(TestRoutesBase):
 class TestConfigAPI(TestRoutesBase):
     """Configuration API tests"""
 
+    def test_get_config_includes_transfer_max_retries(self):
+        """Test GET config includes transfer_max_retries"""
+        state.device.transfer_max_retries = 20
+        response = self.client.get("/api/config")
+        data = json.loads(response.data)
+
+        self.assertIn("transfer_max_retries", data)
+        self.assertEqual(data["transfer_max_retries"], 20)
+
     def test_update_port(self):
         """Test updating port"""
         response = self.client.post(
@@ -323,6 +332,18 @@ class TestConfigAPI(TestRoutesBase):
 
         self.assertTrue(data["success"])
         self.assertEqual(state.device.chunk_size, 512)
+
+    def test_update_transfer_max_retries(self):
+        """Test updating transfer max retries"""
+        response = self.client.post(
+            "/api/config",
+            data=json.dumps({"transfer_max_retries": 15}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(state.device.transfer_max_retries, 15)
 
     def test_update_auto_compile(self):
         """Test updating auto compile setting"""
