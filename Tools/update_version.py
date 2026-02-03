@@ -114,7 +114,7 @@ const FPBINJECT_VERSION = {{
   major: {major},
   minor: {minor},
   patch: {patch},
-  string: 'v{major}.{minor}.{patch}'
+  string: 'v{major}.{minor}.{patch}',
 }};
 
 window.FPBINJECT_VERSION = FPBINJECT_VERSION;
