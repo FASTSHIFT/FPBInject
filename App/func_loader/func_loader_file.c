@@ -131,6 +131,23 @@ int fl_file_close(fl_file_ctx_t* file_ctx) {
     return ret;
 }
 
+off_t fl_file_seek(fl_file_ctx_t* file_ctx, off_t offset, int whence) {
+    if (!file_ctx || !file_ctx->fs || !file_ctx->fp) {
+        return -1;
+    }
+
+    if (!file_ctx->fs->lseek) {
+        return -1;
+    }
+
+    off_t new_pos = file_ctx->fs->lseek(file_ctx->fp, offset, whence);
+    if (new_pos >= 0) {
+        file_ctx->offset = new_pos;
+    }
+
+    return new_pos;
+}
+
 int fl_file_stat(fl_file_ctx_t* file_ctx, const char* path, fl_file_stat_t* st) {
     if (!file_ctx || !file_ctx->fs || !path || !st) {
         return -1;

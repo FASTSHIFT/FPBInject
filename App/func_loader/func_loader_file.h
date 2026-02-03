@@ -213,6 +213,15 @@ ssize_t fl_file_read(fl_file_ctx_t* file_ctx, void* buf, size_t len);
 int fl_file_close(fl_file_ctx_t* file_ctx);
 
 /**
+ * @brief Seek to position in open file
+ * @param file_ctx File context
+ * @param offset Offset in bytes
+ * @param whence FL_SEEK_SET (0), FL_SEEK_CUR (1), or FL_SEEK_END (2)
+ * @return New position on success, -1 on error
+ */
+off_t fl_file_seek(fl_file_ctx_t* file_ctx, off_t offset, int whence);
+
+/**
  * @brief Get file status
  * @param file_ctx File context
  * @param path File path

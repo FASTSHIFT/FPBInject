@@ -629,6 +629,21 @@ static void cmd_fclose(fl_context_t* ctx) {
     fl_response(true, "FCLOSE");
 }
 
+static void cmd_fseek(fl_context_t* ctx, off_t offset) {
+    if (!ctx->file_ctx.fp) {
+        fl_response(false, "No file open");
+        return;
+    }
+
+    off_t new_pos = fl_file_seek(&ctx->file_ctx, offset, FL_SEEK_SET);
+    if (new_pos < 0) {
+        fl_response(false, "Seek failed");
+        return;
+    }
+
+    fl_response(true, "FSEEK %ld", (long)new_pos);
+}
+
 static void cmd_fstat(fl_context_t* ctx, const char* path) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
@@ -833,6 +848,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         cmd_fread(ctx, len);
     } else if (strcmp(cmd, "fclose") == 0) {
         cmd_fclose(ctx);
+    } else if (strcmp(cmd, "fseek") == 0) {
+        cmd_fseek(ctx, (off_t)addr);
     } else if (strcmp(cmd, "fstat") == 0) {
         cmd_fstat(ctx, path);
     } else if (strcmp(cmd, "flist") == 0) {
