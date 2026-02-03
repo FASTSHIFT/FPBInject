@@ -29,10 +29,10 @@ module.exports = function (w) {
       assertEqual(w.lightTerminalTheme.cursor, '#333333');
     });
     it('darkTerminalTheme has selection color', () => {
-      assertEqual(w.darkTerminalTheme.selection, '#264f78');
+      assertEqual(w.darkTerminalTheme.selectionBackground, '#264f78');
     });
     it('lightTerminalTheme has selection color', () => {
-      assertEqual(w.lightTerminalTheme.selection, '#add6ff');
+      assertEqual(w.lightTerminalTheme.selectionBackground, '#add6ff');
     });
     it('getTerminalTheme returns dark theme by default', () => {
       browserGlobals.document.documentElement._theme = 'dark';

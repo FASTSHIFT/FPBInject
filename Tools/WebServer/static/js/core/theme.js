@@ -10,7 +10,8 @@ const darkTerminalTheme = {
   foreground: '#cccccc',
   cursor: '#ffffff',
   cursorAccent: '#1e1e1e',
-  selection: '#264f78',
+  selectionBackground: '#264f78',
+  selectionForeground: '#ffffff',
 };
 
 const lightTerminalTheme = {
@@ -18,7 +19,8 @@ const lightTerminalTheme = {
   foreground: '#333333',
   cursor: '#333333',
   cursorAccent: '#f3f3f3',
-  selection: '#add6ff',
+  selectionBackground: '#add6ff',
+  selectionForeground: '#000000',
 };
 
 /* ===========================
