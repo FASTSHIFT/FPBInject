@@ -176,7 +176,9 @@ class FPBProtocol:
                     # Check for explicit end marker first (fast path)
                     if "[FLEND]" in response:
                         break
-                time.sleep(0.001)
+                else:
+                    # Wait a bit before checking again
+                    time.sleep(0.0001)
 
             # Log raw response first (with [FLEND] marker)
             response = response.strip()
