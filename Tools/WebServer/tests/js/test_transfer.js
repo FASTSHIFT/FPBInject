@@ -294,7 +294,7 @@ module.exports = function (w) {
         return null;
       };
       w.updateTransferProgress(50);
-      assertEqual(progressText.textContent, '50%');
+      assertEqual(progressText.textContent, '50.0%');
     });
 
     it('handles missing progress bar', () => {

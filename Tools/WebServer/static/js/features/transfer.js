@@ -482,7 +482,10 @@ function updateTransferProgress(percent, text, speed, eta, stats) {
     progressFill.style.width = `${percent}%`;
   }
   if (progressText) {
-    progressText.textContent = text || `${percent}%`;
+    // Always show 1 decimal place for percentage
+    const percentStr =
+      typeof percent === 'number' ? percent.toFixed(1) : percent;
+    progressText.textContent = text || `${percentStr}%`;
   }
   if (progressSpeed && speed !== undefined) {
     progressSpeed.textContent = formatSpeed(speed);
@@ -722,7 +725,7 @@ async function uploadDroppedFile(file) {
       (uploaded, total, percent, speed, eta, stats) => {
         updateTransferProgress(
           percent,
-          `${percent}% (${formatFileSize(uploaded)}/${formatFileSize(total)})`,
+          `${percent.toFixed(1)}% (${formatFileSize(uploaded)}/${formatFileSize(total)})`,
           speed,
           eta,
           stats,
@@ -808,7 +811,7 @@ async function downloadFromDevice() {
       (downloaded, total, percent, speed, eta, stats) => {
         updateTransferProgress(
           percent,
-          `${percent}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
+          `${percent.toFixed(1)}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
           speed,
           eta,
           stats,
