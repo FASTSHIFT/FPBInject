@@ -48,7 +48,7 @@ int fl_file_open(fl_file_ctx_t* file_ctx, const char* path, const char* mode) {
     /* Parse mode string to flags */
     int flags = 0;
     if (strchr(mode, 'r') && strchr(mode, 'w')) {
-        flags = FL_O_RDWR;
+        flags = FL_O_RDWR | FL_O_CREAT | FL_O_TRUNC;
     } else if (strchr(mode, 'r')) {
         flags = FL_O_RDONLY;
     } else if (strchr(mode, 'w')) {

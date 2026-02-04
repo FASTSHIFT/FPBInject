@@ -465,8 +465,8 @@ class FileTransfer:
         """
         total_size = len(local_data)
 
-        # Open file for writing
-        success, msg = self.fopen(remote_path, "w")
+        # Open file for read/write (need read for CRC verification)
+        success, msg = self.fopen(remote_path, "rw")
         if not success:
             return False, f"Failed to open file: {msg}"
 

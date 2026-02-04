@@ -380,7 +380,8 @@ def api_transfer_upload():
             ft.fpb.enter_fl_mode()
             try:
                 # Manual upload with cancel check
-                success, msg = ft.fopen(remote_path, "w")
+                # Use "rw" mode to allow CRC verification after write
+                success, msg = ft.fopen(remote_path, "rw")
                 if not success:
                     add_tool_log(f"[ERROR] Upload failed to open: {msg}")
                     progress_queue.put(
