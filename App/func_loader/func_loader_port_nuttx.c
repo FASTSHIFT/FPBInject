@@ -181,7 +181,7 @@ static int interactive_mode(fl_context_t* ctx) {
             continue;
         }
 
-        int argc = parse_line(line, argv, 32);
+        int argc = parse_line(line, argv, sizeof(argv) / sizeof(argv[0]));
         if (argc > 0) {
             fl_exec_cmd(ctx, argc, argv);
         }
