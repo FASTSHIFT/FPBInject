@@ -12,7 +12,7 @@ function browseFile(inputId, filter = '') {
   state.fileBrowserCallback = (path) => {
     document.getElementById(inputId).value = path;
     saveConfig(true);
-    if (inputId === 'elfPath' && path.endsWith('.elf')) {
+    if (inputId === 'elfPath') {
       refreshSymbolsFromELF(path);
     }
   };
