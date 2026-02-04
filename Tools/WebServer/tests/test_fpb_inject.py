@@ -643,6 +643,790 @@ class TestFPBInjectCoverage(unittest.TestCase):
         finally:
             os.remove(cmd_path)
 
+    def test_parse_compile_commands_with_arguments_array(self):
+        """Test parsing compile_commands.json with 'arguments' array format (bear)"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "arm-none-eabi-gcc",
+                            "-c",
+                            "main.c",
+                            "-o",
+                            "main.o",
+                            "-I/inc",
+                            "-DDEBUG",
+                        ],
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["compiler"], "arm-none-eabi-gcc")
+            self.assertIn("/inc", result["includes"])
+            self.assertIn("DEBUG", result["defines"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_with_arguments_complex(self):
+        """Test parsing complex compile commands with 'arguments' array"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "/usr/bin/gcc",
+                            "-c",
+                            "-I/a",
+                            "-I",
+                            "/b",
+                            "-D",
+                            "A",
+                            "-DB",
+                            "-isystem",
+                            "/sys",
+                            "-o",
+                            "out.o",
+                            "main.c",
+                            "-mcpu=cortex-m4",
+                            "-Os",
+                        ],
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertIn("/a", result["includes"])
+            self.assertIn("/b", result["includes"])
+            self.assertIn("/sys", result["includes"])
+            self.assertIn("A", result["defines"])
+            self.assertIn("B", result["defines"])
+            self.assertIn("-mcpu=cortex-m4", result["cflags"])
+            self.assertIn("-Os", result["cflags"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_invalid_type(self):
+        """Test parsing with invalid 'arguments' field (not array)"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": "invalid string instead of array",
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_no_command_no_arguments(self):
+        """Test parsing entry with neither 'command' nor 'arguments'"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_invalid_json_type(self):
+        """Test parsing with invalid JSON structure (dict instead of list)"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                {
+                    "directory": "/tmp",
+                    "command": "gcc main.c",
+                    "file": "main.c",
+                },
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_with_defines_and_includes(self):
+        """Test arguments array with -D and -I flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "arm-none-eabi-gcc",
+                            "-D",
+                            "NUTTX",
+                            "-DVERSION=123",
+                            "-I/inc",
+                            "-I",
+                            "/sys/inc",
+                            "-c",
+                            "test.c",
+                            "-o",
+                            "test.o",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertIn("NUTTX", result["defines"])
+            self.assertIn("VERSION=123", result["defines"])
+            self.assertIn("/inc", result["includes"])
+            self.assertIn("/sys/inc", result["includes"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_with_fpb_flags(self):
+        """Test arguments array with FPBInject specific flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "arm-none-eabi-gcc",
+                            "-D__NUTTX__",
+                            "-DFL_NUTTX_BUF_SIZE=1024",
+                            "-DFL_NUTTX_LINE_SIZE=256",
+                            "-DFL_FILE_USE_POSIX=1",
+                            "-c",
+                            "test.c",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertIn("__NUTTX__", result["defines"])
+            self.assertIn("FL_NUTTX_BUF_SIZE=1024", result["defines"])
+            self.assertIn("FL_NUTTX_LINE_SIZE=256", result["defines"])
+            self.assertIn("FL_FILE_USE_POSIX=1", result["defines"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_mixed_entry_fallback(self):
+        """Test fallback to first valid C entry when target not found"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": "arm-none-eabi-gcc -c other.c -I/inc -DOTHER",
+                        "file": "other.c",
+                    },
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "arm-none-eabi-gcc",
+                            "-c",
+                            "fallback.c",
+                            "-I/fallback",
+                            "-DFALLBACK",
+                        ],
+                        "file": "fallback.c",
+                    },
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(
+                cmd_path, source_file="nonexistent.c"
+            )
+            self.assertIsNotNone(result)
+            # Should use first valid entry as fallback
+            self.assertEqual(result["compiler"], "arm-none-eabi-gcc")
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_empty_array(self):
+        """Test parsing with empty 'arguments' array"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [],
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_with_undefine(self):
+        """Test parsing with -U undefine flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "arm-none-eabi-gcc",
+                            "-c",
+                            "test.c",
+                            "-DSET_VALUE",
+                            "-U",
+                            "UNSET_VALUE",
+                            "-UOLD_MACRO",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertIn("SET_VALUE", result["defines"])
+            # Verify -U flags are in cflags (not defines)
+            self.assertIn("-U", result["cflags"])
+            self.assertIn("UNSET_VALUE", result["cflags"])
+            self.assertIn("-UOLD_MACRO", result["cflags"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_with_arch_flags(self):
+        """Test parsing with architecture flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "arm-none-eabi-gcc",
+                            "-c",
+                            "test.c",
+                            "-mthumb",
+                            "-mcpu=cortex-m4",
+                            "-mtune=cortex-m4",
+                            "-march=armv7e-m",
+                            "-mfpu=fpv4-sp-d16",
+                            "-mfloat-abi=hard",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # All architecture flags should be in cflags
+            self.assertIn("-mthumb", result["cflags"])
+            self.assertIn("-mcpu=cortex-m4", result["cflags"])
+            self.assertIn("-mtune=cortex-m4", result["cflags"])
+            self.assertIn("-march=armv7e-m", result["cflags"])
+            self.assertIn("-mfpu=fpv4-sp-d16", result["cflags"])
+            self.assertIn("-mfloat-abi=hard", result["cflags"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_with_section_flags(self):
+        """Test parsing with section flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "arm-none-eabi-gcc",
+                            "-c",
+                            "test.c",
+                            "-ffunction-sections",
+                            "-fdata-sections",
+                            "-fno-common",
+                            "-nostdlib",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertIn("-ffunction-sections", result["cflags"])
+            self.assertIn("-fdata-sections", result["cflags"])
+            self.assertIn("-fno-common", result["cflags"])
+            self.assertIn("-nostdlib", result["cflags"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_arguments_preserves_command_format(self):
+        """Test that command format in result contains compiler info"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "/usr/bin/arm-none-eabi-gcc",
+                            "-c",
+                            "test.c",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # Verify compiler path is extracted correctly
+            self.assertEqual(result["compiler"], "/usr/bin/arm-none-eabi-gcc")
+            # Verify objcopy is derived from compiler
+            self.assertIn("objcopy", result["objcopy"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_command_string_with_spaces_in_paths(self):
+        """Test parsing command string with spaces in file paths"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": 'arm-none-eabi-gcc -c "/path with spaces/main.c" -I"/inc with spaces" -o main.o',
+                        "file": "main.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["compiler"], "arm-none-eabi-gcc")
+            self.assertIn("/inc with spaces", result["includes"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_with_multiple_dash_i_flags(self):
+        """Test parsing with separate -I flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "gcc",
+                            "-c",
+                            "test.c",
+                            "-I",
+                            "/path1",
+                            "-I",
+                            "/path2",
+                            "-I",
+                            "/path3",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertIn("/path1", result["includes"])
+            self.assertIn("/path2", result["includes"])
+            self.assertIn("/path3", result["includes"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_with_dash_o_flag(self):
+        """Test that -o output flag is properly skipped"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "gcc",
+                            "-c",
+                            "test.c",
+                            "-o",
+                            "/very/long/path/to/output/test.o",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # Output path should not appear in result
+            self.assertNotIn("/very/long/path/to/output/test.o", str(result))
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_skip_assembly_files(self):
+        """Test that assembly files are skipped in fallback"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": "arm-none-eabi-gcc -c startup.S -D__ASSEMBLY__ -o startup.o",
+                        "file": "startup.S",
+                    },
+                    {
+                        "directory": "/tmp",
+                        "command": "arm-none-eabi-gcc -c main.c -DMAIN -o main.o",
+                        "file": "main.c",
+                    },
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(
+                cmd_path, source_file="nonexistent.c"
+            )
+            self.assertIsNotNone(result)
+            # Should fallback to main.c, not startup.S
+            self.assertIn("MAIN", result["defines"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_invalid_dict_entry(self):
+        """Test that non-dict entries are skipped"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    "invalid string entry",
+                    None,
+                    {
+                        "directory": "/tmp",
+                        "command": "arm-none-eabi-gcc -c main.c -o main.o",
+                        "file": "main.c",
+                    },
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["compiler"], "arm-none-eabi-gcc")
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_no_assembly_flag_fallback(self):
+        """Test fallback when no C files without assembly flag"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": "arm-none-eabi-gcc -c test.c __ASSEMBLY__ -o test.o",
+                        "file": "test.c",
+                    },
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(
+                cmd_path, source_file="nonexistent.c"
+            )
+            # Should return None since no valid C file found (marked as assembly)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_with_param_flag(self):
+        """Test parsing with --param flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "gcc",
+                            "-c",
+                            "test.c",
+                            "--param",
+                            "min-pagesize=0",
+                            "-o",
+                            "test.o",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # --param and its value should be skipped
+            self.assertNotIn("--param", str(result["cflags"]))
+            self.assertNotIn("min-pagesize=0", str(result["cflags"]))
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_with_wa_flags(self):
+        """Test parsing with -Wa assembler flags"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "gcc",
+                            "-c",
+                            "test.c",
+                            "-Wa,-mthumb",
+                            "-Wa,-mimplicit-it=always",
+                            "-o",
+                            "test.o",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # -Wa flags should be skipped
+            for flag in result["cflags"]:
+                self.assertFalse(flag.startswith("-Wa,"))
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_with_source_file_match(self):
+        """Test exact source file matching"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": "gcc -c file1.c -DFILE1 -o file1.o",
+                        "file": "/tmp/file1.c",
+                    },
+                    {
+                        "directory": "/tmp",
+                        "command": "gcc -c file2.c -DFILE2 -o file2.o",
+                        "file": "/tmp/file2.c",
+                    },
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(
+                cmd_path, source_file="/tmp/file2.c"
+            )
+            self.assertIsNotNone(result)
+            # Should match file2.c exactly
+            self.assertIn("FILE2", result["defines"])
+            self.assertNotIn("FILE1", result["defines"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_json_decode_error(self):
+        """Test handling of JSON decode error"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("{invalid json content")
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNone(result)
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_file_read_error(self):
+        """Test handling of file read error"""
+        # Use a path that will cause permission error or doesn't exist
+        result = self.fpb.parse_compile_commands(
+            "/root/forbidden/compile_commands.json"
+        )
+        self.assertIsNone(result)
+
+    def test_parse_compile_commands_relative_path_fallback(self):
+        """Test fallback to relative path matching"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/home/user/project",
+                        "command": "gcc -c src/module/test.c -DMODULE -o test.o",
+                        "file": "/home/user/project/src/module/test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            # Request a file in same directory tree but with different path
+            result = self.fpb.parse_compile_commands(
+                cmd_path, source_file="/home/user/project/src/module/other.c"
+            )
+            self.assertIsNotNone(result)
+            # Should find the related file in same directory tree
+            self.assertIn("MODULE", result["defines"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_with_optimization_flag(self):
+        """Test that optimization flags are handled"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "gcc",
+                            "-c",
+                            "test.c",
+                            "-O2",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # -Os should be added if not present, but -O2 may be ignored/handled
+            self.assertIn("-Os", result["cflags"])
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_objcopy_derivation(self):
+        """Test that objcopy path is correctly derived from compiler"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "command": "/path/to/arm-none-eabi-gcc -c test.c -o test.o",
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # Verify objcopy is correctly derived
+            self.assertIn("objcopy", result["objcopy"])
+            self.assertEqual(result["compiler"], "/path/to/arm-none-eabi-gcc")
+        finally:
+            os.remove(cmd_path)
+
+    def test_parse_compile_commands_idempotent_defines(self):
+        """Test that duplicate defines are removed"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                [
+                    {
+                        "directory": "/tmp",
+                        "arguments": [
+                            "gcc",
+                            "-c",
+                            "test.c",
+                            "-DDEBUG",
+                            "-DDEBUG",
+                            "-DDEBUG",
+                        ],
+                        "file": "test.c",
+                    }
+                ],
+                f,
+            )
+            cmd_path = f.name
+
+        try:
+            result = self.fpb.parse_compile_commands(cmd_path)
+            self.assertIsNotNone(result)
+            # DEBUG should only appear once
+            self.assertEqual(result["defines"].count("DEBUG"), 1)
+        finally:
+            os.remove(cmd_path)
+
     @patch("subprocess.run")
     def test_get_symbols(self, mock_run):
         """Test getting symbol table"""

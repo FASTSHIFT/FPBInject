@@ -237,17 +237,37 @@ def parse_compile_commands(
 
     if dep_file_command:
         command_str = dep_file_command
+        try:
+            tokens = shlex.split(command_str)
+        except Exception as e:
+            logger.error(f"Error parsing command from .d file: {e}")
+            return None
     else:
+        # Support both "command" (string) and "arguments" (array) formats
         command_str = selected_entry.get("command", "")
-    if not command_str:
-        logger.error("No command found in compile_commands.json entry")
-        return None
+        arguments = selected_entry.get("arguments", [])
 
-    try:
-        tokens = shlex.split(command_str)
-    except Exception as e:
-        logger.error(f"Error parsing command in compile_commands.json: {e}")
-        return None
+        if arguments:
+            # Bear or newer CMake uses "arguments" array
+            if isinstance(arguments, list):
+                tokens = arguments
+                logger.info("Using 'arguments' field from compile_commands.json")
+            else:
+                logger.error(
+                    "Invalid 'arguments' field in compile_commands.json: expected array"
+                )
+                return None
+        elif command_str:
+            # Older CMake uses "command" string
+            try:
+                tokens = shlex.split(command_str)
+                logger.info("Using 'command' field from compile_commands.json")
+            except Exception as e:
+                logger.error(f"Error parsing command in compile_commands.json: {e}")
+                return None
+        else:
+            logger.error("No command or arguments found in compile_commands.json entry")
+            return None
 
     compiler = tokens[0] if tokens else "arm-none-eabi-gcc"
     includes = []
