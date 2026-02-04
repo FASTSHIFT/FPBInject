@@ -478,6 +478,17 @@ class TestFileTransferUpload(unittest.TestCase):
         self.assertFalse(success)
         self.assertIn("Upload error", msg)
 
+    def test_upload_exception_with_close_failure(self):
+        """Test upload exception handling when close also fails."""
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            Exception("Connection lost"),
+            Exception("Close failed"),  # fclose also fails
+        ]
+        success, msg = self.ft.upload(b"test", "/test.txt")
+        self.assertFalse(success)
+        self.assertIn("Upload error", msg)
+
     def test_upload_no_progress_callback(self):
         """Test upload without progress callback."""
         self.mock_fpb.send_fl_cmd.side_effect = [
@@ -583,6 +594,38 @@ class TestFileTransferDownload(unittest.TestCase):
         success, data, msg = self.ft.download("/test.txt")
         self.assertFalse(success)
         self.assertIn("Download error", msg)
+
+    def test_download_exception_with_close_failure(self):
+        """Test download exception handling when close also fails."""
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FSTAT /test.txt size=100 mtime=123 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            Exception("Connection lost"),
+            Exception("Close failed"),  # fclose also fails
+        ]
+        success, data, msg = self.ft.download("/test.txt")
+        self.assertFalse(success)
+        self.assertIn("Download error", msg)
+
+    def test_download_close_failure(self):
+        """Test download with close failure after successful read."""
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = crc16(test_data)
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (
+                True,
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+            (True, "[FLOK] FREAD 0 bytes EOF"),
+            (False, "[FLERR] Close failed"),
+        ]
+        success, data, msg = self.ft.download("/test.txt")
+        self.assertFalse(success)
+        self.assertIn("Failed to close", msg)
 
     def test_download_no_progress_callback(self):
         """Test download without progress callback."""

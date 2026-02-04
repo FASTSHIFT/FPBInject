@@ -84,18 +84,23 @@ class FileTransfer:
             stats["packet_loss_rate"] = 0.0
         return stats
 
-    def _send_cmd(self, cmd: str, timeout: float = 2.0) -> Tuple[bool, str]:
+    def _send_cmd(
+        self, cmd: str, timeout: float = 2.0, no_protocol_retry: bool = False
+    ) -> Tuple[bool, str]:
         """
         Send a command to device and get response.
 
         Args:
             cmd: Command string to send
             timeout: Response timeout in seconds
+            no_protocol_retry: If True, disable protocol-level retry (for fread/fwrite)
 
         Returns:
             Tuple of (success, response_message)
         """
-        return self.fpb.send_fl_cmd(cmd, timeout=timeout)
+        return self.fpb.send_fl_cmd(
+            cmd, timeout=timeout, max_retries=0 if no_protocol_retry else 3
+        )
 
     def fopen(self, path: str, mode: str = "r") -> Tuple[bool, str]:
         """
@@ -149,7 +154,7 @@ class FileTransfer:
                         logger.error(f"fseek failed during retry: {seek_msg}")
                         # Continue anyway, maybe the write will work
 
-            success, response = self._send_cmd(cmd)
+            success, response = self._send_cmd(cmd, no_protocol_retry=True)
             if success:
                 return True, response
 
@@ -208,7 +213,7 @@ class FileTransfer:
                         logger.error(f"fseek failed during retry: {seek_msg}")
                         # Continue anyway, maybe the read will work
 
-            success, response = self._send_cmd(cmd)
+            success, response = self._send_cmd(cmd, no_protocol_retry=True)
 
             if not success:
                 if attempt < max_retries:
@@ -281,8 +286,6 @@ class FileTransfer:
             return True, data, f"Read {len(data)} bytes"
 
         return False, b"", "Max retries exceeded"
-
-        return True, data, f"Read {len(data)} bytes"
 
     def fclose(self) -> Tuple[bool, str]:
         """
@@ -464,7 +467,11 @@ class FileTransfer:
             return True, f"Uploaded {total_size} bytes to {remote_path}"
 
         except Exception as e:
-            self.fclose()
+            logger.exception(f"Upload exception at offset {uploaded}: {e}")
+            try:
+                self.fclose()
+            except Exception as close_err:
+                logger.error(f"Error closing file after exception: {close_err}")
             return False, f"Upload error: {e}"
 
     def download(
@@ -517,10 +524,16 @@ class FileTransfer:
                     progress_cb(len(data), total_size)
 
             # Close file
-            self.fclose()
+            success, msg = self.fclose()
+            if not success:
+                return False, b"", f"Failed to close file: {msg}"
 
             return True, data, f"Downloaded {len(data)} bytes from {remote_path}"
 
         except Exception as e:
-            self.fclose()
+            logger.exception(f"Download exception at offset {current_offset}: {e}")
+            try:
+                self.fclose()
+            except Exception as close_err:
+                logger.error(f"Error closing file after exception: {close_err}")
             return False, b"", f"Download error: {e}"
