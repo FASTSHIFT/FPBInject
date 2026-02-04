@@ -53,6 +53,8 @@ class PatchGenerator:
         Supported formats (case-insensitive):
         - /* FPB_INJECT */
         - /* FPB-INJECT */
+        - /* fpb inject */
+        - /* fpb  inject  */
         - // FPB_INJECT
         - /* fpbinject */
         - /* FPB_INJECT: description */
@@ -66,14 +68,16 @@ class PatchGenerator:
         marked_functions = []
 
         # Pattern supports:
-        # - Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ or /* fpbinject */
+        # - Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ or /* fpb inject */ etc.
         # - Line comment: // FPB_INJECT or // FPB-INJECT
         # - Optional description after colon
         # - Case-insensitive matching
+        # - Flexible spacing between fpb and inject (space, underscore, or hyphen)
         # followed by optional whitespace/newlines, then function signature
         patterns = [
-            # Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ etc.
-            r"/\*\s*[Ff][Pp][Bb][_\-]?[Ii][Nn][Jj][Ee][Cc][Tt](?:\s*:\s*[^*]*)?\s*\*/",
+            # Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ or /* fpb inject */ etc.
+            # Supports: fpb[_\- ]inject with flexible spacing (including no space)
+            r"/\*\s*[Ff][Pp][Bb][\s_\-]*[Ii][Nn][Jj][Ee][Cc][Tt](?:\s*:\s*[^*]*)?\s*\*/",
             # Line comment: // FPB_INJECT or // FPB-INJECT etc.
             r"//\s*[Ff][Pp][Bb][_\-]?[Ii][Nn][Jj][Ee][Cc][Tt](?:\s*:.*)?$",
         ]

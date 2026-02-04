@@ -119,6 +119,61 @@ int complex_function(
         marked = self.gen.find_marked_functions(content)
         self.assertEqual(marked, ["complex_function"])
 
+    def test_marker_with_space_separator(self):
+        """Test marker with space between fpb and inject"""
+        content = """
+/* fpb inject */
+void spaced_func(void) {
+    return;
+}
+"""
+        marked = self.gen.find_marked_functions(content)
+        self.assertEqual(marked, ["spaced_func"])
+
+    def test_marker_with_multiple_spaces(self):
+        """Test marker with multiple spaces between fpb and inject"""
+        content = """
+/* fpb  inject  */
+void multi_space_func(void) {
+    return;
+}
+"""
+        marked = self.gen.find_marked_functions(content)
+        self.assertEqual(marked, ["multi_space_func"])
+
+    def test_marker_with_mixed_separators(self):
+        """Test marker with mixed separators (space and underscore)"""
+        content = """
+/* FPB _INJECT */
+void mixed_sep_func(void) {
+    return;
+}
+"""
+        marked = self.gen.find_marked_functions(content)
+        self.assertEqual(marked, ["mixed_sep_func"])
+
+    def test_marker_no_separator(self):
+        """Test marker with no separator (fpbinject)"""
+        content = """
+/*fpbinject*/
+void no_sep_func(void) {
+    return;
+}
+"""
+        marked = self.gen.find_marked_functions(content)
+        self.assertEqual(marked, ["no_sep_func"])
+
+    def test_marker_with_hyphen_separator(self):
+        """Test marker with hyphen separator"""
+        content = """
+/* fpb-inject */
+void hyphen_func(void) {
+    return;
+}
+"""
+        marked = self.gen.find_marked_functions(content)
+        self.assertEqual(marked, ["hyphen_func"])
+
 
 class TestGeneratePatch(unittest.TestCase):
     """Test patch generation"""
