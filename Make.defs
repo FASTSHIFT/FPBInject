@@ -1,0 +1,10 @@
+############################################################################
+# FPBInject/Make.defs
+#
+# SPDX-License-Identifier: MIT
+#
+############################################################################
+
+ifneq ($(CONFIG_FPBINJECT),)
+CONFIGURED_APPS += examples/FPBInject
+endif

@@ -33,7 +33,7 @@
  * DWT watchpoint in "execute" mode instead of FPB breakpoint.
  */
 
-#ifdef __NUTTX__
+#ifdef __NuttX__
 
 #include "fpb_debugmon.h"
 
@@ -287,4 +287,4 @@ void fpb_debugmon_handler(uint32_t* stack_frame) {
 
 #endif /* !FPB_NO_DEBUGMON */
 
-#endif /* __NUTTX__ */
+#endif /* __NuttX__ */

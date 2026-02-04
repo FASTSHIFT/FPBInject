@@ -49,7 +49,7 @@
 #include "fpb_debugmon.h"
 
 /* NuttX uses fpb_debugmon_nuttx.c instead */
-#if !defined(FPB_NO_DEBUGMON) && !defined(__NUTTX__)
+#if !defined(FPB_NO_DEBUGMON) && !defined(__NuttX__)
 
 #include <string.h>
 #include <stdio.h>
@@ -461,4 +461,4 @@ __attribute__((weak, naked)) void DebugMon_Handler(void) {
 }
 #endif /* !FPB_DEBUGMON_NO_DEFAULT_HANDLER */
 
-#endif /* !FPB_NO_DEBUGMON && !__NUTTX__ */
+#endif /* !FPB_NO_DEBUGMON && !__NuttX__ */

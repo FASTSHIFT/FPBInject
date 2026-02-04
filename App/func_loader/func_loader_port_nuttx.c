@@ -48,7 +48,7 @@
  *   nsh> fl   # interactive mode
  */
 
-#ifdef __NUTTX__
+#ifdef __NuttX__
 
 #include "func_loader.h"
 #include <nuttx/config.h>
@@ -229,4 +229,4 @@ int main(int argc, char** argv) {
     return interactive_mode(&ctx);
 }
 
-#endif /* __NUTTX__ */
+#endif /* __NuttX__ */
