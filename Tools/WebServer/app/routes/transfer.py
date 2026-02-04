@@ -18,6 +18,7 @@ from flask import Blueprint, Response, jsonify, request
 
 from core.file_transfer import FileTransfer
 from core.state import state
+from utils.crc import crc16
 from services.device_worker import run_in_device_worker
 
 bp = Blueprint("transfer", __name__)
@@ -431,6 +432,49 @@ def api_transfer_upload():
                         ft.fclose()
                         return
 
+                # Verify CRC if enabled
+                if state.device.verify_crc and total_size > 0:
+                    expected_crc = crc16(file_data)
+                    success, dev_size, dev_crc = ft.fcrc(total_size)
+                    if not success:
+                        add_tool_log(
+                            "[WARNING] CRC verification failed: could not get device CRC"
+                        )
+                        progress_queue.put(
+                            {
+                                "type": "crc_warning",
+                                "message": "CRC verification failed: could not get device CRC",
+                            }
+                        )
+                    elif dev_size != total_size:
+                        ft.fclose()
+                        error_msg = f"Size mismatch: expected {total_size}, device has {dev_size}"
+                        add_tool_log(f"[ERROR] {error_msg}")
+                        progress_queue.put(
+                            {
+                                "type": "result",
+                                "success": False,
+                                "error": error_msg,
+                                "crc_error": True,
+                            }
+                        )
+                        return
+                    elif dev_crc != expected_crc:
+                        ft.fclose()
+                        error_msg = f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}"
+                        add_tool_log(f"[ERROR] {error_msg}")
+                        progress_queue.put(
+                            {
+                                "type": "result",
+                                "success": False,
+                                "error": error_msg,
+                                "crc_error": True,
+                            }
+                        )
+                        return
+                    else:
+                        add_tool_log(f"[INFO] CRC verified: 0x{dev_crc:04X}")
+
                 success, msg = ft.fclose()
                 elapsed = time.time() - start_time
                 avg_speed = total_size / elapsed if elapsed > 0 else 0
@@ -682,6 +726,36 @@ def api_transfer_download():
                     if cancelled:
                         ft.fclose()
                         return
+
+                # Verify CRC if enabled
+                if state.device.verify_crc and len(file_data) > 0:
+                    local_crc = crc16(file_data)
+                    success, dev_size, dev_crc = ft.fcrc(len(file_data))
+                    if not success:
+                        add_tool_log(
+                            "[WARNING] CRC verification failed: could not get device CRC"
+                        )
+                        progress_queue.put(
+                            {
+                                "type": "crc_warning",
+                                "message": "CRC verification failed: could not get device CRC",
+                            }
+                        )
+                    elif dev_crc != local_crc:
+                        ft.fclose()
+                        error_msg = f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}"
+                        add_tool_log(f"[ERROR] {error_msg}")
+                        progress_queue.put(
+                            {
+                                "type": "result",
+                                "success": False,
+                                "error": error_msg,
+                                "crc_error": True,
+                            }
+                        )
+                        return
+                    else:
+                        add_tool_log(f"[INFO] CRC verified: 0x{dev_crc:04X}")
 
                 ft.fclose()
                 elapsed = time.time() - start_time

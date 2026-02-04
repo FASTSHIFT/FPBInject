@@ -38,6 +38,7 @@ PERSISTENT_KEYS = [
     "auto_compile",
     "enable_decompile",
     "transfer_max_retries",
+    "verify_crc",
 ]
 
 
@@ -70,6 +71,7 @@ class DeviceState:
         self.auto_connect = False
         self.auto_compile = False  # Auto compile and inject on file change
         self.enable_decompile = False  # Enable decompilation (requires angr)
+        self.verify_crc = True  # Verify CRC after file transfer (default enabled)
 
         # Device info (from fl --info)
         self.device_info = None

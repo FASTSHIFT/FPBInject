@@ -61,6 +61,8 @@ async function loadConfig() {
     if (data.enable_decompile !== undefined)
       document.getElementById('enableDecompile').checked =
         data.enable_decompile;
+    if (data.verify_crc !== undefined)
+      document.getElementById('verifyCrc').checked = data.verify_crc;
 
     const watchDirsSection = document.getElementById('watchDirsSection');
     if (watchDirsSection) {
@@ -94,6 +96,7 @@ async function saveConfig(silent = false) {
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile').checked,
     enable_decompile: document.getElementById('enableDecompile').checked,
+    verify_crc: document.getElementById('verifyCrc').checked,
   };
 
   try {
@@ -240,6 +243,19 @@ function onAutoCompileChange() {
   }
 }
 
+function onVerifyCrcChange() {
+  const enabled = document.getElementById('verifyCrc').checked;
+  writeToOutput(
+    `[INFO] Verify CRC after transfer: ${enabled ? 'Enabled' : 'Disabled'}`,
+    'info',
+  );
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verify_crc: enabled }),
+  });
+}
+
 function updateWatcherStatus(enabled) {
   const watcherStatusEl = document.getElementById('watcherStatus');
   if (watcherStatusEl) {
@@ -266,4 +282,5 @@ window.addWatchDirItem = addWatchDirItem;
 window.browseWatchDir = browseWatchDir;
 window.removeWatchDir = removeWatchDir;
 window.onAutoCompileChange = onAutoCompileChange;
+window.onVerifyCrcChange = onVerifyCrcChange;
 window.updateWatcherStatus = updateWatcherStatus;

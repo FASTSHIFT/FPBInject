@@ -47,6 +47,10 @@ module.exports = function (w) {
       assertTrue(typeof w.formatSpeed === 'function'));
     it('formatETA is a function', () =>
       assertTrue(typeof w.formatETA === 'function'));
+    it('showCrcWarning is a function', () =>
+      assertTrue(typeof w.showCrcWarning === 'function'));
+    it('showCrcError is a function', () =>
+      assertTrue(typeof w.showCrcError === 'function'));
     // Cancel function
     it('cancelTransfer is a function', () =>
       assertTrue(typeof w.cancelTransfer === 'function'));
@@ -255,6 +259,40 @@ module.exports = function (w) {
       const result = w.formatETA(3700);
       assertTrue(result.includes('h'));
       assertTrue(result.includes('m'));
+    });
+  });
+
+  describe('CRC Verification Functions', () => {
+    it('showCrcWarning writes to output', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.showCrcWarning('Test CRC warning');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Test CRC warning'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('showCrcError writes to output', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Mock alert to prevent blocking
+      const originalAlert = browserGlobals.alert;
+      let alertCalled = false;
+      browserGlobals.alert = (msg) => {
+        alertCalled = true;
+      };
+      w.showCrcError('Test CRC error');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Test CRC error'),
+        ),
+      );
+      assertTrue(alertCalled);
+      browserGlobals.alert = originalAlert;
+      w.FPBState.toolTerminal = null;
     });
   });
 

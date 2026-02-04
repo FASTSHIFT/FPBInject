@@ -372,6 +372,39 @@ module.exports = function (w) {
     });
   });
 
+  describe('onVerifyCrcChange Function', () => {
+    it('is a function', () =>
+      assertTrue(typeof w.onVerifyCrcChange === 'function'));
+
+    it('triggers config update when enabled', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      browserGlobals.document.getElementById('verifyCrc').checked = true;
+      setFetchResponse('/api/config', { success: true });
+      w.onVerifyCrcChange();
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Verify CRC'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('triggers config update when disabled', () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      browserGlobals.document.getElementById('verifyCrc').checked = false;
+      setFetchResponse('/api/config', { success: true });
+      w.onVerifyCrcChange();
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Verify CRC'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
   describe('addWatchDir Function', () => {
     it('sets fileBrowserCallback', () => {
       resetMocks();

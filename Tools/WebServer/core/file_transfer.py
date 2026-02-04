@@ -296,6 +296,29 @@ class FileTransfer:
         """
         return self._send_cmd("fl -c fclose")
 
+    def fcrc(self, size: int = 0) -> Tuple[bool, int, int]:
+        """
+        Calculate CRC of open file on device.
+
+        Args:
+            size: Number of bytes to calculate CRC for (0 = entire file)
+
+        Returns:
+            Tuple of (success, size, crc)
+        """
+        cmd = f"fl -c fcrc --len {size}" if size > 0 else "fl -c fcrc"
+        success, response = self._send_cmd(cmd)
+
+        if not success:
+            return False, 0, 0
+
+        # Parse: [FLOK] FCRC size=<n> crc=0x<crc>
+        match = re.search(r"FCRC\s+size=(\d+)\s+crc=0x([0-9A-Fa-f]+)", response)
+        if not match:
+            return False, 0, 0
+
+        return True, int(match.group(1)), int(match.group(2), 16)
+
     def fseek(self, offset: int, whence: int = 0) -> Tuple[bool, str]:
         """
         Seek to position in open file on device.
@@ -426,6 +449,7 @@ class FileTransfer:
         local_data: bytes,
         remote_path: str,
         progress_cb: Optional[Callable[[int, int], None]] = None,
+        verify_crc: bool = True,
     ) -> Tuple[bool, str]:
         """
         Upload data to a file on device.
@@ -434,6 +458,7 @@ class FileTransfer:
             local_data: Data bytes to upload
             remote_path: Destination path on device
             progress_cb: Optional callback(uploaded_bytes, total_bytes)
+            verify_crc: If True, verify entire file CRC after upload
 
         Returns:
             Tuple of (success, message)
@@ -459,6 +484,31 @@ class FileTransfer:
                 if progress_cb:
                     progress_cb(uploaded, total_size)
 
+            # Verify entire file CRC before closing
+            if verify_crc and total_size > 0:
+                expected_crc = crc16(local_data)
+                success, dev_size, dev_crc = self.fcrc(total_size)
+                if not success:
+                    self._log(
+                        "[TRANSFER] CRC verification failed: could not get device CRC"
+                    )
+                    logger.warning("Failed to get device CRC for verification")
+                elif dev_size != total_size:
+                    self.fclose()
+                    return (
+                        False,
+                        f"Size mismatch: expected {total_size}, device has {dev_size}",
+                    )
+                elif dev_crc != expected_crc:
+                    self.fclose()
+                    return (
+                        False,
+                        f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}",
+                    )
+                else:
+                    self._log(f"[TRANSFER] CRC verified: 0x{dev_crc:04X}")
+                    logger.info(f"Upload CRC verified: 0x{dev_crc:04X}")
+
             # Close file
             success, msg = self.fclose()
             if not success:
@@ -478,6 +528,7 @@ class FileTransfer:
         self,
         remote_path: str,
         progress_cb: Optional[Callable[[int, int], None]] = None,
+        verify_crc: bool = True,
     ) -> Tuple[bool, bytes, str]:
         """
         Download a file from device.
@@ -485,6 +536,7 @@ class FileTransfer:
         Args:
             remote_path: Source path on device
             progress_cb: Optional callback(downloaded_bytes, total_bytes)
+            verify_crc: If True, verify entire file CRC after download
 
         Returns:
             Tuple of (success, data_bytes, message)
@@ -522,6 +574,26 @@ class FileTransfer:
                 current_offset += len(chunk)
                 if progress_cb:
                     progress_cb(len(data), total_size)
+
+            # Verify entire file CRC before closing
+            if verify_crc and len(data) > 0:
+                local_crc = crc16(data)
+                success, dev_size, dev_crc = self.fcrc(len(data))
+                if not success:
+                    self._log(
+                        "[TRANSFER] CRC verification failed: could not get device CRC"
+                    )
+                    logger.warning("Failed to get device CRC for verification")
+                elif dev_crc != local_crc:
+                    self.fclose()
+                    return (
+                        False,
+                        b"",
+                        f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}",
+                    )
+                else:
+                    self._log(f"[TRANSFER] CRC verified: 0x{dev_crc:04X}")
+                    logger.info(f"Download CRC verified: 0x{dev_crc:04X}")
 
             # Close file
             success, msg = self.fclose()

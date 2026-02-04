@@ -10,6 +10,36 @@ let transferSelectedFile = null;
 let transferAbortController = null;
 
 /* ===========================
+   CRC VERIFICATION ALERTS
+   =========================== */
+
+/**
+ * Show CRC warning popup (non-blocking)
+ * @param {string} message - Warning message
+ */
+function showCrcWarning(message) {
+  writeToOutput(`[WARNING] ${message}`, 'warning');
+  // Use non-blocking notification
+  if (typeof showNotification === 'function') {
+    showNotification(message, 'warning');
+  } else {
+    console.warn('CRC Warning:', message);
+  }
+}
+
+/**
+ * Show CRC error popup (blocking alert)
+ * @param {string} message - Error message
+ */
+function showCrcError(message) {
+  writeToOutput(`[ERROR] ${message}`, 'error');
+  // Use blocking alert for critical CRC errors
+  alert(
+    `CRC Verification Failed!\n\n${message}\n\nThe transferred file may be corrupted.`,
+  );
+}
+
+/* ===========================
    DEVICE FILE OPERATIONS
    =========================== */
 
@@ -191,8 +221,15 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
                   } else if (data.type === 'log') {
                     // Display transfer log in OUTPUT
                     writeToOutput(data.message, 'warning');
+                  } else if (data.type === 'crc_warning') {
+                    // Show CRC warning popup
+                    showCrcWarning(data.message);
                   } else if (data.type === 'result') {
                     transferAbortController = null;
+                    // Show CRC error popup if applicable
+                    if (!data.success && data.crc_error) {
+                      showCrcError(data.error);
+                    }
                     resolve(data);
                     return;
                   }
@@ -282,6 +319,9 @@ async function downloadFileFromDevice(remotePath, onProgress) {
                   } else if (data.type === 'log') {
                     // Display transfer log in OUTPUT
                     writeToOutput(data.message, 'warning');
+                  } else if (data.type === 'crc_warning') {
+                    // Show CRC warning popup
+                    showCrcWarning(data.message);
                   } else if (data.type === 'result') {
                     if (data.success && data.data) {
                       // Decode base64 to blob
@@ -291,6 +331,10 @@ async function downloadFileFromDevice(remotePath, onProgress) {
                         bytes[i] = binary.charCodeAt(i);
                       }
                       data.blob = new Blob([bytes]);
+                    }
+                    // Show CRC error popup if applicable
+                    if (!data.success && data.crc_error) {
+                      showCrcError(data.error);
                     }
                     transferAbortController = null;
                     resolve(data);
@@ -1255,6 +1299,9 @@ window.hideTransferProgress = hideTransferProgress;
 window.formatSpeed = formatSpeed;
 window.formatETA = formatETA;
 window.formatTransferStats = formatTransferStats;
+// CRC verification
+window.showCrcWarning = showCrcWarning;
+window.showCrcError = showCrcError;
 // Cancel
 window.cancelTransfer = cancelTransfer;
 window.isTransferInProgress = isTransferInProgress;

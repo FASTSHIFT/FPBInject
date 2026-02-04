@@ -148,6 +148,10 @@
           <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
           <label for="autoCompile" style="font-size: 11px">Auto Inject on Save</label>
         </div>
+        <div class="flex-row" title="Verify file integrity with CRC after transfer">
+          <input type="checkbox" id="verifyCrc" checked onchange="onVerifyCrcChange()" />
+          <label for="verifyCrc" style="font-size: 11px">Verify CRC after Transfer</label>
+        </div>
         <div
           class="flex-row"
           title="Enable decompilation when creating patch templates (requires angr, may increase wait time)"
