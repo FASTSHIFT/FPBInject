@@ -163,6 +163,7 @@ def parse_compile_commands(
     # First pass: try to match the exact source file
     if source_file:
         source_file_normalized = os.path.normpath(source_file)
+        source_file_basename = os.path.basename(source_file_normalized)
         logger.info(
             f"Looking for source file in compile_commands: {source_file_normalized}"
         )
@@ -170,10 +171,29 @@ def parse_compile_commands(
             if not isinstance(entry, dict):
                 continue
             file_path = entry.get("file", "")
-            if os.path.normpath(file_path) == source_file_normalized:
+            file_path_normalized = os.path.normpath(file_path)
+            # Try exact match first
+            if file_path_normalized == source_file_normalized:
                 selected_entry = entry
                 logger.info(f"Found exact match in compile_commands.json: {file_path}")
                 break
+            # Try matching by relative path suffix (handles different base paths)
+            if file_path_normalized.endswith(source_file_basename):
+                # Check if the relative path matches (e.g., App/func_loader/func_loader.c)
+                source_parts = source_file_normalized.replace("\\", "/").split("/")
+                file_parts = file_path_normalized.replace("\\", "/").split("/")
+                # Find the longest matching suffix (at least 3 components for meaningful match)
+                max_depth = min(len(source_parts), len(file_parts))
+                for depth in range(max_depth, 2, -1):  # Try from max down to 3
+                    if source_parts[-depth:] == file_parts[-depth:]:
+                        selected_entry = entry
+                        logger.info(
+                            f"Found path suffix match in compile_commands.json: {file_path} "
+                            f"(matches {'/'.join(source_parts[-depth:])})"
+                        )
+                        break
+                if selected_entry:
+                    break
 
     # Second pass: try to find a file in the same directory or parent directories
     if not selected_entry and source_file:

@@ -568,6 +568,40 @@ class TestParseCompileCommandsExtended(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_compile_commands_path_suffix_match(self):
+        """Test matching source file by path suffix when base paths differ"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            # compile_commands.json has path with /home/user/project prefix
+            json.dump(
+                [
+                    {
+                        "directory": "/home/user/project/build",
+                        "command": "gcc -c -DMATCHED -I/home/user/project/Source -o func.o /home/user/project/App/func_loader/func_loader.c",
+                        "file": "/home/user/project/App/func_loader/func_loader.c",
+                    },
+                    {
+                        "directory": "/tmp",
+                        "command": "gcc -c -DOTHER -o other.o other.c",
+                        "file": "other.c",
+                    },
+                ],
+                f,
+            )
+            path = f.name
+
+        try:
+            # Source file has different base path (/media/disk/project)
+            # but same relative path (App/func_loader/func_loader.c)
+            result = compiler.parse_compile_commands(
+                path, source_file="/media/disk/project/App/func_loader/func_loader.c"
+            )
+            self.assertIsNotNone(result)
+            # Should match by path suffix and use the correct compile command
+            self.assertIn("MATCHED", result["defines"])
+            self.assertIn("/home/user/project/Source", result["includes"])
+        finally:
+            os.unlink(path)
+
 
 class TestParseDepFile(unittest.TestCase):
     """parse_dep_file_for_compile_command tests"""
