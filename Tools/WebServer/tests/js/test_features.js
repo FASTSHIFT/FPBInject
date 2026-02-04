@@ -1417,6 +1417,61 @@ module.exports = function (w) {
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = null;
     });
+
+    it('applies recommended chunk size when user confirms', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      browserGlobals.document.getElementById('chunkSize').value = '128';
+      browserGlobals.confirm = () => true;
+      setFetchResponse('/api/fpb/test-serial', {
+        success: true,
+        tests: [],
+        max_working_size: 512,
+        recommended_chunk_size: 384,
+      });
+      setFetchResponse('/api/config', { success: true });
+      await w.fpbTestSerial();
+      assertEqual(
+        browserGlobals.document.getElementById('chunkSize').value,
+        '384',
+      );
+      assertTrue(
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Chunk size updated'),
+        ),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+      browserGlobals.confirm = () => true;
+    });
+
+    it('keeps current chunk size when user cancels', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      browserGlobals.document.getElementById('chunkSize').value = '128';
+      browserGlobals.confirm = () => false;
+      setFetchResponse('/api/fpb/test-serial', {
+        success: true,
+        tests: [],
+        max_working_size: 512,
+        recommended_chunk_size: 384,
+      });
+      await w.fpbTestSerial();
+      assertEqual(
+        browserGlobals.document.getElementById('chunkSize').value,
+        '128',
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('unchanged')),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+      browserGlobals.confirm = () => true;
+    });
   });
 
   describe('fpbPing Function - Extended', () => {

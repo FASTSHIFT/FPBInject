@@ -80,9 +80,33 @@ async function fpbTestSerial() {
         'success',
       );
 
-      const chunkInput = document.getElementById('chunkSizeInput');
-      if (chunkInput) {
-        chunkInput.value = data.recommended_chunk_size;
+      // Ask user if they want to apply recommended chunk size
+      const recommendedSize = data.recommended_chunk_size;
+      const currentSize =
+        parseInt(document.getElementById('chunkSize')?.value) || 128;
+
+      const apply = confirm(
+        `Serial Throughput Test Complete!\n\n` +
+          `Current chunk size: ${currentSize} bytes\n` +
+          `Recommended chunk size: ${recommendedSize} bytes\n\n` +
+          `Do you want to apply the recommended chunk size?`,
+      );
+
+      if (apply) {
+        const chunkInput = document.getElementById('chunkSize');
+        if (chunkInput) {
+          chunkInput.value = recommendedSize;
+          await saveConfig(true);
+          writeToOutput(
+            `[CONFIG] Chunk size updated to ${recommendedSize} bytes`,
+            'success',
+          );
+        }
+      } else {
+        writeToOutput(
+          `[CONFIG] Chunk size unchanged (${currentSize} bytes)`,
+          'info',
+        );
       }
     } else {
       writeToOutput(
