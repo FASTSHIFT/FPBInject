@@ -16,7 +16,8 @@ from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.file_transfer import FileTransfer, calc_crc16
+from core.file_transfer import FileTransfer
+from utils.crc import crc16
 
 
 class TestCRC16(unittest.TestCase):
@@ -24,38 +25,38 @@ class TestCRC16(unittest.TestCase):
 
     def test_empty_data(self):
         """Test CRC of empty data."""
-        self.assertEqual(calc_crc16(b""), 0xFFFF)
+        self.assertEqual(crc16(b""), 0xFFFF)
 
     def test_known_value(self):
         """Test CRC with known value."""
         data = b"123456789"
-        crc = calc_crc16(data)
+        crc = crc16(data)
         self.assertIsInstance(crc, int)
         self.assertGreaterEqual(crc, 0)
         self.assertLessEqual(crc, 0xFFFF)
 
     def test_single_byte(self):
         """Test CRC of single byte."""
-        crc = calc_crc16(b"\x00")
+        crc = crc16(b"\x00")
         self.assertIsInstance(crc, int)
 
     def test_consistency(self):
         """Test CRC is consistent for same data."""
         data = b"test data"
-        crc1 = calc_crc16(data)
-        crc2 = calc_crc16(data)
+        crc1 = crc16(data)
+        crc2 = crc16(data)
         self.assertEqual(crc1, crc2)
 
     def test_different_data_different_crc(self):
         """Test different data produces different CRC."""
-        crc1 = calc_crc16(b"hello")
-        crc2 = calc_crc16(b"world")
+        crc1 = crc16(b"hello")
+        crc2 = crc16(b"world")
         self.assertNotEqual(crc1, crc2)
 
     def test_large_data(self):
         """Test CRC with large data."""
         data = b"x" * 10000
-        crc = calc_crc16(data)
+        crc = crc16(data)
         self.assertIsInstance(crc, int)
         self.assertGreaterEqual(crc, 0)
         self.assertLessEqual(crc, 0xFFFF)
@@ -168,7 +169,7 @@ class TestFileTransferRead(unittest.TestCase):
         """Test successful file read."""
         test_data = b"hello world"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
             f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
@@ -501,7 +502,7 @@ class TestFileTransferDownload(unittest.TestCase):
         """Test successful file download."""
         test_data = b"hello world"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
@@ -587,7 +588,7 @@ class TestFileTransferDownload(unittest.TestCase):
         """Test download without progress callback."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
@@ -614,7 +615,7 @@ class TestFileTransferIntegration(unittest.TestCase):
 
         original_data = b"Test file content for roundtrip"
         b64_data = base64.b64encode(original_data).decode("ascii")
-        crc = calc_crc16(original_data)
+        crc = crc16(original_data)
 
         # Upload
         mock_fpb.send_fl_cmd.side_effect = [
@@ -707,7 +708,7 @@ class TestFileTransferRetry(unittest.TestCase):
         """Test fread retries on CRC mismatch."""
         test_data = b"hello world"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        correct_crc = calc_crc16(test_data)
+        correct_crc = crc16(test_data)
         wrong_crc = 0x1234
 
         self.mock_fpb.send_fl_cmd.side_effect = [
@@ -733,7 +734,7 @@ class TestFileTransferRetry(unittest.TestCase):
         """Test fread retries on base64 decode error."""
         test_data = b"hello world"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FREAD 10 bytes crc=0x1234 data=!!!invalid!!!"),
@@ -751,7 +752,7 @@ class TestFileTransferRetry(unittest.TestCase):
         """Test fread retries on invalid response format."""
         test_data = b"hello world"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] Invalid response format"),
@@ -769,7 +770,7 @@ class TestFileTransferRetry(unittest.TestCase):
         """Test fread retries on command failure."""
         test_data = b"hello world"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] Timeout"),
@@ -794,7 +795,7 @@ class TestFileTransferRetry(unittest.TestCase):
         """Test fread uses chunk_size as default read size."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
@@ -893,7 +894,7 @@ class TestFileTransferStats(unittest.TestCase):
         """Test fread increments total_chunks counter."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
             f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
@@ -916,7 +917,7 @@ class TestFileTransferStats(unittest.TestCase):
         """Test fread retry on failure increments timeout_errors."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] Timeout"),
             (
@@ -932,7 +933,7 @@ class TestFileTransferStats(unittest.TestCase):
         """Test fread retry on CRC mismatch increments crc_errors."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        correct_crc = calc_crc16(test_data)
+        correct_crc = crc16(test_data)
         wrong_crc = 0x1234
 
         self.mock_fpb.send_fl_cmd.side_effect = [
@@ -953,7 +954,7 @@ class TestFileTransferStats(unittest.TestCase):
         """Test fread retry on invalid response increments other_errors."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] Invalid response format"),
@@ -1042,7 +1043,7 @@ class TestFileTransferSeek(unittest.TestCase):
         """Test fread seeks to correct position on retry."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] Timeout"),  # First attempt fails
@@ -1079,7 +1080,7 @@ class TestFileTransferSeek(unittest.TestCase):
         """Test fread does not seek when current_offset is None."""
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] Timeout"),
@@ -1185,7 +1186,7 @@ class TestFileTransferLogCallback(unittest.TestCase):
         ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
         wrong_crc = 0x1234
 
         self.mock_fpb.send_fl_cmd.side_effect = [
@@ -1225,7 +1226,7 @@ class TestFileTransferLogCallback(unittest.TestCase):
         ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
         test_data = b"hello"
         b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = calc_crc16(test_data)
+        crc = crc16(test_data)
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] Timeout"),
