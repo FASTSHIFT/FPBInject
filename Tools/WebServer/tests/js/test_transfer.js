@@ -284,7 +284,11 @@ module.exports = function (w) {
       browserGlobals.alert = (msg) => {
         alertCalled = true;
       };
+      // Also mock global alert since code uses bare 'alert' call
+      const origGlobalAlert = global.alert;
+      global.alert = browserGlobals.alert;
       w.showCrcError('Test CRC error');
+      global.alert = origGlobalAlert;
       assertTrue(
         w.FPBState.toolTerminal._writes.some(
           (wr) => wr.msg && wr.msg.includes('Test CRC error'),
