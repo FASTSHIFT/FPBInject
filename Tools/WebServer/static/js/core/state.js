@@ -48,6 +48,11 @@ let toolLogNextId = 0;
 let rawLogNextId = 0;
 let slotUpdateId = 0;
 
+// Terminal pause state
+let terminalPaused = false;
+let pausedToolLogs = [];
+let pausedRawData = [];
+
 // Export state for other modules
 window.FPBState = {
   get isConnected() {
@@ -190,5 +195,23 @@ window.FPBState = {
   },
   set slotUpdateId(v) {
     slotUpdateId = v;
+  },
+  get terminalPaused() {
+    return terminalPaused;
+  },
+  set terminalPaused(v) {
+    terminalPaused = v;
+  },
+  get pausedToolLogs() {
+    return pausedToolLogs;
+  },
+  set pausedToolLogs(v) {
+    pausedToolLogs = v;
+  },
+  get pausedRawData() {
+    return pausedRawData;
+  },
+  set pausedRawData(v) {
+    pausedRawData = v;
   },
 };

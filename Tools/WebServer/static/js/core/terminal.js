@@ -145,8 +145,15 @@ function clearCurrentTerminal() {
 }
 
 function writeToOutput(message, type = 'info') {
-  const { toolTerminal } = window.FPBState;
+  const state = window.FPBState;
+  const { toolTerminal } = state;
   if (!toolTerminal) return;
+
+  // If paused, buffer the message
+  if (state.terminalPaused) {
+    state.pausedToolLogs.push({ message, type });
+    return;
+  }
 
   const colors = {
     info: '\x1b[0m',
@@ -164,10 +171,67 @@ function writeToOutput(message, type = 'info') {
 }
 
 function writeToSerial(data) {
-  const { rawTerminal } = window.FPBState;
+  const state = window.FPBState;
+  const { rawTerminal } = state;
+
+  // If paused, buffer the data
+  if (state.terminalPaused) {
+    state.pausedRawData.push(data);
+    return;
+  }
+
   if (rawTerminal) {
     const normalizedData = data.replace(/(?<!\r)\n/g, '\r\n');
     rawTerminal.write(normalizedData);
+  }
+}
+
+function toggleTerminalPause() {
+  const state = window.FPBState;
+  state.terminalPaused = !state.terminalPaused;
+
+  const btn = document.getElementById('btnTerminalPause');
+  if (btn) {
+    const icon = btn.querySelector('i');
+    if (state.terminalPaused) {
+      btn.title = 'Resume';
+      btn.classList.add('active');
+      if (icon) {
+        icon.classList.remove('codicon-debug-pause');
+        icon.classList.add('codicon-debug-start');
+      }
+    } else {
+      btn.title = 'Pause';
+      btn.classList.remove('active');
+      if (icon) {
+        icon.classList.remove('codicon-debug-start');
+        icon.classList.add('codicon-debug-pause');
+      }
+      // Flush buffered logs
+      flushPausedLogs();
+    }
+  }
+}
+
+function flushPausedLogs() {
+  const state = window.FPBState;
+
+  // Flush tool logs
+  if (state.pausedToolLogs.length > 0) {
+    const logs = state.pausedToolLogs;
+    state.pausedToolLogs = [];
+    logs.forEach((log) => {
+      writeToOutput(log.message, log.type);
+    });
+  }
+
+  // Flush raw data
+  if (state.pausedRawData.length > 0) {
+    const data = state.pausedRawData;
+    state.pausedRawData = [];
+    data.forEach((d) => {
+      writeToSerial(d);
+    });
   }
 }
 
@@ -178,3 +242,5 @@ window.switchTerminalTab = switchTerminalTab;
 window.clearCurrentTerminal = clearCurrentTerminal;
 window.writeToOutput = writeToOutput;
 window.writeToSerial = writeToSerial;
+window.toggleTerminalPause = toggleTerminalPause;
+window.flushPausedLogs = flushPausedLogs;

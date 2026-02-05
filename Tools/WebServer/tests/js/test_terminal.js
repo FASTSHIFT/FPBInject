@@ -255,4 +255,84 @@ module.exports = function (w) {
       assertTrue(theme !== null && typeof theme === 'object');
     });
   });
+
+  describe('Terminal Pause Functions', () => {
+    it('toggleTerminalPause is a function', () =>
+      assertTrue(typeof w.toggleTerminalPause === 'function'));
+
+    it('flushPausedLogs is a function', () =>
+      assertTrue(typeof w.flushPausedLogs === 'function'));
+
+    it('toggleTerminalPause toggles terminalPaused state', () => {
+      w.FPBState.terminalPaused = false;
+      w.toggleTerminalPause();
+      assertTrue(w.FPBState.terminalPaused);
+      w.toggleTerminalPause();
+      assertTrue(!w.FPBState.terminalPaused);
+    });
+
+    it('writeToOutput buffers when paused', () => {
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.terminalPaused = true;
+      w.FPBState.pausedToolLogs = [];
+      w.writeToOutput('Buffered message', 'info');
+      assertEqual(mockTerm._writes.length, 0);
+      assertEqual(w.FPBState.pausedToolLogs.length, 1);
+      assertEqual(w.FPBState.pausedToolLogs[0].message, 'Buffered message');
+      w.FPBState.terminalPaused = false;
+      w.FPBState.pausedToolLogs = [];
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('writeToSerial buffers when paused', () => {
+      const mockTerm = new MockTerminal();
+      w.FPBState.rawTerminal = mockTerm;
+      w.FPBState.terminalPaused = true;
+      w.FPBState.pausedRawData = [];
+      w.writeToSerial('Buffered data');
+      assertEqual(mockTerm._writes.length, 0);
+      assertEqual(w.FPBState.pausedRawData.length, 1);
+      assertEqual(w.FPBState.pausedRawData[0], 'Buffered data');
+      w.FPBState.terminalPaused = false;
+      w.FPBState.pausedRawData = [];
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('flushPausedLogs writes buffered tool logs', () => {
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.terminalPaused = false;
+      w.FPBState.pausedToolLogs = [
+        { message: 'Log1', type: 'info' },
+        { message: 'Log2', type: 'error' },
+      ];
+      w.flushPausedLogs();
+      assertEqual(w.FPBState.pausedToolLogs.length, 0);
+      assertTrue(mockTerm._writes.length >= 2);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('flushPausedLogs writes buffered raw data', () => {
+      const mockTerm = new MockTerminal();
+      w.FPBState.rawTerminal = mockTerm;
+      w.FPBState.terminalPaused = false;
+      w.FPBState.pausedRawData = ['Data1', 'Data2'];
+      w.flushPausedLogs();
+      assertEqual(w.FPBState.pausedRawData.length, 0);
+      assertTrue(mockTerm._writes.length >= 2);
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('toggleTerminalPause flushes logs when resuming', () => {
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.terminalPaused = true;
+      w.FPBState.pausedToolLogs = [{ message: 'Buffered', type: 'info' }];
+      w.toggleTerminalPause(); // Resume
+      assertEqual(w.FPBState.pausedToolLogs.length, 0);
+      assertTrue(mockTerm._writes.length > 0);
+      w.FPBState.toolTerminal = null;
+    });
+  });
 };

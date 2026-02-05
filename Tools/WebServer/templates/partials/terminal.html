@@ -4,6 +4,14 @@
     <div class="panel-tab active" onclick="switchTerminalTab('tool')" id="tabBtnTool">OUTPUT</div>
     <div class="panel-tab" onclick="switchTerminalTab('raw')" id="tabBtnRaw">SERIAL PORT</div>
     <div class="panel-actions">
+      <button
+        class="vscode-btn icon-only secondary"
+        onclick="toggleTerminalPause()"
+        id="btnTerminalPause"
+        title="Pause"
+      >
+        <i class="codicon codicon-debug-pause"></i>
+      </button>
       <button class="vscode-btn icon-only secondary" onclick="clearCurrentTerminal()" title="Clear">
         <i class="codicon codicon-clear-all"></i>
       </button>
