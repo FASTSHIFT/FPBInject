@@ -536,11 +536,12 @@ if [ $result -eq 0 ]; then
     
     # Compile allocator test with host compiler
     ALLOCATOR_SRC="$PROJECT_ROOT/App/func_loader/func_allocator_test.c"
+    ALLOCATOR_IMPL="$PROJECT_ROOT/App/func_loader/func_allocator.c"
     ALLOCATOR_BIN="$ALLOCATOR_TEST_DIR/func_allocator_test"
     
     if gcc -DFL_USE_ALLOCATOR_TEST -Wall -Wextra -O2 \
            -I"$PROJECT_ROOT/App/func_loader" \
-           -o "$ALLOCATOR_BIN" "$ALLOCATOR_SRC" 2>"$ALLOCATOR_TEST_DIR/compile.log"; then
+           -o "$ALLOCATOR_BIN" "$ALLOCATOR_SRC" "$ALLOCATOR_IMPL" 2>"$ALLOCATOR_TEST_DIR/compile.log"; then
         echo -e "  ${GREEN}✓ Compilation successful${NC}"
         
         # Run the test
