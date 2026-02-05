@@ -25,7 +25,7 @@
  * @file   func_allocator_test.c
  * @brief  Unit tests for func_allocator
  *
- * Compile: gcc -DFL_USE_ALLOCATOR_TEST -o func_allocator_test func_allocator_test.c
+ * Compile: gcc -DFL_USE_ALLOCATOR_TEST -o func_allocator_test func_allocator_test.c func_allocator.c
  * Run: ./func_allocator_test
  */
 
