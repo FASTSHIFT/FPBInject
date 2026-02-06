@@ -26,7 +26,7 @@ if(NUTTX_APPS_DIR)
   if(CONFIG_FPBINJECT)
     nuttx_add_application(
       NAME
-      ${CONFIG_FPBINJECT_PROGNAME}
+      fl
       STACKSIZE
       ${CONFIG_FPBINJECT_STACKSIZE}
       PRIORITY

@@ -13,13 +13,6 @@ menuconfig FPBINJECT
 
 if FPBINJECT
 
-config FPBINJECT_PROGNAME
-	string "Program name"
-	default "fl"
-	---help---
-		This is the name of the program that will be used when the NSH ELF
-		program is installed.
-
 config FPBINJECT_PRIORITY
 	int "FPBInject task priority"
 	default 100
