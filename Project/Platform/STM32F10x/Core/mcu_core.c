@@ -27,5 +27,5 @@ void Core_Init(void)
 {
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
     Delay_Init();
-    ADCx_Init(ADC1);
+    // ADCx_Init(ADC1);
 }
