@@ -67,7 +67,7 @@ set_property(CACHE FL_ALLOC_MODE PROPERTY STRINGS "STATIC" "LIBC" "UMM")
 # Compile definitions
 add_compile_definitions(
   ${STM32_DEVICE} USE_STDPERIPH_DRIVER HSE_VALUE=${HSE_VALUE}
-  APP_SELECT=${APP_SELECT} ARDUINO=111)
+  APP_SELECT=${APP_SELECT} ARDUINO=111 FL_USE_FILE=0)
 
 # Add FPB trampoline options to compile definitions
 if(FPB_NO_TRAMPOLINE)

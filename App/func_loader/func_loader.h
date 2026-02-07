@@ -85,13 +85,13 @@ typedef struct fl_context_s {
     /* Slot tracking */
     fl_slot_state_t slots[FL_MAX_SLOTS];
 
-#ifdef FL_USE_FILE
+#if FL_USE_FILE
     /* File transfer context (embedded, no dynamic allocation) */
     struct fl_file_ctx_s file_ctx;
 #endif
 } fl_context_t;
 
-#ifdef FL_USE_FILE
+#if FL_USE_FILE
 /**
  * @brief Initialize file transfer context for fl_context
  * @param ctx Function loader context

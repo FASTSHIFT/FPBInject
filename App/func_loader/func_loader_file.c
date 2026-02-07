@@ -29,7 +29,7 @@
 #include "func_loader_file.h"
 #include "func_loader_log.h"
 
-#ifdef FL_USE_FILE
+#if FL_USE_FILE
 
 #include <stdio.h>
 #include <string.h>

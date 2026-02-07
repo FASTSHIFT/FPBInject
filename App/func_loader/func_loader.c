@@ -180,6 +180,8 @@ static int hex_to_bytes(const char* hex, uint8_t* out, size_t max) {
     return (int)n;
 }
 
+#if FL_USE_FILE
+
 static int bytes_to_base64(const uint8_t* data, size_t len, char* out, size_t max) {
     /* Base64 encoding table */
     static const char s_b64_enc[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -206,6 +208,8 @@ static int bytes_to_base64(const uint8_t* data, size_t len, char* out, size_t ma
 
     return (int)j;
 }
+
+#endif /* FL_USE_FILE */
 
 void fl_init_default(fl_context_t* ctx) {
     memset(ctx, 0, sizeof(fl_context_t));
@@ -263,7 +267,7 @@ static void cmd_info(fl_context_t* ctx) {
     fl_println("Used: %u", (unsigned)total_used);
     fl_println("Slots: %u/%u", (unsigned)active_count, (unsigned)num_comps);
 
-#ifdef FL_USE_FILE
+#if FL_USE_FILE
     fl_println("FileTransfer: %s", ctx->file_ctx.fs ? "enabled" : "disabled");
 #else
     fl_println("FileTransfer: not compiled");
@@ -533,7 +537,7 @@ static void cmd_unpatch(fl_context_t* ctx, uint32_t comp, bool all) {
    FILE TRANSFER COMMANDS
    =========================== */
 
-#ifdef FL_USE_FILE
+#if FL_USE_FILE
 
 static void cmd_fopen(fl_context_t* ctx, const char* path, const char* mode) {
     if (!ctx->file_ctx.fs) {
@@ -931,7 +935,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         cmd_dpatch(ctx, comp, orig, target);
     } else if (strcmp(cmd, "unpatch") == 0) {
         cmd_unpatch(ctx, comp, all);
-#ifdef FL_USE_FILE
+#if FL_USE_FILE
         /* File transfer commands */
     } else if (strcmp(cmd, "fopen") == 0) {
         cmd_fopen(ctx, path, mode ? mode : "r");
