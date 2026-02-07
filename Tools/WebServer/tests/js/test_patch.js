@@ -239,7 +239,7 @@ module.exports = function (w) {
         0,
         'void do_thing(void)',
       );
-      assertContains(template, 'NOT supported');
+      assertContains(template, 'Do not call the original function');
     });
     it('includes param names in function', () => {
       const template = w.generatePatchTemplate(
