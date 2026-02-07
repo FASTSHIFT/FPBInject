@@ -77,7 +77,7 @@ add_custom_target(run_tests
 if(COVERAGE)
     find_program(LCOV lcov)
     find_program(GENHTML genhtml)
-    
+
     if(LCOV AND GENHTML)
         add_custom_target(coverage
             COMMAND ${CMAKE_COMMAND} -E make_directory coverage
@@ -89,7 +89,7 @@ if(COVERAGE)
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "Generating coverage report..."
         )
-        
+
         # Clean coverage data
         add_custom_target(coverage_clean
             COMMAND ${CMAKE_COMMAND} -E remove_directory coverage
