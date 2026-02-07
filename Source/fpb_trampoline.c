@@ -56,7 +56,7 @@
  */
 
 /* Target address table in RAM - initialized to 0 (no redirect) */
-volatile uint32_t fpb_trampoline_targets[FPB_TRAMPOLINE_COUNT] __attribute__((section(".noinit")));
+static volatile uint32_t fpb_trampoline_targets[FPB_TRAMPOLINE_COUNT] = {0};
 
 #ifndef FPB_TRAMPOLINE_NO_ASM
 /*============================================================================
