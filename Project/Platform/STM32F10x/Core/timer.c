@@ -91,14 +91,16 @@ void Timer_ClockCmd(TIM_TypeDef* TIMx, FunctionalState NewState)
 /*快速求平方根*/
 static float Qsqrt(float number)
 {
-    long i;
+    union {
+        float f;
+        long l;
+    } u;
     float x2, y;
     const float threehalfs = 1.5f;
     x2 = number * 0.5f;
-    y = number;
-    i = *(long*)&y;
-    i = 0x5f3759df - (i >> 1);
-    y = *(float*)&i;
+    u.f = number;
+    u.l = 0x5f3759df - (u.l >> 1);
+    y = u.f;
     y = y * (threehalfs - (x2 * y * y));
     y = y * (threehalfs - (x2 * y * y));
     return 1.0f / y;
@@ -241,7 +243,7 @@ void Timer_SetInterrupt(TIM_TypeDef* TIMx, uint32_t time, Timer_CallbackFunction
  */
 void Timer_SetInterruptFreqUpdate(TIM_TypeDef* TIMx, uint32_t freq)
 {
-    uint16_t period, prescaler;
+    uint16_t period = 0, prescaler = 0;
     uint32_t clock = Timer_GetClockMax(TIMx);
 
     if (!IS_TIM_ALL_PERIPH(TIMx) || freq == 0)
