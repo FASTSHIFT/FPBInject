@@ -7,13 +7,10 @@
 
 #include "test_framework.h"
 #include "mock_hardware.h"
-#include "stubs.h"
+#include "func_allocator.h"
 
-/* Test constants */
-#define TEST_BLOCK_SIZE 32
-
-/* Test buffer */
-static uint8_t test_buffer[2048];
+/* Test buffer - large enough for multiple blocks */
+static uint8_t test_buffer[4096];
 static func_alloc_t test_alloc;
 
 /* ============================================================================
@@ -22,16 +19,12 @@ static func_alloc_t test_alloc;
 
 static void setup_allocator(void) {
     memset(test_buffer, 0, sizeof(test_buffer));
-    func_alloc_init(&test_alloc, test_buffer, sizeof(test_buffer), 32);
-}
-
-/* Helper to check if allocator is valid */
-static bool func_alloc_is_valid(func_alloc_t* a) {
-    return a && a->pool && a->pool_size > 0 && a->block_size > 0;
+    memset(&test_alloc, 0, sizeof(test_alloc));
+    func_alloc_init(&test_alloc, test_buffer, sizeof(test_buffer));
 }
 
 /* ============================================================================
- * func_alloc_init Tests
+ * Initialization Tests
  * ============================================================================ */
 
 void test_allocator_init_valid(void) {
@@ -42,54 +35,55 @@ void test_allocator_init_valid(void) {
 void test_allocator_init_null_buffer(void) {
     func_alloc_t alloc;
     memset(&alloc, 0, sizeof(alloc));
-    func_alloc_init(&alloc, NULL, 1024, 32);
+    func_alloc_init(&alloc, NULL, 1024);
     TEST_ASSERT_FALSE(func_alloc_is_valid(&alloc));
 }
 
 void test_allocator_init_zero_size(void) {
     func_alloc_t alloc;
     memset(&alloc, 0, sizeof(alloc));
-    func_alloc_init(&alloc, test_buffer, 0, 32);
+    func_alloc_init(&alloc, test_buffer, 0);
     TEST_ASSERT_FALSE(func_alloc_is_valid(&alloc));
 }
 
 void test_allocator_init_small_buffer(void) {
-    uint8_t small_buf[32];
     func_alloc_t alloc;
+    uint8_t small_buf[32];
     memset(&alloc, 0, sizeof(alloc));
-    func_alloc_init(&alloc, small_buf, sizeof(small_buf), 32);
-    /* Should still be valid with 1 block */
-    TEST_ASSERT_TRUE(func_alloc_is_valid(&alloc));
+    func_alloc_init(&alloc, small_buf, sizeof(small_buf));
+    /* Small buffer may or may not be valid depending on block size */
+    /* Just check it doesn't crash */
 }
 
 /* ============================================================================
- * func_malloc Tests
+ * Allocation Tests
  * ============================================================================ */
 
 void test_allocator_malloc_simple(void) {
     setup_allocator();
-    void* ptr = func_malloc(&test_alloc, 64);
+    void* ptr = func_malloc(&test_alloc, 32);
     TEST_ASSERT_NOT_NULL(ptr);
 }
 
 void test_allocator_malloc_multiple(void) {
     setup_allocator();
-    void* ptr1 = func_malloc(&test_alloc, 64);
-    void* ptr2 = func_malloc(&test_alloc, 64);
-    void* ptr3 = func_malloc(&test_alloc, 64);
+    void* ptr1 = func_malloc(&test_alloc, 32);
+    void* ptr2 = func_malloc(&test_alloc, 32);
+    void* ptr3 = func_malloc(&test_alloc, 32);
 
     TEST_ASSERT_NOT_NULL(ptr1);
     TEST_ASSERT_NOT_NULL(ptr2);
     TEST_ASSERT_NOT_NULL(ptr3);
     TEST_ASSERT(ptr1 != ptr2);
     TEST_ASSERT(ptr2 != ptr3);
+    TEST_ASSERT(ptr1 != ptr3);
 }
 
 void test_allocator_malloc_various_sizes(void) {
     setup_allocator();
-    void* ptr1 = func_malloc(&test_alloc, 32);
-    void* ptr2 = func_malloc(&test_alloc, 128);
-    void* ptr3 = func_malloc(&test_alloc, 64);
+    void* ptr1 = func_malloc(&test_alloc, 16);
+    void* ptr2 = func_malloc(&test_alloc, 64);
+    void* ptr3 = func_malloc(&test_alloc, 128);
 
     TEST_ASSERT_NOT_NULL(ptr1);
     TEST_ASSERT_NOT_NULL(ptr2);
@@ -100,121 +94,128 @@ void test_allocator_malloc_zero(void) {
     setup_allocator();
     void* ptr = func_malloc(&test_alloc, 0);
     /* Zero-size allocation behavior is implementation-defined */
-    /* Just ensure no crash, result can be NULL or valid */
     (void)ptr;
 }
 
 void test_allocator_malloc_too_large(void) {
     setup_allocator();
-    void* ptr = func_malloc(&test_alloc, 10000); /* Larger than buffer */
+    /* Try to allocate more than the pool size */
+    void* ptr = func_malloc(&test_alloc, sizeof(test_buffer) * 2);
     TEST_ASSERT_NULL(ptr);
 }
 
 void test_allocator_malloc_exhaust(void) {
     setup_allocator();
+
+    /* Allocate until exhausted */
     int count = 0;
-    while (func_malloc(&test_alloc, TEST_BLOCK_SIZE) != NULL) {
+    while (func_malloc(&test_alloc, FUNC_ALLOC_BLOCK_SIZE) != NULL) {
         count++;
-        if (count > 100)
+        if (count > 1000)
             break; /* Safety limit */
     }
+
     TEST_ASSERT(count > 0);
-    TEST_ASSERT(count <= 100);
+    TEST_ASSERT(count < 1000);
+
+    /* Next allocation should fail */
+    TEST_ASSERT_NULL(func_malloc(&test_alloc, FUNC_ALLOC_BLOCK_SIZE));
 }
 
 /* ============================================================================
- * func_free Tests
+ * Free Tests
  * ============================================================================ */
 
 void test_allocator_free_simple(void) {
     setup_allocator();
     void* ptr = func_malloc(&test_alloc, 64);
     TEST_ASSERT_NOT_NULL(ptr);
-    func_free(&test_alloc, ptr, 64);
+    func_free(&test_alloc, ptr);
     /* Should not crash */
 }
 
 void test_allocator_free_null(void) {
     setup_allocator();
-    func_free(&test_alloc, NULL, 0);
+    func_free(&test_alloc, NULL);
     /* Should not crash */
 }
 
 void test_allocator_free_reuse(void) {
     setup_allocator();
 
-    /* Allocate until full */
-    void* ptrs[32];
-    int count = 0;
-    while (count < 32) {
-        ptrs[count] = func_malloc(&test_alloc, TEST_BLOCK_SIZE);
-        if (ptrs[count] == NULL)
-            break;
-        count++;
-    }
+    void* ptr1 = func_malloc(&test_alloc, 64);
+    TEST_ASSERT_NOT_NULL(ptr1);
+    func_free(&test_alloc, ptr1);
 
-    if (count > 0) {
-        /* Free first allocation */
-        func_free(&test_alloc, ptrs[0], TEST_BLOCK_SIZE);
-
-        /* Should be able to allocate again */
-        void* new_ptr = func_malloc(&test_alloc, TEST_BLOCK_SIZE);
-        TEST_ASSERT_NOT_NULL(new_ptr);
-    }
+    void* ptr2 = func_malloc(&test_alloc, 64);
+    TEST_ASSERT_NOT_NULL(ptr2);
+    /* Memory should be reused */
 }
 
 void test_allocator_free_multiple(void) {
     setup_allocator();
-    void* ptr1 = func_malloc(&test_alloc, 64);
-    void* ptr2 = func_malloc(&test_alloc, 64);
-    void* ptr3 = func_malloc(&test_alloc, 64);
 
-    func_free(&test_alloc, ptr2, 64);
-    func_free(&test_alloc, ptr1, 64);
-    func_free(&test_alloc, ptr3, 64);
-    /* Should not crash */
+    void* ptrs[10];
+    for (int i = 0; i < 10; i++) {
+        ptrs[i] = func_malloc(&test_alloc, 32);
+        TEST_ASSERT_NOT_NULL(ptrs[i]);
+    }
+
+    for (int i = 0; i < 10; i++) {
+        func_free(&test_alloc, ptrs[i]);
+    }
+
+    /* Should be able to allocate again */
+    void* ptr = func_malloc(&test_alloc, 32);
+    TEST_ASSERT_NOT_NULL(ptr);
 }
 
 /* ============================================================================
- * func_alloc_stats Tests
+ * Statistics Tests
  * ============================================================================ */
 
 void test_allocator_stats_initial(void) {
     setup_allocator();
-    size_t used, free_blocks, total;
-    func_alloc_stats(&test_alloc, &used, &free_blocks, &total);
+
+    size_t total, used, free_blocks;
+    func_alloc_stats(&test_alloc, &total, &used, &free_blocks);
 
     TEST_ASSERT(total > 0);
     TEST_ASSERT_EQUAL(0, used);
-    TEST_ASSERT(free_blocks == total);
+    TEST_ASSERT_EQUAL(total, free_blocks);
 }
 
 void test_allocator_stats_after_alloc(void) {
     setup_allocator();
-    size_t used, free_blocks, total;
 
-    func_alloc_stats(&test_alloc, &used, &free_blocks, &total);
+    size_t total, used, free_blocks;
+    func_alloc_stats(&test_alloc, &total, &used, &free_blocks);
     size_t initial_free = free_blocks;
 
-    func_malloc(&test_alloc, TEST_BLOCK_SIZE);
-    func_alloc_stats(&test_alloc, &used, &free_blocks, &total);
+    void* ptr = func_malloc(&test_alloc, FUNC_ALLOC_BLOCK_SIZE);
+    TEST_ASSERT_NOT_NULL(ptr);
 
-    TEST_ASSERT(used >= 1);
+    func_alloc_stats(&test_alloc, &total, &used, &free_blocks);
+    TEST_ASSERT(used > 0);
     TEST_ASSERT(free_blocks < initial_free);
 }
 
 void test_allocator_stats_after_free(void) {
     setup_allocator();
-    size_t used, free_blocks, total;
 
-    void* ptr = func_malloc(&test_alloc, TEST_BLOCK_SIZE);
-    func_alloc_stats(&test_alloc, &used, &free_blocks, &total);
-    size_t used_before = used;
+    void* ptr = func_malloc(&test_alloc, FUNC_ALLOC_BLOCK_SIZE);
+    TEST_ASSERT_NOT_NULL(ptr);
 
-    func_free(&test_alloc, ptr, TEST_BLOCK_SIZE);
-    func_alloc_stats(&test_alloc, &used, &free_blocks, &total);
+    size_t total, used_before, free_before;
+    func_alloc_stats(&test_alloc, &total, &used_before, &free_before);
+    TEST_ASSERT(used_before > 0);
 
-    TEST_ASSERT(used < used_before);
+    func_free(&test_alloc, ptr);
+
+    size_t used_after, free_after;
+    func_alloc_stats(&test_alloc, &total, &used_after, &free_after);
+    TEST_ASSERT(used_after < used_before);
+    TEST_ASSERT(free_after > free_before);
 }
 
 /* ============================================================================

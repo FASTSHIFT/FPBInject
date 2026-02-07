@@ -6,41 +6,50 @@
  */
 
 #include "mock_hardware.h"
+#include "fpb_mock_regs.h"
 #include <stdlib.h>
 #include <stdio.h>
 
 /* ============================================================================
- * FPB Register Mock
+ * FPB Register Mock - delegates to fpb_mock_regs.c
  * ============================================================================ */
 
 mock_fpb_regs_t mock_fpb_regs;
 mock_call_stats_t g_mock_call_stats;
 
 void mock_fpb_reset(void) {
+    /* Reset the fpb_mock_regs variables used by fpb_inject.c */
+    fpb_mock_reset();
+
+    /* Also reset our local mock_fpb_regs for backward compatibility */
     memset(&mock_fpb_regs, 0, sizeof(mock_fpb_regs));
-    /* Default: 6 code comparators, 2 literal comparators (like STM32F103) */
+
+    /* Configure with default comparators (like STM32F103) */
+    fpb_mock_configure(6, 2);
     mock_fpb_regs.ctrl = (6 << FPB_CTRL_NUM_CODE_SHIFT) | (2 << FPB_CTRL_NUM_LIT_SHIFT);
+
     mock_reset_call_stats();
 }
 
 void mock_fpb_configure(uint8_t num_code, uint8_t num_lit) {
+    fpb_mock_configure(num_code, num_lit);
     mock_fpb_regs.ctrl = (num_code << FPB_CTRL_NUM_CODE_SHIFT) | (num_lit << FPB_CTRL_NUM_LIT_SHIFT);
 }
 
 uint32_t mock_fpb_get_ctrl(void) {
-    return mock_fpb_regs.ctrl;
+    return fpb_mock_ctrl_read();
 }
 uint32_t mock_fpb_get_remap(void) {
-    return mock_fpb_regs.remap;
+    return mock_fpb_remap;
 }
 uint32_t mock_fpb_get_comp(uint8_t index) {
-    return (index < 8) ? mock_fpb_regs.comp[index] : 0;
+    return (index < 8) ? mock_fpb_comp[index] : 0;
 }
 bool mock_fpb_is_enabled(void) {
-    return (mock_fpb_regs.ctrl & FPB_CTRL_ENABLE) != 0;
+    return (fpb_mock_ctrl_read() & FPB_CTRL_ENABLE) != 0;
 }
 bool mock_fpb_comp_is_enabled(uint8_t index) {
-    return (index < 8) && (mock_fpb_regs.comp[index] & FPB_COMP_ENABLE);
+    return (index < 8) && (mock_fpb_comp[index] & FPB_COMP_ENABLE);
 }
 
 void mock_reset_call_stats(void) {

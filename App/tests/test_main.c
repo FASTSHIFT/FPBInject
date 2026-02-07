@@ -16,8 +16,9 @@
 /* External test runners */
 extern void run_allocator_tests(void);
 extern void run_loader_tests(void);
-extern void run_loader_stream_tests(void);
-extern void run_fpb_inject_tests(void);
+extern void run_stream_tests(void);
+extern void run_fpb_tests(void);
+extern void run_file_tests(void);
 
 int main(int argc, char* argv[]) {
     (void)argc;
@@ -45,12 +46,17 @@ int main(int argc, char* argv[]) {
     printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     printf("Running: func_loader_stream tests\n");
     printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    run_loader_stream_tests();
+    run_stream_tests();
 
     printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     printf("Running: fpb_inject tests\n");
     printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    run_fpb_inject_tests();
+    run_fpb_tests();
+
+    printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    printf("Running: func_loader_file tests\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    run_file_tests();
 
     printf("\n");
 

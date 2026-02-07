@@ -39,6 +39,10 @@
 #include "fpb_inject.h"
 #include <string.h>
 
+#ifdef HOST_TESTING
+/* Use mock registers for host-based testing */
+#include "fpb_mock_regs.h"
+#else
 /* FPB Base Address (Cortex-M3/M4) */
 #define FPB_BASE 0xE0002000UL
 
@@ -50,6 +54,7 @@
 
 /* FPB Comparator Registers (0-7) */
 #define FPB_COMP(n) (*(volatile uint32_t*)(FPB_BASE + 0x008 + ((n)*4)))
+#endif /* HOST_TESTING */
 
 /* CTRL Register Bits */
 #define FPB_CTRL_ENABLE (1UL << 0)
@@ -76,7 +81,11 @@
 static fpb_state_t g_fpb_state;
 
 /* Remap Table - stores jump instructions, must be 32-byte aligned */
+#ifdef HOST_TESTING
+static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE * 2];
+#else
 __attribute__((aligned(32), section(".data"))) static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE * 2];
+#endif
 
 /**
  * @brief Generate Thumb-2 B.W instruction (unconditional branch)
@@ -104,6 +113,7 @@ static uint32_t generate_b_w_instruction(uint32_t from_addr, uint32_t target_add
     return ((uint32_t)hw2 << 16) | hw1;
 }
 
+#ifndef HOST_TESTING
 static inline void dsb(void) {
     __asm volatile("dsb" ::: "memory");
 }
@@ -111,6 +121,7 @@ static inline void dsb(void) {
 static inline void isb(void) {
     __asm volatile("isb" ::: "memory");
 }
+#endif /* !HOST_TESTING */
 
 int fpb_init(void) {
     /* If already initialized, return success (idempotent) */
@@ -279,7 +290,7 @@ int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) 
      */
 
     /* Set remap base - use full address, let hardware handle it */
-    uint32_t remap_base = (uint32_t)g_fpb_remap_table;
+    uint32_t remap_base = (uint32_t)(uintptr_t)g_fpb_remap_table;
     /* Bits [4:0] must be 0 (32-byte aligned), bits [28:5] are the address */
     FPB_REMAP = remap_base & 0xFFFFFFE0UL;
 
@@ -381,7 +392,7 @@ int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instr
         g_fpb_remap_table[remap_index] = new_instruction;
     }
 
-    FPB_REMAP = ((uint32_t)g_fpb_remap_table) & 0x1FFFFFE0UL;
+    FPB_REMAP = ((uint32_t)(uintptr_t)g_fpb_remap_table) & 0x1FFFFFE0UL;
 
     uint32_t comp_val = (addr & FPB_COMP_ADDR_MASK) | replace_mode | FPB_COMP_ENABLE;
 
