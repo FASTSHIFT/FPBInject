@@ -58,7 +58,17 @@
 /* Target address table in RAM - initialized to 0 (no redirect) */
 static volatile uint32_t fpb_trampoline_targets[FPB_TRAMPOLINE_COUNT] = {0};
 
-#ifndef FPB_TRAMPOLINE_NO_ASM
+#ifdef FPB_HOST_TESTING
+/*============================================================================
+ * Host-based testing: Use simple C stub functions (no real trampolines)
+ *============================================================================*/
+
+/* Mock trampoline addresses (fake Flash addresses) */
+static const uint32_t fpb_trampoline_table[FPB_TRAMPOLINE_COUNT] = {
+    0x08001000, 0x08001010, 0x08001020, 0x08001030, 0x08001040, 0x08001050,
+};
+
+#elif !defined(FPB_TRAMPOLINE_NO_ASM)
 /*============================================================================
  * Assembly-based trampolines (preserve function arguments in R0-R3)
  *============================================================================*/
@@ -122,17 +132,28 @@ DEFINE_TRAMPOLINE_C(3)
 DEFINE_TRAMPOLINE_C(4)
 DEFINE_TRAMPOLINE_C(5)
 
-#endif /* FPB_TRAMPOLINE_NO_ASM */
+#endif /* FPB_HOST_TESTING / FPB_TRAMPOLINE_NO_ASM */
+
+#ifndef FPB_HOST_TESTING
 
 /* Trampoline address table (in Flash, for lookup) */
 static void (*const fpb_trampoline_table[FPB_TRAMPOLINE_COUNT])(void) = {
     fpb_trampoline_0, fpb_trampoline_1, fpb_trampoline_2, fpb_trampoline_3, fpb_trampoline_4, fpb_trampoline_5,
 };
 
+#endif /* !FPB_HOST_TESTING */
+
 void fpb_trampoline_set_target(uint32_t comp, uint32_t target) {
     if (comp < FPB_TRAMPOLINE_COUNT) {
         fpb_trampoline_targets[comp] = target;
     }
+}
+
+uint32_t fpb_trampoline_get_target(uint32_t comp) {
+    if (comp < FPB_TRAMPOLINE_COUNT) {
+        return fpb_trampoline_targets[comp];
+    }
+    return 0;
 }
 
 void fpb_trampoline_clear_target(uint32_t comp) {

@@ -38,9 +38,8 @@ add_definitions(-DFPB_HOST_TESTING=1)
 add_definitions(-DFL_USE_FILE=1)
 add_definitions(-DFL_FILE_USE_LIBC=1)
 
-# Disable trampoline and debugmon for host testing (require ARM assembly)
-add_definitions(-DFPB_NO_TRAMPOLINE=1)
-add_definitions(-DFPB_NO_DEBUGMON=1)
+# Note: FPB_HOST_TESTING enables mock registers and disables ARM assembly in
+# fpb_inject.c, fpb_debugmon.c, and fpb_trampoline.c
 
 # Project directories
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../Source)
@@ -57,6 +56,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${SRC_DIR} ${FUNC_LOADER_DIR}
 set(SUT_SOURCES
     # FPB core
     ${SRC_DIR}/fpb_inject.c
+    # FPB debugmon (uses mock registers when FPB_HOST_TESTING is defined)
+    ${SRC_DIR}/fpb_debugmon.c
+    # FPB trampoline (uses mock addresses when FPB_HOST_TESTING is defined)
+    ${SRC_DIR}/fpb_trampoline.c
     # Function loader core
     ${FUNC_LOADER_DIR}/func_loader.c
     ${FUNC_LOADER_DIR}/func_loader_stream.c
@@ -79,8 +82,14 @@ set(TEST_FRAMEWORK_SOURCES test_framework.c)
 # Test Sources
 # ============================================================================
 set(TEST_SOURCES
-    test_main.c test_func_allocator.c test_func_loader.c
-    test_func_loader_stream.c test_func_loader_file.c test_fpb_inject.c)
+    test_main.c
+    test_func_allocator.c
+    test_func_loader.c
+    test_func_loader_stream.c
+    test_func_loader_file.c
+    test_fpb_inject.c
+    test_fpb_debugmon.c
+    test_fpb_trampoline.c)
 
 # Create test executable
 add_executable(test_runner ${SUT_SOURCES} ${MOCK_SOURCES}

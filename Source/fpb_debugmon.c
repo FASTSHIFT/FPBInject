@@ -100,27 +100,48 @@ static void dbg_hex32(uint32_t v) {
  * Cortex-M Debug Registers
  * ============================================================================ */
 
+#ifdef FPB_HOST_TESTING
+/* Use mock registers for host-based testing */
+#include "fpb_mock_regs.h"
+
+/* Mock debug registers */
+extern uint32_t mock_dhcsr;
+extern uint32_t mock_demcr;
+extern uint32_t mock_dfsr;
+
+#define DHCSR mock_dhcsr
+#define DEMCR mock_demcr
+#define DFSR mock_dfsr
+
+#else /* !FPB_HOST_TESTING */
+
 /* Debug Halting Control and Status Register */
 #define DHCSR (*(volatile uint32_t*)0xE000EDF0)
-#define DHCSR_DBGKEY (0xA05FUL << 16) /* Debug key for write access */
-#define DHCSR_C_DEBUGEN (1UL << 0)    /* Debug enable */
 
 /* Debug Exception and Monitor Control Register */
 #define DEMCR (*(volatile uint32_t*)0xE000EDFC)
+
+/* Debug Fault Status Register */
+#define DFSR (*(volatile uint32_t*)0xE000ED30)
+
+/* FPB Registers */
+#define FPB_BASE 0xE0002000UL
+#define FPB_CTRL (*(volatile uint32_t*)(FPB_BASE + 0x000))
+#define FPB_COMP(n) (*(volatile uint32_t*)(FPB_BASE + 0x008 + ((n)*4)))
+
+#endif /* FPB_HOST_TESTING */
+
+/* Debug register bits */
+#define DHCSR_DBGKEY (0xA05FUL << 16) /* Debug key for write access */
+#define DHCSR_C_DEBUGEN (1UL << 0)    /* Debug enable */
+
 #define DEMCR_TRCENA (1UL << 24)   /* Enable trace and DWT */
 #define DEMCR_MON_EN (1UL << 16)   /* Enable DebugMonitor exception */
 #define DEMCR_MON_PEND (1UL << 17) /* Pend DebugMonitor exception */
 #define DEMCR_MON_STEP (1UL << 18) /* Single step the processor */
 #define DEMCR_MON_REQ (1UL << 19)  /* DebugMonitor semaphore */
 
-/* Debug Fault Status Register */
-#define DFSR (*(volatile uint32_t*)0xE000ED30)
 #define DFSR_BKPT (1UL << 1) /* Breakpoint flag */
-
-/* FPB Registers */
-#define FPB_BASE 0xE0002000UL
-#define FPB_CTRL (*(volatile uint32_t*)(FPB_BASE + 0x000))
-#define FPB_COMP(n) (*(volatile uint32_t*)(FPB_BASE + 0x008 + ((n)*4)))
 
 #define FPB_CTRL_ENABLE (1UL << 0)
 #define FPB_CTRL_KEY (1UL << 1)
@@ -174,6 +195,7 @@ static struct {
  * Implementation
  * ============================================================================ */
 
+#ifndef FPB_HOST_TESTING
 static inline void dsb(void) {
     __asm volatile("dsb" ::: "memory");
 }
@@ -181,6 +203,7 @@ static inline void dsb(void) {
 static inline void isb(void) {
     __asm volatile("isb" ::: "memory");
 }
+#endif /* !FPB_HOST_TESTING */
 
 int fpb_debugmon_init(void) {
     dbg_puts("[DBGMON] init start\r\n");
@@ -430,7 +453,7 @@ void fpb_debugmon_handler(uint32_t* stack_frame) {
  * DebugMonitor Handler (weak, for platforms without attach callback)
  * ============================================================================ */
 
-#ifndef FPB_DEBUGMON_NO_DEFAULT_HANDLER
+#if !defined(FPB_DEBUGMON_NO_DEFAULT_HANDLER) && !defined(FPB_HOST_TESTING)
 /**
  * @brief  DebugMonitor exception handler
  *
@@ -459,6 +482,6 @@ __attribute__((weak, naked)) void DebugMon_Handler(void) {
         "pop {lr}\n"
         "bx lr\n");
 }
-#endif /* !FPB_DEBUGMON_NO_DEFAULT_HANDLER */
+#endif /* !FPB_DEBUGMON_NO_DEFAULT_HANDLER && !FPB_HOST_TESTING */
 
 #endif /* !FPB_NO_DEBUGMON && !__NuttX__ */

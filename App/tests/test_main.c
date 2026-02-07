@@ -19,6 +19,8 @@ extern void run_loader_tests(void);
 extern void run_stream_tests(void);
 extern void run_fpb_tests(void);
 extern void run_file_tests(void);
+extern void run_fpb_debugmon_tests(void);
+extern void run_fpb_trampoline_tests(void);
 
 int main(int argc, char* argv[]) {
     (void)argc;
@@ -52,6 +54,16 @@ int main(int argc, char* argv[]) {
     printf("Running: fpb_inject tests\n");
     printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     run_fpb_tests();
+
+    printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    printf("Running: fpb_debugmon tests\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    run_fpb_debugmon_tests();
+
+    printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    printf("Running: fpb_trampoline tests\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    run_fpb_trampoline_tests();
 
     printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     printf("Running: func_loader_file tests\n");

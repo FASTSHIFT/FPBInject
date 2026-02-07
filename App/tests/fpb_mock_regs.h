@@ -49,6 +49,11 @@ uint32_t* fpb_mock_get_ctrl_ptr(void);
 #define FPB_REMAP mock_fpb_remap
 #define FPB_COMP(n) mock_fpb_comp[n]
 
+/* Mock debug registers for debugmon testing */
+extern uint32_t mock_dhcsr;
+extern uint32_t mock_demcr;
+extern uint32_t mock_dfsr;
+
 /* Override memory barrier instructions (no-op on host) */
 #undef dsb
 #undef isb
@@ -64,6 +69,10 @@ static inline void isb(void) {
 /* Mock control functions */
 void fpb_mock_reset(void);
 void fpb_mock_configure(uint8_t num_code, uint8_t num_lit);
+
+/* Mock debug register control */
+void fpb_mock_set_dfsr(uint32_t value);
+uint32_t fpb_mock_get_demcr(void);
 
 #ifdef __cplusplus
 }

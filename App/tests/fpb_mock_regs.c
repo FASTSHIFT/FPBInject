@@ -19,6 +19,11 @@ uint32_t mock_fpb_ctrl_ro = 0; /* R/O bits (num_code, num_lit) - set by configur
 uint32_t mock_fpb_remap = 0;
 uint32_t mock_fpb_comp[8] = {0};
 
+/* Mock debug registers for debugmon testing */
+uint32_t mock_dhcsr = 0;
+uint32_t mock_demcr = 0;
+uint32_t mock_dfsr = 0;
+
 /* Combined register that the code reads/writes */
 static uint32_t mock_fpb_ctrl_combined = 0;
 
@@ -48,6 +53,11 @@ void fpb_mock_reset(void) {
     mock_fpb_ctrl_combined = 0;
     mock_fpb_remap = 0;
     memset(mock_fpb_comp, 0, sizeof(mock_fpb_comp));
+
+    /* Reset debug registers */
+    mock_dhcsr = 0;
+    mock_demcr = 0;
+    mock_dfsr = 0;
 }
 
 void fpb_mock_configure(uint8_t num_code, uint8_t num_lit) {
@@ -60,4 +70,12 @@ void fpb_mock_configure(uint8_t num_code, uint8_t num_lit) {
 
     /* Configure FP_REMAP with RMPSPT bit set (bit 29 = remap supported) */
     mock_fpb_remap = (1UL << 29);
+}
+
+void fpb_mock_set_dfsr(uint32_t value) {
+    mock_dfsr = value;
+}
+
+uint32_t fpb_mock_get_demcr(void) {
+    return mock_demcr;
 }
