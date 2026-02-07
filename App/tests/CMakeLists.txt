@@ -34,7 +34,7 @@ endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 
 # Define host-based testing (no real hardware)
-add_definitions(-DHOST_TESTING=1)
+add_definitions(-DFPB_HOST_TESTING=1)
 add_definitions(-DFL_USE_FILE=1)
 add_definitions(-DFL_FILE_USE_LIBC=1)
 

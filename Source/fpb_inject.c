@@ -39,7 +39,7 @@
 #include "fpb_inject.h"
 #include <string.h>
 
-#ifdef HOST_TESTING
+#ifdef FPB_HOST_TESTING
 /* Use mock registers for host-based testing */
 #include "fpb_mock_regs.h"
 #else
@@ -54,7 +54,7 @@
 
 /* FPB Comparator Registers (0-7) */
 #define FPB_COMP(n) (*(volatile uint32_t*)(FPB_BASE + 0x008 + ((n)*4)))
-#endif /* HOST_TESTING */
+#endif /* FPB_HOST_TESTING */
 
 /* CTRL Register Bits */
 #define FPB_CTRL_ENABLE (1UL << 0)
@@ -92,7 +92,7 @@ static fpb_state_t g_fpb_state;
  * Each entry stores a 32-bit B.W (branch) instruction that jumps
  * to the actual patch target in RAM.
  */
-#ifdef HOST_TESTING
+#ifdef FPB_HOST_TESTING
 static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE];
 #else
 __attribute__((aligned(32), section(".data"))) static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE];
@@ -124,7 +124,7 @@ static uint32_t generate_b_w_instruction(uint32_t from_addr, uint32_t target_add
     return ((uint32_t)hw2 << 16) | hw1;
 }
 
-#ifndef HOST_TESTING
+#ifndef FPB_HOST_TESTING
 static inline void dsb(void) {
     __asm volatile("dsb" ::: "memory");
 }
@@ -132,7 +132,7 @@ static inline void dsb(void) {
 static inline void isb(void) {
     __asm volatile("isb" ::: "memory");
 }
-#endif /* !HOST_TESTING */
+#endif /* !FPB_HOST_TESTING */
 
 int fpb_init(void) {
     /* If already initialized, return success (idempotent) */
