@@ -15,11 +15,19 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Compiler options for coverage
 option(COVERAGE "Enable coverage reporting" ON)
+option(ASAN "Enable AddressSanitizer" ON)
 
 if(COVERAGE)
   set(CMAKE_C_FLAGS
       "${CMAKE_C_FLAGS} -g -O0 --coverage -fprofile-arcs -ftest-coverage")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+endif()
+
+# AddressSanitizer for memory error detection
+if(ASAN)
+  set(CMAKE_C_FLAGS
+      "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer -g")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
 endif()
 
 # Warning flags - treat warnings as errors
@@ -128,6 +136,7 @@ endif()
 # Print configuration
 message(STATUS "FPBInject Tests Configuration:")
 message(STATUS "  Coverage enabled: ${COVERAGE}")
+message(STATUS "  AddressSanitizer enabled: ${ASAN}")
 message(STATUS "  C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "  C Flags: ${CMAKE_C_FLAGS}")
 message(STATUS "  Source under test:")

@@ -80,11 +80,22 @@
 /* FPB Global State */
 static fpb_state_t g_fpb_state;
 
-/* Remap Table - stores jump instructions, must be 32-byte aligned */
+/* Remap Table - stores jump instructions, must be 32-byte aligned
+ *
+ * ARM FPB Remap mechanism:
+ *   - Comparator n remaps to address (Remap_Base + 4*n)
+ *   - Each remap table entry is 32 bits (one word)
+ *   - remap_table[0] is for Comparator 0
+ *   - remap_table[1] is for Comparator 1
+ *   - etc.
+ *
+ * Each entry stores a 32-bit B.W (branch) instruction that jumps
+ * to the actual patch target in RAM.
+ */
 #ifdef HOST_TESTING
-static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE * 2];
+static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE];
 #else
-__attribute__((aligned(32), section(".data"))) static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE * 2];
+__attribute__((aligned(32), section(".data"))) static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE];
 #endif
 
 /**
@@ -227,74 +238,32 @@ int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) 
     uint32_t jump_instr = generate_b_w_instruction(original_addr, patch_addr);
 
     /*
-     * FPB COMP register format for instruction replacement:
-     * [31:30] REPLACE = 11b (replace both halfwords)
-     * [29]    Reserved
-     * [28:2]  COMP = match address bits [28:2]
-     * [1]     Reserved
-     * [0]     ENABLE
+     * FPB Remap mechanism (ARM DDI 0403E C1.11):
      *
-     * When REPLACE=11, the replacement value comes from FP_REMAP table entry.
-     * But FP_REMAP must point to Code region...
+     * "Comparator n remaps to address (Remap_Base + 4n)"
      *
-     * Actually, for Cortex-M3 Rev1, when REPLACE != 00 (REMAP mode),
-     * it uses the COMP register's upper bits as replacement data!
+     * So the remap table layout must be:
+     *   - remap_table[0] = instruction for Comparator 0
+     *   - remap_table[1] = instruction for Comparator 1
+     *   - remap_table[n] = instruction for Comparator n
      *
-     * Let's try a different approach: patch the instruction in RAM directly
-     * if the original code is copied to RAM, or use a software hook.
+     * Each entry is exactly one 32-bit word (4 bytes).
+     *
+     * FP_REMAP register:
+     *   - bits[28:5] hold the base address bits[28:5]
+     *   - bits[31:29] are hardwired to 0b001 (SRAM region)
+     *   - So actual remap address = 0x20000000 | (FP_REMAP & 0x1FFFFFE0)
      */
 
-    /*
-     * FINAL WORKING APPROACH:
-     * Since FPB REMAP only works for Code region, we need to:
-     * 1. Store the jump instruction in the remap table
-     * 2. Set FP_REMAP to point to a Code-region mirror of our table
-     *
-     * On STM32, the Flash is mirrored:
-     * - 0x00000000 mirrors 0x08000000 (depends on BOOT pins)
-     * - No direct way to get RAM in Code region
-     *
-     * The only reliable solution is:
-     * - Use FPB with REMAP pointing to the remap table
-     * - The remap table address must have bit 29 = 0
-     *
-     * On Cortex-M3, the FPB_REMAP register stores bits [28:5] of the table base.
-     * The table must be in the Code region (bit 29 = 0).
-     *
-     * Since our g_fpb_remap_table is at 0x20000020, this WON'T work!
-     *
-     * Workaround: Relocate remap table to 0x00000000-0x1FFFFFFF region.
-     * On STM32F103, this could be:
-     * - System memory (0x1FFF0000) - read only
-     * - Flash (0x08000000) - read only
-     *
-     * ACTUAL SOLUTION: Use software patching instead of FPB for RAM targets.
-     * We'll write the jump instruction directly to the code buffer.
-     */
+    /* Store jump instruction at correct index for this comparator */
+    g_fpb_remap_table[comp_id] = jump_instr;
 
-    /* Store patch info for software patching */
-    uint32_t remap_index = comp_id * 2;
-    g_fpb_remap_table[remap_index] = jump_instr;
-    g_fpb_remap_table[remap_index + 1] = patch_addr | 1; /* Store target for reference */
-
-    /*
-     * Try FPB remap anyway - on some Cortex-M3 revisions it might work
-     * with RAM addresses if properly configured.
-     *
-     * FP_REMAP format: bits [28:5] = base address bits [28:5]
-     * For address 0x20000020: (0x20000020 >> 5) << 5 = 0x20000020
-     * But masking with 0x1FFFFFE0 gives: 0x00000020 - WRONG!
-     *
-     * The mask should preserve bit 29 if we want RAM access.
-     * Let's try without the mask.
-     */
-
-    /* Set remap base - use full address, let hardware handle it */
+    /* Set remap base - bits[28:5] of the table address */
     uint32_t remap_base = (uint32_t)(uintptr_t)g_fpb_remap_table;
-    /* Bits [4:0] must be 0 (32-byte aligned), bits [28:5] are the address */
-    FPB_REMAP = remap_base & 0xFFFFFFE0UL;
+    /* FP_REMAP stores bits[28:5], bits[31:29] are hardwired to 0b001 (SRAM) */
+    FPB_REMAP = remap_base & 0x1FFFFFE0UL;
 
-    /* Configure comparator for REMAP mode */
+    /* Configure comparator for REMAP mode (REPLACE=00) */
     uint32_t comp_val = (original_addr & FPB_COMP_ADDR_MASK) | FPB_REPLACE_REMAP | FPB_COMP_ENABLE;
     FPB_COMP(comp_id) = comp_val;
 
@@ -319,9 +288,8 @@ int fpb_clear_patch(uint8_t comp_id) {
 
     FPB_COMP(comp_id) = 0;
 
-    uint32_t remap_index = comp_id * 2;
-    g_fpb_remap_table[remap_index] = 0;
-    g_fpb_remap_table[remap_index + 1] = 0;
+    /* Clear remap table entry */
+    g_fpb_remap_table[comp_id] = 0;
 
     g_fpb_state.comp[comp_id].original_addr = 0;
     g_fpb_state.comp[comp_id].patch_addr = 0;
@@ -413,20 +381,34 @@ int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instr
         return -1;
     }
 
-    uint32_t remap_index = comp_id * 2;
-    uint32_t replace_mode;
+    /*
+     * Note: This function is designed for FPB Version 1 REMAP mode.
+     *
+     * When REPLACE = 00 (REMAP mode), the FPB fetches from remap table.
+     * The remap table entry at index comp_id contains the replacement word.
+     *
+     * For 16-bit instruction replacement:
+     *   - is_upper=false: replace lower halfword at the matched address
+     *   - is_upper=true: replace upper halfword at the matched address
+     *
+     * The 32-bit remap table entry layout:
+     *   - bits[15:0] = lower halfword instruction
+     *   - bits[31:16] = upper halfword instruction
+     */
 
     if (is_upper) {
-        replace_mode = FPB_REPLACE_UPPER;
-        g_fpb_remap_table[remap_index] = (uint32_t)new_instruction << 16;
+        /* Store instruction in upper halfword, preserve lower halfword */
+        g_fpb_remap_table[comp_id] = (g_fpb_remap_table[comp_id] & 0xFFFF) | ((uint32_t)new_instruction << 16);
     } else {
-        replace_mode = FPB_REPLACE_LOWER;
-        g_fpb_remap_table[remap_index] = new_instruction;
+        /* Store instruction in lower halfword, preserve upper halfword */
+        g_fpb_remap_table[comp_id] = (g_fpb_remap_table[comp_id] & 0xFFFF0000) | new_instruction;
     }
 
+    /* Set remap base - bits[28:5] of the table address, bits[31:29] hardwired to SRAM */
     FPB_REMAP = ((uint32_t)(uintptr_t)g_fpb_remap_table) & 0x1FFFFFE0UL;
 
-    uint32_t comp_val = (addr & FPB_COMP_ADDR_MASK) | replace_mode | FPB_COMP_ENABLE;
+    /* Configure comparator for REMAP mode (REPLACE = 00) */
+    uint32_t comp_val = (addr & FPB_COMP_ADDR_MASK) | FPB_REPLACE_REMAP | FPB_COMP_ENABLE;
 
     FPB_COMP(comp_id) = comp_val;
 
@@ -461,4 +443,12 @@ uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* i
 
         return 4;
     }
+}
+
+/**
+ * @brief Get remap table base address for testing/debugging
+ * @return Pointer to remap table (FPB_MAX_CODE_COMP entries)
+ */
+const uint32_t* fpb_test_get_remap_table(void) {
+    return g_fpb_remap_table;
 }

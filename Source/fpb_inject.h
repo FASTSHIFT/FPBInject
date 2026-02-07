@@ -167,6 +167,12 @@ int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instr
  */
 uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* instruction);
 
+/**
+ * @brief Get remap table base address for testing/debugging
+ * @return Pointer to remap table (FPB_MAX_CODE_COMP entries)
+ */
+const uint32_t* fpb_test_get_remap_table(void);
+
 #ifdef __cplusplus
 }
 #endif
