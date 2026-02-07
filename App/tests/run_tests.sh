@@ -15,9 +15,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 
-# Coverage threshold (default 60%)
-LINE_THRESHOLD=60
-FUNC_THRESHOLD=60
+# Coverage threshold (default 80%)
+LINE_THRESHOLD=80
+FUNC_THRESHOLD=80
 
 # Colors for output
 RED='\033[0;31m'

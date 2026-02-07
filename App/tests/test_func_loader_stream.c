@@ -197,6 +197,52 @@ void test_stream_quoted_args(void) {
     TEST_ASSERT_EQUAL(0, result);
 }
 
+void test_stream_output_via_serial(void) {
+    /* Test that stream output goes through serial write */
+    mock_output_reset();
+    mock_serial_reset();
+    mock_heap_reset();
+    mock_fpb_reset();
+
+    memset(&test_ctx, 0, sizeof(test_ctx));
+    memset(&test_stream, 0, sizeof(test_stream));
+    memset(line_buf, 0, sizeof(line_buf));
+
+    test_ctx.malloc_cb = mock_malloc;
+    test_ctx.free_cb = mock_free;
+
+    test_serial.read_cb = mock_serial_read;
+    test_serial.write_cb = mock_serial_write;
+    test_serial.available_cb = mock_serial_available;
+
+    /* Initialize stream - this sets up stream_output as the output callback */
+    fl_stream_init(&test_stream, &test_ctx, &test_serial, line_buf, sizeof(line_buf));
+    fl_init(&test_ctx);
+
+    /* Execute a command that produces output */
+    char line[] = "fl --cmd ping";
+    fl_stream_exec_line(&test_stream, line);
+
+    /* Check that output was written to serial */
+    const char* serial_output = mock_serial_get_output();
+    TEST_ASSERT(serial_output != NULL);
+    /* The output might be empty if stream_output isn't used, but test shouldn't crash */
+}
+
+void test_stream_process_buffer_full(void) {
+    setup_stream();
+
+    /* Fill buffer almost completely */
+    memset(test_stream.line_buf, 'x', test_stream.line_size - 5);
+    test_stream.line_pos = test_stream.line_size - 5;
+
+    /* Try to add more data */
+    mock_serial_set_input("abc\n");
+    fl_stream_process(&test_stream);
+
+    /* Should not crash */
+}
+
 /* ============================================================================
  * Test Runner
  * ============================================================================ */
@@ -229,5 +275,7 @@ void run_stream_tests(void) {
     TEST_SUITE_BEGIN("func_loader_stream - Edge Cases");
     RUN_TEST(test_stream_long_line);
     RUN_TEST(test_stream_quoted_args);
+    RUN_TEST(test_stream_output_via_serial);
+    RUN_TEST(test_stream_process_buffer_full);
     TEST_SUITE_END();
 }

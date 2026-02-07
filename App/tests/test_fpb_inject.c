@@ -272,6 +272,63 @@ void test_fpb_generate_thumb_jump_backward(void) {
 }
 
 /* ============================================================================
+ * fpb_set_instruction_patch Tests
+ * ============================================================================ */
+
+void test_fpb_set_instruction_patch_basic(void) {
+    setup_fpb();
+    fpb_init();
+
+    int ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false); /* BX LR */
+    TEST_ASSERT_EQUAL(0, ret);
+}
+
+void test_fpb_set_instruction_patch_upper(void) {
+    setup_fpb();
+    fpb_init();
+
+    int ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, true); /* Upper half */
+    TEST_ASSERT_EQUAL(0, ret);
+}
+
+void test_fpb_set_instruction_patch_not_initialized(void) {
+    setup_fpb();
+    /* Don't init FPB */
+
+    int ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false);
+    TEST_ASSERT(ret != 0);
+}
+
+void test_fpb_set_instruction_patch_invalid_comp(void) {
+    setup_fpb();
+    fpb_init();
+
+    int ret = fpb_set_instruction_patch(100, 0x08001000, 0x4770, false);
+    TEST_ASSERT(ret != 0);
+}
+
+void test_fpb_set_instruction_patch_ram_address(void) {
+    setup_fpb();
+    fpb_init();
+
+    /* RAM address should fail */
+    int ret = fpb_set_instruction_patch(0, 0x20001000, 0x4770, false);
+    TEST_ASSERT(ret != 0);
+}
+
+/* ============================================================================
+ * fpb_print_info Tests
+ * ============================================================================ */
+
+void test_fpb_print_info(void) {
+    setup_fpb();
+    fpb_init();
+
+    /* Should not crash */
+    fpb_print_info();
+}
+
+/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -325,5 +382,17 @@ void run_fpb_tests(void) {
     RUN_TEST(test_fpb_generate_thumb_jump_short);
     RUN_TEST(test_fpb_generate_thumb_jump_long);
     RUN_TEST(test_fpb_generate_thumb_jump_backward);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("fpb_inject - Instruction Patch");
+    RUN_TEST(test_fpb_set_instruction_patch_basic);
+    RUN_TEST(test_fpb_set_instruction_patch_upper);
+    RUN_TEST(test_fpb_set_instruction_patch_not_initialized);
+    RUN_TEST(test_fpb_set_instruction_patch_invalid_comp);
+    RUN_TEST(test_fpb_set_instruction_patch_ram_address);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("fpb_inject - Print Info");
+    RUN_TEST(test_fpb_print_info);
     TEST_SUITE_END();
 }

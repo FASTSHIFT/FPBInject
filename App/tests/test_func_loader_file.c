@@ -331,6 +331,176 @@ void test_file_rename(void) {
 }
 
 /* ============================================================================
+ * Additional Edge Case Tests
+ * ============================================================================ */
+
+void test_file_open_append(void) {
+    setup_file_test();
+
+    /* Create file with initial content */
+    int result = fl_file_open(&test_ctx.file_ctx, test_file_path, "w");
+    TEST_ASSERT_EQUAL(0, result);
+    fl_file_write(&test_ctx.file_ctx, "Hello", 5);
+    fl_file_close(&test_ctx.file_ctx);
+
+    /* Open in append mode */
+    result = fl_file_open(&test_ctx.file_ctx, test_file_path, "a");
+    TEST_ASSERT_EQUAL(0, result);
+    fl_file_write(&test_ctx.file_ctx, "World", 5);
+    fl_file_close(&test_ctx.file_ctx);
+
+    /* Read back and verify */
+    result = fl_file_open(&test_ctx.file_ctx, test_file_path, "r");
+    char buf[20] = {0};
+    fl_file_read(&test_ctx.file_ctx, buf, 10);
+    TEST_ASSERT(strcmp(buf, "HelloWorld") == 0);
+    fl_file_close(&test_ctx.file_ctx);
+
+    cleanup_file_test();
+}
+
+void test_file_close_null_ctx(void) {
+    int result = fl_file_close(NULL);
+    TEST_ASSERT(result != 0);
+}
+
+void test_file_close_no_fs(void) {
+    fl_file_ctx_t empty_ctx;
+    memset(&empty_ctx, 0, sizeof(empty_ctx));
+
+    int result = fl_file_close(&empty_ctx);
+    TEST_ASSERT(result != 0);
+}
+
+void test_file_stat_null_params(void) {
+    setup_file_test();
+
+    fl_file_stat_t st;
+
+    /* Null context */
+    int result = fl_file_stat(NULL, test_file_path, &st);
+    TEST_ASSERT(result != 0);
+
+    /* Null path */
+    result = fl_file_stat(&test_ctx.file_ctx, NULL, &st);
+    TEST_ASSERT(result != 0);
+
+    /* Null stat */
+    result = fl_file_stat(&test_ctx.file_ctx, test_file_path, NULL);
+    TEST_ASSERT(result != 0);
+
+    cleanup_file_test();
+}
+
+void test_file_seek_end(void) {
+    setup_file_test();
+
+    /* Create file */
+    int result = fl_file_open(&test_ctx.file_ctx, test_file_path, "w");
+    fl_file_write(&test_ctx.file_ctx, "0123456789", 10);
+    fl_file_close(&test_ctx.file_ctx);
+
+    /* Reopen and seek from end */
+    result = fl_file_open(&test_ctx.file_ctx, test_file_path, "r");
+    TEST_ASSERT_EQUAL(0, result);
+
+    off_t pos = fl_file_seek(&test_ctx.file_ctx, -3, FL_SEEK_END);
+    TEST_ASSERT_EQUAL(7, pos);
+
+    char buf[5] = {0};
+    fl_file_read(&test_ctx.file_ctx, buf, 3);
+    TEST_ASSERT(strcmp(buf, "789") == 0);
+
+    fl_file_close(&test_ctx.file_ctx);
+    cleanup_file_test();
+}
+
+void test_file_seek_current(void) {
+    setup_file_test();
+
+    /* Create file */
+    int result = fl_file_open(&test_ctx.file_ctx, test_file_path, "w");
+    fl_file_write(&test_ctx.file_ctx, "0123456789", 10);
+    fl_file_close(&test_ctx.file_ctx);
+
+    /* Reopen and seek relative */
+    result = fl_file_open(&test_ctx.file_ctx, test_file_path, "r");
+    TEST_ASSERT_EQUAL(0, result);
+
+    fl_file_seek(&test_ctx.file_ctx, 3, FL_SEEK_SET);
+    off_t pos = fl_file_seek(&test_ctx.file_ctx, 2, FL_SEEK_CUR);
+    TEST_ASSERT_EQUAL(5, pos);
+
+    fl_file_close(&test_ctx.file_ctx);
+    cleanup_file_test();
+}
+
+void test_file_rename_null_params(void) {
+    setup_file_test();
+
+    int result = fl_file_rename(NULL, test_file_path, "/tmp/newname.txt");
+    TEST_ASSERT(result != 0);
+
+    result = fl_file_rename(&test_ctx.file_ctx, NULL, "/tmp/newname.txt");
+    TEST_ASSERT(result != 0);
+
+    result = fl_file_rename(&test_ctx.file_ctx, test_file_path, NULL);
+    TEST_ASSERT(result != 0);
+
+    cleanup_file_test();
+}
+
+void test_file_remove_null_params(void) {
+    setup_file_test();
+
+    int result = fl_file_remove(NULL, test_file_path);
+    TEST_ASSERT(result != 0);
+
+    result = fl_file_remove(&test_ctx.file_ctx, NULL);
+    TEST_ASSERT(result != 0);
+
+    cleanup_file_test();
+}
+
+void test_file_write_large(void) {
+    setup_file_test();
+
+    int result = fl_file_open(&test_ctx.file_ctx, test_file_path, "w");
+    TEST_ASSERT_EQUAL(0, result);
+
+    /* Write larger data */
+    char large_data[1024];
+    memset(large_data, 'A', sizeof(large_data));
+    ssize_t written = fl_file_write(&test_ctx.file_ctx, large_data, sizeof(large_data));
+    TEST_ASSERT_EQUAL(1024, written);
+
+    fl_file_close(&test_ctx.file_ctx);
+    cleanup_file_test();
+}
+
+void test_file_read_large(void) {
+    setup_file_test();
+
+    /* Create file with large content */
+    int result = fl_file_open(&test_ctx.file_ctx, test_file_path, "w");
+    char large_data[1024];
+    memset(large_data, 'B', sizeof(large_data));
+    fl_file_write(&test_ctx.file_ctx, large_data, sizeof(large_data));
+    fl_file_close(&test_ctx.file_ctx);
+
+    /* Read back */
+    result = fl_file_open(&test_ctx.file_ctx, test_file_path, "r");
+    TEST_ASSERT_EQUAL(0, result);
+
+    char read_buf[1024];
+    ssize_t nread = fl_file_read(&test_ctx.file_ctx, read_buf, sizeof(read_buf));
+    TEST_ASSERT_EQUAL(1024, nread);
+
+    fl_file_close(&test_ctx.file_ctx);
+    cleanup_file_test();
+}
+
+/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -345,27 +515,36 @@ void run_file_tests(void) {
     RUN_TEST(test_file_open_read_nonexistent);
     RUN_TEST(test_file_open_null_path);
     RUN_TEST(test_file_open_null_mode);
+    RUN_TEST(test_file_open_append);
+    RUN_TEST(test_file_close_null_ctx);
+    RUN_TEST(test_file_close_no_fs);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader_file - Read/Write");
     RUN_TEST(test_file_write_read);
     RUN_TEST(test_file_write_no_open);
     RUN_TEST(test_file_read_no_open);
+    RUN_TEST(test_file_write_large);
+    RUN_TEST(test_file_read_large);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader_file - Seek");
     RUN_TEST(test_file_seek);
     RUN_TEST(test_file_seek_no_open);
+    RUN_TEST(test_file_seek_end);
+    RUN_TEST(test_file_seek_current);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader_file - Stat");
     RUN_TEST(test_file_stat);
     RUN_TEST(test_file_stat_nonexistent);
+    RUN_TEST(test_file_stat_null_params);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader_file - Remove");
     RUN_TEST(test_file_remove);
     RUN_TEST(test_file_remove_nonexistent);
+    RUN_TEST(test_file_remove_null_params);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader_file - Mkdir");
@@ -374,5 +553,6 @@ void run_file_tests(void) {
 
     TEST_SUITE_BEGIN("func_loader_file - Rename");
     RUN_TEST(test_file_rename);
+    RUN_TEST(test_file_rename_null_params);
     TEST_SUITE_END();
 }

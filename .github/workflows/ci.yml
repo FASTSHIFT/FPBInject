@@ -91,8 +91,8 @@ jobs:
           echo "🧪 Running firmware unit tests..."
           sudo apt-get install -y lcov bc
           chmod +x run_tests.sh
-          ./run_tests.sh coverage --threshold 60
-          echo "✅ Firmware unit tests passed with 60%+ coverage!"
+          ./run_tests.sh coverage --threshold 80
+          echo "✅ Firmware unit tests passed with 80%+ coverage!"
 
       - name: Upload firmware coverage report
         uses: actions/upload-artifact@v4

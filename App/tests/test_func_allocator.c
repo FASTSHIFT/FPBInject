@@ -219,6 +219,105 @@ void test_allocator_stats_after_free(void) {
 }
 
 /* ============================================================================
+ * func_alloc_size Tests
+ * ============================================================================ */
+
+void test_allocator_size_basic(void) {
+    setup_allocator();
+
+    void* ptr = func_malloc(&test_alloc, 64);
+    TEST_ASSERT_NOT_NULL(ptr);
+
+    size_t size = func_alloc_size(&test_alloc, ptr);
+    TEST_ASSERT(size >= 64);
+}
+
+void test_allocator_size_null_alloc(void) {
+    void* ptr = (void*)0x1000;
+    size_t size = func_alloc_size(NULL, ptr);
+    TEST_ASSERT_EQUAL(0, size);
+}
+
+void test_allocator_size_null_ptr(void) {
+    setup_allocator();
+
+    size_t size = func_alloc_size(&test_alloc, NULL);
+    TEST_ASSERT_EQUAL(0, size);
+}
+
+void test_allocator_size_invalid_ptr(void) {
+    setup_allocator();
+
+    /* Pointer outside of managed blocks */
+    void* invalid_ptr = (void*)0x1000;
+    size_t size = func_alloc_size(&test_alloc, invalid_ptr);
+    TEST_ASSERT_EQUAL(0, size);
+}
+
+void test_allocator_size_unaligned_ptr(void) {
+    setup_allocator();
+
+    void* ptr = func_malloc(&test_alloc, 64);
+    TEST_ASSERT_NOT_NULL(ptr);
+
+    /* Unaligned pointer */
+    void* unaligned = (uint8_t*)ptr + 1;
+    size_t size = func_alloc_size(&test_alloc, unaligned);
+    TEST_ASSERT_EQUAL(0, size);
+}
+
+void test_allocator_size_freed_ptr(void) {
+    setup_allocator();
+
+    void* ptr = func_malloc(&test_alloc, 64);
+    TEST_ASSERT_NOT_NULL(ptr);
+
+    func_free(&test_alloc, ptr);
+
+    size_t size = func_alloc_size(&test_alloc, ptr);
+    TEST_ASSERT_EQUAL(0, size);
+}
+
+void test_allocator_size_various_sizes(void) {
+    setup_allocator();
+
+    void* ptr1 = func_malloc(&test_alloc, 32);
+    void* ptr2 = func_malloc(&test_alloc, 128);
+    void* ptr3 = func_malloc(&test_alloc, 256);
+
+    TEST_ASSERT_NOT_NULL(ptr1);
+    TEST_ASSERT_NOT_NULL(ptr2);
+    TEST_ASSERT_NOT_NULL(ptr3);
+
+    size_t size1 = func_alloc_size(&test_alloc, ptr1);
+    size_t size2 = func_alloc_size(&test_alloc, ptr2);
+    size_t size3 = func_alloc_size(&test_alloc, ptr3);
+
+    TEST_ASSERT(size1 >= 32);
+    TEST_ASSERT(size2 >= 128);
+    TEST_ASSERT(size3 >= 256);
+}
+
+/* ============================================================================
+ * func_alloc_is_valid Tests
+ * ============================================================================ */
+
+void test_allocator_is_valid_true(void) {
+    setup_allocator();
+    TEST_ASSERT_TRUE(func_alloc_is_valid(&test_alloc));
+}
+
+void test_allocator_is_valid_null(void) {
+    TEST_ASSERT_FALSE(func_alloc_is_valid(NULL));
+}
+
+void test_allocator_is_valid_uninit(void) {
+    func_alloc_t uninit;
+    memset(&uninit, 0, sizeof(uninit));
+    TEST_ASSERT_FALSE(func_alloc_is_valid(&uninit));
+}
+
+/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -250,5 +349,21 @@ void run_allocator_tests(void) {
     RUN_TEST(test_allocator_stats_initial);
     RUN_TEST(test_allocator_stats_after_alloc);
     RUN_TEST(test_allocator_stats_after_free);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_allocator - Size Query");
+    RUN_TEST(test_allocator_size_basic);
+    RUN_TEST(test_allocator_size_null_alloc);
+    RUN_TEST(test_allocator_size_null_ptr);
+    RUN_TEST(test_allocator_size_invalid_ptr);
+    RUN_TEST(test_allocator_size_unaligned_ptr);
+    RUN_TEST(test_allocator_size_freed_ptr);
+    RUN_TEST(test_allocator_size_various_sizes);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_allocator - Validation");
+    RUN_TEST(test_allocator_is_valid_true);
+    RUN_TEST(test_allocator_is_valid_null);
+    RUN_TEST(test_allocator_is_valid_uninit);
     TEST_SUITE_END();
 }

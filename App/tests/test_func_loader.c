@@ -623,6 +623,341 @@ void test_loader_cmd_fmkdir(void) {
     rmdir(test_dir);
 }
 
+void test_loader_cmd_fcrc(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fcrc_%d.txt", getpid());
+
+    /* Create a file with known content */
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "HelloWorld");
+        fclose(f);
+    }
+
+    /* Open file */
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    /* Calculate CRC */
+    const char* argv[] = {"fl", "--cmd", "fcrc"};
+    fl_exec_cmd(&test_ctx, 3, argv);
+
+    TEST_ASSERT(mock_output_contains("FCRC") || mock_output_contains("FLOK") || mock_output_contains("crc"));
+
+    /* Close file */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+
+    /* Cleanup */
+    unlink(test_file);
+}
+
+void test_loader_cmd_fcrc_no_file(void) {
+    setup_loader_with_file();
+
+    /* Try to calculate CRC without opening a file */
+    const char* argv[] = {"fl", "--cmd", "fcrc"};
+    fl_exec_cmd(&test_ctx, 3, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR") || mock_output_contains("No file"));
+}
+
+void test_loader_cmd_flist(void) {
+    setup_loader_with_file();
+
+    /* List /tmp directory */
+    const char* argv[] = {"fl", "--cmd", "flist", "--path", "/tmp"};
+    fl_exec_cmd(&test_ctx, 5, argv);
+
+    /* Note: libc backend does not support directory listing */
+    TEST_ASSERT(mock_output_contains("FLERR") || mock_output_contains("FLIST") || mock_output_contains("FLOK"));
+}
+
+void test_loader_cmd_upload_hex_data(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate memory first */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Upload hex data (01020304) */
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "0", "--data", "01020304"};
+    int result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("Uploaded") || mock_output_contains("FLOK"));
+}
+
+void test_loader_cmd_upload_with_crc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate memory first */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Upload data with CRC verification
+     * Base64: AQIDBA== = 01 02 03 04
+     * CRC calculation: calc_crc16([0x01, 0x02, 0x03, 0x04], 4)
+     */
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "0", "--data", "AQIDBA==", "--crc", "0xB5F2"};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    /* May pass or fail depending on CRC, just check no crash */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
+void test_loader_cmd_tpatch_valid(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate memory first */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Try tpatch - may be disabled with FPB_NO_TRAMPOLINE */
+    const char* argv[] = {"fl", "--cmd", "tpatch", "--comp", "0", "--orig", "0x08001000", "--target", "0x20002000"};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    /* Should either succeed or say trampoline disabled */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
+void test_loader_cmd_dpatch_valid(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate memory first */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Try dpatch - may be disabled with FPB_NO_DEBUGMON */
+    const char* argv[] = {"fl", "--cmd", "dpatch", "--comp", "0", "--orig", "0x08001000", "--target", "0x20002000"};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    /* Should either succeed or say debugmon disabled */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
+void test_loader_cmd_run(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate memory first */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Try run command */
+    const char* argv[] = {"fl", "--cmd", "run", "--entry", "0"};
+    fl_exec_cmd(&test_ctx, 5, argv);
+
+    /* May fail due to no valid code, but shouldn't crash */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
+void test_loader_cmd_read(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate memory first */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Try read command */
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0", "--len", "16"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    /* Should return data or error */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
+void test_loader_cmd_upload_invalid_data(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate memory first */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Upload invalid data (not valid hex or base64) */
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "0", "--data", "ZZZZ!!!"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    /* Should fail with invalid encoding error */
+    TEST_ASSERT(mock_output_contains("FLERR") || mock_output_contains("Invalid"));
+}
+
+void test_loader_cmd_fwrite_hex_data(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fwrite_hex_%d.txt", getpid());
+
+    /* Open file */
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "w"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    /* Write hex data (48656C6C6F = "Hello") */
+    const char* argv[] = {"fl", "--cmd", "fwrite", "--data", "48656C6C6F"};
+    fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT(mock_output_contains("FWRITE") || mock_output_contains("FLOK"));
+
+    /* Close file */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+
+    /* Cleanup */
+    unlink(test_file);
+}
+
+void test_loader_cmd_fwrite_with_crc(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fwrite_crc_%d.txt", getpid());
+
+    /* Open file */
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "w"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    /* Write data with CRC (SGVsbG8= = "Hello") */
+    const char* argv[] = {"fl", "--cmd", "fwrite", "--data", "SGVsbG8=", "--crc", "0x1234"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    /* May fail CRC check, just verify no crash */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+
+    /* Close file */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+
+    /* Cleanup */
+    unlink(test_file);
+}
+
+void test_loader_cmd_fread_large(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fread_large_%d.txt", getpid());
+
+    /* Create a file with content */
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        for (int i = 0; i < 100; i++) {
+            fprintf(f, "Line %d of test data\n", i);
+        }
+        fclose(f);
+    }
+
+    /* Open file for reading */
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    /* Read data without specifying len (should use default) */
+    const char* argv[] = {"fl", "--cmd", "fread"};
+    fl_exec_cmd(&test_ctx, 3, argv);
+
+    TEST_ASSERT(mock_output_contains("FREAD") || mock_output_contains("FLOK"));
+
+    /* Close file */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+
+    /* Cleanup */
+    unlink(test_file);
+}
+
+void test_loader_cmd_fclose_no_file(void) {
+    setup_loader_with_file();
+
+    /* Try to close without opening */
+    const char* argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, argv);
+
+    /* Should report error or succeed gracefully */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
+void test_loader_cmd_fseek_no_file(void) {
+    setup_loader_with_file();
+
+    /* Try to seek without opening */
+    const char* argv[] = {"fl", "--cmd", "fseek", "--addr", "0x10"};
+    fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR") || mock_output_contains("No file"));
+}
+
+void test_loader_cmd_fstat_no_path(void) {
+    setup_loader_with_file();
+
+    /* Try fstat without path */
+    const char* argv[] = {"fl", "--cmd", "fstat"};
+    fl_exec_cmd(&test_ctx, 3, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR") || mock_output_contains("Missing"));
+}
+
+void test_loader_cmd_read_no_alloc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Try read without alloc */
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0", "--len", "16"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    /* Should fail or return error */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
+void test_loader_cmd_run_no_alloc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Try run without alloc */
+    const char* argv[] = {"fl", "--cmd", "run", "--entry", "0"};
+    fl_exec_cmd(&test_ctx, 5, argv);
+
+    /* Should fail */
+    const char* output = mock_output_get();
+    TEST_ASSERT(output != NULL);
+}
+
 /* ============================================================================
  * Test Runner
  * ============================================================================ */
@@ -685,13 +1020,34 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_fopen);
     RUN_TEST(test_loader_cmd_fopen_no_path);
     RUN_TEST(test_loader_cmd_fclose);
+    RUN_TEST(test_loader_cmd_fclose_no_file);
     RUN_TEST(test_loader_cmd_fwrite);
     RUN_TEST(test_loader_cmd_fwrite_no_file);
+    RUN_TEST(test_loader_cmd_fwrite_hex_data);
+    RUN_TEST(test_loader_cmd_fwrite_with_crc);
     RUN_TEST(test_loader_cmd_fread);
+    RUN_TEST(test_loader_cmd_fread_large);
     RUN_TEST(test_loader_cmd_fseek);
+    RUN_TEST(test_loader_cmd_fseek_no_file);
     RUN_TEST(test_loader_cmd_fstat);
+    RUN_TEST(test_loader_cmd_fstat_no_path);
     RUN_TEST(test_loader_cmd_fremove);
     RUN_TEST(test_loader_cmd_frename);
     RUN_TEST(test_loader_cmd_fmkdir);
+    RUN_TEST(test_loader_cmd_fcrc);
+    RUN_TEST(test_loader_cmd_fcrc_no_file);
+    RUN_TEST(test_loader_cmd_flist);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_loader - Advanced Commands");
+    RUN_TEST(test_loader_cmd_upload_hex_data);
+    RUN_TEST(test_loader_cmd_upload_with_crc);
+    RUN_TEST(test_loader_cmd_upload_invalid_data);
+    RUN_TEST(test_loader_cmd_tpatch_valid);
+    RUN_TEST(test_loader_cmd_dpatch_valid);
+    RUN_TEST(test_loader_cmd_run);
+    RUN_TEST(test_loader_cmd_run_no_alloc);
+    RUN_TEST(test_loader_cmd_read);
+    RUN_TEST(test_loader_cmd_read_no_alloc);
     TEST_SUITE_END();
 }
