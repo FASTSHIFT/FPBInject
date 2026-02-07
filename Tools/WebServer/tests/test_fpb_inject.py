@@ -825,7 +825,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
                         "directory": "/tmp",
                         "arguments": [
                             "arm-none-eabi-gcc",
-                            "-D__NUTTX__",
+                            "-D__NuttX__",
                             "-DFL_NUTTX_BUF_SIZE=1024",
                             "-DFL_NUTTX_LINE_SIZE=256",
                             "-DFL_FILE_USE_POSIX=1",
@@ -842,7 +842,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
         try:
             result = self.fpb.parse_compile_commands(cmd_path)
             self.assertIsNotNone(result)
-            self.assertIn("__NUTTX__", result["defines"])
+            self.assertIn("__NuttX__", result["defines"])
             self.assertIn("FL_NUTTX_BUF_SIZE=1024", result["defines"])
             self.assertIn("FL_NUTTX_LINE_SIZE=256", result["defines"])
             self.assertIn("FL_FILE_USE_POSIX=1", result["defines"])

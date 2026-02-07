@@ -37,7 +37,7 @@ set(CMAKE_C_FLAGS
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${CPU_FLAGS}")
 
 # Define NuttX platform
-add_definitions(-D__NUTTX__)
+add_definitions(-D__NuttX__)
 
 # Define mock mode to disable ARM-specific inline assembly
 add_definitions(-DFPB_MOCK_BUILD)
