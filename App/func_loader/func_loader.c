@@ -429,6 +429,7 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
     fl_response(true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
                 (unsigned long)tramp_addr, (unsigned long)target);
 #else
+    (void)ctx;
     (void)comp;
     (void)orig;
     (void)target;
@@ -470,6 +471,7 @@ static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
     fl_response(true, "DebugMon %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
                 (unsigned long)target);
 #else
+    (void)ctx;
     (void)comp;
     (void)orig;
     (void)target;

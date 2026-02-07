@@ -85,6 +85,23 @@ jobs:
           Tools/build_test.sh
           echo "✅ Build tests passed!"
 
+      - name: Run firmware unit tests with coverage
+        working-directory: App/tests
+        run: |
+          echo "🧪 Running firmware unit tests..."
+          sudo apt-get install -y lcov bc
+          chmod +x run_tests.sh
+          ./run_tests.sh coverage --threshold 90
+          echo "✅ Firmware unit tests passed with 90%+ coverage!"
+
+      - name: Upload firmware coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firmware-coverage-report
+          path: App/tests/build/coverage/
+          retention-days: 7
+
   # ============================================================
   # Upper Machine Tests (WebServer)
   # ============================================================

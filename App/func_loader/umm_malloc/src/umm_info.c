@@ -49,6 +49,8 @@ void* umm_info(void* ptr, bool force) {
 void* umm_multi_info(umm_heap* heap, void* ptr, bool force) {
     uint16_t blockNo = 0;
 
+    (void)force; /* Suppress unused parameter warning when DBGLOG_FORCE is disabled */
+
     UMM_CRITICAL_DECL(id_info);
 
     UMM_CHECK_INITIALIZED();

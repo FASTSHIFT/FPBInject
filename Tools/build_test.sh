@@ -525,39 +525,4 @@ if [ "$CLEAN_AFTER" == true ]; then
     cleanup
 fi
 
-# Run allocator unit tests if main tests passed
-if [ $result -eq 0 ]; then
-    echo ""
-    echo -e "${YELLOW}Running func_allocator unit tests...${NC}"
-    echo ""
-    
-    ALLOCATOR_TEST_DIR="$BUILD_DIR/allocator_test"
-    mkdir -p "$ALLOCATOR_TEST_DIR"
-    
-    # Compile allocator test with host compiler
-    ALLOCATOR_SRC="$PROJECT_ROOT/App/func_loader/func_allocator_test.c"
-    ALLOCATOR_IMPL="$PROJECT_ROOT/App/func_loader/func_allocator.c"
-    ALLOCATOR_BIN="$ALLOCATOR_TEST_DIR/func_allocator_test"
-    
-    if gcc -DFL_USE_ALLOCATOR_TEST -Wall -Wextra -O2 \
-           -I"$PROJECT_ROOT/App/func_loader" \
-           -o "$ALLOCATOR_BIN" "$ALLOCATOR_SRC" "$ALLOCATOR_IMPL" 2>"$ALLOCATOR_TEST_DIR/compile.log"; then
-        echo -e "  ${GREEN}✓ Compilation successful${NC}"
-        
-        # Run the test
-        if "$ALLOCATOR_BIN" > "$ALLOCATOR_TEST_DIR/test.log" 2>&1; then
-            echo -e "  ${GREEN}✓ All allocator tests passed${NC}"
-            cat "$ALLOCATOR_TEST_DIR/test.log"
-        else
-            echo -e "  ${RED}✗ Allocator tests failed${NC}"
-            cat "$ALLOCATOR_TEST_DIR/test.log"
-            result=1
-        fi
-    else
-        echo -e "  ${RED}✗ Compilation failed${NC}"
-        cat "$ALLOCATOR_TEST_DIR/compile.log"
-        result=1
-    fi
-fi
-
 exit $result

@@ -49,7 +49,7 @@ set(CPU_FLAGS "-mcpu=cortex-m3 -mthumb")
 set(COMMON_FLAGS "${CPU_FLAGS}")
 set(COMMON_FLAGS "${COMMON_FLAGS} -ffunction-sections -fdata-sections")
 set(COMMON_FLAGS "${COMMON_FLAGS} -fno-common -fmessage-length=0")
-set(COMMON_FLAGS "${COMMON_FLAGS} -Wall -Wextra")
+set(COMMON_FLAGS "${COMMON_FLAGS} -Wall -Wextra -Werror")
 
 # C 编译标志
 set(CMAKE_C_FLAGS
