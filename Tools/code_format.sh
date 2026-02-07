@@ -22,15 +22,45 @@ else
     exit 1
 fi
 
+# Check if cmake-format is installed
+CMAKE_FORMAT=""
+# Also check ~/.local/bin (pip user install location)
+export PATH="$PATH:$HOME/.local/bin"
+if command -v cmake-format &> /dev/null; then
+    CMAKE_FORMAT=cmake-format
+elif command -v gersemi &> /dev/null; then
+    CMAKE_FORMAT=gersemi
+fi
+
 # Print clang-format version for debug
 echo "Using clang-format: $CLANG_FORMAT"
 echo "Version: $($CLANG_FORMAT --version)"
+if [[ -n "$CMAKE_FORMAT" ]]; then
+    echo "Using cmake-format: $CMAKE_FORMAT"
+    if [[ "$CMAKE_FORMAT" == "cmake-format" ]]; then
+        echo "Version: $($CMAKE_FORMAT --version 2>&1 | head -1)"
+    else
+        echo "Version: $($CMAKE_FORMAT --version 2>&1 | head -1)"
+    fi
+else
+    echo "Warning: cmake-format/gersemi not installed, CMake files will be skipped"
+    echo "Install with: pip install cmake-format  OR  pip install gersemi"
+fi
 
-# Directories to format
+# Directories to format (C/C++ files)
 FORMAT_DIRS=(
     "$PROJECT_ROOT/Source"
     "$PROJECT_ROOT/App"
 )
+
+# Additional directories for CMake files only
+CMAKE_EXTRA_DIRS=(
+    "$PROJECT_ROOT/cmake"
+    "$PROJECT_ROOT/Tools/nuttx_mock"
+)
+
+# Root CMakeLists.txt
+ROOT_CMAKE="$PROJECT_ROOT/CMakeLists.txt"
 
 # File extensions to format
 EXTENSIONS=("*.c" "*.cpp" "*.h" "*.hpp")
@@ -93,6 +123,89 @@ for dir in "${FORMAT_DIRS[@]}"; do
         done < <(find "$dir" -type f -name "$ext" -print0 2>/dev/null)
     done
 done
+
+# Process CMake files if cmake-format is available
+if [[ -n "$CMAKE_FORMAT" ]]; then
+    echo ""
+    echo "Processing CMake files..."
+    
+    # Function to format a single cmake file
+    format_cmake_file() {
+        local file="$1"
+        TOTAL_FILES=$((TOTAL_FILES + 1))
+        
+        if $CHECK_MODE; then
+            # Check if file needs formatting
+            if [[ "$CMAKE_FORMAT" == "cmake-format" ]]; then
+                FORMATTED_CONTENT=$($CMAKE_FORMAT "$file" 2>/dev/null)
+                ORIGINAL_CONTENT=$(cat "$file")
+                if [[ "$FORMATTED_CONTENT" != "$ORIGINAL_CONTENT" ]]; then
+                    echo -e "  ${RED}[NEEDS FORMAT]${NC} $file"
+                    FAILED_FILES=$((FAILED_FILES + 1))
+                else
+                    echo -e "  ${GREEN}[OK]${NC} $file"
+                    FORMATTED_FILES=$((FORMATTED_FILES + 1))
+                fi
+            else
+                # gersemi has --check flag
+                if ! $CMAKE_FORMAT --check "$file" 2>/dev/null; then
+                    echo -e "  ${RED}[NEEDS FORMAT]${NC} $file"
+                    FAILED_FILES=$((FAILED_FILES + 1))
+                else
+                    echo -e "  ${GREEN}[OK]${NC} $file"
+                    FORMATTED_FILES=$((FORMATTED_FILES + 1))
+                fi
+            fi
+        else
+            # Format file in place
+            if [[ "$CMAKE_FORMAT" == "cmake-format" ]]; then
+                if $CMAKE_FORMAT -i "$file" 2>/dev/null; then
+                    echo -e "  ${GREEN}[FORMATTED]${NC} $file"
+                    FORMATTED_FILES=$((FORMATTED_FILES + 1))
+                else
+                    echo -e "  ${RED}[FAILED]${NC} $file"
+                    FAILED_FILES=$((FAILED_FILES + 1))
+                fi
+            else
+                # gersemi uses --in-place
+                if $CMAKE_FORMAT --in-place "$file" 2>/dev/null; then
+                    echo -e "  ${GREEN}[FORMATTED]${NC} $file"
+                    FORMATTED_FILES=$((FORMATTED_FILES + 1))
+                else
+                    echo -e "  ${RED}[FAILED]${NC} $file"
+                    FAILED_FILES=$((FAILED_FILES + 1))
+                fi
+            fi
+        fi
+    }
+    
+    # Process root CMakeLists.txt
+    if [[ -f "$ROOT_CMAKE" ]]; then
+        format_cmake_file "$ROOT_CMAKE"
+    fi
+    
+    # Process CMake files in FORMAT_DIRS (App, Source)
+    for dir in "${FORMAT_DIRS[@]}"; do
+        if [[ ! -d "$dir" ]]; then
+            continue
+        fi
+        
+        while IFS= read -r -d '' file; do
+            format_cmake_file "$file"
+        done < <(find "$dir" -type f \( -name "CMakeLists.txt" -o -name "*.cmake" \) -not -path "*/build/*" -print0 2>/dev/null)
+    done
+    
+    # Process CMake files in CMAKE_EXTRA_DIRS (cmake, Tools/nuttx_mock)
+    for dir in "${CMAKE_EXTRA_DIRS[@]}"; do
+        if [[ ! -d "$dir" ]]; then
+            continue
+        fi
+        
+        while IFS= read -r -d '' file; do
+            format_cmake_file "$file"
+        done < <(find "$dir" -type f \( -name "CMakeLists.txt" -o -name "*.cmake" \) -not -path "*/build/*" -print0 2>/dev/null)
+    done
+fi
 
 echo ""
 echo "========================================="
