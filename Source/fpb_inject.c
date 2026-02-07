@@ -370,6 +370,38 @@ uint8_t fpb_get_num_code_comp(void) {
     return g_fpb_state.num_code_comp;
 }
 
+int fpb_get_info(fpb_info_t* info) {
+    if (!info) {
+        return -1;
+    }
+
+    uint32_t ctrl = FPB_CTRL;
+
+    /* Extract FP_CTRL register fields */
+    uint8_t rev = (ctrl >> 28) & 0xF;
+    uint8_t num_code_low = (ctrl >> 4) & 0xF;
+    uint8_t num_code_high = (ctrl >> 12) & 0x7;
+    uint8_t num_lit = (ctrl >> 8) & 0xF;
+    bool enabled = (ctrl & 0x1) != 0;
+
+    /* Combine NUM_CODE bits [6:4] and [3:0] */
+    uint8_t num_code = num_code_low | (num_code_high << 4);
+
+    /* Check if FPB is supported */
+    if (num_code == 0) {
+        return -1;
+    }
+
+    /* Fill info structure */
+    info->rev = rev;
+    info->num_code_comp = num_code;
+    info->num_lit_comp = num_lit;
+    info->enabled = enabled;
+    info->total_comp = num_code + num_lit;
+
+    return 0;
+}
+
 int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper) {
     if (!g_fpb_state.initialized || comp_id >= g_fpb_state.num_code_comp) {
         return -1;
@@ -429,8 +461,4 @@ uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* i
 
         return 4;
     }
-}
-
-void fpb_print_info(void) {
-    /* Implementation depends on available print interface */
 }

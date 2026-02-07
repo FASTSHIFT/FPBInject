@@ -245,6 +245,7 @@ static void cmd_echo(fl_context_t* ctx, const char* data_str) {
 
 static void cmd_info(fl_context_t* ctx) {
     const fpb_state_t* fpb = fpb_get_state();
+    fpb_info_t fpb_info;
     uint32_t num_comps = fpb->num_code_comp;
     uint32_t active_count = 0;
     size_t total_used = 0;
@@ -267,6 +268,12 @@ static void cmd_info(fl_context_t* ctx) {
 #else
     fl_println("FileTransfer: not compiled");
 #endif
+
+    /* Get and print FPB detailed information */
+    fpb_get_info(&fpb_info);
+    const char* rev_str = (fpb_info.rev == 0) ? "v1" : (fpb_info.rev == 1) ? "v2" : "unknown";
+    fl_println("FPB: %s, %u code + %u lit = %u total, %s", rev_str, fpb_info.num_code_comp, fpb_info.num_lit_comp,
+               fpb_info.total_comp, fpb_info.enabled ? "enabled" : "disabled");
 
     /* Print each slot status */
     for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS; i++) {

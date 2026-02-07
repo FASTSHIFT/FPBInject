@@ -78,6 +78,17 @@ typedef struct {
 } fpb_state_t;
 
 /**
+ * @brief FPB Device Information (from FP_CTRL register)
+ */
+typedef struct {
+    uint8_t rev;           /* Flash Patch revision (0=v1, 1=v2) */
+    uint8_t num_code_comp; /* Number of instruction address comparators */
+    uint8_t num_lit_comp;  /* Number of literal address comparators */
+    bool enabled;          /* FPB enable status */
+    uint8_t total_comp;    /* Total comparators (num_code_comp + num_lit_comp) */
+} fpb_info_t;
+
+/**
  * @brief  Initialize FPB unit
  * @retval 0: Success, -1: Failure
  */
@@ -131,9 +142,11 @@ bool fpb_is_supported(void);
 uint8_t fpb_get_num_code_comp(void);
 
 /**
- * @brief  Print FPB debug information
+ * @brief  Get detailed FPB device information
+ * @param  info: Pointer to fpb_info_t structure to fill
+ * @retval 0: Success, -1: FPB not supported
  */
-void fpb_print_info(void);
+int fpb_get_info(fpb_info_t* info);
 
 /**
  * @brief  Set instruction-level patch (replace single Thumb instruction)

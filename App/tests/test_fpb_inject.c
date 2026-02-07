@@ -250,6 +250,70 @@ void test_fpb_get_num_code_comp(void) {
 }
 
 /* ============================================================================
+ * fpb_get_info Tests
+ * ============================================================================ */
+
+void test_fpb_get_info_basic(void) {
+    setup_fpb();
+    fpb_init();
+
+    fpb_info_t info;
+    int ret = fpb_get_info(&info);
+    TEST_ASSERT_EQUAL(0, ret);
+    TEST_ASSERT_NOT_NULL(&info);
+}
+
+void test_fpb_get_info_num_comp(void) {
+    setup_fpb();
+    fpb_init();
+
+    fpb_info_t info;
+    fpb_get_info(&info);
+    TEST_ASSERT_EQUAL(6, info.num_code_comp);
+    TEST_ASSERT_EQUAL(2, info.num_lit_comp);
+    TEST_ASSERT_EQUAL(8, info.total_comp);
+}
+
+void test_fpb_get_info_enabled(void) {
+    setup_fpb();
+    fpb_init();
+
+    fpb_info_t info;
+    fpb_get_info(&info);
+    TEST_ASSERT_TRUE(info.enabled);
+}
+
+void test_fpb_get_info_disabled(void) {
+    setup_fpb();
+    fpb_init();
+    fpb_deinit();
+
+    fpb_info_t info;
+    int ret = fpb_get_info(&info);
+    /* Should still succeed, but FPB is disabled */
+    TEST_ASSERT_EQUAL(0, ret);
+    TEST_ASSERT_FALSE(info.enabled); /* FPB should be disabled after deinit */
+}
+
+void test_fpb_get_info_null_pointer(void) {
+    setup_fpb();
+    fpb_init();
+
+    int ret = fpb_get_info(NULL);
+    TEST_ASSERT(ret != 0);
+}
+
+void test_fpb_get_info_revision(void) {
+    setup_fpb();
+    fpb_init();
+
+    fpb_info_t info;
+    fpb_get_info(&info);
+    /* STM32F103 has FPB v1 */
+    TEST_ASSERT_EQUAL(0, info.rev);
+}
+
+/* ============================================================================
  * fpb_generate_thumb_jump Tests
  * ============================================================================ */
 
@@ -317,18 +381,6 @@ void test_fpb_set_instruction_patch_ram_address(void) {
 }
 
 /* ============================================================================
- * fpb_print_info Tests
- * ============================================================================ */
-
-void test_fpb_print_info(void) {
-    setup_fpb();
-    fpb_init();
-
-    /* Should not crash */
-    fpb_print_info();
-}
-
-/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -378,6 +430,15 @@ void run_fpb_tests(void) {
     RUN_TEST(test_fpb_get_num_code_comp);
     TEST_SUITE_END();
 
+    TEST_SUITE_BEGIN("fpb_inject - Device Info");
+    RUN_TEST(test_fpb_get_info_basic);
+    RUN_TEST(test_fpb_get_info_num_comp);
+    RUN_TEST(test_fpb_get_info_enabled);
+    RUN_TEST(test_fpb_get_info_disabled);
+    RUN_TEST(test_fpb_get_info_null_pointer);
+    RUN_TEST(test_fpb_get_info_revision);
+    TEST_SUITE_END();
+
     TEST_SUITE_BEGIN("fpb_inject - Thumb Jump Generation");
     RUN_TEST(test_fpb_generate_thumb_jump_short);
     RUN_TEST(test_fpb_generate_thumb_jump_long);
@@ -390,9 +451,5 @@ void run_fpb_tests(void) {
     RUN_TEST(test_fpb_set_instruction_patch_not_initialized);
     RUN_TEST(test_fpb_set_instruction_patch_invalid_comp);
     RUN_TEST(test_fpb_set_instruction_patch_ram_address);
-    TEST_SUITE_END();
-
-    TEST_SUITE_BEGIN("fpb_inject - Print Info");
-    RUN_TEST(test_fpb_print_info);
     TEST_SUITE_END();
 }
