@@ -343,6 +343,8 @@ int fpb_get_info(fpb_info_t* info) {
         return -1;
     }
 
+    memset(info, 0, sizeof(fpb_info_t));
+
     uint32_t ctrl = FPB_CTRL;
 
     /* Extract FP_CTRL register fields */
@@ -360,12 +362,37 @@ int fpb_get_info(fpb_info_t* info) {
         return -1;
     }
 
-    /* Fill info structure */
+    /* Fill FP_CTRL fields */
     info->rev = rev;
     info->num_code_comp = num_code;
     info->num_lit_comp = num_lit;
     info->enabled = enabled;
     info->total_comp = num_code + num_lit;
+
+    /* Fill FP_REMAP fields */
+    uint32_t remap = FPB_REMAP;
+    info->remap_raw = remap;
+    info->remap_supported = (remap >> 29) & 0x1;
+    /* Compute actual remap base: bits[31:29] = 0b001 (SRAM), bits[28:5] from REMAP, bits[4:0] = 0 */
+    info->remap_base = 0x20000000UL | (remap & 0x1FFFFFE0UL);
+
+    /* Fill FP_COMPn fields for code comparators */
+    uint8_t comp_count = (num_code <= FPB_MAX_CODE_COMP) ? num_code : FPB_MAX_CODE_COMP;
+    for (uint8_t i = 0; i < comp_count; i++) {
+        uint32_t comp = FPB_COMP(i);
+        info->comp[i].comp_raw = comp;
+        info->comp[i].enabled = (comp & 0x1) != 0;
+
+        if (rev == 0) {
+            /* FPB v1: REPLACE in bits[31:30], COMP in bits[28:2] */
+            info->comp[i].replace = (comp >> 30) & 0x3;
+            info->comp[i].match_addr = comp & 0x1FFFFFFCUL;
+        } else {
+            /* FPB v2: different layout, simplified here */
+            info->comp[i].replace = 0; /* v2 uses different mechanism */
+            info->comp[i].match_addr = comp & 0xFFFFFFFEUL;
+        }
+    }
 
     return 0;
 }

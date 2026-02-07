@@ -78,14 +78,33 @@ typedef struct {
 } fpb_state_t;
 
 /**
- * @brief FPB Device Information (from FP_CTRL register)
+ * @brief FPB Comparator Information
  */
 typedef struct {
+    uint32_t comp_raw;   /* Raw FP_COMPn register value */
+    uint32_t match_addr; /* Address being matched (bits[28:2] << 2) */
+    uint8_t replace;     /* REPLACE field (v1 only): 0=remap, 1=bp_lower, 2=bp_upper, 3=bp_both */
+    bool enabled;        /* Comparator enabled */
+} fpb_comp_info_t;
+
+/**
+ * @brief FPB Device Information (from FP_CTRL, FP_REMAP, FP_COMPn registers)
+ */
+typedef struct {
+    /* FP_CTRL fields */
     uint8_t rev;           /* Flash Patch revision (0=v1, 1=v2) */
     uint8_t num_code_comp; /* Number of instruction address comparators */
     uint8_t num_lit_comp;  /* Number of literal address comparators */
-    bool enabled;          /* FPB enable status */
     uint8_t total_comp;    /* Total comparators (num_code_comp + num_lit_comp) */
+    bool enabled;          /* FPB global enable status */
+
+    /* FP_REMAP fields */
+    uint32_t remap_raw;   /* Raw FP_REMAP register value */
+    uint32_t remap_base;  /* Computed remap base address (in SRAM region) */
+    bool remap_supported; /* RMPSPT bit: true if remap is supported */
+
+    /* FP_COMPn fields (up to FPB_MAX_CODE_COMP entries) */
+    fpb_comp_info_t comp[FPB_MAX_CODE_COMP];
 } fpb_info_t;
 
 /**
@@ -144,7 +163,12 @@ uint8_t fpb_get_num_code_comp(void);
 /**
  * @brief  Get detailed FPB device information
  * @param  info: Pointer to fpb_info_t structure to fill
- * @retval 0: Success, -1: FPB not supported
+ * @retval 0: Success, -1: FPB not supported or invalid parameter
+ *
+ * This function reads all FPB registers and populates the info structure:
+ * - FP_CTRL: revision, comparator counts, global enable
+ * - FP_REMAP: remap base address, remap support flag
+ * - FP_COMPn: each comparator's match address, mode, and enable status
  */
 int fpb_get_info(fpb_info_t* info);
 

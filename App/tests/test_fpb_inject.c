@@ -313,6 +313,71 @@ void test_fpb_get_info_revision(void) {
     TEST_ASSERT_EQUAL(0, info.rev);
 }
 
+void test_fpb_get_info_remap_supported(void) {
+    setup_fpb();
+    fpb_init();
+
+    fpb_info_t info;
+    fpb_get_info(&info);
+    /* Mock configured with RMPSPT=1 */
+    TEST_ASSERT_TRUE(info.remap_supported);
+}
+
+void test_fpb_get_info_remap_base(void) {
+    setup_fpb();
+    fpb_init();
+
+    /* Set a patch to configure remap table */
+    fpb_set_patch(0, 0x08001000, 0x20002000);
+
+    fpb_info_t info;
+    fpb_get_info(&info);
+
+    /* remap_base should be in SRAM region (0x20000000-0x3FFFFFFF) */
+    TEST_ASSERT(info.remap_base >= 0x20000000UL);
+    TEST_ASSERT(info.remap_base < 0x40000000UL);
+}
+
+void test_fpb_get_info_comp_fields(void) {
+    setup_fpb();
+    fpb_init();
+
+    /* Set patches on slot 0 and 1 */
+    fpb_set_patch(0, 0x08001000, 0x20002000);
+    fpb_set_patch(1, 0x08002000, 0x20003000);
+
+    fpb_info_t info;
+    fpb_get_info(&info);
+
+    /* Check comparator 0 */
+    TEST_ASSERT_TRUE(info.comp[0].enabled);
+    TEST_ASSERT_EQUAL(0, info.comp[0].replace); /* REMAP mode = 0 */
+    TEST_ASSERT_EQUAL(0x08001000, info.comp[0].match_addr);
+
+    /* Check comparator 1 */
+    TEST_ASSERT_TRUE(info.comp[1].enabled);
+    TEST_ASSERT_EQUAL(0, info.comp[1].replace);
+    TEST_ASSERT_EQUAL(0x08002000, info.comp[1].match_addr);
+
+    /* Check comparator 2 (not set) */
+    TEST_ASSERT_FALSE(info.comp[2].enabled);
+}
+
+void test_fpb_get_info_comp_raw(void) {
+    setup_fpb();
+    fpb_init();
+
+    fpb_set_patch(0, 0x08001000, 0x20002000);
+
+    fpb_info_t info;
+    fpb_get_info(&info);
+
+    /* comp_raw should have ENABLE bit set */
+    TEST_ASSERT(info.comp[0].comp_raw & 0x1);
+    /* comp_raw should have address in bits[28:2] */
+    TEST_ASSERT((info.comp[0].comp_raw & 0x1FFFFFFCUL) == 0x08001000);
+}
+
 /* ============================================================================
  * fpb_generate_thumb_jump Tests
  * ============================================================================ */
@@ -554,6 +619,10 @@ void run_fpb_tests(void) {
     RUN_TEST(test_fpb_get_info_disabled);
     RUN_TEST(test_fpb_get_info_null_pointer);
     RUN_TEST(test_fpb_get_info_revision);
+    RUN_TEST(test_fpb_get_info_remap_supported);
+    RUN_TEST(test_fpb_get_info_remap_base);
+    RUN_TEST(test_fpb_get_info_comp_fields);
+    RUN_TEST(test_fpb_get_info_comp_raw);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("fpb_inject - Thumb Jump Generation");

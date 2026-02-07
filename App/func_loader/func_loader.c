@@ -274,20 +274,33 @@ static void cmd_info(fl_context_t* ctx) {
 #endif
 
     /* Get and print FPB detailed information */
-    fpb_get_info(&fpb_info);
-    const char* rev_str = (fpb_info.rev == 0) ? "v1" : (fpb_info.rev == 1) ? "v2" : "unknown";
-    fl_println("FPB: %s, %u code + %u lit = %u total, %s", rev_str, fpb_info.num_code_comp, fpb_info.num_lit_comp,
-               fpb_info.total_comp, fpb_info.enabled ? "enabled" : "disabled");
+    if (fpb_get_info(&fpb_info) == 0) {
+        const char* rev_str = (fpb_info.rev == 0) ? "v1" : (fpb_info.rev == 1) ? "v2" : "unknown";
+        fl_println("FPB: %s, %u code + %u lit = %u total, %s", rev_str, fpb_info.num_code_comp, fpb_info.num_lit_comp,
+                   fpb_info.total_comp, fpb_info.enabled ? "enabled" : "disabled");
 
-    /* Print each slot status */
-    for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS; i++) {
-        fl_slot_state_t* slot = &ctx->slots[i];
-        if (slot->active) {
-            fl_println("Slot[%u]: 0x%08lX -> 0x%08lX, %u bytes", (unsigned)i, (unsigned long)slot->orig_addr,
-                       (unsigned long)slot->target_addr, (unsigned)slot->code_size);
-        } else {
-            fl_println("Slot[%u]: empty", (unsigned)i);
+        /* Print FP_REMAP info */
+        fl_println("FP_REMAP: 0x%08lX, base=0x%08lX, remap %s", (unsigned long)fpb_info.remap_raw,
+                   (unsigned long)fpb_info.remap_base, fpb_info.remap_supported ? "supported" : "not supported");
+
+        /* Print each comparator status with hardware register info */
+        static const char* replace_mode_str[] = {"remap", "bp_lo", "bp_hi", "bp_both"};
+        for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS && i < FPB_MAX_CODE_COMP; i++) {
+            fl_slot_state_t* slot = &ctx->slots[i];
+            fpb_comp_info_t* comp = &fpb_info.comp[i];
+            const char* mode_str = (comp->replace < 4) ? replace_mode_str[comp->replace] : "?";
+
+            if (slot->active) {
+                fl_println("Slot[%u]: 0x%08lX -> 0x%08lX, %u bytes (COMP=0x%08lX, %s, %s)", (unsigned)i,
+                           (unsigned long)slot->orig_addr, (unsigned long)slot->target_addr, (unsigned)slot->code_size,
+                           (unsigned long)comp->comp_raw, mode_str, comp->enabled ? "on" : "off");
+            } else {
+                fl_println("Slot[%u]: empty (COMP=0x%08lX, %s)", (unsigned)i, (unsigned long)comp->comp_raw,
+                           comp->enabled ? "on" : "off");
+            }
         }
+    } else {
+        fl_println("FPB: not available");
     }
 
     fl_response(true, "Info complete");

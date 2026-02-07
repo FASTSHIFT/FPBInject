@@ -57,4 +57,7 @@ void fpb_mock_configure(uint8_t num_code, uint8_t num_lit) {
     /* Configure R/O bits with number of comparators */
     mock_fpb_ctrl_ro = ((uint32_t)num_code << FPB_CTRL_NUM_CODE_SHIFT) | ((uint32_t)num_lit << FPB_CTRL_NUM_LIT_SHIFT);
     mock_fpb_ctrl_combined = mock_fpb_ctrl_ro;
+
+    /* Configure FP_REMAP with RMPSPT bit set (bit 29 = remap supported) */
+    mock_fpb_remap = (1UL << 29);
 }
