@@ -7,9 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-
 # Dependency: pip install cmake-format
-if ! command -v cmake-format &> /dev/null; then
+if ! command -v cmake-format &>/dev/null; then
     echo "Error: cmake-format not installed. Install with: pip install cmake-format"
     exit 1
 fi

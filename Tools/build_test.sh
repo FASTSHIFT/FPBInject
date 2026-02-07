@@ -32,15 +32,15 @@ ALLOC_MODES=("STATIC" "LIBC" "UMM")
 
 # Trampoline options (only test a subset for now)
 TRAMPOLINE_CONFIGS=(
-    "OFF;OFF"    # Default: trampoline enabled, ASM
-    "OFF;ON"     # Trampoline enabled, C implementation
-    "ON;OFF"     # No trampoline (direct remap)
+    "OFF;OFF" # Default: trampoline enabled, ASM
+    "OFF;ON"  # Trampoline enabled, C implementation
+    "ON;OFF"  # No trampoline (direct remap)
 )
 
 # DebugMonitor options
 DEBUGMON_CONFIGS=(
-    "OFF"    # DebugMonitor enabled (default)
-    "ON"     # DebugMonitor disabled
+    "OFF" # DebugMonitor enabled (default)
+    "ON"  # DebugMonitor disabled
 )
 
 # Statistics
@@ -66,7 +66,7 @@ print_result() {
     local config="$1"
     local result="$2"
     local time="$3"
-    
+
     if [ "$result" == "PASS" ]; then
         echo -e "  ${GREEN}✓ PASS${NC} - $config (${time}s)"
     elif [ "$result" == "FAIL" ]; then
@@ -84,12 +84,12 @@ build_config() {
     local no_asm="$4"
     local config_name="$5"
     local no_debugmon="${6:-OFF}"
-    
+
     local build_subdir="$BUILD_DIR/$config_name"
-    
+
     # Create build directory
     mkdir -p "$build_subdir"
-    
+
     # Run cmake
     local cmake_args=(
         -B "$build_subdir"
@@ -100,27 +100,27 @@ build_config() {
         -DFPB_TRAMPOLINE_NO_ASM="$no_asm"
         -DFPB_NO_DEBUGMON="$no_debugmon"
     )
-    
+
     # Add alloc mode for func_loader
     if [ "$app_select" == "3" ]; then
         cmake_args+=(-DFL_ALLOC_MODE="$alloc_mode")
     fi
-    
+
     # Configure
-    if ! cmake "${cmake_args[@]}" > "$build_subdir/cmake.log" 2>&1; then
+    if ! cmake "${cmake_args[@]}" >"$build_subdir/cmake.log" 2>&1; then
         return 1
     fi
-    
+
     # Build
-    if ! cmake --build "$build_subdir" --parallel > "$build_subdir/build.log" 2>&1; then
+    if ! cmake --build "$build_subdir" --parallel >"$build_subdir/build.log" 2>&1; then
         return 1
     fi
-    
+
     # Check if ELF file exists
     if [ ! -f "$build_subdir/FPBInject.elf" ]; then
         return 1
     fi
-    
+
     return 0
 }
 
@@ -134,17 +134,17 @@ build_nuttx_config() {
     local nuttx_buf_size="${6:-1024}"
     local use_file="${7:-OFF}"
     local file_backend="${8:-POSIX}"
-    
+
     local build_subdir="$BUILD_DIR/$config_name"
-    
+
     # Create build directory
     mkdir -p "$build_subdir"
-    
+
     # Set ARM toolchain path if found
     if [ -n "$ARM_TOOLCHAIN_PATH" ]; then
         export ARM_TOOLCHAIN_PATH
     fi
-    
+
     # Run cmake with ARM cross-compiler
     local cmake_args=(
         -B "$build_subdir"
@@ -157,22 +157,22 @@ build_nuttx_config() {
         -DFL_USE_FILE="$use_file"
         -DFL_FILE_BACKEND="$file_backend"
     )
-    
+
     # Configure
-    if ! cmake "${cmake_args[@]}" > "$build_subdir/cmake.log" 2>&1; then
+    if ! cmake "${cmake_args[@]}" >"$build_subdir/cmake.log" 2>&1; then
         return 1
     fi
-    
+
     # Build
-    if ! cmake --build "$build_subdir" --parallel > "$build_subdir/build.log" 2>&1; then
+    if ! cmake --build "$build_subdir" --parallel >"$build_subdir/build.log" 2>&1; then
         return 1
     fi
-    
+
     # Check if library file exists
     if [ ! -f "$build_subdir/libfpbinject_nuttx.a" ]; then
         return 1
     fi
-    
+
     return 0
 }
 
@@ -184,40 +184,40 @@ run_tests() {
         echo "ARM Toolchain: $ARM_TOOLCHAIN_PATH"
     fi
     echo ""
-    
+
     # Clean build directory
     if [ -d "$BUILD_DIR" ]; then
         echo "Cleaning previous build test directory..."
         rm -rf "$BUILD_DIR"
     fi
     mkdir -p "$BUILD_DIR"
-    
+
     echo ""
     echo -e "${YELLOW}Testing APP_SELECT configurations...${NC}"
     echo ""
-    
+
     # Test each APP_SELECT
     for i in "${!APP_SELECTS[@]}"; do
         local app="${APP_SELECTS[$i]}"
         local app_name="${APP_NAMES[$i]}"
-        
+
         echo -e "${BLUE}--- APP_SELECT=$app ($app_name) ---${NC}"
-        
+
         if [ "$app" == "3" ]; then
             # For FUNC_LOADER, test all allocation modes
             for alloc in "${ALLOC_MODES[@]}"; do
                 # Test with default trampoline config
                 local config_name="APP${app}_${alloc}"
                 local config_desc="APP=$app($app_name) ALLOC=$alloc"
-                
+
                 TOTAL_TESTS=$((TOTAL_TESTS + 1))
-                
+
                 local start_time=$(date +%s)
-                
+
                 if build_config "$app" "$alloc" "OFF" "OFF" "$config_name"; then
                     local end_time=$(date +%s)
                     local elapsed=$((end_time - start_time))
-                    
+
                     print_result "$config_desc" "PASS" "$elapsed"
                     PASSED_TESTS=$((PASSED_TESTS + 1))
                 else
@@ -230,15 +230,15 @@ run_tests() {
             # For other apps, just test default config
             local config_name="APP${app}"
             local config_desc="APP=$app($app_name)"
-            
+
             TOTAL_TESTS=$((TOTAL_TESTS + 1))
-            
+
             local start_time=$(date +%s)
-            
+
             if build_config "$app" "STATIC" "OFF" "OFF" "$config_name"; then
                 local end_time=$(date +%s)
                 local elapsed=$((end_time - start_time))
-                
+
                 print_result "$config_desc" "PASS" "$elapsed"
                 PASSED_TESTS=$((PASSED_TESTS + 1))
             else
@@ -248,26 +248,26 @@ run_tests() {
             fi
         fi
     done
-    
+
     echo ""
     echo -e "${YELLOW}Testing Trampoline configurations (with FUNC_LOADER)...${NC}"
     echo ""
-    
+
     # Test trampoline configurations with FUNC_LOADER + STATIC
     for tramp_config in "${TRAMPOLINE_CONFIGS[@]}"; do
-        IFS=';' read -r no_tramp no_asm <<< "$tramp_config"
-        
+        IFS=';' read -r no_tramp no_asm <<<"$tramp_config"
+
         local config_name="TRAMP_${no_tramp}_${no_asm}"
         local config_desc="NO_TRAMPOLINE=$no_tramp NO_ASM=$no_asm"
-        
+
         TOTAL_TESTS=$((TOTAL_TESTS + 1))
-        
+
         local start_time=$(date +%s)
-        
+
         if build_config "3" "STATIC" "$no_tramp" "$no_asm" "$config_name"; then
             local end_time=$(date +%s)
             local elapsed=$((end_time - start_time))
-            
+
             print_result "$config_desc" "PASS" "$elapsed"
             PASSED_TESTS=$((PASSED_TESTS + 1))
         else
@@ -276,24 +276,24 @@ run_tests() {
             FAILED_CONFIGS+=("$config_desc")
         fi
     done
-    
+
     echo ""
     echo -e "${YELLOW}Testing DebugMonitor configurations (with FUNC_LOADER)...${NC}"
     echo ""
-    
+
     # Test DebugMonitor configurations with FUNC_LOADER + STATIC
     for debugmon_config in "${DEBUGMON_CONFIGS[@]}"; do
         local config_name="DEBUGMON_${debugmon_config}"
         local config_desc="NO_DEBUGMON=$debugmon_config"
-        
+
         TOTAL_TESTS=$((TOTAL_TESTS + 1))
-        
+
         local start_time=$(date +%s)
-        
+
         if build_config "3" "STATIC" "OFF" "OFF" "$config_name" "$debugmon_config"; then
             local end_time=$(date +%s)
             local elapsed=$((end_time - start_time))
-            
+
             print_result "$config_desc" "PASS" "$elapsed"
             PASSED_TESTS=$((PASSED_TESTS + 1))
         else
@@ -306,19 +306,19 @@ run_tests() {
     echo ""
     echo -e "${YELLOW}Testing NuttX platform (mock API)...${NC}"
     echo ""
-    
+
     # Test NuttX platform with FL_NUTTX_BUF_SIZE=1024 (static allocation)
     local config_name="NUTTX_STATIC"
     local config_desc="NuttX BUF_SIZE=1024"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
+
     local start_time=$(date +%s)
-    
+
     if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
-        
+
         print_result "$config_desc" "PASS" "$elapsed"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
@@ -326,19 +326,19 @@ run_tests() {
         FAILED_TESTS=$((FAILED_TESTS + 1))
         FAILED_CONFIGS+=("$config_desc")
     fi
-    
+
     # Test NuttX platform with FL_NUTTX_BUF_SIZE=0 (dynamic allocation)
     config_name="NUTTX_DYNAMIC"
     config_desc="NuttX BUF_SIZE=0"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
+
     start_time=$(date +%s)
-    
+
     if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "0"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
-        
+
         print_result "$config_desc" "PASS" "$elapsed"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
@@ -346,19 +346,19 @@ run_tests() {
         FAILED_TESTS=$((FAILED_TESTS + 1))
         FAILED_CONFIGS+=("$config_desc")
     fi
-    
+
     # Test NuttX with DebugMonitor disabled (static allocation)
     config_name="NUTTX_NO_DEBUGMON"
     config_desc="NuttX NO_DEBUGMON=ON"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
+
     start_time=$(date +%s)
-    
+
     if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "ON" "1024"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
-        
+
         print_result "$config_desc" "PASS" "$elapsed"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
@@ -374,15 +374,15 @@ run_tests() {
     # Test NuttX without file transfer (FL_USE_FILE=OFF)
     config_name="NUTTX_NO_FILE"
     config_desc="NuttX FL_USE_FILE=OFF"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
+
     start_time=$(date +%s)
-    
+
     if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024" "OFF"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
-        
+
         print_result "$config_desc" "PASS" "$elapsed"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
@@ -394,15 +394,15 @@ run_tests() {
     # Test NuttX with file transfer using POSIX backend
     config_name="NUTTX_FILE_POSIX"
     config_desc="NuttX FL_USE_FILE=ON FL_FILE_BACKEND=POSIX"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
+
     start_time=$(date +%s)
-    
+
     if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024" "ON" "POSIX"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
-        
+
         print_result "$config_desc" "PASS" "$elapsed"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
@@ -414,15 +414,15 @@ run_tests() {
     # Test NuttX with file transfer using LIBC backend
     config_name="NUTTX_FILE_LIBC"
     config_desc="NuttX FL_USE_FILE=ON FL_FILE_BACKEND=LIBC"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
+
     start_time=$(date +%s)
-    
+
     if build_nuttx_config "STATIC" "OFF" "ON" "$config_name" "OFF" "1024" "ON" "LIBC"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
-        
+
         print_result "$config_desc" "PASS" "$elapsed"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
@@ -444,7 +444,7 @@ print_summary() {
     echo -e "  ${RED}Failed:  $FAILED_TESTS${NC}"
     echo -e "  ${YELLOW}Skipped: $SKIPPED_TESTS${NC}"
     echo ""
-    
+
     if [ ${#FAILED_CONFIGS[@]} -gt 0 ]; then
         echo -e "${RED}Failed configurations:${NC}"
         for config in "${FAILED_CONFIGS[@]}"; do
@@ -452,7 +452,7 @@ print_summary() {
         done
         echo ""
     fi
-    
+
     if [ $FAILED_TESTS -eq 0 ]; then
         echo -e "${GREEN}All tests passed! ✓${NC}"
         return 0
@@ -488,7 +488,7 @@ while [[ $# -gt 0 ]]; do
             ARM_TOOLCHAIN_PATH="$2"
             shift 2
             ;;
-        -h|--help)
+        -h | --help)
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"

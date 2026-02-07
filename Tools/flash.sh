@@ -28,7 +28,7 @@ VERIFY=0
 FILE=""
 
 show_help() {
-    cat << EOF
+    cat <<EOF
 Usage: $0 [options] <file.hex|file.bin|file.elf>
 
 Options:
@@ -51,7 +51,7 @@ EOF
 }
 
 check_tool() {
-    if ! command -v "$1" &> /dev/null; then
+    if ! command -v "$1" &>/dev/null; then
         echo "Error: $1 not found. Please install it."
         return 1
     fi
@@ -145,7 +145,7 @@ flash_daplink_pyocd() {
     fi
 
     case "$ext" in
-        hex|elf)
+        hex | elf)
             $cmd "$file"
             ;;
         bin)
@@ -210,27 +210,27 @@ flash_daplink_openocd() {
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -p|--probe)
+        -p | --probe)
             PROBE="$2"
             shift 2
             ;;
-        -a|--addr)
+        -a | --addr)
             ADDR="$2"
             shift 2
             ;;
-        -r|--reset)
+        -r | --reset)
             RESET=1
             shift
             ;;
-        -e|--erase)
+        -e | --erase)
             ERASE=1
             shift
             ;;
-        -v|--verify)
+        -v | --verify)
             VERIFY=1
             shift
             ;;
-        -h|--help)
+        -h | --help)
             show_help
             exit 0
             ;;
@@ -260,10 +260,10 @@ fi
 
 # Flash
 case "$PROBE" in
-    stlink|st-link)
+    stlink | st-link)
         flash_stlink "$FILE"
         ;;
-    daplink|dap|cmsis-dap)
+    daplink | dap | cmsis-dap)
         flash_daplink "$FILE"
         ;;
     *)

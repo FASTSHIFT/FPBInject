@@ -26,15 +26,15 @@ FAILED=0
 
 format_python() {
     echo -e "\n${GREEN}📦 Formatting Python files (*.py)...${NC}"
-    
+
     # Check for black via python -m
-    if python -m black --version &> /dev/null; then
+    if python -m black --version &>/dev/null; then
         echo -e "   Using $(python -m black --version)"
     else
         echo -e "${YELLOW}   Installing black...${NC}"
         pip install black -q
     fi
-    
+
     # Find all Python files, exclude cache and coverage directories
     local files=$(find . -name "*.py" \
         -not -path "./__pycache__/*" \
@@ -45,12 +45,12 @@ format_python() {
         -not -path "./.venv/*" \
         -not -path "./venv/*" \
         2>/dev/null | sort)
-    
+
     if [ -z "$files" ]; then
         echo "   No Python files found"
         return
     fi
-    
+
     for file in $files; do
         echo -n "   Formatting $file... "
         if python -m black --quiet --line-length 88 "$file" 2>/dev/null; then
@@ -65,7 +65,7 @@ format_python() {
 
 format_javascript() {
     echo -e "\n${GREEN}📦 Formatting JavaScript files (*.js)...${NC}"
-    
+
     # Find all JS files
     local files=$(find . -name "*.js" \
         -not -path "./node_modules/*" \
@@ -75,33 +75,33 @@ format_javascript() {
         -not -path "./tests/htmlcov/*" \
         -not -path "./tests/coverage/*" \
         2>/dev/null | sort)
-    
+
     if [ -z "$files" ]; then
         echo "   No JavaScript files found"
         return
     fi
-    
+
     # Check Node.js version (prettier requires Node >= 14)
-    if command -v node &> /dev/null; then
+    if command -v node &>/dev/null; then
         local node_version=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
         if [ -n "$node_version" ] && [ "$node_version" -lt 14 ]; then
             echo -e "${YELLOW}   ⚠️  Node.js version too old (need >= 14), skipping JavaScript${NC}"
             return
         fi
     fi
-    
+
     # Try prettier, then npx prettier with auto-install
     local formatter=""
-    if command -v prettier &> /dev/null; then
+    if command -v prettier &>/dev/null; then
         formatter="prettier"
-    elif command -v npx &> /dev/null; then
+    elif command -v npx &>/dev/null; then
         echo -e "${YELLOW}   Using npx prettier...${NC}"
         formatter="npx --yes prettier"
     else
         echo -e "${YELLOW}   ⚠️  prettier not found, skipping JavaScript${NC}"
         return
     fi
-    
+
     for file in $files; do
         echo -n "   Formatting $file... "
         if $formatter --write --single-quote "$file" >/dev/null 2>&1; then
@@ -116,7 +116,7 @@ format_javascript() {
 
 format_html() {
     echo -e "\n${GREEN}📦 Formatting HTML files (*.html)...${NC}"
-    
+
     # Find all HTML files
     local files=$(find . -name "*.html" \
         -not -path "./htmlcov/*" \
@@ -125,31 +125,31 @@ format_html() {
         -not -path "./tests/coverage/*" \
         -not -path "./node_modules/*" \
         2>/dev/null | sort)
-    
+
     if [ -z "$files" ]; then
         echo "   No HTML files found"
         return
     fi
-    
+
     # Check Node.js version
-    if command -v node &> /dev/null; then
+    if command -v node &>/dev/null; then
         local node_version=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
         if [ -n "$node_version" ] && [ "$node_version" -lt 14 ]; then
             echo -e "${YELLOW}   ⚠️  Node.js version too old (need >= 14), skipping HTML${NC}"
             return
         fi
     fi
-    
+
     local formatter=""
-    if command -v prettier &> /dev/null; then
+    if command -v prettier &>/dev/null; then
         formatter="prettier"
-    elif command -v npx &> /dev/null; then
+    elif command -v npx &>/dev/null; then
         formatter="npx --yes prettier"
     else
         echo -e "${YELLOW}   ⚠️  prettier not found, skipping HTML${NC}"
         return
     fi
-    
+
     for file in $files; do
         echo -n "   Formatting $file... "
         if $formatter --write --print-width 120 "$file" >/dev/null 2>&1; then
@@ -164,7 +164,7 @@ format_html() {
 
 format_css() {
     echo -e "\n${GREEN}📦 Formatting CSS files (*.css)...${NC}"
-    
+
     # Find all CSS files
     local files=$(find . -name "*.css" \
         -not -path "./htmlcov/*" \
@@ -173,31 +173,31 @@ format_css() {
         -not -path "./tests/coverage/*" \
         -not -path "./node_modules/*" \
         2>/dev/null | sort)
-    
+
     if [ -z "$files" ]; then
         echo "   No CSS files found"
         return
     fi
-    
+
     # Check Node.js version
-    if command -v node &> /dev/null; then
+    if command -v node &>/dev/null; then
         local node_version=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
         if [ -n "$node_version" ] && [ "$node_version" -lt 14 ]; then
             echo -e "${YELLOW}   ⚠️  Node.js version too old (need >= 14), skipping CSS${NC}"
             return
         fi
     fi
-    
+
     local formatter=""
-    if command -v prettier &> /dev/null; then
+    if command -v prettier &>/dev/null; then
         formatter="prettier"
-    elif command -v npx &> /dev/null; then
+    elif command -v npx &>/dev/null; then
         formatter="npx --yes prettier"
     else
         echo -e "${YELLOW}   ⚠️  prettier not found, skipping CSS${NC}"
         return
     fi
-    
+
     for file in $files; do
         echo -n "   Formatting $file... "
         if $formatter --write "$file" >/dev/null 2>&1; then
@@ -212,12 +212,12 @@ format_css() {
 
 lint_python() {
     echo -e "\n${GREEN}📦 Linting Python files...${NC}"
-    
-    if ! command -v flake8 &> /dev/null; then
+
+    if ! command -v flake8 &>/dev/null; then
         echo -e "${YELLOW}   Installing flake8...${NC}"
         pip install flake8 -q
     fi
-    
+
     local files=$(find . -name "*.py" \
         -not -path "./__pycache__/*" \
         -not -path "./htmlcov/*" \
@@ -227,19 +227,19 @@ lint_python() {
         -not -path "./.venv/*" \
         -not -path "./venv/*" \
         2>/dev/null | sort)
-    
+
     if [ -z "$files" ]; then
         echo "   No Python files found"
         return
     fi
-    
+
     local lint_errors=0
     for file in $files; do
         if ! flake8 --ignore=E501,W503,E203 --max-line-length=120 "$file" 2>/dev/null; then
             lint_errors=$((lint_errors + 1))
         fi
     done
-    
+
     if [ $lint_errors -eq 0 ]; then
         echo -e "   ${GREEN}All Python files passed linting ✓${NC}"
     else
@@ -253,15 +253,15 @@ LINT=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --check|-c)
+        --check | -c)
             CHECK_ONLY=true
             shift
             ;;
-        --lint|-l)
+        --lint | -l)
             LINT=true
             shift
             ;;
-        --help|-h)
+        --help | -h)
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"

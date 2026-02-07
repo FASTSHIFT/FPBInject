@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Check for ARM toolchain
-if ! command -v arm-none-eabi-gcc &> /dev/null; then
+if ! command -v arm-none-eabi-gcc &>/dev/null; then
     echo "Warning: arm-none-eabi-gcc not found, skipping ELF build"
     exit 0
 fi

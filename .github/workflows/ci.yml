@@ -40,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: |
           Tools/install-prerequisites.sh
-          sudo apt-get install -y clang-format-14
+          sudo apt-get install -y clang-format-14 shfmt
           sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-14 100
           pip install cmake-format kconfiglib
 
