@@ -125,7 +125,7 @@ DEFINE_TRAMPOLINE_C(5)
 #endif /* FPB_TRAMPOLINE_NO_ASM */
 
 /* Trampoline address table (in Flash, for lookup) */
-void (*const fpb_trampoline_table[FPB_TRAMPOLINE_COUNT])(void) = {
+static void (*const fpb_trampoline_table[FPB_TRAMPOLINE_COUNT])(void) = {
     fpb_trampoline_0, fpb_trampoline_1, fpb_trampoline_2, fpb_trampoline_3, fpb_trampoline_4, fpb_trampoline_5,
 };
 
