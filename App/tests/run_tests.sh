@@ -72,14 +72,28 @@ run_tests() {
     print_header "Running tests"
     
     cd "${BUILD_DIR}"
-    ./test_runner
-    TEST_EXIT_CODE=$?
     
-    if [ $TEST_EXIT_CODE -eq 0 ]; then
+    # Run main test runner
+    print_info "Running main tests..."
+    ./test_runner
+    MAIN_EXIT_CODE=$?
+    
+    # Run NuttX debugmon tests
+    print_info "Running NuttX debugmon tests..."
+    ./test_runner_nuttx
+    NUTTX_EXIT_CODE=$?
+    
+    # Check results
+    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ]; then
         print_success "All tests passed"
     else
-        print_error "Some tests failed (exit code: $TEST_EXIT_CODE)"
-        exit $TEST_EXIT_CODE
+        if [ $MAIN_EXIT_CODE -ne 0 ]; then
+            print_error "Main tests failed (exit code: $MAIN_EXIT_CODE)"
+        fi
+        if [ $NUTTX_EXIT_CODE -ne 0 ]; then
+            print_error "NuttX tests failed (exit code: $NUTTX_EXIT_CODE)"
+        fi
+        exit 1
     fi
 }
 

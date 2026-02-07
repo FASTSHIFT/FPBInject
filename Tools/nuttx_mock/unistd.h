@@ -2,6 +2,11 @@
 #ifndef _MOCK_UNISTD_H
 #define _MOCK_UNISTD_H
 
+/* For host testing, include the real system unistd.h first */
+#ifdef FPB_HOST_TESTING
+#include_next <unistd.h>
+#else
+
 #include <sys/types.h>
 
 /* Seek whence values */
@@ -17,5 +22,7 @@ static inline off_t lseek(int fd, off_t offset, int whence) { (void)fd; (void)of
 static inline int fsync(int fd) { (void)fd; return 0; }
 static inline int unlink(const char* path) { (void)path; return 0; }
 /* Note: rename is declared in stdio.h, so we don't mock it here */
+
+#endif /* FPB_HOST_TESTING */
 
 #endif /* _MOCK_UNISTD_H */

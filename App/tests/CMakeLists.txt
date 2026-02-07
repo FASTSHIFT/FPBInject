@@ -33,31 +33,34 @@ endif()
 # Warning flags - treat warnings as errors
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 
+# Enable POSIX features for getpid, access, rmdir, etc.
+add_definitions(-D_DEFAULT_SOURCE)
+
 # Define host-based testing (no real hardware)
 add_definitions(-DFPB_HOST_TESTING=1)
 add_definitions(-DFL_USE_FILE=1)
 add_definitions(-DFL_FILE_USE_LIBC=1)
 
 # Note: FPB_HOST_TESTING enables mock registers and disables ARM assembly in
-# fpb_inject.c, fpb_debugmon.c, and fpb_trampoline.c
+# fpb_inject.c, fpb_debugmon.c, and fpb_trampoline.c FPB_HOST_TESTING_NUTTX is
+# defined only for test_runner_nuttx target
 
 # Project directories
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../Source)
 set(APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(FUNC_LOADER_DIR ${APP_DIR}/func_loader)
+set(NUTTX_MOCK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../Tools/nuttx_mock)
 
 # Include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${SRC_DIR} ${FUNC_LOADER_DIR}
-                    ${FUNC_LOADER_DIR}/argparse)
+                    ${FUNC_LOADER_DIR}/argparse ${NUTTX_MOCK_DIR})
 
 # ============================================================================
 # Source Under Test (SUT) - Real production code
 # ============================================================================
-set(SUT_SOURCES
+set(SUT_SOURCES_COMMON
     # FPB core
     ${SRC_DIR}/fpb_inject.c
-    # FPB debugmon (uses mock registers when FPB_HOST_TESTING is defined)
-    ${SRC_DIR}/fpb_debugmon.c
     # FPB trampoline (uses mock addresses when FPB_HOST_TESTING is defined)
     ${SRC_DIR}/fpb_trampoline.c
     # Function loader core
@@ -71,17 +74,33 @@ set(SUT_SOURCES
     # Argparse library
     ${FUNC_LOADER_DIR}/argparse/argparse.c)
 
+# Main test runner uses standard debugmon
+set(SUT_SOURCES_MAIN
+    ${SUT_SOURCES_COMMON}
+    # FPB debugmon (uses mock registers when FPB_HOST_TESTING is defined)
+    ${SRC_DIR}/fpb_debugmon.c)
+
+# NuttX test runner uses NuttX-specific debugmon
+set(SUT_SOURCES_NUTTX
+    ${SUT_SOURCES_COMMON}
+    # FPB debugmon NuttX (uses nuttx_mock when FPB_HOST_TESTING_NUTTX is
+    # defined)
+    ${SRC_DIR}/fpb_debugmon_nuttx.c)
+
 # ============================================================================
 # Mock/Test Framework Sources
 # ============================================================================
 set(MOCK_SOURCES fpb_mock_regs.c mock_hardware.c)
+
+set(MOCK_SOURCES_NUTTX fpb_mock_regs.c mock_hardware.c
+                       ${NUTTX_MOCK_DIR}/nuttx_mock.c)
 
 set(TEST_FRAMEWORK_SOURCES test_framework.c)
 
 # ============================================================================
 # Test Sources
 # ============================================================================
-set(TEST_SOURCES
+set(TEST_SOURCES_MAIN
     test_main.c
     test_func_allocator.c
     test_func_loader.c
@@ -91,20 +110,35 @@ set(TEST_SOURCES
     test_fpb_debugmon.c
     test_fpb_trampoline.c)
 
-# Create test executable
-add_executable(test_runner ${SUT_SOURCES} ${MOCK_SOURCES}
-                           ${TEST_FRAMEWORK_SOURCES} ${TEST_SOURCES})
+set(TEST_SOURCES_NUTTX test_fpb_debugmon_nuttx.c)
 
-# Link math library if needed
+# ============================================================================
+# Main test executable (standard debugmon)
+# ============================================================================
+add_executable(test_runner ${SUT_SOURCES_MAIN} ${MOCK_SOURCES}
+                           ${TEST_FRAMEWORK_SOURCES} ${TEST_SOURCES_MAIN})
 target_link_libraries(test_runner m)
 
-# Custom target for running tests
+# ============================================================================
+# NuttX test executable (NuttX-specific debugmon)
+# ============================================================================
+add_executable(
+  test_runner_nuttx ${SUT_SOURCES_NUTTX} ${MOCK_SOURCES_NUTTX}
+                    ${TEST_FRAMEWORK_SOURCES} ${TEST_SOURCES_NUTTX})
+target_compile_definitions(test_runner_nuttx PRIVATE FPB_HOST_TESTING_NUTTX=1)
+target_link_libraries(test_runner_nuttx m)
+
+# Custom target for running all tests
 add_custom_target(
   run_tests
+  COMMAND ${CMAKE_COMMAND} -E echo "=== Running main tests ==="
   COMMAND ./test_runner
-  DEPENDS test_runner
+  COMMAND ${CMAKE_COMMAND} -E echo ""
+  COMMAND ${CMAKE_COMMAND} -E echo "=== Running NuttX debugmon tests ==="
+  COMMAND ./test_runner_nuttx
+  DEPENDS test_runner test_runner_nuttx
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-  COMMENT "Running unit tests...")
+  COMMENT "Running all unit tests...")
 
 # Custom target for coverage report
 if(COVERAGE)

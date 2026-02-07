@@ -5,10 +5,16 @@
  * Tests for func_loader.c - Function loader core
  */
 
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE /* For getpid, rmdir, etc. */
+#endif
+
 #include "test_framework.h"
 #include "mock_hardware.h"
 #include "fpb_mock_regs.h"
 #include "func_loader.h"
+#include <unistd.h>
+#include <sys/stat.h>
 
 /* Test context */
 static fl_context_t test_ctx;

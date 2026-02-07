@@ -2,6 +2,11 @@
 #ifndef _MOCK_DIRENT_H
 #define _MOCK_DIRENT_H
 
+/* For host testing, include the real system dirent.h first */
+#ifdef FPB_HOST_TESTING
+#include_next <dirent.h>
+#else
+
 #include <sys/types.h>
 
 /* Directory entry types */
@@ -27,5 +32,7 @@ static inline int closedir(DIR* dirp) { (void)dirp; return 0; }
 
 /* Enable d_type field */
 #define _DIRENT_HAVE_D_TYPE 1
+
+#endif /* FPB_HOST_TESTING */
 
 #endif /* _MOCK_DIRENT_H */

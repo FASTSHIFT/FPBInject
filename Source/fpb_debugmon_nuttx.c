@@ -33,11 +33,22 @@
  * DWT watchpoint in "execute" mode instead of FPB breakpoint.
  */
 
-#ifdef __NuttX__
+#if defined(__NuttX__) || defined(FPB_HOST_TESTING_NUTTX)
 
 #include "fpb_debugmon.h"
 
 #ifndef FPB_NO_DEBUGMON
+
+#ifdef FPB_HOST_TESTING_NUTTX
+/* Use external NuttX mock for host-based testing */
+#include "nuttx_mock.h"
+#include <string.h>
+#include <stdio.h>
+
+/* Suppress syslog in tests */
+#define syslog(level, fmt, ...) ((void)0)
+
+#else /* !FPB_HOST_TESTING_NUTTX */
 
 #include <nuttx/config.h>
 #include <nuttx/arch.h>
@@ -58,6 +69,8 @@ extern int arm_dbgmonitor(int irq, void* context, void* arg);
 #ifndef NVIC_IRQ_DBGMONITOR
 #define NVIC_IRQ_DBGMONITOR 12
 #endif
+
+#endif /* FPB_HOST_TESTING_NUTTX */
 
 /* Stack frame offsets for Cortex-M */
 #define STACK_R0 0
@@ -97,12 +110,12 @@ static struct {
 static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
     (void)type;
     (void)size;
+    (void)addr;
 
-    uint32_t original_addr = (uint32_t)(uintptr_t)addr & ~1UL;
     debugmon_redirect_t* redirect = (debugmon_redirect_t*)arg;
 
     if (!redirect || !redirect->enabled) {
-        syslog(LOG_WARNING, "[DBGMON] callback: no redirect for 0x%08lX\n", (unsigned long)original_addr);
+        syslog(LOG_WARNING, "[DBGMON] callback: no redirect\n");
         return;
     }
 
@@ -222,7 +235,8 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
     }
 
     /* Add debugpoint using NuttX API */
-    int ret = up_debugpoint_add(type, (void*)match_addr, size, debugmon_callback, &g_debugmon_state.redirects[comp_id]);
+    int ret = up_debugpoint_add(type, (void*)(uintptr_t)match_addr, size, debugmon_callback,
+                                &g_debugmon_state.redirects[comp_id]);
     if (ret < 0) {
         syslog(LOG_ERR, "[DBGMON] up_debugpoint_add failed: %d\n", ret);
         g_debugmon_state.redirects[comp_id].enabled = false;
@@ -253,7 +267,7 @@ int fpb_debugmon_clear_redirect(uint8_t comp_id) {
     size_t size = (match_addr < 0x20000000UL) ? 0 : 2;
 
     /* Remove debugpoint */
-    up_debugpoint_remove(type, (void*)match_addr, size);
+    up_debugpoint_remove(type, (void*)(uintptr_t)match_addr, size);
 
     /* Clear redirect entry */
     g_debugmon_state.redirects[comp_id].original_addr = 0;
@@ -287,4 +301,4 @@ void fpb_debugmon_handler(uint32_t* stack_frame) {
 
 #endif /* !FPB_NO_DEBUGMON */
 
-#endif /* __NuttX__ */
+#endif /* __NuttX__ || FPB_HOST_TESTING_NUTTX */

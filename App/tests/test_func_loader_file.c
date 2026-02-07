@@ -5,6 +5,10 @@
  * Tests for func_loader_file.c - File operations
  */
 
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE /* For getpid, etc. */
+#endif
+
 #include "test_framework.h"
 #include "mock_hardware.h"
 #include "fpb_mock_regs.h"

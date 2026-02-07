@@ -2,6 +2,11 @@
 #ifndef _MOCK_FCNTL_H
 #define _MOCK_FCNTL_H
 
+/* For host testing, include the real system fcntl.h first */
+#ifdef FPB_HOST_TESTING
+#include_next <fcntl.h>
+#else
+
 /* File open flags */
 #define O_RDONLY  0x0000
 #define O_WRONLY  0x0001
@@ -16,5 +21,7 @@ static inline int open(const char* path, int flags, ...) {
     (void)flags;
     return -1;
 }
+
+#endif /* FPB_HOST_TESTING */
 
 #endif /* _MOCK_FCNTL_H */

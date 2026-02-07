@@ -2,6 +2,11 @@
 #ifndef _MOCK_SYS_STAT_H
 #define _MOCK_SYS_STAT_H
 
+/* For host testing, include the real system sys/stat.h first */
+#ifdef FPB_HOST_TESTING
+#include_next <sys/stat.h>
+#else
+
 #include <sys/types.h>
 #include <time.h>
 
@@ -32,5 +37,7 @@ static inline int mkdir(const char* path, mode_t mode) {
     (void)mode;
     return 0;
 }
+
+#endif /* FPB_HOST_TESTING */
 
 #endif /* _MOCK_SYS_STAT_H */
