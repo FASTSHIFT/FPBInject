@@ -156,6 +156,13 @@ async function openDisassembly(funcName, addr) {
     const res = await fetch(
       `/api/symbols/disasm?func=${encodeURIComponent(funcName)}`,
     );
+    if (!res.ok) {
+      writeToOutput(
+        `[ERROR] Failed to load disassembly: HTTP ${res.status}`,
+        'error',
+      );
+      return;
+    }
     const data = await res.json();
 
     state.editorTabs.push({

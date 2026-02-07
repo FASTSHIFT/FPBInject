@@ -194,6 +194,11 @@ let fetchCalls = [];
 let fetchResponses = {};
 let defaultFetchResponse = { success: true };
 
+// Special default responses for specific endpoints
+const endpointDefaults = {
+  '/api/logs': { tool_next: 0, raw_next: 0 },
+};
+
 const mockFetch = async (url, options = {}) => {
   fetchCalls.push({ url, options });
 
@@ -207,6 +212,17 @@ const mockFetch = async (url, options = {}) => {
       }
     }
   }
+
+  // Check endpoint defaults if no specific response set
+  if (!response) {
+    for (const pattern of Object.keys(endpointDefaults)) {
+      if (url.includes(pattern)) {
+        response = endpointDefaults[pattern];
+        break;
+      }
+    }
+  }
+
   response = response || defaultFetchResponse;
 
   // Handle SSE streaming response
@@ -286,9 +302,60 @@ const mockDocument = {
         });
       }
     }
+    // Handle .slot-item[data-slot="N"] selector
+    if (selector.includes('.slot-item[data-slot=')) {
+      const match = selector.match(/\[data-slot="(\d+)"\]/);
+      if (match) {
+        const slotNum = match[1];
+        return Object.values(mockElements).filter((el) => {
+          return (
+            el.classList._classes.has('slot-item') &&
+            el.dataset &&
+            el.dataset.slot === slotNum
+          );
+        });
+      }
+    }
     return [];
   },
   querySelector(selector) {
+    // Handle .slot-item[data-slot="N"] selector directly
+    if (selector.includes('.slot-item[data-slot=')) {
+      const match = selector.match(/\[data-slot="(\d+)"\]/);
+      if (match) {
+        const slotNum = match[1];
+        const found = Object.values(mockElements).find((el) => {
+          return (
+            el.classList._classes.has('slot-item') &&
+            el.dataset &&
+            el.dataset.slot === slotNum
+          );
+        });
+        return found || null;
+      }
+    }
+    // Handle class selectors like .editor-tabs-header
+    if (selector.startsWith('.')) {
+      const className = selector.slice(1);
+      const found = Object.values(mockElements).find((el) => {
+        return (
+          el.classList &&
+          el.classList._classes &&
+          el.classList._classes.has(className)
+        );
+      });
+      if (found) return found;
+      // Auto-create common editor elements
+      if (
+        className === 'editor-tabs-header' ||
+        className === 'editor-tabs-content'
+      ) {
+        const el = createMockElement(className);
+        el.classList.add(className);
+        mockElements[className] = el;
+        return el;
+      }
+    }
     const all = this.querySelectorAll(selector);
     return all[0] || null;
   },
@@ -333,6 +400,11 @@ const mockDocument = {
   },
   body: createMockElement('body'),
 };
+
+// Save original document methods for reset
+const originalQuerySelector = mockDocument.querySelector.bind(mockDocument);
+const originalQuerySelectorAll =
+  mockDocument.querySelectorAll.bind(mockDocument);
 
 // Terminal mock with recording
 class MockTerminal {
@@ -529,6 +601,11 @@ function resetMocks() {
   Object.keys(documentEventListeners).forEach(
     (k) => delete documentEventListeners[k],
   );
+  // Ensure global.fetch is always set to mockFetch
+  global.fetch = mockFetch;
+  // Restore original document methods that might have been overwritten
+  mockDocument.querySelector = originalQuerySelector;
+  mockDocument.querySelectorAll = originalQuerySelectorAll;
 }
 
 function getDocumentEventListeners() {

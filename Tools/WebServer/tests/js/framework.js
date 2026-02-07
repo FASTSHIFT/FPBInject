@@ -15,6 +15,8 @@ let isCI = false;
 // References for state isolation (set via init())
 let mocksModule = null;
 let windowRef = null;
+// Track pending async tests
+let pendingTests = [];
 
 function setCI(value) {
   isCI = value;
@@ -29,6 +31,8 @@ function resetStats() {
   passCount = 0;
   failCount = 0;
   failedTests.length = 0;
+  pendingTests = [];
+  asyncQueue = Promise.resolve();
 }
 
 // Initialize framework with mocks and window reference
@@ -112,27 +116,62 @@ function describe(name, fn) {
   if (isCI) console.log('##[endgroup]');
 }
 
+// Queue for sequential async test execution
+let asyncQueue = Promise.resolve();
+
 function it(name, fn) {
   testCount++;
 
-  // Auto reset state before each test
-  beforeEachTest();
+  // Check if it's an async function by looking at constructor name
+  const isAsync = fn.constructor.name === 'AsyncFunction';
 
-  try {
-    fn();
-    passCount++;
-    console.log(`  ${isCI ? '' : '\x1b[32m'}✓${isCI ? '' : '\x1b[0m'} ${name}`);
-  } catch (e) {
-    failCount++;
-    failedTests.push({ name, error: e.message });
-    console.log(`  ${isCI ? '' : '\x1b[31m'}✗${isCI ? '' : '\x1b[0m'} ${name}`);
-    console.log(
-      `    ${isCI ? '' : '\x1b[31m'}${e.message}${isCI ? '' : '\x1b[0m'}`,
-    );
+  if (isAsync) {
+    // Chain async tests for sequential execution
+    asyncQueue = asyncQueue.then(() => {
+      beforeEachTest();
+      return fn()
+        .then(() => {
+          passCount++;
+          console.log(
+            `  ${isCI ? '' : '\x1b[32m'}✓${isCI ? '' : '\x1b[0m'} ${name}`,
+          );
+        })
+        .catch((e) => {
+          failCount++;
+          failedTests.push({ name, error: e.message });
+          console.log(
+            `  ${isCI ? '' : '\x1b[31m'}✗${isCI ? '' : '\x1b[0m'} ${name}`,
+          );
+          console.log(
+            `    ${isCI ? '' : '\x1b[31m'}${e.message}${isCI ? '' : '\x1b[0m'}`,
+          );
+        })
+        .finally(() => {
+          afterEachTest();
+        });
+    });
+    pendingTests.push(asyncQueue);
+  } else {
+    // Sync test - execute immediately with state isolation
+    beforeEachTest();
+    try {
+      fn();
+      passCount++;
+      console.log(
+        `  ${isCI ? '' : '\x1b[32m'}✓${isCI ? '' : '\x1b[0m'} ${name}`,
+      );
+    } catch (e) {
+      failCount++;
+      failedTests.push({ name, error: e.message });
+      console.log(
+        `  ${isCI ? '' : '\x1b[31m'}✗${isCI ? '' : '\x1b[0m'} ${name}`,
+      );
+      console.log(
+        `    ${isCI ? '' : '\x1b[31m'}${e.message}${isCI ? '' : '\x1b[0m'}`,
+      );
+    }
+    afterEachTest();
   }
-
-  // Auto cleanup after each test
-  afterEachTest();
 }
 
 function assertEqual(actual, expected, msg = '') {
@@ -178,5 +217,10 @@ module.exports = {
   getStats,
   resetStats,
   init,
-  waitForPendingTests: async () => {}, // No-op for sync framework
+  waitForPendingTests: async () => {
+    if (pendingTests.length > 0) {
+      await Promise.all(pendingTests);
+      pendingTests = [];
+    }
+  },
 };

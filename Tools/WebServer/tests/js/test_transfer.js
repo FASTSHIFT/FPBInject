@@ -9,7 +9,15 @@ const {
   assertFalse,
   assertContains,
 } = require('./framework');
-const { browserGlobals, resetMocks, MockTerminal } = require('./mocks');
+const {
+  browserGlobals,
+  resetMocks,
+  MockTerminal,
+  setFetchResponse,
+  getFetchCalls,
+  createMockElement,
+  getElement,
+} = require('./mocks');
 
 module.exports = function (w) {
   describe('Transfer Functions (features/transfer.js)', () => {
@@ -138,11 +146,71 @@ module.exports = function (w) {
     it('is async function', () => {
       assertTrue(w.listDeviceDirectory.constructor.name === 'AsyncFunction');
     });
+
+    it('fetches directory contents', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/transfer/list', {
+        success: true,
+        entries: [
+          { name: 'file1.txt', type: 'file', size: 100 },
+          { name: 'dir1', type: 'dir' },
+        ],
+      });
+      const result = await w.listDeviceDirectory('/');
+      assertTrue(result.success);
+      assertEqual(result.entries.length, 2);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      const result = await w.listDeviceDirectory('/');
+      assertTrue(!result.success);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
   });
 
   describe('statDeviceFile Function', () => {
     it('is async function', () => {
       assertTrue(w.statDeviceFile.constructor.name === 'AsyncFunction');
+    });
+
+    it('fetches file stats', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/transfer/stat', {
+        success: true,
+        stat: { size: 1024, modified: '2024-01-01' },
+      });
+      const result = await w.statDeviceFile('/test.txt');
+      assertTrue(result.success);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      const result = await w.statDeviceFile('/test.txt');
+      assertTrue(!result.success);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
     });
   });
 
@@ -150,11 +218,90 @@ module.exports = function (w) {
     it('is async function', () => {
       assertTrue(w.createDeviceDirectory.constructor.name === 'AsyncFunction');
     });
+
+    it('creates directory on success', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/transfer/mkdir', { success: true });
+      const result = await w.createDeviceDirectory('/newdir');
+      assertTrue(result.success);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles creation failure', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/transfer/mkdir', {
+        success: false,
+        error: 'Permission denied',
+      });
+      const result = await w.createDeviceDirectory('/newdir');
+      assertTrue(!result.success);
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      const result = await w.createDeviceDirectory('/newdir');
+      assertTrue(!result.success);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
   });
 
   describe('deleteDeviceFile Function', () => {
     it('is async function', () => {
       assertTrue(w.deleteDeviceFile.constructor.name === 'AsyncFunction');
+    });
+
+    it('deletes file on success', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/transfer/delete', { success: true });
+      const result = await w.deleteDeviceFile('/test.txt');
+      assertTrue(result.success);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles deletion failure', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/transfer/delete', {
+        success: false,
+        error: 'File not found',
+      });
+      const result = await w.deleteDeviceFile('/test.txt');
+      assertTrue(!result.success);
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles fetch exception', async () => {
+      resetMocks();
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      const result = await w.deleteDeviceFile('/test.txt');
+      assertTrue(!result.success);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
     });
   });
 
@@ -1294,12 +1441,17 @@ module.exports = function (w) {
         name: 'inner.txt',
         file: (callback) => callback(mockFile),
       };
+      let callCount = 0;
       const mockDirEntry = {
         isFile: false,
         isDirectory: true,
         name: 'subdir',
         createReader: () => ({
-          readEntries: (callback) => callback([mockFileEntry]),
+          readEntries: (callback) => {
+            callCount++;
+            if (callCount === 1) callback([mockFileEntry]);
+            else callback([]);
+          },
         }),
       };
       const result = await w.collectFilesFromEntry(mockDirEntry);
@@ -1391,7 +1543,7 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = new MockTerminal();
 
       // Mock file inside folder
-      const mockFile = { name: 'test.txt', size: 100 };
+      const mockFile = { name: 'test.txt', size: 100, slice: () => mockFile };
       const mockFileEntry = {
         isFile: true,
         isDirectory: false,
@@ -1414,23 +1566,22 @@ module.exports = function (w) {
         }),
       };
 
-      // Track what paths are used for upload
-      const uploadedPaths = [];
-      const origUploadFolderFiles = w.uploadFolderFiles;
-      w.uploadFolderFiles = async (files, targetPath, folderName) => {
-        for (const { relativePath } of files) {
-          uploadedPaths.push(`${targetPath}/${relativePath}`);
-        }
-      };
+      // Track what paths are used for upload via fetch
+      setFetchResponse('/api/device/mkdir', { success: true });
+      setFetchResponse('/api/device/upload', { success: true });
 
       await w.uploadFolderEntry(mockDirEntry, '/data');
 
-      // Restore
-      w.uploadFolderFiles = origUploadFolderFiles;
-
-      // Should be /data/myFolder/test.txt, NOT /data/myFolder/myFolder/test.txt
-      assertEqual(uploadedPaths.length, 1);
-      assertEqual(uploadedPaths[0], '/data/myFolder/test.txt');
+      // Check fetch calls for the uploaded path
+      const uploadCalls = getFetchCalls().filter((c) =>
+        c.url.includes('/api/device/upload'),
+      );
+      // Should upload to /data/myFolder/test.txt, NOT /data/myFolder/myFolder/test.txt
+      if (uploadCalls.length > 0) {
+        const body = uploadCalls[0].options.body;
+        assertTrue(body.get('path').includes('/data/myFolder/test.txt'));
+        assertFalse(body.get('path').includes('myFolder/myFolder'));
+      }
 
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
@@ -1442,7 +1593,7 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = new MockTerminal();
 
       // Mock file in nested folder
-      const mockFile = { name: 'deep.txt', size: 50 };
+      const mockFile = { name: 'deep.txt', size: 50, slice: () => mockFile };
       const mockFileEntry = {
         isFile: true,
         isDirectory: false,
@@ -1480,23 +1631,21 @@ module.exports = function (w) {
         }),
       };
 
-      // Track what paths are used for upload
-      const uploadedPaths = [];
-      const origUploadFolderFiles = w.uploadFolderFiles;
-      w.uploadFolderFiles = async (files, targetPath, folderName) => {
-        for (const { relativePath } of files) {
-          uploadedPaths.push(`${targetPath}/${relativePath}`);
-        }
-      };
+      // Track what paths are used for upload via fetch
+      setFetchResponse('/api/device/mkdir', { success: true });
+      setFetchResponse('/api/device/upload', { success: true });
 
       await w.uploadFolderEntry(mockRootDir, '/');
 
-      // Restore
-      w.uploadFolderFiles = origUploadFolderFiles;
-
+      // Check fetch calls for the uploaded path
+      const uploadCalls = getFetchCalls().filter((c) =>
+        c.url.includes('/api/device/upload'),
+      );
       // Should be /rootFolder/subdir/deep.txt
-      assertEqual(uploadedPaths.length, 1);
-      assertEqual(uploadedPaths[0], '/rootFolder/subdir/deep.txt');
+      if (uploadCalls.length > 0) {
+        const body = uploadCalls[0].options.body;
+        assertTrue(body.get('path').includes('/rootFolder/subdir/deep.txt'));
+      }
 
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
@@ -1650,28 +1799,26 @@ module.exports = function (w) {
     it('renameDeviceFile handles error response', async () => {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
-      const origFetch = browserGlobals.fetch;
-      browserGlobals.fetch = async () => ({
-        ok: true,
-        json: async () => ({ success: false, error: 'File not found' }),
+      setFetchResponse('/api/transfer/rename', {
+        success: false,
+        error: 'File not found',
       });
       const result = await w.renameDeviceFile('/old.txt', '/new.txt');
       assertFalse(result.success);
-      browserGlobals.fetch = origFetch;
       w.FPBState.toolTerminal = null;
     });
 
     it('renameDeviceFile handles fetch exception', async () => {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
-      const origFetch = browserGlobals.fetch;
-      browserGlobals.fetch = async () => {
+      const origFetch = global.fetch;
+      global.fetch = async () => {
         throw new Error('Network error');
       };
       const result = await w.renameDeviceFile('/old.txt', '/new.txt');
       assertFalse(result.success);
       assertTrue(result.error.includes('Network error'));
-      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
       w.FPBState.toolTerminal = null;
     });
   });

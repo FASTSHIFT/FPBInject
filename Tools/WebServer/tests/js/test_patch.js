@@ -494,7 +494,7 @@ module.exports = function (w) {
         .fill()
         .map(() => ({ occupied: false }));
       w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
-      w.FPBState.aceEditors.set('patch_test', { getValue: () => '' });
+      w.FPBState.aceEditors.set('patch_test', { getValue: () => '   ' });
       await w.performInject();
       assertTrue(
         mockTerm._writes.some(
@@ -522,7 +522,8 @@ module.exports = function (w) {
       w.FPBState.aceEditors.set('patch_test', {
         getValue: () => 'void test() {}',
       });
-      browserGlobals.confirm = () => false;
+      const origConfirm = global.confirm;
+      global.confirm = () => false;
       await w.performInject();
       assertTrue(
         mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('cancelled')),
@@ -530,7 +531,7 @@ module.exports = function (w) {
       w.FPBState.aceEditors.delete('patch_test');
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = null;
-      browserGlobals.confirm = () => true;
+      global.confirm = origConfirm;
     });
 
     it('sends POST to /api/fpb/inject/stream', async () => {

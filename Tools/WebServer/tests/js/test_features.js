@@ -1418,6 +1418,55 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
 
+    it('displays all test result fields', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/fpb/test-serial', {
+        success: true,
+        tests: [
+          { size: 64, passed: true, response_time_ms: 15, cmd_len: 72 },
+          { size: 128, passed: true, response_time_ms: 25, cmd_len: 136 },
+          { size: 256, passed: true, response_time_ms: 45, cmd_len: 264 },
+        ],
+        max_working_size: 256,
+        recommended_chunk_size: 256,
+      });
+      await w.fpbTestSerial();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('64 bytes')),
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('128 bytes')),
+      );
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('256 bytes')),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles test with no failed_size', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/fpb/test-serial', {
+        success: true,
+        tests: [{ size: 512, passed: true }],
+        max_working_size: 512,
+        failed_size: 0,
+        recommended_chunk_size: 512,
+      });
+      await w.fpbTestSerial();
+      assertTrue(
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Max working')),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
     it('applies recommended chunk size when user confirms', async () => {
       resetMocks();
       w.FPBState.isConnected = true;
@@ -1433,8 +1482,9 @@ module.exports = function (w) {
       });
       setFetchResponse('/api/config', { success: true });
       await w.fpbTestSerial();
+      // value can be number or string depending on mock implementation
       assertEqual(
-        browserGlobals.document.getElementById('chunkSize').value,
+        String(browserGlobals.document.getElementById('chunkSize').value),
         '384',
       );
       assertTrue(
@@ -1453,7 +1503,9 @@ module.exports = function (w) {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       browserGlobals.document.getElementById('chunkSize').value = '128';
-      browserGlobals.confirm = () => false;
+      // Override global confirm to return false
+      const origConfirm = global.confirm;
+      global.confirm = () => false;
       setFetchResponse('/api/fpb/test-serial', {
         success: true,
         tests: [],
@@ -1470,7 +1522,7 @@ module.exports = function (w) {
       );
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = null;
-      browserGlobals.confirm = () => true;
+      global.confirm = origConfirm;
     });
   });
 
@@ -1535,6 +1587,101 @@ module.exports = function (w) {
       );
       browserGlobals.fetch = origFetch;
       global.fetch = origFetch;
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('shows alert on build time mismatch', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      let alertCalled = false;
+      const origAlert = browserGlobals.alert;
+      browserGlobals.alert = () => {
+        alertCalled = true;
+      };
+      global.alert = browserGlobals.alert;
+      setFetchResponse('/api/fpb/info', {
+        success: true,
+        slots: [],
+        build_time_mismatch: true,
+        device_build_time: '2024-01-01 12:00:00',
+        elf_build_time: '2024-01-02 12:00:00',
+      });
+      await w.fpbInfo();
+      assertTrue(alertCalled);
+      browserGlobals.alert = origAlert;
+      global.alert = origAlert;
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('updates all slot states correctly', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      setFetchResponse('/api/fpb/info', {
+        success: true,
+        slots: [
+          {
+            occupied: true,
+            func: 'func0',
+            orig_addr: '0x1000',
+            target_addr: '0x2000',
+            code_size: 100,
+          },
+          {
+            occupied: true,
+            func: 'func1',
+            orig_addr: '0x1100',
+            target_addr: '0x2100',
+            code_size: 200,
+          },
+          { occupied: false },
+          {
+            occupied: true,
+            func: 'func3',
+            orig_addr: '0x1300',
+            target_addr: '0x2300',
+            code_size: 50,
+          },
+          { occupied: false },
+          { occupied: false },
+        ],
+        memory: { used: 350 },
+      });
+      await w.fpbInfo();
+      assertTrue(w.FPBState.slotStates[0].occupied);
+      assertTrue(w.FPBState.slotStates[1].occupied);
+      assertTrue(!w.FPBState.slotStates[2].occupied);
+      assertTrue(w.FPBState.slotStates[3].occupied);
+      assertEqual(w.FPBState.slotStates[0].func, 'func0');
+      assertEqual(w.FPBState.slotStates[1].code_size, 200);
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles empty slots array', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: true }));
+      setFetchResponse('/api/fpb/info', {
+        success: true,
+        slots: [],
+      });
+      await w.fpbInfo();
+      // slots should remain unchanged when empty array provided
+      assertTrue(w.FPBState.slotStates[0].occupied);
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = null;
     });

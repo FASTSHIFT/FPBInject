@@ -28,8 +28,8 @@ const isCI =
   process.env.CI === 'true' ||
   process.env.GITHUB_ACTIONS === 'true';
 
-// Parse --threshold parameter (default: 70)
-let coverageThreshold = 70;
+// Parse --threshold parameter (default: 80%)
+let coverageThreshold = 80;
 const thresholdIdx = args.indexOf('--threshold');
 if (thresholdIdx !== -1 && args[thresholdIdx + 1]) {
   const parsed = parseInt(args[thresholdIdx + 1], 10);
@@ -130,8 +130,8 @@ function loadScript(filename) {
   }
 
   try {
-    const fn = new Function(code);
-    fn();
+    // Use indirect eval to run in global scope while preserving __coverage__
+    (0, eval)(code);
     // Sync window exports to global after each module loads
     syncWindowToGlobal();
   } catch (e) {

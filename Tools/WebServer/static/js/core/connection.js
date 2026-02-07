@@ -231,6 +231,13 @@ function stopBackendHealthCheck() {
   }
 }
 
+/**
+ * Reset backend alert state (for testing)
+ */
+function resetBackendAlertState() {
+  backendDisconnectAlertShown = false;
+}
+
 // Export for global access
 window.refreshPorts = refreshPorts;
 window.handleConnected = handleConnected;
@@ -241,3 +248,4 @@ window.getConnectionMaxRetries = getConnectionMaxRetries;
 window.checkBackendHealth = checkBackendHealth;
 window.startBackendHealthCheck = startBackendHealthCheck;
 window.stopBackendHealthCheck = stopBackendHealthCheck;
+window.resetBackendAlertState = resetBackendAlertState;

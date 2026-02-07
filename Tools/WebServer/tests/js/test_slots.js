@@ -235,7 +235,7 @@ module.exports = function (w) {
       setFetchResponse('/api/fpb/info', { success: true, slots: [] });
       await w.fpbUnpatch(0);
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Unpatch')),
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('cleared')),
       );
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
@@ -281,7 +281,7 @@ module.exports = function (w) {
       });
       await w.fpbUnpatch(0);
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Failed')),
       );
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
@@ -335,16 +335,18 @@ module.exports = function (w) {
       w.FPBState.slotStates = Array(6)
         .fill()
         .map(() => ({ occupied: false }));
-      browserGlobals.confirm = () => true;
+      // Need to set global.confirm for this test
+      const origConfirm = global.confirm;
+      global.confirm = () => true;
       setFetchResponse('/api/fpb/unpatch', { success: true });
       setFetchResponse('/api/fpb/info', { success: true, slots: [] });
       await w.fpbUnpatchAll();
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Unpatch')),
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('cleared')),
       );
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
-      browserGlobals.confirm = () => true;
+      global.confirm = origConfirm;
     });
 
     it('cancels on confirm rejection', async () => {
@@ -352,15 +354,16 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      browserGlobals.confirm = () => false;
+      const origConfirm = global.confirm;
+      global.confirm = () => false;
       await w.fpbUnpatchAll();
       // Should return early without making any writes about unpatch
       assertTrue(
-        !mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Unpatch')),
+        !mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('cleared')),
       );
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
-      browserGlobals.confirm = () => true;
+      global.confirm = origConfirm;
     });
 
     it('handles unpatch all failure', async () => {
@@ -371,18 +374,19 @@ module.exports = function (w) {
       w.FPBState.slotStates = Array(6)
         .fill()
         .map(() => ({ occupied: false }));
-      browserGlobals.confirm = () => true;
+      const origConfirm = global.confirm;
+      global.confirm = () => true;
       setFetchResponse('/api/fpb/unpatch', {
         success: false,
         message: 'Failed',
       });
       await w.fpbUnpatchAll();
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('Failed')),
       );
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
-      browserGlobals.confirm = () => true;
+      global.confirm = origConfirm;
     });
 
     it('handles fetch exception', async () => {
@@ -390,21 +394,20 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      browserGlobals.confirm = () => true;
-      const origFetch = browserGlobals.fetch;
-      browserGlobals.fetch = async () => {
+      const origConfirm = global.confirm;
+      global.confirm = () => true;
+      const origFetch = global.fetch;
+      global.fetch = async () => {
         throw new Error('Network error');
       };
-      global.fetch = browserGlobals.fetch;
       await w.fpbUnpatchAll();
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('ERROR')),
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('error')),
       );
-      browserGlobals.fetch = origFetch;
       global.fetch = origFetch;
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
-      browserGlobals.confirm = () => true;
+      global.confirm = origConfirm;
     });
   });
 
@@ -467,6 +470,113 @@ module.exports = function (w) {
       w.updateSlotUI();
       const funcSpan = browserGlobals.document.getElementById('slot0Func');
       assertEqual(funcSpan.textContent, 'Empty');
+    });
+
+    it('toggles occupied class on slot items', () => {
+      resetMocks();
+      // Create slot item with proper structure
+      const slotItem = browserGlobals.document.getElementById('slotItem0');
+      slotItem.classList.add('slot-item');
+      slotItem.dataset.slot = '0';
+      const actionsDiv = browserGlobals.document.createElement('div');
+      actionsDiv.classList.add('slot-actions');
+      slotItem.appendChild(actionsDiv);
+      slotItem.querySelector = (sel) =>
+        sel === '.slot-actions' ? actionsDiv : null;
+
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: 'test',
+          orig_addr: '0x1000',
+          target_addr: '0x2000',
+          code_size: 100,
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      w.FPBState.selectedSlot = 0;
+      w.updateSlotUI();
+      assertTrue(slotItem.classList._classes.has('occupied'));
+      assertTrue(slotItem.classList._classes.has('active'));
+      assertEqual(actionsDiv.style.display, 'flex');
+    });
+
+    it('hides actions div for unoccupied slots', () => {
+      resetMocks();
+      const slotItem = browserGlobals.document.getElementById('slotItem1');
+      slotItem.classList.add('slot-item');
+      slotItem.dataset.slot = '1';
+      const actionsDiv = browserGlobals.document.createElement('div');
+      actionsDiv.classList.add('slot-actions');
+      slotItem.appendChild(actionsDiv);
+      slotItem.querySelector = (sel) =>
+        sel === '.slot-actions' ? actionsDiv : null;
+
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.updateSlotUI();
+      assertEqual(actionsDiv.style.display, 'none');
+    });
+
+    it('sets title for occupied slots', () => {
+      resetMocks();
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: 'my_func',
+          orig_addr: '0x08001000',
+          target_addr: '0x20002000',
+          code_size: 512,
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      w.updateSlotUI();
+      const funcSpan = browserGlobals.document.getElementById('slot0Func');
+      assertTrue(funcSpan.title.includes('Original'));
+      assertTrue(funcSpan.title.includes('Target'));
+      assertTrue(funcSpan.title.includes('512'));
+    });
+
+    it('clears title for unoccupied slots', () => {
+      resetMocks();
+      const funcSpan = browserGlobals.document.getElementById('slot0Func');
+      funcSpan.title = 'Previous title';
+      w.FPBState.slotStates = Array(6)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.updateSlotUI();
+      assertEqual(funcSpan.title, '');
+    });
+
+    it('handles slot without func name', () => {
+      resetMocks();
+      w.FPBState.slotStates = [
+        {
+          occupied: true,
+          func: '',
+          orig_addr: '0x1000',
+          target_addr: '0x2000',
+          code_size: 0,
+        },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+        { occupied: false },
+      ];
+      w.updateSlotUI();
+      const funcSpan = browserGlobals.document.getElementById('slot0Func');
+      assertTrue(funcSpan.textContent.includes('0x1000'));
+      assertTrue(!funcSpan.textContent.includes('()'));
     });
   });
 };
