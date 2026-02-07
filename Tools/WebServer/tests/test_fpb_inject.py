@@ -1637,6 +1637,114 @@ class TestFPBInjectCoverage(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_finds_function_by_exact_name(self, mock_compile):
+        """Test inject finds function by exact target name (new design - no inject_ prefix)"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+                self.fpb, "info"
+            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+                self.fpb, "find_slot_for_target"
+            ) as mock_find_slot, patch.object(
+                self.fpb, "upload"
+            ) as mock_upload, patch.object(
+                self.fpb, "tpatch"
+            ) as mock_tpatch:
+
+                mock_syms.return_value = {"digitalWrite": 0x08000100}
+                mock_info.return_value = ({"used": 0}, "")
+                mock_alloc.return_value = (0x20001000, "")
+                mock_find_slot.return_value = (0, False)
+                mock_upload.return_value = (True, {})
+                mock_tpatch.return_value = (True, "")
+
+                # New design: function name is preserved, not renamed to inject_xxx
+                mock_compile.side_effect = [
+                    (b"\x00" * 50, {}, ""),
+                    (b"\x00" * 50, {"digitalWrite": 0x20001000}, ""),
+                ]
+
+                success, result = self.fpb.inject("source", "digitalWrite")
+
+                self.assertTrue(success)
+                self.assertEqual(result["inject_func"], "digitalWrite")
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_no_fpb_marked_function_error(self, mock_compile):
+        """Test inject returns error when no FPB_INJECT marked function found"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+                self.fpb, "info"
+            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+                self.fpb, "find_slot_for_target"
+            ) as mock_find_slot:
+
+                mock_syms.return_value = {"target_func": 0x08000100}
+                mock_info.return_value = ({"used": 0}, "")
+                mock_alloc.return_value = (0x20001000, "")
+                mock_find_slot.return_value = (0, False)
+
+                # Compilation returns no symbols (no FPB_INJECT functions)
+                mock_compile.side_effect = [
+                    (b"\x00" * 50, {}, ""),
+                    (b"\x00" * 50, {}, ""),  # Empty symbols
+                ]
+
+                success, result = self.fpb.inject("source", "target_func")
+
+                self.assertFalse(success)
+                self.assertIn("No FPB_INJECT marked function", result["error"])
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_fallback_to_first_symbol(self, mock_compile):
+        """Test inject uses first symbol as fallback when no exact match"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+                self.fpb, "info"
+            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+                self.fpb, "find_slot_for_target"
+            ) as mock_find_slot, patch.object(
+                self.fpb, "upload"
+            ) as mock_upload, patch.object(
+                self.fpb, "tpatch"
+            ) as mock_tpatch:
+
+                mock_syms.return_value = {"some_func": 0x08000100}
+                mock_info.return_value = ({"used": 0}, "")
+                mock_alloc.return_value = (0x20001000, "")
+                mock_find_slot.return_value = (0, False)
+                mock_upload.return_value = (True, {})
+                mock_tpatch.return_value = (True, "")
+
+                # Function name doesn't match target, but use fallback
+                mock_compile.side_effect = [
+                    (b"\x00" * 50, {}, ""),
+                    (b"\x00" * 50, {"patched_func": 0x20001000}, ""),
+                ]
+
+                success, result = self.fpb.inject("source", "some_func")
+
+                self.assertTrue(success)
+                self.assertEqual(result["inject_func"], "patched_func")
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
 
 class TestFPBInjectCommands(unittest.TestCase):
     """FPBInject command tests (extended coverage)"""
@@ -2106,7 +2214,7 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
 
         # Call compile_inject
         data, symbols, error = compile_inject(
-            source_content="void inject_test(void) {}",
+            source_content="/* FPB_INJECT */\nvoid test_func(void) {}",
             base_addr=0x20001000,
             compile_commands_path="/fake/compile_commands.json",
         )
@@ -2153,7 +2261,7 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
         from core.compiler import compile_inject
 
         data, symbols, error = compile_inject(
-            source_content="void inject_test(void) {}",
+            source_content="/* FPB_INJECT */\nvoid test_func(void) {}",
             base_addr=0x20001000,
             compile_commands_path="/fake/compile_commands.json",
         )
@@ -2162,6 +2270,102 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
         self.assertIsNone(symbols)
         self.assertIsNotNone(error)
         self.assertIn("Link error", error)
+
+
+class TestInjectMulti(unittest.TestCase):
+    """Test inject_multi function with new design (no inject_ prefix)"""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.device.ser = Mock()
+        self.device.ser.isOpen.return_value = True
+        self.device.ser.in_waiting = 0
+        self.fpb = FPBInject(self.device)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_multi_finds_functions_without_prefix(self, mock_compile):
+        """Test inject_multi finds functions by original name (no inject_ prefix)"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+                self.fpb, "inject"
+            ) as mock_inject:
+
+                # Firmware has these functions
+                mock_syms.return_value = {
+                    "digitalWrite": 0x08000100,
+                    "analogWrite": 0x08000200,
+                }
+
+                # Compiled patch has these symbols (same names, no prefix)
+                mock_compile.return_value = (
+                    b"\x00" * 100,
+                    {"digitalWrite": 0x20001000, "analogWrite": 0x20001050},
+                    "",
+                )
+
+                mock_inject.return_value = (True, {"slot": 0})
+
+                success, result = self.fpb.inject_multi("source")
+
+                self.assertTrue(success)
+                # Should call inject twice, once for each function
+                self.assertEqual(mock_inject.call_count, 2)
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_multi_no_symbols_error(self, mock_compile):
+        """Test inject_multi returns error when no functions compiled"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms:
+
+                mock_syms.return_value = {"some_func": 0x08000100}
+
+                # No symbols in compiled code
+                mock_compile.return_value = (b"\x00" * 100, {}, "")
+
+                success, result = self.fpb.inject_multi("source")
+
+                self.assertFalse(success)
+                self.assertIn("No FPB_INJECT marked functions", result["error"])
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.FPBInject.compile_inject")
+    def test_inject_multi_target_not_in_elf(self, mock_compile):
+        """Test inject_multi handles function not found in ELF"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "get_symbols") as mock_syms:
+
+                # Firmware doesn't have the function we're trying to patch
+                mock_syms.return_value = {"other_func": 0x08000100}
+
+                # Compiled patch has this function
+                mock_compile.return_value = (
+                    b"\x00" * 100,
+                    {"nonexistent_func": 0x20001000},
+                    "",
+                )
+
+                success, result = self.fpb.inject_multi("source")
+
+                # Should fail because target not found
+                self.assertFalse(success)
+                self.assertIn("No valid injection targets", result["error"])
+        finally:
+            if os.path.exists(self.device.elf_path):
+                os.remove(self.device.elf_path)
 
 
 if __name__ == "__main__":

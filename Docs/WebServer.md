@@ -51,8 +51,9 @@ Add marker comments before patchable functions:
 
 ```c
 /* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
 void my_function(int arg) {
-    // Original implementation
+    // Patch implementation
 }
 ```
 

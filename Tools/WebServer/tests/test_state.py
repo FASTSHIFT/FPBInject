@@ -99,7 +99,8 @@ class TestAppState(unittest.TestCase):
         template = app_state._get_default_patch_template()
 
         self.assertIn("FPBInject", template)
-        self.assertIn("inject_", template)
+        self.assertIn("FPB_INJECT", template)
+        self.assertIn("target_function", template)
 
     def test_add_pending_change(self):
         """Test adding pending change"""

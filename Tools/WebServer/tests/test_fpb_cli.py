@@ -481,7 +481,7 @@ class TestFPBCLICompile(unittest.TestCase):
         """Test successful compilation"""
         # Create test file
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         with patch.object(self.cli._fpb, "compile_inject") as mock_compile:
             mock_compile.return_value = (
@@ -501,7 +501,7 @@ class TestFPBCLICompile(unittest.TestCase):
     def test_compile_large_binary(self):
         """Test compile with large binary (>1024 bytes)"""
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         # Create binary larger than 1024 bytes
         large_binary = b"\x00" * 2000
@@ -557,7 +557,7 @@ class TestFPBCLICompile(unittest.TestCase):
     def test_compile_with_options(self):
         """Test compile with all options"""
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         with patch.object(self.cli._fpb, "compile_inject") as mock_compile:
             mock_compile.return_value = (b"\x00", {"inject_test": 0x20002000}, None)
@@ -852,7 +852,7 @@ class TestFPBCLIInject(unittest.TestCase):
     def test_inject_not_connected_no_elf(self):
         """Test inject without connection and no ELF"""
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         f = io.StringIO()
         with redirect_stdout(f):
@@ -865,7 +865,7 @@ class TestFPBCLIInject(unittest.TestCase):
     def test_inject_not_connected_with_elf(self):
         """Test inject offline with ELF (compile validation)"""
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         with patch.object(self.cli._fpb, "compile_inject") as mock_compile:
             mock_compile.return_value = (b"\x00\x01", {"inject_test": 0x20001000}, None)
@@ -897,7 +897,7 @@ class TestFPBCLIInject(unittest.TestCase):
     def test_inject_connected_success(self):
         """Test successful injection"""
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         self.cli._device_state.connected = True
         with patch.object(self.cli._fpb, "inject") as mock_inject:
@@ -913,7 +913,7 @@ class TestFPBCLIInject(unittest.TestCase):
     def test_inject_with_all_options(self):
         """Test inject with all options"""
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         self.cli._device_state.connected = True
         with patch.object(self.cli._fpb, "inject") as mock_inject:
@@ -937,7 +937,7 @@ class TestFPBCLIInject(unittest.TestCase):
     def test_inject_exception(self):
         """Test inject with exception"""
         source = Path(self.temp_dir) / "test.c"
-        source.write_text("void inject_test(void) {}")
+        source.write_text("/* FPB_INJECT */\nvoid test_func(void) {}")
 
         self.cli._device_state.connected = True
         with patch.object(self.cli._fpb, "inject") as mock_inject:
@@ -1369,8 +1369,8 @@ class TestCppMemberFunctionHijacking(unittest.TestCase):
 #include <stddef.h>
 extern "C" size_t _ZN5Print5writeEPKc(void* thisptr, const char* str);
 
-extern "C" __attribute__((used, section(".text.inject"), nothrow))
-size_t inject_Print_print(void* thisptr, const char* str) {
+/* FPB_INJECT */
+extern "C" size_t Print_print(void* thisptr, const char* str) {
     _ZN5Print5writeEPKc(thisptr, "[HOOK] ");
     return _ZN5Print5writeEPKc(thisptr, str);
 }
@@ -1381,14 +1381,14 @@ size_t inject_Print_print(void* thisptr, const char* str) {
                 "binary_size": 56,
                 "base_addr": "0x20001000",
                 "symbols": {
-                    "inject_Print_print": "0x20001000",
+                    "Print_print": "0x20001000",
                     "___ZN5Print5writeEPKc_veneer": "0x20001020",
                 },
             }
 
             result = self.cli.compile("/tmp/test_patch.cpp")
             self.assertTrue(result["success"])
-            self.assertIn("inject_Print_print", result["symbols"])
+            self.assertIn("Print_print", result["symbols"])
             # Veneer for original function call
             self.assertIn("___ZN5Print5writeEPKc_veneer", result["symbols"])
 
@@ -1399,7 +1399,7 @@ size_t inject_Print_print(void* thisptr, const char* str) {
                 "success": True,
                 "result": {
                     "code_size": 56,
-                    "inject_func": "inject_Print_print",
+                    "inject_func": "Print_print",
                     "target_addr": "0x08008792",  # Print::print address
                     "inject_addr": "0x20000250",
                     "slot": 0,
@@ -1408,7 +1408,7 @@ size_t inject_Print_print(void* thisptr, const char* str) {
             }
 
             result = self.cli.inject(
-                inject_func="inject_Print_print",
+                inject_func="Print_print",
                 target_addr="0x08008792",  # C++ mangled function address
                 patch_mode="trampoline",
             )
@@ -1448,7 +1448,7 @@ size_t inject_Print_print(void* thisptr, const char* str) {
                 "binary_size": 56,
                 "base_addr": "0x20001000",
                 "symbols": {
-                    "inject_Print_print": "0x20001000",
+                    "Print_print": "0x20001000",
                     "___ZN5Print5writeEPKc_veneer": "0x20001020",
                 },
             }
@@ -1785,7 +1785,7 @@ class TestFPBCLIInject(unittest.TestCase):
     def test_inject_not_connected_no_elf(self):
         """Test inject when not connected and no ELF"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
-            f.write("void inject_test() {}")
+            f.write("/* FPB_INJECT */\nvoid test_func() {}")
             source_file = f.name
 
         try:

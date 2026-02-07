@@ -739,9 +739,9 @@ class TestFPBInjectAPI(TestRoutesBase):
             "/api/fpb/inject",
             data=json.dumps(
                 {
-                    "source_content": "int inject_test() { return 1; }",
+                    "source_content": "/* FPB_INJECT */\\nint test_func() { return 1; }",
                     "target_func": "original_func",
-                    "inject_func": "inject_test",
+                    "inject_func": "test_func",
                 }
             ),
             content_type="application/json",
@@ -1892,19 +1892,19 @@ class TestPatchAPI(TestRoutesBase):
 
     def test_get_patch_source_with_content(self):
         """Test getting patch source with content"""
-        state.device.patch_source_content = "void inject_test(void) {}"
+        state.device.patch_source_content = "/* FPB_INJECT */\nvoid test_func(void) {}"
         state.device.patch_source_path = ""
 
         response = self.client.get("/api/patch/source")
         data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        self.assertEqual(data["content"], "void inject_test(void) {}")
+        self.assertEqual(data["content"], "/* FPB_INJECT */\nvoid test_func(void) {}")
 
     def test_get_patch_source_from_file(self):
         """Test getting patch source from file"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
-            f.write("void inject_from_file(void) {}")
+            f.write("/* FPB_INJECT */\nvoid from_file_func(void) {}")
             temp_path = f.name
 
         try:
@@ -1914,7 +1914,7 @@ class TestPatchAPI(TestRoutesBase):
             data = json.loads(response.data)
 
             self.assertTrue(data["success"])
-            self.assertIn("inject_from_file", data["content"])
+            self.assertIn("from_file_func", data["content"])
         finally:
             os.unlink(temp_path)
 
@@ -1922,13 +1922,16 @@ class TestPatchAPI(TestRoutesBase):
         """Test setting patch source"""
         response = self.client.post(
             "/api/patch/source",
-            data=json.dumps({"content": "void inject_new(void) {}"}),
+            data=json.dumps({"content": "/* FPB_INJECT */\nvoid new_func(void) {}"}),
             content_type="application/json",
         )
         data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        self.assertEqual(state.device.patch_source_content, "void inject_new(void) {}")
+        self.assertEqual(
+            state.device.patch_source_content,
+            "/* FPB_INJECT */\nvoid new_func(void) {}",
+        )
 
     def test_set_patch_source_no_content(self):
         """Test setting patch source without content"""
@@ -1954,7 +1957,7 @@ class TestPatchAPI(TestRoutesBase):
                 "/api/patch/source",
                 data=json.dumps(
                     {
-                        "content": "void inject_saved(void) {}",
+                        "content": "/* FPB_INJECT */\nvoid saved_func(void) {}",
                         "save_to_file": True,
                     }
                 ),
@@ -1964,7 +1967,7 @@ class TestPatchAPI(TestRoutesBase):
 
             self.assertTrue(data["success"])
             with open(temp_path) as f:
-                self.assertIn("inject_saved", f.read())
+                self.assertIn("saved_func", f.read())
         finally:
             os.unlink(temp_path)
 
@@ -2029,7 +2032,7 @@ class TestPatchAPI(TestRoutesBase):
         """Test successful auto generate patch"""
         mock_gen = Mock()
         mock_gen.generate_patch.return_value = (
-            "void inject_test(void) {}",
+            "/* FPB_INJECT */\nvoid test_func(void) {}",
             ["test"],
         )
         mock_gen_class.return_value = mock_gen
@@ -2116,7 +2119,9 @@ class TestPatchAPI(TestRoutesBase):
 
         response = self.client.post(
             "/api/patch/preview",
-            data=json.dumps({"source_content": "void inject_test(void) {}"}),
+            data=json.dumps(
+                {"source_content": "/* FPB_INJECT */\nvoid test_func(void) {}"}
+            ),
             content_type="application/json",
         )
         data = json.loads(response.data)
@@ -2261,7 +2266,7 @@ class TestPatchRoutesExtended(TestRoutesBase):
         """Test auto generating patch successfully"""
         mock_gen = Mock()
         mock_gen.generate_patch.return_value = (
-            "void inject_test() {}",
+            "/* FPB_INJECT */\nvoid test_func() {}",
             ["test"],
         )
         mock_gen_class.return_value = mock_gen
@@ -2363,7 +2368,7 @@ class TestPatchRoutesExtended(TestRoutesBase):
         try:
             response = self.client.post(
                 "/api/patch/preview",
-                json={"source_content": "void inject_test() {}"},
+                json={"source_content": "/* FPB_INJECT */\nvoid test_func() {}"},
             )
             data = json.loads(response.data)
 

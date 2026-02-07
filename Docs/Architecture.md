@@ -23,7 +23,7 @@ flowchart LR
     end
     
     subgraph step4["4. RAM Code"]
-        D["inject_func()<br/>@ RAM<br/>executes"]
+        D["patched_func()<br/>@ RAM<br/>executes"]
     end
     
     A --> B --> C --> D
@@ -80,7 +80,7 @@ flowchart TB
     
     subgraph SRAM
         TA["target_addr<br/>= 0x20001000"]
-        IF["inject_func()<br/>@ 0x20001000"]
+        IF["patched_func()<br/>@ 0x20001000"]
     end
     
     TF -->|"FPB REMAP"| TR
@@ -101,7 +101,7 @@ Best for: ARMv8-M or when trampolines unavailable
 flowchart LR
     A["Function<br/>Call"] --> B["DebugMonitor<br/>Exception"]
     B --> C["Stack PC<br/>Modified"]
-    C --> D["inject_func()"]
+    C --> D["patched_func()"]
 ```
 
 **How it works:**
@@ -120,7 +120,7 @@ flowchart LR
 | SP+12 | R3 | preserved |
 | SP+16 | R12 | preserved |
 | SP+20 | LR | preserved |
-| SP+24 | PC | ← MODIFIED to inject_func |
+| SP+24 | PC | ← MODIFIED to patched_func |
 | SP+28 | xPSR | preserved |
 
 ### 3. Hook Mode (Non-replacing)

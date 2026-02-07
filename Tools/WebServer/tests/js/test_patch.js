@@ -186,16 +186,18 @@ module.exports = function (w) {
     it('generates template with function name', () => {
       const template = w.generatePatchTemplate('test_func', 0);
       assertContains(template, 'test_func');
-      assertContains(template, 'inject_test_func');
+      assertContains(template, 'FPB_INJECT');
       assertContains(template, 'Slot: 0');
     });
-    it('includes signature when provided', () => {
+    it('uses signature params in function definition', () => {
       const template = w.generatePatchTemplate(
         'my_func',
         1,
         'int my_func(int x)',
       );
+      // Signature is used to generate function definition, not as a comment
       assertContains(template, 'int my_func(int x)');
+      assertContains(template, '__attribute__');
     });
     it('includes source file when provided', () => {
       const template = w.generatePatchTemplate('func', 0, null, 'main.c');
@@ -231,13 +233,13 @@ module.exports = function (w) {
       );
       assertContains(template, 'return');
     });
-    it('generates original call comment for void', () => {
+    it('indicates original function cannot be called for void', () => {
       const template = w.generatePatchTemplate(
         'do_thing',
         0,
         'void do_thing(void)',
       );
-      assertContains(template, 'Call original');
+      assertContains(template, 'NOT supported');
     });
     it('includes param names in function', () => {
       const template = w.generatePatchTemplate(
@@ -273,7 +275,8 @@ module.exports = function (w) {
     });
     it('handles void params', () => {
       const template = w.generatePatchTemplate('init', 0, 'void init(void)');
-      assertContains(template, 'inject_init');
+      assertContains(template, 'FPB_INJECT');
+      assertContains(template, 'void init');
     });
     it('handles pointer return with params', () => {
       const template = w.generatePatchTemplate(
@@ -394,13 +397,13 @@ module.exports = function (w) {
           compile_time: 1.0,
           upload_time: 0.5,
           code_size: 100,
-          inject_func: 'inject_test',
+          inject_func: 'test_func',
           inject_addr: '0x20000100',
         },
         'test_func',
       );
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('inject_test')),
+        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('test_func')),
       );
       w.FPBState.toolTerminal = null;
     });

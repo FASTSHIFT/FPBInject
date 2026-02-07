@@ -22,7 +22,6 @@ function generatePatchTemplate(
     params = parsed.params;
   }
 
-  const injectFuncName = `inject_${funcName}`;
   const paramNames = extractParamNames(params);
   const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
 
@@ -59,16 +58,15 @@ ${sourceFile ? ` * Source: ${sourceFile}` : ''}
 
 #include <stdint.h>
 #include <stdio.h>
-
-${signature ? `// Original function signature:\n// ${signature}` : `// Original function prototype (adjust as needed)\n// extern ${returnType} ${funcName}(${params || 'void'});`}
 ${decompiledSection}
-// Inject function - will replace ${funcName}
-${returnType} ${injectFuncName}(${params || 'void'}) {
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
+${returnType} ${funcName}(${params || 'void'}) {
     printf("Patched ${funcName} executed!\\n");
 
     // Your patch code here
-
-${returnType !== 'void' ? `    // TODO: return appropriate value\n    return 0;` : `    // Call original if needed:\n    // ${funcName}_original(${callParams});`}
+    // NOTE: Do not call the original function, as this will result in a double hijacked recursion.
+${returnType !== 'void' ? `    // TODO: return appropriate value\n    return 0;` : ``}
 }
 `;
 }

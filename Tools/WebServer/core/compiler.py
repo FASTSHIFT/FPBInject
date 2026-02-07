@@ -167,12 +167,11 @@ def compile_inject(
         # This ensures that static/global variables with zero initialization
         # are properly zeroed in the uploaded binary.
         ld_content = f"""
-ENTRY(inject_entry)
 SECTIONS
 {{
     . = 0x{base_addr:08X};
     .text : {{
-        KEEP(*(.text.inject*))
+        KEEP(*(.fpb.text))     /* FPB inject functions */
         *(.text .text.*)
     }}
     .rodata : {{ *(.rodata .rodata.*) }}
@@ -184,7 +183,7 @@ SECTIONS
         __bss_end__ = .;
     }}
     /* Force objcopy to include BSS section (with zeros) in the binary */
-    .inject_end : {{
+    .fpb_end : {{
         BYTE(0x00)
     }}
 }}
@@ -194,21 +193,40 @@ SECTIONS
             f.write(ld_content)
 
         # Link with --gc-sections to remove unused code
+        # Use --allow-multiple-definition to let patch functions override firmware symbols
         link_cmd = (
             [compiler] + cflags[:2] + ["-nostartfiles", "-nostdlib", f"-T{ld_file}"]
         )
         link_cmd.append("-Wl,--gc-sections")
+        link_cmd.append("-Wl,--allow-multiple-definition")
 
-        # Find inject_* function names from source to keep them with -u
-        inject_func_pattern = re.compile(r"\binject_(\w+)\s*\(")
-        inject_funcs = inject_func_pattern.findall(source_content)
-        for func in set(inject_funcs):
-            link_cmd.append(f"-Wl,-u,inject_{func}")
+        # Find FPB_INJECT marked functions from source to keep them with -u
+        # Pattern: /* FPB_INJECT */ followed by optional __attribute__ and function definition
+        # Use .*? with DOTALL to handle __attribute__((...)) with nested parentheses
+        fpb_marker_pattern = re.compile(
+            r"/\*\s*FPB_INJECT\s*\*/\s*\n"
+            r"(?:__attribute__\s*\(\(.*?\)\)\s*\n?)?"
+            r"(?:extern\s+\"C\"\s+)?"
+            r"(?:static\s+|inline\s+|const\s+|volatile\s+)*"
+            r"(?:void|int|char|unsigned|signed|long|short|float|double|"
+            r"uint\d+_t|int\d+_t|size_t|ssize_t|bool|_Bool|"
+            r"\w+\s*\*?)\s+"
+            r"(\w+)\s*\(",
+            re.MULTILINE | re.IGNORECASE | re.DOTALL,
+        )
+        fpb_funcs = fpb_marker_pattern.findall(source_content)
+        for func in set(fpb_funcs):
+            if func not in ("if", "while", "for", "switch", "return"):
+                link_cmd.append(f"-Wl,-u,{func}")
+
+        # IMPORTANT: obj_file MUST come BEFORE --just-symbols!
+        # With --allow-multiple-definition, the linker uses the FIRST definition.
+        # If --just-symbols comes first, the firmware's symbol address will be used
+        # instead of our patch function definition.
+        link_cmd.extend(["-o", elf_file, obj_file])
 
         if elf_path and os.path.exists(elf_path):
             link_cmd.append(f"-Wl,--just-symbols={elf_path}")
-
-        link_cmd.extend(["-o", elf_file, obj_file])
 
         if verbose:
             logger.info(f"Link: {' '.join(link_cmd)}")
@@ -257,7 +275,7 @@ SECTIONS
                     addr = int(parts[0], 16)
                     sym_type = parts[1]  # T=text global, t=text local, etc.
                     # For demangled names (nm -C), the name may contain spaces
-                    # e.g., "inject_foo(int, char*)" becomes multiple parts
+                    # e.g., "foo(int, char*)" becomes multiple parts
                     # Join all parts after the type to get the full name
                     full_name = " ".join(parts[2:])
                     # Extract just the function name (before the first '(' if present)
@@ -282,30 +300,24 @@ SECTIONS
                     logger.debug(f"Skipping malformed nm line: {line}")
                     pass
 
-        # Log inject_* symbols for debugging
-        inject_syms = {k: v for k, v in symbols.items() if "inject" in k.lower()}
-        if inject_syms:
-            logger.info(f"Found inject symbols: {inject_syms}")
-        else:
+        # Log FPB inject symbols for debugging
+        fpb_syms = {k: v for k, v in symbols.items() if k in fpb_funcs}
+        if fpb_syms:
+            logger.info(f"Found FPB inject symbols: {fpb_syms}")
+        elif fpb_funcs:
             logger.warning(
-                f"No inject_* symbols found in compiled ELF. Total symbols: {len(symbols)}"
+                f"Expected FPB inject functions {fpb_funcs} not found in compiled ELF. Total symbols: {len(symbols)}"
             )
             # Log all symbols for debugging (use warning level to ensure visibility)
             logger.warning(f"All defined text symbols: {list(symbols.keys())}")
             # Also log raw nm output for debugging
             logger.warning(f"Raw nm output:\n{result.stdout[:2000]}")
-            # Log source content first 500 chars to check if inject_ functions exist
+            # Log source content first 1000 chars
             logger.warning(
                 f"Source content preview (first 1000 chars):\n{source_content[:1000]}"
             )
-            # Check if source contains inject_ pattern
-            inject_pattern = re.findall(r"\binject_\w+", source_content)
-            if inject_pattern:
-                logger.warning(
-                    f"Found inject_ patterns in source: {inject_pattern[:10]}"
-                )
-            else:
-                logger.warning("No inject_ patterns found in source code!")
+        else:
+            logger.warning("No FPB_INJECT markers found in source code!")
 
         return data, symbols, ""
 

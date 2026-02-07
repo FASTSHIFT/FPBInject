@@ -11,7 +11,12 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.patch_generator import PatchGenerator, check_dependencies, FPB_INJECT_MARKER
+from core.patch_generator import (
+    PatchGenerator,
+    check_dependencies,
+    FPB_INJECT_MARKER,
+    FPB_SECTION_ATTR,
+)
 
 
 class TestFindMarkedFunctions(unittest.TestCase):
@@ -181,8 +186,8 @@ class TestGeneratePatch(unittest.TestCase):
     def setUp(self):
         self.gen = PatchGenerator()
 
-    def test_generate_patch_renames_function(self):
-        """Test that patch generation renames marked functions"""
+    def test_generate_patch_adds_section_attribute(self):
+        """Test that patch generation adds section attribute to marked functions"""
         content = """
 #include <stdio.h>
 
@@ -197,8 +202,10 @@ void target_func(void) {
 
             patch_content, marked = self.gen.generate_patch(f.name)
 
-            # Verify function is renamed
-            self.assertIn("inject_target_func", patch_content)
+            # Verify section attribute is added
+            self.assertIn(FPB_SECTION_ATTR, patch_content)
+            # Verify function name is NOT renamed (original name preserved)
+            self.assertIn("void target_func(void)", patch_content)
             self.assertEqual(marked, ["target_func"])
 
             os.unlink(f.name)
@@ -239,7 +246,9 @@ void target_func(void) {
             self.assertIn("#define MY_MACRO 42", patch_content)
             self.assertIn("struct MyStruct", patch_content)
             self.assertIn("helper_func", patch_content)
-            self.assertIn("inject_target_func", patch_content)
+            # Function name preserved, section attribute added
+            self.assertIn("target_func", patch_content)
+            self.assertIn(FPB_SECTION_ATTR, patch_content)
 
             os.unlink(f.name)
 
@@ -305,43 +314,77 @@ void func(void) { }
             self.assertIn(header_path, patch_content)
 
 
-class TestRenameFunctions(unittest.TestCase):
-    """Test function renaming"""
+class TestSectionAttribute(unittest.TestCase):
+    """Test section attribute functionality"""
 
     def setUp(self):
         self.gen = PatchGenerator()
 
-    def test_rename_simple(self):
-        """Test simple function renaming"""
-        line = "void my_func(void) {"
-        result = self.gen._rename_function(line, "my_func")
-        self.assertEqual(result, "void inject_my_func(void) {")
+    def test_section_attribute_value(self):
+        """Test section attribute has correct value"""
+        self.assertIn(".fpb.text", FPB_SECTION_ATTR)
+        self.assertIn("used", FPB_SECTION_ATTR)
 
-    def test_rename_with_pointer(self):
-        """Test renaming function that returns pointer"""
-        line = "void *my_func(size_t size) {"
-        result = self.gen._rename_function(line, "my_func")
-        self.assertIn("inject_my_func", result)
+    def test_is_marker_line(self):
+        """Test marker line detection"""
+        # Block comment markers
+        self.assertTrue(self.gen._is_marker_line("/* FPB_INJECT */"))
+        self.assertTrue(self.gen._is_marker_line("/* fpb_inject */"))
+        self.assertTrue(self.gen._is_marker_line("/* FPB-INJECT */"))
+        self.assertTrue(self.gen._is_marker_line("/* fpb inject */"))
+        self.assertTrue(self.gen._is_marker_line("/*fpbinject*/"))
+        self.assertTrue(self.gen._is_marker_line("/* FPB_INJECT: description */"))
 
-    def test_rename_static(self):
-        """Test static function renaming"""
-        line = "static int my_func(int x) {"
-        result = self.gen._rename_function(line, "my_func")
-        self.assertEqual(result, "static int inject_my_func(int x) {")
+        # Line comment markers
+        self.assertTrue(self.gen._is_marker_line("// FPB_INJECT"))
+        self.assertTrue(self.gen._is_marker_line("// fpb_inject"))
 
-    def test_no_double_rename(self):
-        """Test no double renaming"""
-        line = "void inject_my_func(void) {"
-        result = self.gen._rename_function(line, "my_func")
-        # Already has inject_ prefix, should not rename again
-        self.assertEqual(result, "void inject_my_func(void) {")
+        # Non-marker lines
+        self.assertFalse(self.gen._is_marker_line("void foo(void) {"))
+        self.assertFalse(self.gen._is_marker_line("// Some other comment"))
+        self.assertFalse(self.gen._is_marker_line("/* Regular comment */"))
 
-    def test_rename_function_call(self):
-        """Test function call is also renamed (marked functions may call each other)"""
-        line = "    my_func();"  # Function call
-        result = self.gen._rename_function(line, "my_func")
-        # Call should also be renamed
-        self.assertIn("inject_my_func", result)
+    def test_is_function_definition(self):
+        """Test function definition detection"""
+        marked_funcs = ["foo", "bar"]
+
+        # Function definitions
+        self.assertTrue(
+            self.gen._is_function_definition("void foo(void) {", marked_funcs)
+        )
+        self.assertTrue(
+            self.gen._is_function_definition("int bar(int x) {", marked_funcs)
+        )
+        self.assertTrue(
+            self.gen._is_function_definition("static void foo(void)", marked_funcs)
+        )
+
+        # Non-matching functions
+        self.assertFalse(
+            self.gen._is_function_definition("void baz(void) {", marked_funcs)
+        )
+        self.assertFalse(self.gen._is_function_definition("int x = 5;", marked_funcs))
+
+    def test_no_double_attribute(self):
+        """Test that attribute is not added if already present"""
+        content = (
+            "/* FPB_INJECT */\n"
+            '__attribute__((section(".fpb.text"), used))\n'
+            "void func(void) { }\n"
+        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write(content)
+            f.flush()
+
+            patch_content, marked = self.gen.generate_patch(f.name)
+
+            # Function should be found
+            self.assertEqual(marked, ["func"])
+            # Count occurrences of section attribute - should only appear once
+            count = patch_content.count(FPB_SECTION_ATTR)
+            self.assertEqual(count, 1)
+
+            os.unlink(f.name)
 
 
 class TestConvertIncludePath(unittest.TestCase):

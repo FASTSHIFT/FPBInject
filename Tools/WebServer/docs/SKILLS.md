@@ -102,7 +102,7 @@ $ fpb_cli.py compile patch.c --elf firmware.elf --compile-commands build/compile
   "success": true,
   "binary_size": 55,
   "base_addr": "0x20001000",
-  "symbols": {"inject_digitalWrite": "0x20001000", "__printf_veneer": "0x20001010"}
+  "symbols": {"digitalWrite": "0x20001000", "__printf_veneer": "0x20001010"}
 }
 ```
 
@@ -151,7 +151,7 @@ $ fpb_cli.py --port /dev/ttyACM0 --elf firmware.elf --compile-commands build/com
     "upload_time": 0.02,
     "total_time": 0.13,
     "code_size": 55,
-    "inject_func": "inject_digitalWrite",
+    "inject_func": "digitalWrite",
     "target_addr": "0x08008608",
     "inject_addr": "0x20000250",
     "slot": 0,
@@ -194,13 +194,14 @@ Create a C file (e.g., `patch_digitalWrite.c`):
 #include <stdint.h>
 #include <stdio.h>
 
-// Patched function - must be named inject_<target_func>
-void inject_digitalWrite(uint8_t pin, uint8_t val) {
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
+void digitalWrite(uint8_t pin, uint8_t val) {
     // Add your custom logic here
     printf("digitalWrite: pin=%d, val=%d\r\n", (int)pin, (int)val);
     
-    // Note: Call to original function not shown here
-    // Use trampoline mode to auto-redirect to original after your code
+    // Note: Calling original function is NOT supported
+    // The FPB hardware redirects ALL calls to target function to this code
 }
 ```
 
@@ -258,16 +259,18 @@ fpb_cli.py --port /dev/ttyACM0 unpatch --comp 0
    fpb_cli.py -v --port /dev/ttyACM0 inject digitalWrite patch.c
    ```
 4. **FPB Slots** range from 0-5 (6 slots total)
-5. **inject_<funcName>** - patch functions MUST use this naming convention
+5. **/* FPB_INJECT */** - patch functions MUST be marked with this comment
 6. **\r\n line endings** - use for proper serial output display
 
 ## Common Patch Patterns
 
 ### Print parameters (replaces original)
 ```c
-void inject_myFunc(int a, int b) {
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
+void myFunc(int a, int b) {
     printf("myFunc: a=%d, b=%d\r\n", a, b);
-    // Original function is NOT called in this simple example
+    // Original function is NOT called - this code replaces it
 }
 ```
 
@@ -275,7 +278,9 @@ void inject_myFunc(int a, int b) {
 ```c
 // In trampoline mode, after your inject function returns,
 // the original function is automatically called
-void inject_myFunc(int a, int b) {
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
+void myFunc(int a, int b) {
     printf("myFunc called\r\n");
     // Trampoline will redirect to original automatically
 }
@@ -283,7 +288,9 @@ void inject_myFunc(int a, int b) {
 
 ### Skip original function
 ```c
-void inject_myFunc(void) {
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
+void myFunc(void) {
     // Return without calling original - effectively disables the function
     return;
 }

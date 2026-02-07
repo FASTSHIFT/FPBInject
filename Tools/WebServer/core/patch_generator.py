@@ -9,7 +9,7 @@ Patch Generator for FPBInject (v2 - Marker Based)
 Simple strategy:
 1. Copy the entire source file (preserving all includes, macros, structs, etc.)
 2. Find functions marked with /* FPB_INJECT */ comment
-3. Rename marked functions to inject_xxx
+3. Add section attribute to marked functions for placement in .fpb.text
 4. Linker with --gc-sections will remove unused code
 
 Usage:
@@ -18,8 +18,11 @@ Usage:
     /* FPB_INJECT */
     void my_function(void)
     {
-        // modified code
+        // modified code - this completely replaces the original function
     }
+
+Note: Calling the original function from injected code is NOT supported
+      due to FPB hardware limitations (would cause infinite recursion).
 """
 
 import logging
@@ -32,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 # Marker comment pattern
 FPB_INJECT_MARKER = "FPB_INJECT"
+
+# Section attribute for FPB inject functions
+FPB_SECTION_ATTR = '__attribute__((section(".fpb.text"), used))'
 
 
 class PatchGenerator:
@@ -83,14 +89,16 @@ class PatchGenerator:
         ]
 
         combined_pattern = f"(?:{patterns[0]}|{patterns[1]})"
-        # Full pattern: marker + optional whitespace + function signature
+        # Full pattern: marker + optional __attribute__ + function signature
+        # Note: __attribute__((...)) has nested parens, use .*? with DOTALL
         full_pattern = (
             rf"(?:{combined_pattern})\s*\n?"
-            r"(?:\s*(?:static|inline|extern|const|volatile|__attribute__\s*\([^)]*\))\s+)*"
+            r"(?:__attribute__\s*\(\(.*?\)\)\s*\n?)?"
+            r"(?:(?:static|inline|extern|const|volatile)\s+)*"
             r"[\w\s\*]+?\s+(\w+)\s*\("
         )
 
-        for match in re.finditer(full_pattern, content, re.MULTILINE):
+        for match in re.finditer(full_pattern, content, re.MULTILINE | re.DOTALL):
             func_name = match.group(1)
             # Skip common keywords that might be matched
             if func_name not in ("if", "while", "for", "switch", "return"):
@@ -160,11 +168,11 @@ class PatchGenerator:
         file_path: str,
     ) -> str:
         """
-        Process source content: rename functions, convert includes.
+        Process source content: add section attribute to marked functions, convert includes.
 
         Args:
             content: Original source content
-            marked_functions: Functions to rename to inject_xxx
+            marked_functions: Functions to add section attribute
             source_dir: Directory of source file
             file_path: Path to source file
 
@@ -182,39 +190,70 @@ class PatchGenerator:
         result_lines.append(" */")
         result_lines.append("")
 
+        # Track if we just saw an FPB_INJECT marker
+        saw_marker = False
+        # Track if next function definition needs attribute (to avoid double add)
+        needs_attribute = False
+
         # Process each line
-        for line in lines:
+        for i, line in enumerate(lines):
             processed_line = line
 
             # Convert relative includes to absolute
             processed_line = self._convert_include_path(processed_line, source_dir)
 
-            # Rename marked functions
-            for func_name in marked_functions:
-                processed_line = self._rename_function(processed_line, func_name)
+            # Check if this line contains FPB_INJECT marker
+            if self._is_marker_line(processed_line):
+                saw_marker = True
+                # Check if next lines already have the attribute
+                needs_attribute = True
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    if FPB_SECTION_ATTR in lines[j] or ".fpb.text" in lines[j]:
+                        needs_attribute = False
+                        break
+                    # Stop looking if we hit the function definition
+                    if self._is_function_definition(lines[j], marked_functions):
+                        break
+                result_lines.append(processed_line)
+                continue
+
+            # If previous line was marker and this is function definition
+            if saw_marker and self._is_function_definition(
+                processed_line, marked_functions
+            ):
+                # Add section attribute before the function only if not already present
+                if needs_attribute:
+                    result_lines.append(FPB_SECTION_ATTR)
+                saw_marker = False
+                needs_attribute = False
 
             result_lines.append(processed_line)
 
         return "\n".join(result_lines)
 
-    def _rename_function(self, line: str, func_name: str) -> str:
-        """
-        Rename a function in a line (func_name -> inject_func_name).
+    def _is_marker_line(self, line: str) -> bool:
+        """Check if line contains FPB_INJECT marker."""
+        marker_patterns = [
+            r"/\*\s*[Ff][Pp][Bb][\s_\-]*[Ii][Nn][Jj][Ee][Cc][Tt]",
+            r"//\s*[Ff][Pp][Bb][_\-]?[Ii][Nn][Jj][Ee][Cc][Tt]",
+        ]
+        for pattern in marker_patterns:
+            if re.search(pattern, line):
+                return True
+        return False
 
-        Only renames function definitions/declarations, not calls.
-        """
-        # Skip if already renamed
-        if f"inject_{func_name}" in line:
-            return line
+    def _is_function_definition(self, line: str, marked_functions: List[str]) -> bool:
+        """Check if line is a function definition for one of the marked functions."""
+        for func_name in marked_functions:
+            # Pattern to match function definition start
+            pattern = rf"\b{re.escape(func_name)}\s*\("
+            if re.search(pattern, line):
+                return True
+        return False
 
-        # Pattern for function definition: something before func_name(
-        # This catches: void func_name(, static int func_name(, etc.
-        pattern = r"(\s+|\*)" + re.escape(func_name) + r"\s*\("
-
-        def replacer(m):
-            return m.group(1) + f"inject_{func_name}("
-
-        return re.sub(pattern, replacer, line)
+    # Note: _rename_function method removed in v2.1
+    # Functions are no longer renamed to inject_xxx
+    # Instead, section attribute is added to marked functions
 
     def _convert_include_path(self, line: str, source_dir: str) -> str:
         """

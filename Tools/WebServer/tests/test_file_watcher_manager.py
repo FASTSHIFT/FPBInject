@@ -294,7 +294,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_gen = Mock()
             mock_gen.find_marked_functions.return_value = ["test_func"]
             mock_gen.generate_patch.return_value = (
-                "void inject_test_func(void) {}",
+                "/* FPB_INJECT */\nvoid test_func(void) {}",
                 ["test_func"],
             )
             mock_gen_class.return_value = mock_gen
@@ -327,7 +327,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_gen = Mock()
             mock_gen.find_marked_functions.return_value = ["test_func"]
             mock_gen.generate_patch.return_value = (
-                "void inject_test_func(void) {}",
+                "/* FPB_INJECT */\nvoid test_func(void) {}",
                 ["test_func"],
             )
             mock_gen_class.return_value = mock_gen
@@ -384,7 +384,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_gen = Mock()
             mock_gen.find_marked_functions.return_value = ["func1", "func2"]
             mock_gen.generate_patch.return_value = (
-                "void inject_func1(void) {} void inject_func2(void) {}",
+                "/* FPB_INJECT */\nvoid func1(void) {} /* FPB_INJECT */\nvoid func2(void) {}",
                 ["func1", "func2"],
             )
             mock_gen_class.return_value = mock_gen
@@ -443,7 +443,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_gen = Mock()
             mock_gen.find_marked_functions.return_value = ["test_func"]
             mock_gen.generate_patch.return_value = (
-                "void inject_test_func(void) {}",
+                "/* FPB_INJECT */\nvoid test_func(void) {}",
                 ["test_func"],
             )
             mock_gen_class.return_value = mock_gen
@@ -517,7 +517,7 @@ class TestTriggerAutoInject(unittest.TestCase):
                 "func5",
             ]
             mock_gen.generate_patch.return_value = (
-                "void inject_func1(void) {}",
+                "/* FPB_INJECT */\nvoid func1(void) {}",
                 ["func1", "func2", "func3", "func4", "func5"],
             )
             mock_gen_class.return_value = mock_gen

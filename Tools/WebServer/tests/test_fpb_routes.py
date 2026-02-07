@@ -289,7 +289,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
         response = self.client.post(
             "/api/fpb/inject",
             json={
-                "source_content": "void inject_test() {}",
+                "source_content": "/* FPB_INJECT */\nvoid test_func() {}",
                 "target_func": "original_func",
             },
         )
@@ -348,7 +348,9 @@ class TestFPBInjectMultiRoute(TestFPBRoutesBase):
 
         response = self.client.post(
             "/api/fpb/inject/multi",
-            json={"source_content": "void inject_a() {} void inject_b() {}"},
+            json={
+                "source_content": "/* FPB_INJECT */\nvoid func_a() {} /* FPB_INJECT */\nvoid func_b() {}"
+            },
         )
         data = json.loads(response.data)
 

@@ -62,12 +62,16 @@ python fpb_cli.py --port /dev/ttyACM0 --elf build/FPBInject.elf \
 // patch_digitalWrite.c
 #include <Arduino.h>
 
-__attribute__((used, section(".text.inject")))
-void inject_digitalWrite(uint8_t pin, uint8_t value) {
-    Serial.printf("Hooked: pin=%d val=%d\n", pin, value);
-    value ? digitalWrite_HIGH(pin) : digitalWrite_LOW(pin);
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
+void digitalWrite(uint8_t pin, uint8_t value) {
+    // Completely replaces the original digitalWrite function
+    Serial.printf("Patched: pin=%d val=%d\n", pin, value);
+    value ? GPIO_SetBits(GPIOA, 1 << pin) : GPIO_ResetBits(GPIOA, 1 << pin);
 }
 ```
+
+> **Note**: Calling the original function from injected code is NOT supported due to FPB hardware limitations.
 
 ## CMake Options
 

@@ -273,7 +273,7 @@ class TestCompileInject(unittest.TestCase):
             ]
 
             data, symbols, error = compiler.compile_inject(
-                "void inject_test() {}",
+                "/* FPB_INJECT */\nvoid test_func() {}",
                 0x20000000,
                 compile_commands_path="/tmp/compile_commands.json",
             )
@@ -303,7 +303,7 @@ class TestCompileInject(unittest.TestCase):
             ]
 
             data, symbols, error = compiler.compile_inject(
-                "void inject_test() {}",
+                "/* FPB_INJECT */\nvoid test_func() {}",
                 0x20000000,
                 compile_commands_path="/tmp/compile_commands.json",
             )
@@ -688,7 +688,7 @@ class TestCompileInjectExtended(unittest.TestCase):
             mock_run.return_value = Mock(returncode=1, stderr="compile error")
 
             data, symbols, error = compiler.compile_inject(
-                "void inject_test() {}",
+                "/* FPB_INJECT */\nvoid test_func() {}",
                 0x20000000,
                 compile_commands_path="/tmp/compile_commands.json",
             )
@@ -713,7 +713,7 @@ class TestCompileInjectExtended(unittest.TestCase):
             mock_run.return_value = Mock(returncode=1, stderr="compile error")
 
             data, symbols, error = compiler.compile_inject(
-                "void inject_test() {}",
+                "/* FPB_INJECT */\nvoid test_func() {}",
                 0x20000000,
                 compile_commands_path="/tmp/compile_commands.json",
                 source_ext=".cpp",
@@ -766,7 +766,8 @@ class TestStaticAndGlobalVariables(unittest.TestCase):
         source = """
 static int counter = 42;
 
-int inject_test(void) {
+/* FPB_INJECT */
+int test_func(void) {
     counter++;
     return counter;
 }
@@ -785,8 +786,8 @@ int inject_test(void) {
             self.assertIsNotNone(data)
             self.assertGreater(len(data), 0)
 
-            # Check that inject_test symbol exists
-            self.assertIn("inject_test", symbols)
+            # Check that test_func symbol exists
+            self.assertIn("test_func", symbols)
 
             # The binary should contain the initialized value (42 = 0x2a)
             # It should be somewhere in the data section
@@ -803,7 +804,8 @@ int inject_test(void) {
         source = """
 static int zero_counter;
 
-int inject_test(void) {
+/* FPB_INJECT */
+int test_func(void) {
     zero_counter++;
     return zero_counter;
 }
@@ -822,8 +824,8 @@ int inject_test(void) {
             self.assertIsNotNone(data)
             self.assertGreater(len(data), 0)
 
-            # Check that inject_test symbol exists
-            self.assertIn("inject_test", symbols)
+            # Check that test_func symbol exists
+            self.assertIn("test_func", symbols)
 
     @unittest.skipIf(
         not os.path.exists(
@@ -837,7 +839,8 @@ int inject_test(void) {
 static int initialized_var = 100;
 static int zero_var;
 
-int inject_test(void) {
+/* FPB_INJECT */
+int test_func(void) {
     initialized_var++;
     zero_var++;
     return initialized_var + zero_var;
@@ -857,8 +860,8 @@ int inject_test(void) {
             self.assertIsNotNone(data)
             self.assertGreater(len(data), 0)
 
-            # Check that inject_test symbol exists
-            self.assertIn("inject_test", symbols)
+            # Check that test_func symbol exists
+            self.assertIn("test_func", symbols)
 
             # The binary should contain the initialized value (100 = 0x64)
             self.assertIn(b"\x64\x00\x00\x00", data)
@@ -874,7 +877,8 @@ int inject_test(void) {
         source = """
 static int lookup_table[4] = {1, 2, 3, 4};
 
-int inject_test(int index) {
+/* FPB_INJECT */
+int test_func(int index) {
     if (index >= 0 && index < 4) {
         return lookup_table[index];
     }
@@ -894,8 +898,8 @@ int inject_test(int index) {
             self.assertEqual(error, "", f"Compile failed: {error}")
             self.assertIsNotNone(data)
 
-            # Check that inject_test symbol exists
-            self.assertIn("inject_test", symbols)
+            # Check that test_func symbol exists
+            self.assertIn("test_func", symbols)
 
             # The binary should contain the array values
             self.assertIn(b"\x01\x00\x00\x00", data)
@@ -914,7 +918,8 @@ int inject_test(int index) {
         source = """
 int global_counter = 55;
 
-int inject_test(void) {
+/* FPB_INJECT */
+int test_func(void) {
     global_counter++;
     return global_counter;
 }
@@ -932,8 +937,8 @@ int inject_test(void) {
             self.assertEqual(error, "", f"Compile failed: {error}")
             self.assertIsNotNone(data)
 
-            # Check that inject_test symbol exists
-            self.assertIn("inject_test", symbols)
+            # Check that test_func symbol exists
+            self.assertIn("test_func", symbols)
 
             # The binary should contain the initialized value (55 = 0x37)
             self.assertIn(b"\x37\x00\x00\x00", data)
@@ -949,7 +954,8 @@ int inject_test(void) {
         source = """
 static const int magic_numbers[] = {0xDEAD, 0xBEEF, 0xCAFE};
 
-int inject_test(int index) {
+/* FPB_INJECT */
+int test_func(int index) {
     if (index >= 0 && index < 3) {
         return magic_numbers[index];
     }
@@ -969,8 +975,8 @@ int inject_test(int index) {
             self.assertEqual(error, "", f"Compile failed: {error}")
             self.assertIsNotNone(data)
 
-            # Check that inject_test symbol exists
-            self.assertIn("inject_test", symbols)
+            # Check that test_func symbol exists
+            self.assertIn("test_func", symbols)
 
             # The binary should contain the magic numbers (little-endian)
             self.assertIn(b"\xad\xde\x00\x00", data)  # 0xDEAD
@@ -994,7 +1000,8 @@ class TestLinkerScriptBssHandling(unittest.TestCase):
 static volatile int bss_var1;
 static volatile int bss_var2;
 
-int inject_test(void) {
+/* FPB_INJECT */
+int test_func(void) {
     bss_var1++;
     bss_var2++;
     return bss_var1 + bss_var2;

@@ -110,7 +110,7 @@ fpb_cli.py compile <source_file> --elf <elf> --compile-commands <path> [--addr <
   "success": true,
   "binary_size": 55,
   "base_addr": "0x20001000",
-  "symbols": {"inject_digitalWrite": "0x20001000"}
+  "symbols": {"digitalWrite": "0x20001000"}
 }
 ```
 
@@ -203,19 +203,22 @@ See [SKILLS.md](../Tools/WebServer/docs/SKILLS.md) for detailed AI integration d
 
 ## Writing Patch Code
 
-Create a source file with an `inject_*` function:
+Create a source file with `/* FPB_INJECT */` marker:
 
 ```cpp
 // patch_digitalWrite.c
 #include <Arduino.h>
 
-__attribute__((used, section(".text.inject")))
-void inject_digitalWrite(uint8_t pin, uint8_t value) {
-    Serial.printf("Hooked: pin=%d val=%d\n", pin, value);
-    // Call original or custom implementation
-    value ? digitalWrite_HIGH(pin) : digitalWrite_LOW(pin);
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used))
+void digitalWrite(uint8_t pin, uint8_t value) {
+    // Completely replaces the original function
+    Serial.printf("Patched: pin=%d val=%d\n", pin, value);
+    value ? GPIO_SetBits(GPIOA, 1 << pin) : GPIO_ResetBits(GPIOA, 1 << pin);
 }
 ```
+
+> **Note**: Calling the original function from injected code is NOT supported due to FPB hardware limitations.
 
 ## Error Handling
 

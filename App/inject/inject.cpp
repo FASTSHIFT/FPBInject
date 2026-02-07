@@ -26,12 +26,14 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 
-__attribute__((used, section(".text.inject"))) void inject_digitalWrite(uint8_t pin, uint8_t value) {
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used)) void digitalWrite(uint8_t pin, uint8_t value) {
     Serial.printf("Injected: pin=%d val=%d ms=%d\n", pin, value, (int)millis());
     value ? digitalWrite_HIGH(pin) : digitalWrite_LOW(pin);
 }
 #endif
 
-__attribute__((used, section(".text.inject"))) void inject_no_args(void) {
+/* FPB_INJECT */
+__attribute__((section(".fpb.text"), used)) void no_args(void) {
     printf("Injected: no args\n");
 }
