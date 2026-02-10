@@ -195,7 +195,9 @@ class TestMain(unittest.TestCase):
     @patch("main.parse_args")
     def test_main_port_in_use(self, mock_args, mock_check, mock_restore, mock_create):
         """Test main exits when port is in use"""
-        mock_args.return_value = Mock(host="0.0.0.0", port=5500, debug=False)
+        mock_args.return_value = Mock(
+            host="0.0.0.0", port=5500, debug=False, skip_port_check=False
+        )
         mock_check.return_value = False
 
         with self.assertRaises(SystemExit) as cm:
@@ -210,7 +212,9 @@ class TestMain(unittest.TestCase):
     @patch("main.parse_args")
     def test_main_starts_server(self, mock_args, mock_check, mock_restore, mock_create):
         """Test main starts server successfully"""
-        mock_args.return_value = Mock(host="0.0.0.0", port=5500, debug=False)
+        mock_args.return_value = Mock(
+            host="0.0.0.0", port=5500, debug=False, skip_port_check=False
+        )
         mock_check.return_value = True
 
         mock_app = Mock()
@@ -223,6 +227,30 @@ class TestMain(unittest.TestCase):
         mock_app.run.assert_called_once_with(
             host="0.0.0.0", port=5500, debug=False, threaded=True
         )
+
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available")
+    @patch("main.parse_args")
+    def test_main_skip_port_check(
+        self, mock_args, mock_check, mock_restore, mock_create
+    ):
+        """Test main skips port check when skip_port_check is True"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0", port=5500, debug=False, skip_port_check=True
+        )
+        mock_check.return_value = False  # Port in use, but should be ignored
+
+        mock_app = Mock()
+        mock_create.return_value = mock_app
+
+        main.main()
+
+        # Port check should not be called when skip_port_check is True
+        mock_check.assert_not_called()
+        mock_create.assert_called_once()
+        mock_restore.assert_called_once()
+        mock_app.run.assert_called_once()
 
 
 if __name__ == "__main__":
