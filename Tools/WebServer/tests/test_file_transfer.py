@@ -384,7 +384,7 @@ class TestFileTransferRemoveMkdir(unittest.TestCase):
         success, msg = self.ft.frename("/old.txt", "/new.txt")
         self.assertTrue(success)
         self.mock_fpb.send_fl_cmd.assert_called_with(
-            'fl -c frename --path "/old.txt" --newpath "/new.txt"',
+            "fl -c frename --path /old.txt --newpath /new.txt",
             timeout=2.0,
             max_retries=3,
         )
