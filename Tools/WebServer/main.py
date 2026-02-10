@@ -87,6 +87,11 @@ def parse_args():
         action="store_true",
         help="Run in debug mode",
     )
+    parser.add_argument(
+        "--skip-port-check",
+        action="store_true",
+        help="Skip port availability check (use with caution)",
+    )
     return parser.parse_args()
 
 
@@ -133,15 +138,17 @@ def main():
     # Reduce verbosity of Flask/Werkzeug request logs
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
-    # Check if port is already in use
-    if not check_port_available(args.host, args.port):
-        logger.error(f"❌ Error: Port {args.port} is already in use!")
-        logger.error("   Another FPBInject server may already be running.")
-        logger.error(
-            "   Please close the program occupying this port, or use --port to specify another port."
-        )
-        logger.error(f"   Example: ./main.py --port {args.port + 1}")
-        sys.exit(1)
+    # Check if port is already in use, unless skipped
+    if not args.skip_port_check:
+        if not check_port_available(args.host, args.port):
+            logger.error(f"❌ Error: Port {args.port} is already in use!")
+            logger.error("   Another FPBInject server may already be running.")
+            logger.error(
+                "   Please close the program occupying this port, or use --port to specify another port."
+            )
+            logger.error(f"   Example: ./main.py --port {args.port + 1}")
+            logger.error("   Or use --skip-port-check to force start (not recommended)")
+            sys.exit(1)
 
     app = create_app()
 
