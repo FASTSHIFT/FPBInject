@@ -889,8 +889,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_POINTER(0, "orig", &orig, "Original addr", NULL, 0, 0),
         OPT_POINTER(0, "target", &target, "Target addr", NULL, 0, 0),
         OPT_BOOLEAN(0, "all", &all, "Clear all", NULL, 0, 0),
-        OPT_STRING('p', "path", &path, "File path", NULL, 0, 0),
-        OPT_STRING('n', "newpath", &newpath, "New file path", NULL, 0, 0),
+        OPT_STRING(0, "path", &path, "File path", NULL, 0, 0),
+        OPT_STRING(0, "newpath", &newpath, "New file path", NULL, 0, 0),
         OPT_STRING('m', "mode", &mode, "File mode (r/w/a)", NULL, 0, 0),
         OPT_END(),
     };
