@@ -154,7 +154,7 @@ jobs:
         working-directory: Tools/WebServer
         run: |
           echo "🧪 Running backend Python tests..."
-          python tests/run_tests.py --coverage --target 80
+          python tests/run_tests.py --coverage --html --target 80
           echo "✅ Backend tests passed!"
 
       - name: Install Node.js dependencies
@@ -231,31 +231,33 @@ jobs:
           echo "------------------------"
 
           # Parse firmware coverage from lcov
-          if [ -f "firmware-coverage/coverage.info" ]; then
-            echo "Found firmware-coverage/coverage.info"
-            FIRMWARE_COV=$(lcov --summary firmware-coverage/coverage.info 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
+          FIRMWARE_LCOV=$(find firmware-coverage -name "coverage.info" -type f 2>/dev/null | head -1)
+          if [ -n "$FIRMWARE_LCOV" ]; then
+            echo "Found $FIRMWARE_LCOV"
+            FIRMWARE_COV=$(lcov --summary "$FIRMWARE_LCOV" 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
           fi
 
-          # Parse backend Python coverage from htmlcov
-          if [ -f "webserver-coverage/htmlcov/index.html" ]; then
-            echo "Found webserver-coverage/htmlcov/index.html"
+          # Parse backend Python coverage from htmlcov - search for it dynamically
+          BACKEND_HTML=$(find webserver-coverage -path "*/htmlcov/index.html" -type f 2>/dev/null | head -1)
+          if [ -n "$BACKEND_HTML" ]; then
+            echo "Found $BACKEND_HTML"
             # Python coverage.py html format: class="pc_cov">XX%</td>
-            BACKEND_COV=$(grep -oE 'pc_cov">[0-9]+%' webserver-coverage/htmlcov/index.html | head -1 | sed 's/pc_cov">//' || echo "N/A")
+            BACKEND_COV=$(grep -oE 'pc_cov">[0-9]+%' "$BACKEND_HTML" | head -1 | sed 's/pc_cov">//' || echo "N/A")
           fi
 
-          # Parse frontend JavaScript coverage from lcov.info
-          if [ -f "webserver-coverage/coverage/lcov.info" ]; then
-            echo "Found webserver-coverage/coverage/lcov.info"
-            FRONTEND_COV=$(lcov --summary webserver-coverage/coverage/lcov.info 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
-          elif [ -f "webserver-coverage/coverage/index.html" ]; then
-            echo "Found webserver-coverage/coverage/index.html (istanbul html)"
-            # Istanbul html format
-            FRONTEND_COV=$(grep -oE '[0-9]+\.?[0-9]*%' webserver-coverage/coverage/index.html | head -1 || echo "N/A")
+          # Parse frontend JavaScript coverage from lcov.info - search dynamically
+          FRONTEND_LCOV=$(find webserver-coverage -name "lcov.info" -type f 2>/dev/null | head -1)
+          if [ -n "$FRONTEND_LCOV" ]; then
+            echo "Found $FRONTEND_LCOV"
+            FRONTEND_COV=$(lcov --summary "$FRONTEND_LCOV" 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
           fi
 
-          # Fallback: if still N/A, check if we can extract from any txt or summary files
-          if [ "$FIRMWARE_COV" = "N/A" ] && [ -f "firmware-coverage/html/index.html" ]; then
-            FIRMWARE_COV=$(grep -oE '[0-9]+\.?[0-9]*%' firmware-coverage/html/index.html | head -1 || echo "N/A")
+          # Fallback: if firmware still N/A, try html/index.html
+          if [ "$FIRMWARE_COV" = "N/A" ]; then
+            FIRMWARE_HTML=$(find firmware-coverage -name "index.html" -type f 2>/dev/null | head -1)
+            if [ -n "$FIRMWARE_HTML" ]; then
+              FIRMWARE_COV=$(grep -oE '[0-9]+\.?[0-9]*%' "$FIRMWARE_HTML" | head -1 || echo "N/A")
+            fi
           fi
 
           echo "firmware_cov=$FIRMWARE_COV" >> $GITHUB_OUTPUT
