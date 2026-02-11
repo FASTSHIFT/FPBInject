@@ -218,38 +218,56 @@ jobs:
           echo "     Generating Coverage Summary"
           echo "========================================="
 
+          # Install lcov for parsing
+          sudo apt-get update && sudo apt-get install -y lcov
+
           FIRMWARE_COV="N/A"
           BACKEND_COV="N/A"
           FRONTEND_COV="N/A"
 
-          # Parse firmware coverage from lcov summary
+          # Debug: Show what files were downloaded
+          echo "--- Downloaded files ---"
+          find firmware-coverage webserver-coverage -type f 2>/dev/null || echo "No coverage files found"
+          echo "------------------------"
+
+          # Parse firmware coverage from lcov
           if [ -f "firmware-coverage/coverage.info" ]; then
-            FIRMWARE_COV=$(lcov --summary firmware-coverage/coverage.info 2>&1 | grep "lines" | grep -oP '\d+\.\d+%' | head -1 || echo "N/A")
-          elif [ -f "firmware-coverage/coverage_summary.txt" ]; then
-            FIRMWARE_COV=$(grep -oP 'Line coverage: \K[\d.]+%' firmware-coverage/coverage_summary.txt || echo "N/A")
+            echo "Found firmware-coverage/coverage.info"
+            FIRMWARE_COV=$(lcov --summary firmware-coverage/coverage.info 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
           fi
 
-          # Parse backend Python coverage
+          # Parse backend Python coverage from htmlcov
           if [ -f "webserver-coverage/htmlcov/index.html" ]; then
-            BACKEND_COV=$(grep -oP 'pc_cov">\K\d+%' webserver-coverage/htmlcov/index.html | head -1 || echo "N/A")
-          elif [ -f "webserver-coverage/coverage.txt" ]; then
-            BACKEND_COV=$(grep -oP 'TOTAL.*\K\d+%' webserver-coverage/coverage.txt || echo "N/A")
+            echo "Found webserver-coverage/htmlcov/index.html"
+            # Python coverage.py html format: class="pc_cov">XX%</td>
+            BACKEND_COV=$(grep -oE 'pc_cov">[0-9]+%' webserver-coverage/htmlcov/index.html | head -1 | sed 's/pc_cov">//' || echo "N/A")
           fi
 
-          # Parse frontend JavaScript coverage
-          if [ -f "webserver-coverage/coverage/coverage-summary.json" ]; then
-            FRONTEND_COV=$(jq -r '.total.lines.pct | tostring + "%"' webserver-coverage/coverage/coverage-summary.json 2>/dev/null || echo "N/A")
+          # Parse frontend JavaScript coverage from lcov.info
+          if [ -f "webserver-coverage/coverage/lcov.info" ]; then
+            echo "Found webserver-coverage/coverage/lcov.info"
+            FRONTEND_COV=$(lcov --summary webserver-coverage/coverage/lcov.info 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
           elif [ -f "webserver-coverage/coverage/index.html" ]; then
-            FRONTEND_COV=$(grep -oP 'Lines.*?(\d+\.?\d*%)' webserver-coverage/coverage/index.html | grep -oP '\d+\.?\d*%' | head -1 || echo "N/A")
+            echo "Found webserver-coverage/coverage/index.html (istanbul html)"
+            # Istanbul html format
+            FRONTEND_COV=$(grep -oE '[0-9]+\.?[0-9]*%' webserver-coverage/coverage/index.html | head -1 || echo "N/A")
+          fi
+
+          # Fallback: if still N/A, check if we can extract from any txt or summary files
+          if [ "$FIRMWARE_COV" = "N/A" ] && [ -f "firmware-coverage/html/index.html" ]; then
+            FIRMWARE_COV=$(grep -oE '[0-9]+\.?[0-9]*%' firmware-coverage/html/index.html | head -1 || echo "N/A")
           fi
 
           echo "firmware_cov=$FIRMWARE_COV" >> $GITHUB_OUTPUT
           echo "backend_cov=$BACKEND_COV" >> $GITHUB_OUTPUT
           echo "frontend_cov=$FRONTEND_COV" >> $GITHUB_OUTPUT
 
+          echo ""
+          echo "========================================="
           echo "Firmware Coverage: $FIRMWARE_COV"
-          echo "Backend Coverage: $BACKEND_COV"
+          echo "Backend Coverage:  $BACKEND_COV"
           echo "Frontend Coverage: $FRONTEND_COV"
+          echo "========================================="
 
       - name: Post coverage to PR
         if: github.event_name == 'pull_request'
