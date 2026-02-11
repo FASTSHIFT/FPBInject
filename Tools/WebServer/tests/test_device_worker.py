@@ -229,6 +229,10 @@ class TestSerialOperations(unittest.TestCase):
         self.device.raw_log_next_id = 0
         self.device.raw_log_max_size = 1000
 
+        # Mock log file recording attributes
+        self.device.log_file_enabled = False
+        self.device.log_file_line_buffer = ""
+
         self.worker.start()
         time.sleep(0.5)  # Give more time for worker to process
 
