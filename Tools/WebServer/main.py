@@ -105,6 +105,18 @@ def restore_state():
         restore_file_watcher()
         logger.info("File watcher restored")
 
+    # Restore log file recording if enabled
+    if device.log_file_enabled and device.log_file_path:
+        from services.log_recorder import log_recorder
+
+        logger.info(f"Restoring log file recording: {device.log_file_path}")
+        success, error = log_recorder.start(device.log_file_path)
+        if success:
+            logger.info("Log file recording restored")
+        else:
+            logger.warning(f"Failed to restore log recording: {error}")
+            device.log_file_enabled = False
+
     # Check auto-connect conditions
     if not device.auto_connect or not device.port:
         return

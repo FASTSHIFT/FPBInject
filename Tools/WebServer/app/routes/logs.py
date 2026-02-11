@@ -153,6 +153,60 @@ def api_serial_send():
         return jsonify({"success": False, "error": "Worker not running"})
 
 
+@bp.route("/log_file/start", methods=["POST"])
+def api_log_file_start():
+    """Start recording logs to file."""
+    from services.log_recorder import log_recorder
+
+    data = request.json or {}
+    path = data.get("path", "")
+
+    if not path:
+        return jsonify({"success": False, "error": "No path provided"})
+
+    device = state.device
+    success, error = log_recorder.start(path)
+
+    if success:
+        device.log_file_enabled = True
+        device.log_file_path = path
+        state.save_config()
+
+    return jsonify({"success": success, "error": error})
+
+
+@bp.route("/log_file/stop", methods=["POST"])
+def api_log_file_stop():
+    """Stop recording logs to file."""
+    from services.log_recorder import log_recorder
+
+    device = state.device
+    success, error = log_recorder.stop()
+
+    if success:
+        device.log_file_enabled = False
+        state.save_config()
+
+    return jsonify({"success": success, "error": error})
+
+
+@bp.route("/log_file/status", methods=["GET"])
+def api_log_file_status():
+    """Get log file recording status."""
+    from services.log_recorder import log_recorder
+
+    device = state.device
+    return jsonify(
+        {
+            "success": True,
+            "enabled": log_recorder.enabled,
+            "path": log_recorder.path,
+            "config_enabled": device.log_file_enabled,
+            "config_path": device.log_file_path,
+        }
+    )
+
+
 @bp.route("/command", methods=["POST"])
 def api_command():
     """Send raw command to device."""

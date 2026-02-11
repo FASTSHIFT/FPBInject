@@ -39,6 +39,8 @@ PERSISTENT_KEYS = [
     "enable_decompile",
     "transfer_max_retries",
     "verify_crc",
+    "log_file_enabled",
+    "log_file_path",
 ]
 
 
@@ -115,6 +117,11 @@ class DeviceState:
         # Slot update tracking (for frontend push)
         self.slot_update_id = 0  # Incremented on slot info change
         self.cached_slots = []  # Cached slot info from last info response
+
+        # Log file recording
+        self.log_file_enabled = False
+        self.log_file_path = ""
+        self.log_file_line_buffer = ""  # Buffer for line-based logging
 
     def add_tool_log(self, message):
         """Add a message to tool output log (shown in OUTPUT terminal)."""
