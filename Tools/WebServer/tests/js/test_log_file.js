@@ -218,6 +218,8 @@ describe('Log File Recording', () => {
 
   describe('browseLogFile', () => {
     it('should open file browser for log file directory', () => {
+      document.body.innerHTML += `<button id="browseLogFileBtn"></button>`;
+
       window.FPBState = {
         fileBrowserCallback: null,
         fileBrowserFilter: '',
@@ -229,6 +231,7 @@ describe('Log File Recording', () => {
         // Mock implementation
       };
 
+      document.getElementById('logFileEnabled').checked = false;
       window.browseLogFile();
 
       expect(window.FPBState.fileBrowserFilter).toBe('');
@@ -236,8 +239,30 @@ describe('Log File Recording', () => {
       expect(typeof window.FPBState.fileBrowserCallback).toBe('function');
     });
 
+    it('should not allow browsing while recording', () => {
+      document.body.innerHTML += `<button id="browseLogFileBtn"></button>`;
+
+      window.FPBState = {
+        fileBrowserCallback: null,
+        fileBrowserFilter: '',
+        fileBrowserMode: '',
+      };
+
+      window.HOME_PATH = '/home/user';
+      window.openFileBrowser = (path) => {
+        throw new Error('Should not be called');
+      };
+
+      document.getElementById('logFileEnabled').checked = true;
+      window.browseLogFile();
+
+      // Should not set callback when recording
+      expect(window.FPBState.fileBrowserCallback).toBe(null);
+    });
+
     it('should append default filename when directory selected', () => {
       const pathInput = document.getElementById('logFilePath');
+      document.body.innerHTML += `<button id="browseLogFileBtn"></button>`;
 
       window.FPBState = {
         fileBrowserCallback: null,
@@ -247,8 +272,9 @@ describe('Log File Recording', () => {
 
       window.HOME_PATH = '/home/user';
       window.openFileBrowser = (path) => {};
-      window.saveConfig = async (silent) => {};
+      window.onLogFilePathChange = () => {};
 
+      document.getElementById('logFileEnabled').checked = false;
       window.browseLogFile();
 
       // Simulate directory selection
@@ -259,6 +285,7 @@ describe('Log File Recording', () => {
 
     it('should keep filename when file path selected', () => {
       const pathInput = document.getElementById('logFilePath');
+      document.body.innerHTML += `<button id="browseLogFileBtn"></button>`;
 
       window.FPBState = {
         fileBrowserCallback: null,
@@ -268,14 +295,163 @@ describe('Log File Recording', () => {
 
       window.HOME_PATH = '/home/user';
       window.openFileBrowser = (path) => {};
-      window.saveConfig = async (silent) => {};
+      window.onLogFilePathChange = () => {};
 
+      document.getElementById('logFileEnabled').checked = false;
       window.browseLogFile();
 
       // Simulate file selection
       window.FPBState.fileBrowserCallback('/tmp/my_custom.log');
 
       expect(pathInput.value).toBe('/tmp/my_custom.log');
+    });
+  });
+
+  describe('updateLogFilePathState', () => {
+    it('should disable path input when recording', () => {
+      document.body.innerHTML += `<button id="browseLogFileBtn"></button>`;
+      const pathInput = document.getElementById('logFilePath');
+      const browseBtn = document.getElementById('browseLogFileBtn');
+
+      window.updateLogFilePathState(true);
+
+      expect(pathInput.disabled).toBe(true);
+      expect(pathInput.style.opacity).toBe('0.5');
+      expect(browseBtn.disabled).toBe(true);
+      expect(browseBtn.style.opacity).toBe('0.5');
+      expect(browseBtn.style.cursor).toBe('not-allowed');
+    });
+
+    it('should enable path input when not recording', () => {
+      document.body.innerHTML += `<button id="browseLogFileBtn"></button>`;
+      const pathInput = document.getElementById('logFilePath');
+      const browseBtn = document.getElementById('browseLogFileBtn');
+
+      window.updateLogFilePathState(false);
+
+      expect(pathInput.disabled).toBe(false);
+      expect(pathInput.style.opacity).toBe('1');
+      expect(browseBtn.disabled).toBe(false);
+      expect(browseBtn.style.opacity).toBe('1');
+      expect(browseBtn.style.cursor).toBe('pointer');
+    });
+  });
+
+  describe('onLogFilePathChange', () => {
+    it('should save path when not recording', async () => {
+      const pathInput = document.getElementById('logFilePath');
+      pathInput.value = '/tmp/new.log';
+
+      document.getElementById('logFileEnabled').checked = false;
+
+      mockFetch('/api/config', {
+        success: true,
+      });
+
+      await window.onLogFilePathChange();
+
+      const calls = window.fetch.mock.calls;
+      expect(calls.length).toBe(1);
+      expect(calls[0][0]).toBe('/api/config');
+
+      const body = JSON.parse(calls[0][1].body);
+      expect(body.log_file_path).toBe('/tmp/new.log');
+    });
+
+    it('should not save path when recording', async () => {
+      const pathInput = document.getElementById('logFilePath');
+      pathInput.value = '/tmp/new.log';
+
+      document.getElementById('logFileEnabled').checked = true;
+
+      await window.onLogFilePathChange();
+
+      const calls = window.fetch.mock.calls;
+      expect(calls.length).toBe(0);
+    });
+
+    it('should not save empty path', async () => {
+      const pathInput = document.getElementById('logFilePath');
+      pathInput.value = '   ';
+
+      document.getElementById('logFileEnabled').checked = false;
+
+      await window.onLogFilePathChange();
+
+      const calls = window.fetch.mock.calls;
+      expect(calls.length).toBe(0);
+    });
+  });
+
+  describe('status check integration', () => {
+    it('should check status before starting', async () => {
+      const checkbox = document.getElementById('logFileEnabled');
+      const pathInput = document.getElementById('logFilePath');
+      pathInput.value = '/tmp/test.log';
+
+      mockFetch('/api/log_file/status', {
+        success: true,
+        enabled: false,
+        path: '',
+      });
+
+      mockFetch('/api/log_file/start', {
+        success: true,
+      });
+
+      checkbox.checked = true;
+      await window.onLogFileEnabledChange();
+
+      const calls = window.fetch.mock.calls;
+      expect(calls[0][0]).toBe('/api/log_file/status');
+      expect(calls[1][0]).toBe('/api/log_file/start');
+    });
+
+    it('should not restart if already recording same path', async () => {
+      const checkbox = document.getElementById('logFileEnabled');
+      const pathInput = document.getElementById('logFilePath');
+      pathInput.value = '/tmp/test.log';
+
+      mockFetch('/api/log_file/status', {
+        success: true,
+        enabled: true,
+        path: '/tmp/test.log',
+      });
+
+      checkbox.checked = true;
+      await window.onLogFileEnabledChange();
+
+      const calls = window.fetch.mock.calls;
+      expect(calls.length).toBe(1);
+      expect(calls[0][0]).toBe('/api/log_file/status');
+    });
+
+    it('should stop and restart if recording different path', async () => {
+      const checkbox = document.getElementById('logFileEnabled');
+      const pathInput = document.getElementById('logFilePath');
+      pathInput.value = '/tmp/new.log';
+
+      mockFetch('/api/log_file/status', {
+        success: true,
+        enabled: true,
+        path: '/tmp/old.log',
+      });
+
+      mockFetch('/api/log_file/stop', {
+        success: true,
+      });
+
+      mockFetch('/api/log_file/start', {
+        success: true,
+      });
+
+      checkbox.checked = true;
+      await window.onLogFileEnabledChange();
+
+      const calls = window.fetch.mock.calls;
+      expect(calls[0][0]).toBe('/api/log_file/status');
+      expect(calls[1][0]).toBe('/api/log_file/stop');
+      expect(calls[2][0]).toBe('/api/log_file/start');
     });
   });
 });
