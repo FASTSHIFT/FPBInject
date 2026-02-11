@@ -154,7 +154,7 @@ jobs:
         working-directory: Tools/WebServer
         run: |
           echo "🧪 Running backend Python tests..."
-          python tests/run_tests.py --coverage --target 80
+          python tests/run_tests.py --coverage --html --target 80
           echo "✅ Backend tests passed!"
 
       - name: Install Node.js dependencies
@@ -189,8 +189,163 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lower-machine, upper-machine]
     if: always()
+    permissions:
+      pull-requests: write
+      contents: read
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download firmware coverage report
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: firmware-coverage-report
+          path: firmware-coverage
+
+      - name: Download WebServer coverage report
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: coverage-report
+          path: webserver-coverage
+
+      - name: Generate coverage summary
+        id: coverage
+        run: |
+          echo "========================================="
+          echo "     Generating Coverage Summary"
+          echo "========================================="
+
+          # Install lcov for parsing
+          sudo apt-get update && sudo apt-get install -y lcov
+
+          FIRMWARE_COV="N/A"
+          BACKEND_COV="N/A"
+          FRONTEND_COV="N/A"
+
+          # Debug: Show what files were downloaded
+          echo "--- Downloaded files ---"
+          find firmware-coverage webserver-coverage -type f 2>/dev/null || echo "No coverage files found"
+          echo "------------------------"
+
+          # Parse firmware coverage from lcov
+          FIRMWARE_LCOV=$(find firmware-coverage -name "coverage.info" -type f 2>/dev/null | head -1)
+          if [ -n "$FIRMWARE_LCOV" ]; then
+            echo "Found $FIRMWARE_LCOV"
+            FIRMWARE_COV=$(lcov --summary "$FIRMWARE_LCOV" 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
+          fi
+
+          # Parse backend Python coverage from htmlcov - search for it dynamically
+          BACKEND_HTML=$(find webserver-coverage -path "*/htmlcov/index.html" -type f 2>/dev/null | head -1)
+          if [ -n "$BACKEND_HTML" ]; then
+            echo "Found $BACKEND_HTML"
+            # Python coverage.py html format: class="pc_cov">XX%</td>
+            BACKEND_COV=$(grep -oE 'pc_cov">[0-9]+%' "$BACKEND_HTML" | head -1 | sed 's/pc_cov">//' || echo "N/A")
+          fi
+
+          # Parse frontend JavaScript coverage from lcov.info - search dynamically
+          FRONTEND_LCOV=$(find webserver-coverage -name "lcov.info" -type f 2>/dev/null | head -1)
+          if [ -n "$FRONTEND_LCOV" ]; then
+            echo "Found $FRONTEND_LCOV"
+            FRONTEND_COV=$(lcov --summary "$FRONTEND_LCOV" 2>&1 | grep -E "lines\.*:" | sed -E 's/.*: ([0-9.]+)%.*/\1%/' || echo "N/A")
+          fi
+
+          # Fallback: if firmware still N/A, try html/index.html
+          if [ "$FIRMWARE_COV" = "N/A" ]; then
+            FIRMWARE_HTML=$(find firmware-coverage -name "index.html" -type f 2>/dev/null | head -1)
+            if [ -n "$FIRMWARE_HTML" ]; then
+              FIRMWARE_COV=$(grep -oE '[0-9]+\.?[0-9]*%' "$FIRMWARE_HTML" | head -1 || echo "N/A")
+            fi
+          fi
+
+          echo "firmware_cov=$FIRMWARE_COV" >> $GITHUB_OUTPUT
+          echo "backend_cov=$BACKEND_COV" >> $GITHUB_OUTPUT
+          echo "frontend_cov=$FRONTEND_COV" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "========================================="
+          echo "Firmware Coverage: $FIRMWARE_COV"
+          echo "Backend Coverage:  $BACKEND_COV"
+          echo "Frontend Coverage: $FRONTEND_COV"
+          echo "========================================="
+
+      - name: Post coverage to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const firmwareCov = '${{ steps.coverage.outputs.firmware_cov }}';
+            const backendCov = '${{ steps.coverage.outputs.backend_cov }}';
+            const frontendCov = '${{ steps.coverage.outputs.frontend_cov }}';
+            
+            const lowerResult = '${{ needs.lower-machine.result }}';
+            const upperResult = '${{ needs.upper-machine.result }}';
+            
+            const getStatusEmoji = (result) => result === 'success' ? '✅' : '❌';
+            const getCovEmoji = (cov) => {
+              if (cov === 'N/A') return '⚪';
+              const num = parseFloat(cov);
+              if (num >= 80) return '🟢';
+              if (num >= 60) return '🟡';
+              return '🔴';
+            };
+            
+            const body = `## 📊 FPBInject CI Coverage Report
+            
+            | Component | Status | Coverage |
+            |-----------|--------|----------|
+            | Firmware (Lower Machine) | ${getStatusEmoji(lowerResult)} ${lowerResult} | ${getCovEmoji(firmwareCov)} ${firmwareCov} |
+            | Backend (Python) | ${getStatusEmoji(upperResult)} ${upperResult} | ${getCovEmoji(backendCov)} ${backendCov} |
+            | Frontend (JavaScript) | ${getStatusEmoji(upperResult)} ${upperResult} | ${getCovEmoji(frontendCov)} ${frontendCov} |
+            
+            ---
+            <details>
+            <summary>📁 Coverage Artifacts</summary>
+            
+            - 📦 **firmware-coverage-report**: Firmware unit test coverage (lcov)
+            - 📦 **coverage-report**: WebServer backend & frontend coverage
+            
+            Download from the [Actions artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) tab.
+            </details>
+            
+            > 🎯 Coverage threshold: **80%**
+            > 📅 Generated at: ${new Date().toISOString()}
+            `;
+            
+            // Find existing coverage comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('FPBInject CI Coverage Report')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+              console.log('Updated existing coverage comment');
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+              console.log('Created new coverage comment');
+            }
+
       - name: Check job results
         run: |
           echo "========================================="
