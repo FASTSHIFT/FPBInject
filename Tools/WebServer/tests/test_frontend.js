@@ -183,6 +183,7 @@ require('./js/test_sidebar')(w);
 require('./js/test_patch')(w);
 require('./js/test_editor')(w);
 require('./js/test_config')(w);
+require('./js/test_log_file')(w);
 require('./js/test_features')(w);
 require('./js/test_transfer')(w);
 

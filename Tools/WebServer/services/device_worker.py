@@ -198,6 +198,26 @@ class DeviceWorker:
         self.device.raw_log_next_id += 1
         entry = {"id": log_id, "data": data}
         self.device.raw_serial_log.append(entry)
+
+        # Write to log file if enabled (line-buffered)
+        if self.device.log_file_enabled:
+            from services.log_recorder import log_recorder
+            import re
+
+            # Add to buffer
+            self.device.log_file_line_buffer += data
+
+            # Write complete lines
+            while "\n" in self.device.log_file_line_buffer:
+                line, self.device.log_file_line_buffer = (
+                    self.device.log_file_line_buffer.split("\n", 1)
+                )
+                # Remove ANSI escape sequences
+                line = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", line)
+                # Only write lines with actual content
+                if line and line.strip():
+                    log_recorder.write(line)
+
         if len(self.device.raw_serial_log) > self.device.raw_log_max_size:
             self.device.raw_serial_log = self.device.raw_serial_log[
                 -self.device.raw_log_max_size :

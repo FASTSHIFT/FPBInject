@@ -63,6 +63,13 @@ async function loadConfig() {
         data.enable_decompile;
     if (data.verify_crc !== undefined)
       document.getElementById('verifyCrc').checked = data.verify_crc;
+    if (data.log_file_enabled !== undefined)
+      document.getElementById('logFileEnabled').checked = data.log_file_enabled;
+    if (data.log_file_path)
+      document.getElementById('logFilePath').value = data.log_file_path;
+
+    // Update path input state based on recording status
+    updateLogFilePathState(data.log_file_enabled || false);
 
     const watchDirsSection = document.getElementById('watchDirsSection');
     if (watchDirsSection) {
@@ -97,6 +104,7 @@ async function saveConfig(silent = false) {
     auto_compile: document.getElementById('autoCompile').checked,
     enable_decompile: document.getElementById('enableDecompile').checked,
     verify_crc: document.getElementById('verifyCrc').checked,
+    // Note: log_file_enabled and log_file_path are saved separately
   };
 
   try {
@@ -256,6 +264,135 @@ function onVerifyCrcChange() {
   });
 }
 
+async function onLogFileEnabledChange() {
+  const enabled = document.getElementById('logFileEnabled').checked;
+  const pathInput = document.getElementById('logFilePath');
+
+  if (enabled) {
+    let path = pathInput.value.trim();
+    if (!path) {
+      path = '~/fpb_console.log';
+      pathInput.value = path;
+    }
+
+    try {
+      // Check current status first
+      const statusRes = await fetch('/api/log_file/status');
+      const statusData = await statusRes.json();
+
+      if (statusData.enabled && statusData.path === path) {
+        updateLogFilePathState(true);
+        return;
+      }
+
+      if (statusData.enabled) {
+        await fetch('/api/log_file/stop', { method: 'POST' });
+      }
+
+      const res = await fetch('/api/log_file/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        writeToOutput(`[SUCCESS] Log recording started: ${path}`, 'success');
+        updateLogFilePathState(true);
+      } else {
+        writeToOutput(`[ERROR] ${data.error}`, 'error');
+        document.getElementById('logFileEnabled').checked = false;
+      }
+    } catch (e) {
+      writeToOutput(`[ERROR] Failed to start log recording: ${e}`, 'error');
+      document.getElementById('logFileEnabled').checked = false;
+    }
+  } else {
+    try {
+      const res = await fetch('/api/log_file/stop', { method: 'POST' });
+      const data = await res.json();
+
+      if (data.success) {
+        writeToOutput('[SUCCESS] Log recording stopped', 'success');
+        updateLogFilePathState(false);
+      } else {
+        writeToOutput(`[ERROR] ${data.error}`, 'error');
+      }
+    } catch (e) {
+      writeToOutput(`[ERROR] Failed to stop log recording: ${e}`, 'error');
+    }
+  }
+}
+
+function updateLogFilePathState(recording) {
+  const pathInput = document.getElementById('logFilePath');
+  const browseBtn = document.getElementById('browseLogFileBtn');
+
+  if (recording) {
+    pathInput.disabled = true;
+    pathInput.style.opacity = '0.5';
+    if (browseBtn) {
+      browseBtn.disabled = true;
+      browseBtn.style.opacity = '0.5';
+      browseBtn.style.cursor = 'not-allowed';
+    }
+  } else {
+    pathInput.disabled = false;
+    pathInput.style.opacity = '1';
+    if (browseBtn) {
+      browseBtn.disabled = false;
+      browseBtn.style.opacity = '1';
+      browseBtn.style.cursor = 'pointer';
+    }
+  }
+}
+
+async function onLogFilePathChange() {
+  // Only save path when not recording
+  const enabled = document.getElementById('logFileEnabled').checked;
+  if (!enabled) {
+    const path = document.getElementById('logFilePath').value.trim();
+    if (path) {
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ log_file_path: path }),
+        });
+      } catch (e) {
+        console.error('Failed to save log path:', e);
+      }
+    }
+  }
+}
+
+function browseLogFile() {
+  const state = window.FPBState;
+  const input = document.getElementById('logFilePath');
+
+  // Don't allow browsing while recording
+  if (document.getElementById('logFileEnabled').checked) {
+    return;
+  }
+
+  state.fileBrowserCallback = (path) => {
+    if (!path.endsWith('.log')) {
+      path = path + (path.endsWith('/') ? '' : '/') + 'console.log';
+    }
+    input.value = path;
+    onLogFilePathChange();
+  };
+  state.fileBrowserFilter = '';
+  state.fileBrowserMode = 'dir';
+
+  const currentPath = input.value || HOME_PATH;
+  const startPath = currentPath.includes('/')
+    ? currentPath.substring(0, currentPath.lastIndexOf('/'))
+    : HOME_PATH;
+
+  openFileBrowser(startPath);
+}
+
 function updateWatcherStatus(enabled) {
   const watcherStatusEl = document.getElementById('watcherStatus');
   if (watcherStatusEl) {
@@ -283,4 +420,8 @@ window.browseWatchDir = browseWatchDir;
 window.removeWatchDir = removeWatchDir;
 window.onAutoCompileChange = onAutoCompileChange;
 window.onVerifyCrcChange = onVerifyCrcChange;
+window.onLogFileEnabledChange = onLogFileEnabledChange;
+window.onLogFilePathChange = onLogFilePathChange;
+window.updateLogFilePathState = updateLogFilePathState;
+window.browseLogFile = browseLogFile;
 window.updateWatcherStatus = updateWatcherStatus;

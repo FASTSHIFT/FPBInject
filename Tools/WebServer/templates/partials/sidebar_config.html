@@ -145,6 +145,26 @@
           <span style="font-size: 10px; opacity: 0.6; margin-left: 4px">times</span>
         </div>
         <div class="flex-row">
+          <label for="logFilePath" style="font-size: 11px; width: 80px" title="Path to save serial logs"
+            >Log Path</label
+          >
+          <input
+            type="text"
+            id="logFilePath"
+            class="vscode-input"
+            style="flex: 1"
+            placeholder="~/fpb_console.log"
+            onchange="onLogFilePathChange()"
+          />
+          <button class="vscode-btn icon-only secondary" onclick="browseLogFile()" id="browseLogFileBtn">
+            <i class="codicon codicon-folder-opened"></i>
+          </button>
+        </div>
+        <div class="flex-row" title="Record serial communication logs to file">
+          <input type="checkbox" id="logFileEnabled" onchange="onLogFileEnabledChange()" />
+          <label for="logFileEnabled" style="font-size: 11px">Record Serial Logs</label>
+        </div>
+        <div class="flex-row">
           <input type="checkbox" id="autoCompile" onchange="onAutoCompileChange()" />
           <label for="autoCompile" style="font-size: 11px">Auto Inject on Save</label>
         </div>
