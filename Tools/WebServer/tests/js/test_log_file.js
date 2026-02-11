@@ -81,5 +81,79 @@ module.exports = function (w) {
       const calls = getFetchCalls();
       assertEqual(calls.length, 0);
     });
+
+    it('onLogFilePathChange does not save empty path', async () => {
+      const doc = browserGlobals.document;
+      doc.body.innerHTML = `
+        <input type="checkbox" id="logFileEnabled" />
+        <input type="text" id="logFilePath" value="   " />
+      `;
+
+      resetMocks();
+
+      await w.onLogFilePathChange();
+
+      const calls = getFetchCalls();
+      assertEqual(calls.length, 0);
+    });
+
+    it('onLogFileEnabledChange uses default path when empty', async () => {
+      const doc = browserGlobals.document;
+      doc.body.innerHTML = `
+        <input type="checkbox" id="logFileEnabled" checked />
+        <input type="text" id="logFilePath" value="" />
+        <div id="output"></div>
+      `;
+
+      resetMocks();
+      setFetchResponse({ success: true, enabled: false, path: '' });
+
+      await w.onLogFileEnabledChange();
+
+      const pathInput = doc.getElementById('logFilePath');
+      assertEqual(pathInput.value, '~/fpb_console.log');
+    });
+
+    it('browseLogFile appends default filename to directory', () => {
+      const doc = browserGlobals.document;
+      doc.body.innerHTML = `
+        <input type="checkbox" id="logFileEnabled" />
+        <input type="text" id="logFilePath" value="" />
+      `;
+
+      w.FPBState = w.FPBState || {};
+      w.HOME_PATH = '/home/user';
+      w.openFileBrowser = () => {};
+      w.onLogFilePathChange = () => {};
+
+      w.browseLogFile();
+
+      if (w.FPBState.fileBrowserCallback) {
+        w.FPBState.fileBrowserCallback('/tmp');
+        const pathInput = doc.getElementById('logFilePath');
+        assertEqual(pathInput.value, '/tmp/console.log');
+      }
+    });
+
+    it('browseLogFile keeps .log filename', () => {
+      const doc = browserGlobals.document;
+      doc.body.innerHTML = `
+        <input type="checkbox" id="logFileEnabled" />
+        <input type="text" id="logFilePath" value="" />
+      `;
+
+      w.FPBState = w.FPBState || {};
+      w.HOME_PATH = '/home/user';
+      w.openFileBrowser = () => {};
+      w.onLogFilePathChange = () => {};
+
+      w.browseLogFile();
+
+      if (w.FPBState.fileBrowserCallback) {
+        w.FPBState.fileBrowserCallback('/tmp/my.log');
+        const pathInput = doc.getElementById('logFilePath');
+        assertEqual(pathInput.value, '/tmp/my.log');
+      }
+    });
   });
 };
