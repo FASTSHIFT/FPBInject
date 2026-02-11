@@ -9,11 +9,11 @@ import sys
 import unittest
 import tempfile
 import time
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.state import state, DeviceState
+from core.state import state, DeviceState  # noqa: E402
 
 
 class TestFileWatcherManager(unittest.TestCase):

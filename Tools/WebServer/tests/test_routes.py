@@ -9,13 +9,13 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch, MagicMock, mock_open
+from unittest.mock import Mock, patch, mock_open
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask
-import routes
-from core.state import DeviceState, AppState, state
+from flask import Flask  # noqa: E402
+import routes  # noqa: E402
+from core.state import DeviceState, state  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=5.0):
@@ -1369,23 +1369,22 @@ class TestFilesAPI(TestRoutesBase):
 
     def test_file_write_with_tilde(self):
         """Test file write with ~ path expansion"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a file in home directory (use temp for safety)
-            home = os.path.expanduser("~")
-            file_path = os.path.join(home, ".fpb_test_temp.txt")
+        # Create a file in home directory (use temp for safety)
+        home = os.path.expanduser("~")
+        file_path = os.path.join(home, ".fpb_test_temp.txt")
 
-            try:
-                response = self.client.post(
-                    "/api/file/write",
-                    data=json.dumps({"path": file_path, "content": "test"}),
-                    content_type="application/json",
-                )
-                data = json.loads(response.data)
+        try:
+            response = self.client.post(
+                "/api/file/write",
+                data=json.dumps({"path": file_path, "content": "test"}),
+                content_type="application/json",
+            )
+            data = json.loads(response.data)
 
-                self.assertTrue(data["success"])
-            finally:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+            self.assertTrue(data["success"])
+        finally:
+            if os.path.exists(file_path):
+                os.unlink(file_path)
 
 
 class TestLogsAPI(TestRoutesBase):
@@ -1587,7 +1586,7 @@ class TestLogsAPI(TestRoutesBase):
         mock_worker.is_running.return_value = True
         state.device.worker = mock_worker
 
-        response = self.client.post(
+        self.client.post(
             "/api/command",
             data=json.dumps({"command": "test"}),
             content_type="application/json",
@@ -1603,7 +1602,7 @@ class TestLogsAPI(TestRoutesBase):
         mock_worker.is_running.return_value = True
         state.device.worker = mock_worker
 
-        response = self.client.post(
+        self.client.post(
             "/api/command",
             data=json.dumps({"command": "test\n"}),
             content_type="application/json",

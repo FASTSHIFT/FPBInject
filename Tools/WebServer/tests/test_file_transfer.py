@@ -12,12 +12,12 @@ import base64
 import os
 import sys
 import unittest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.file_transfer import FileTransfer
-from utils.crc import crc16
+from core.file_transfer import FileTransfer  # noqa: E402
+from utils.crc import crc16  # noqa: E402
 
 
 class TestCRC16(unittest.TestCase):

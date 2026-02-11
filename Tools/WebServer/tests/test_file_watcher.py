@@ -9,11 +9,11 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services import file_watcher
+from services import file_watcher  # noqa: E402
 
 
 class TestFileChangeHandler(unittest.TestCase):
@@ -356,7 +356,7 @@ class TestFileWatcherWithWatchdog(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Skip if watchdog not actually installed
             try:
-                from watchdog.observers import Observer
+                from watchdog.observers import Observer  # noqa: F401
             except ImportError:
                 self.skipTest("watchdog not installed")
 

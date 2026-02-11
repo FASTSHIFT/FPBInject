@@ -12,16 +12,13 @@ Provides functions for compiling injection code.
 import logging
 import os
 import re
-import shlex
 import subprocess
 import tempfile
 from typing import Dict, Optional, Tuple
 
 from utils.toolchain import get_tool_path, get_subprocess_env
-from core.compile_commands import (
-    parse_compile_commands,
-    parse_dep_file_for_compile_command,
-)
+from core.compile_commands import parse_compile_commands
+from core.compile_commands import parse_dep_file_for_compile_command  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +127,7 @@ def compile_inject(
                     i += 1
             # Add our source file and -Wno-error
             cmd.extend(["-Wno-error", source_file])
-            logger.info(f"Using raw command from .d file (passthrough)")
+            logger.info("Using raw command from .d file (passthrough)")
         else:
             # Build command from parsed components
             cmd = (

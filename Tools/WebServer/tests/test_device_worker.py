@@ -6,15 +6,14 @@ Device Worker module tests
 
 import os
 import sys
-import threading
 import time
 import unittest
-from unittest.mock import Mock, patch, MagicMock, PropertyMock
+from unittest.mock import Mock, PropertyMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import services.device_worker as device_worker
-from services.device_worker import (
+import services.device_worker as device_worker  # noqa: E402
+from services.device_worker import (  # noqa: E402
     DeviceWorker,
     get_worker,
     start_worker,

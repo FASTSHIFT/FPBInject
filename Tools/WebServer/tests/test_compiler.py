@@ -9,11 +9,11 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import compiler
+from core import compiler  # noqa: E402
 
 
 class TestGetToolPath(unittest.TestCase):
@@ -620,7 +620,7 @@ class TestParseDepFile(unittest.TestCase):
             with open(src_file, "w") as f:
                 f.write("int main() {}")
 
-            result = compiler.parse_dep_file_for_compile_command(src_file, tmpdir)
+            compiler.parse_dep_file_for_compile_command(src_file, tmpdir)
             # May or may not find it depending on search logic
             # Just verify it doesn't crash
 
@@ -664,7 +664,7 @@ class TestParseDepFileExtended(unittest.TestCase):
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = Mock(returncode=0, stdout=dep_file)
 
-                result = compiler.parse_dep_file_for_compile_command(src_file, tmpdir)
+                compiler.parse_dep_file_for_compile_command(src_file, tmpdir)
                 # May or may not find depending on implementation details
 
 

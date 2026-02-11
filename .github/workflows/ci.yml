@@ -129,15 +129,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r Tools/requirements.txt
-          # Install additional tools for formatting
-          pip install black
+          # Install additional tools for formatting and linting
+          pip install black flake8
 
-      - name: Check Python/JS code format
+      - name: Check Python/JS code format and lint
         working-directory: Tools/WebServer
         run: |
-          echo "🔍 Checking Python/JavaScript code format..."
+          echo "🔍 Checking Python/JavaScript code format and lint..."
           chmod +x format.sh
-          ./format.sh --check
+          ./format.sh --check --lint
 
           # Check if there are any formatting differences
           if ! git diff --quiet; then

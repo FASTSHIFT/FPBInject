@@ -7,11 +7,10 @@ App package initialization tests
 import os
 import sys
 import unittest
-from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import create_app, WEBSERVER_DIR
+from app import create_app, WEBSERVER_DIR  # noqa: E402
 
 
 class TestAppInit(unittest.TestCase):
@@ -34,7 +33,7 @@ class TestAppInit(unittest.TestCase):
 
         # CORS adds headers to responses
         with app.test_client() as client:
-            response = client.options("/")
+            client.options("/")
             # CORS should be configured
             self.assertIsNotNone(app)
 

@@ -4,7 +4,6 @@ API consistency checker - scans frontend and backend for API endpoint mismatches
 """
 
 import re
-import os
 from pathlib import Path
 from collections import defaultdict
 

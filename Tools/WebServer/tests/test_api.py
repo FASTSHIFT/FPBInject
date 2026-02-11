@@ -12,8 +12,8 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import create_app
-from core.state import state
+from main import create_app  # noqa: E402
+from core.state import state  # noqa: E402
 
 # Create test app
 app = create_app()

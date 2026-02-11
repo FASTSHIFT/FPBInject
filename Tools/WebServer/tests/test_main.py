@@ -7,12 +7,12 @@ Main module tests
 import os
 import sys
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import main
-from core.state import state, DeviceState
+import main  # noqa: E402
+from core.state import state, DeviceState  # noqa: E402
 
 
 class TestCreateApp(unittest.TestCase):

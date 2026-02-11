@@ -9,8 +9,6 @@ Reports file paths, line numbers, and Chinese strings found.
 
 import os
 import re
-import sys
-from pathlib import Path
 
 
 def find_chinese_text(content):

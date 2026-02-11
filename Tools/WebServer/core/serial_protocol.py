@@ -324,14 +324,14 @@ class FPBProtocol:
                     elif line.startswith("Used:"):
                         try:
                             info["used"] = int(line.split(":")[1].strip())
-                        except:
+                        except ValueError:
                             pass
                     elif line.startswith("Slots:"):
                         try:
                             parts = line.split(":")[1].strip().split("/")
                             info["active_slots"] = int(parts[0])
                             info["total_slots"] = int(parts[1])
-                        except:
+                        except (ValueError, IndexError):
                             pass
                     elif line.startswith("Slot["):
                         try:
@@ -366,7 +366,7 @@ class FPBProtocol:
                                             "code_size": 0,
                                         }
                                     )
-                        except:
+                        except (ValueError, AttributeError):
                             pass
                 return info, ""
             return None, result.get("msg", "Unknown error")

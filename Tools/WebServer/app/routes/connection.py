@@ -71,7 +71,7 @@ def api_connect():
         if device.ser:
             try:
                 device.ser.close()
-            except:
+            except Exception:
                 pass
             device.ser = None
 
@@ -114,7 +114,7 @@ def api_disconnect():
         if device.ser:
             try:
                 device.ser.close()
-            except:
+            except Exception:
                 pass
             device.ser = None
 
@@ -137,7 +137,7 @@ def api_status():
     connected = False
     try:
         connected = device.ser is not None and device.ser.isOpen()
-    except:
+    except Exception:
         pass
 
     return jsonify(
@@ -256,7 +256,7 @@ def api_config():
             try:
                 with open(device.patch_source_path, "r") as f:
                     device.patch_source_content = f.read()
-            except:
+            except Exception:
                 pass
 
     state.save_config()

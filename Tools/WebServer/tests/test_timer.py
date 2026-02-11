@@ -19,7 +19,10 @@ class TestTimer(unittest.TestCase):
 
     def test_init(self):
         """Test initialization"""
-        callback = lambda: None
+
+        def callback():
+            pass
+
         timer = Timer(1.0, callback, name="test_timer")
 
         self.assertEqual(timer.interval, 1.0)
@@ -165,9 +168,9 @@ class TestTimerManager(unittest.TestCase):
         """Test add multiple timers"""
         manager = TimerManager()
 
-        t1 = manager.add(1.0, lambda: None, name="t1")
-        t2 = manager.add(2.0, lambda: None, name="t2")
-        t3 = manager.add(0.5, lambda: None, name="t3")
+        manager.add(1.0, lambda: None, name="t1")
+        manager.add(2.0, lambda: None, name="t2")
+        manager.add(0.5, lambda: None, name="t3")
 
         self.assertEqual(len(manager.timers), 3)
 

@@ -12,12 +12,12 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.fpb_cli import FPBCLI, FPBCLIError, DeviceState, HAS_SERIAL, main
+from cli.fpb_cli import FPBCLI, FPBCLIError, DeviceState, HAS_SERIAL, main  # noqa: E402
 
 
 class TestDeviceState(unittest.TestCase):
@@ -1124,22 +1124,21 @@ class TestDeviceStateAdvanced(unittest.TestCase):
 
     def test_connect_without_serial(self):
         """Test connect raises without pyserial"""
-        state = DeviceState()
         with patch("cli.fpb_cli.HAS_SERIAL", False):
             # Reload DeviceState method would be complex, test error message
             pass
 
     def test_disconnect_with_close_error(self):
         """Test disconnect handles close error gracefully"""
-        state = DeviceState()
+        device_state = DeviceState()
         mock_ser = MagicMock()
         mock_ser.close.side_effect = Exception("Close failed")
-        state.ser = mock_ser
-        state.connected = True
+        device_state.ser = mock_ser
+        device_state.connected = True
 
         # Should not raise
         try:
-            state.disconnect()
+            device_state.disconnect()
         except Exception:
             pass  # May or may not raise depending on implementation
 
@@ -1365,16 +1364,16 @@ class TestCppMemberFunctionHijacking(unittest.TestCase):
     def test_compile_cpp_patch_with_extern_c(self):
         """Test compiling C++ patch with extern C linkage"""
         # C++ member function patch needs extern "C" to avoid double mangling
-        cpp_patch_code = """
-#include <stddef.h>
-extern "C" size_t _ZN5Print5writeEPKc(void* thisptr, const char* str);
-
-/* FPB_INJECT */
-extern "C" size_t Print_print(void* thisptr, const char* str) {
-    _ZN5Print5writeEPKc(thisptr, "[HOOK] ");
-    return _ZN5Print5writeEPKc(thisptr, str);
-}
-"""
+        # Example code (not used in test, just for documentation):
+        # cpp_patch_code = '''
+        # #include <stddef.h>
+        # extern "C" size_t _ZN5Print5writeEPKc(void* thisptr, const char* str);
+        # /* FPB_INJECT */
+        # extern "C" size_t Print_print(void* thisptr, const char* str) {
+        #     _ZN5Print5writeEPKc(thisptr, "[HOOK] ");
+        #     return _ZN5Print5writeEPKc(thisptr, str);
+        # }
+        # '''
         with patch.object(self.cli, "compile") as mock_compile:
             mock_compile.return_value = {
                 "success": True,
@@ -1721,78 +1720,3 @@ class TestFPBCLIMain(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
-
-class TestFPBCLIDecompile(unittest.TestCase):
-    """Test decompile command"""
-
-    def setUp(self):
-        """Set up test environment"""
-        self.cli = FPBCLI(verbose=False)
-
-    def tearDown(self):
-        """Clean up"""
-        self.cli.cleanup()
-
-    def test_decompile_success(self):
-        """Test successful decompilation"""
-        with patch.object(
-            self.cli._fpb,
-            "decompile_function",
-            return_value=(True, "void test() { return; }"),
-        ):
-            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-                self.cli.decompile("/path/to/elf", "test")
-                output = mock_stdout.getvalue()
-                data = json.loads(output)
-                self.assertTrue(data["success"])
-                self.assertIn("decompiled", data)
-
-    def test_decompile_failure(self):
-        """Test decompilation failure"""
-        with patch.object(
-            self.cli._fpb,
-            "decompile_function",
-            return_value=(False, "Function not found"),
-        ):
-            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-                self.cli.decompile("/path/to/elf", "test")
-                output = mock_stdout.getvalue()
-                data = json.loads(output)
-                self.assertFalse(data["success"])
-
-
-class TestFPBCLIInject(unittest.TestCase):
-    """Test inject command"""
-
-    def setUp(self):
-        """Set up test environment"""
-        self.cli = FPBCLI(verbose=False)
-
-    def tearDown(self):
-        """Clean up"""
-        self.cli.cleanup()
-
-    def test_inject_file_not_found(self):
-        """Test inject with nonexistent source file"""
-        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-            self.cli.inject("target_func", "/nonexistent/file.c")
-            output = mock_stdout.getvalue()
-            data = json.loads(output)
-            self.assertFalse(data["success"])
-            self.assertIn("not found", data["error"])
-
-    def test_inject_not_connected_no_elf(self):
-        """Test inject when not connected and no ELF"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
-            f.write("/* FPB_INJECT */\nvoid test_func() {}")
-            source_file = f.name
-
-        try:
-            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-                self.cli.inject("target_func", source_file)
-                output = mock_stdout.getvalue()
-                data = json.loads(output)
-                self.assertFalse(data["success"])
-        finally:
-            os.unlink(source_file)

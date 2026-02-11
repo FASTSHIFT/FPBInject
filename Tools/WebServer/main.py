@@ -17,10 +17,8 @@ Module structure:
 """
 
 import argparse
-import atexit
 import logging
 import os
-import signal
 import socket
 import sys
 

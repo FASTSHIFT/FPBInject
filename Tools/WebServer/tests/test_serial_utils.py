@@ -7,11 +7,11 @@ Serial Utils module tests
 import os
 import sys
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils import serial as serial_utils
+from utils import serial as serial_utils  # noqa: E402
 
 
 class TestScanSerialPorts(unittest.TestCase):

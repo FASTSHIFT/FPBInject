@@ -219,13 +219,12 @@ lint_python() {
     fi
 
     local files=$(find . -name "*.py" \
-        -not -path "./__pycache__/*" \
-        -not -path "./htmlcov/*" \
-        -not -path "./coverage/*" \
-        -not -path "./tests/htmlcov/*" \
-        -not -path "./tests/coverage/*" \
-        -not -path "./.venv/*" \
-        -not -path "./venv/*" \
+        -not -path "*/__pycache__/*" \
+        -not -path "*/htmlcov/*" \
+        -not -path "*/coverage/*" \
+        -not -path "*/.venv/*" \
+        -not -path "*/venv/*" \
+        -not -path "*/node_modules/*" \
         2>/dev/null | sort)
 
     if [ -z "$files" ]; then
@@ -235,8 +234,16 @@ lint_python() {
 
     local lint_errors=0
     for file in $files; do
-        if ! flake8 --ignore=E501,W503,E203 --max-line-length=120 "$file" 2>/dev/null; then
-            lint_errors=$((lint_errors + 1))
+        # For test files, also ignore E402 (module level import not at top)
+        # because tests need to modify sys.path before imports
+        if [[ "$file" == *"/tests/"* ]]; then
+            if ! flake8 --ignore=E501,W503,E203,E402 --max-line-length=120 "$file" 2>/dev/null; then
+                lint_errors=$((lint_errors + 1))
+            fi
+        else
+            if ! flake8 --ignore=E501,W503,E203 --max-line-length=120 "$file" 2>/dev/null; then
+                lint_errors=$((lint_errors + 1))
+            fi
         fi
     done
 

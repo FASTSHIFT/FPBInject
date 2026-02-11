@@ -27,7 +27,7 @@ from typing import Any, Dict, Optional
 
 # Import from existing WebServer modules
 sys.path.insert(0, str(Path(__file__).parent))
-from fpb_inject import FPBInject
+from fpb_inject import FPBInject  # noqa: E402
 
 try:
     import serial
@@ -586,9 +586,7 @@ Examples:
     )
 
     # info command (requires device)
-    info_parser = subparsers.add_parser(
-        "info", help="Get device FPB info (requires --port)"
-    )
+    subparsers.add_parser("info", help="Get device FPB info (requires --port)")
 
     # test-serial command (requires device)
     test_serial_parser = subparsers.add_parser(

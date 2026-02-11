@@ -9,13 +9,13 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask
-from app.routes import fpb
-from core.state import DeviceState, AppState, state
+from flask import Flask  # noqa: E402
+from app.routes import fpb  # noqa: E402
+from core.state import DeviceState, state  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=5.0):

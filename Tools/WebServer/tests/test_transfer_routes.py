@@ -4,20 +4,16 @@
 Tests for app/routes/transfer.py
 """
 
-import base64
 import io
-import json
 import os
 import sys
 import unittest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask
-from app.routes.transfer import bp
-from core.file_transfer import FileTransfer
-from utils.crc import crc16
+from flask import Flask  # noqa: E402
+from app.routes.transfer import bp  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=10.0):

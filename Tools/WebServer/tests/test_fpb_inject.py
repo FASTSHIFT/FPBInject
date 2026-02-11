@@ -10,18 +10,18 @@ import unittest
 import tempfile
 import json
 import subprocess
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fpb_inject import (
+from fpb_inject import (  # noqa: E402
     FPBInject,
     FPBInjectError,
     scan_serial_ports,
     serial_open,
 )
-from utils.crc import crc16
-from core.state import DeviceState
+from utils.crc import crc16  # noqa: E402
+from core.state import DeviceState  # noqa: E402
 
 
 class TestCRC16(unittest.TestCase):

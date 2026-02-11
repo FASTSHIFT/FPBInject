@@ -538,7 +538,7 @@ if __name__ == "__main__":
 
         if injected:
             print(f"\nFound {len(injected)} inject functions: {injected}")
-            print(f"\n--- Generated Patch (first 2000 chars) ---")
+            print("\n--- Generated Patch (first 2000 chars) ---")
             print(patch_content[:2000])
             if len(patch_content) > 2000:
                 print(f"... ({len(patch_content)} total chars)")

@@ -9,11 +9,11 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.state import DeviceState, AppState, PERSISTENT_KEYS
+from core.state import DeviceState, AppState, PERSISTENT_KEYS  # noqa: E402
 
 
 class TestDeviceState(unittest.TestCase):

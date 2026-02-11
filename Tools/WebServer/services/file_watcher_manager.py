@@ -38,7 +38,7 @@ def stop_file_watcher():
             from services.file_watcher import stop_watching
 
             stop_watching(state.file_watcher)
-        except:
+        except Exception:
             pass
         state.file_watcher = None
 
@@ -251,7 +251,7 @@ def _trigger_auto_inject(file_path):
                     if injected_names:
                         status_msg += f" ({', '.join(injected_names[:3])})"
                         if len(injected_names) > 3:
-                            status_msg += f" etc."
+                            status_msg += " etc."
 
                     device.auto_inject_status = "success"
                     device.auto_inject_message = status_msg

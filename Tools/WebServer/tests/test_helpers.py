@@ -8,12 +8,12 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.helpers import build_slot_response
-from core.state import DeviceState, AppState
+from utils.helpers import build_slot_response  # noqa: E402
+from core.state import DeviceState, AppState  # noqa: E402
 
 
 class TestBuildSlotResponse(unittest.TestCase):
