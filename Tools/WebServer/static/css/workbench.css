@@ -633,6 +633,7 @@ body.resizing-panel .sash {
   border-radius: 3px;
   font-size: 11px;
   border: 1px solid transparent;
+  border-left: 2px solid transparent;
   transition: all 0.15s;
 }
 
