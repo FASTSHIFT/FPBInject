@@ -225,13 +225,51 @@ class TestDisassembleFunction(unittest.TestCase):
 class TestDecompileFunction(unittest.TestCase):
     """decompile_function tests"""
 
-    def test_decompile_angr_not_installed(self):
-        """Test decompile when angr is not installed"""
-        with patch.dict("sys.modules", {"angr": None}):
-            success, result = elf_utils.decompile_function("/path/to/elf", "main")
+    def test_decompile_ghidra_not_configured(self):
+        """Test decompile when Ghidra is not configured"""
+        # Without ghidra_path, should return GHIDRA_NOT_CONFIGURED
+        success, result = elf_utils.decompile_function("/path/to/elf", "main", None)
+
+        self.assertFalse(success)
+        self.assertEqual(result, "GHIDRA_NOT_CONFIGURED")
+
+    def test_decompile_ghidra_path_empty_string(self):
+        """Test decompile when ghidra_path is empty string"""
+        success, result = elf_utils.decompile_function("/path/to/elf", "main", "")
+
+        self.assertFalse(success)
+        self.assertEqual(result, "GHIDRA_NOT_CONFIGURED")
+
+    def test_decompile_ghidra_path_invalid(self):
+        """Test decompile when ghidra_path is invalid directory"""
+        success, result = elf_utils.decompile_function(
+            "/path/to/elf", "main", "/nonexistent/ghidra/path"
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(result, "GHIDRA_NOT_CONFIGURED")
+
+    def test_decompile_elf_not_found(self):
+        """Test decompile when ELF file doesn't exist"""
+        import tempfile
+        import os
+
+        # Create a temp dir to use as ghidra_path, but no analyzeHeadless
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create support directory with a fake analyzeHeadless
+            support_dir = os.path.join(temp_dir, "support")
+            os.makedirs(support_dir)
+            analyze_headless = os.path.join(support_dir, "analyzeHeadless")
+            with open(analyze_headless, "w") as f:
+                f.write("#!/bin/bash\nexit 0\n")
+            os.chmod(analyze_headless, 0o755)
+
+            success, result = elf_utils.decompile_function(
+                "/nonexistent/file.elf", "main", temp_dir
+            )
 
             self.assertFalse(success)
-            self.assertEqual(result, "ANGR_NOT_INSTALLED")
+            self.assertIn("not found", result.lower())
 
 
 class TestGetSignature(unittest.TestCase):

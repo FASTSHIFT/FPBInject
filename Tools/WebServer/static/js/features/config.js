@@ -56,11 +56,16 @@ async function loadConfig() {
       document.getElementById('transferMaxRetries').value =
         data.transfer_max_retries;
     if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
-    if (data.auto_compile !== undefined)
+    if (data.auto_compile !== undefined) {
       document.getElementById('autoCompile').checked = data.auto_compile;
-    if (data.enable_decompile !== undefined)
+    }
+    if (data.enable_decompile !== undefined) {
       document.getElementById('enableDecompile').checked =
         data.enable_decompile;
+    }
+    if (data.ghidra_path !== undefined) {
+      document.getElementById('ghidraPath').value = data.ghidra_path;
+    }
     if (data.verify_crc !== undefined)
       document.getElementById('verifyCrc').checked = data.verify_crc;
     if (data.log_file_enabled !== undefined)
@@ -103,6 +108,7 @@ async function saveConfig(silent = false) {
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile').checked,
     enable_decompile: document.getElementById('enableDecompile').checked,
+    ghidra_path: document.getElementById('ghidraPath').value,
     verify_crc: document.getElementById('verifyCrc').checked,
     // Note: log_file_enabled and log_file_path are saved separately
   };
@@ -150,6 +156,10 @@ function setupAutoSave() {
 }
 
 function onEnableDecompileChange() {
+  saveConfig(true);
+}
+
+function onGhidraPathChange() {
   saveConfig(true);
 }
 
@@ -412,6 +422,7 @@ window.loadConfig = loadConfig;
 window.saveConfig = saveConfig;
 window.setupAutoSave = setupAutoSave;
 window.onEnableDecompileChange = onEnableDecompileChange;
+window.onGhidraPathChange = onGhidraPathChange;
 window.updateWatchDirsList = updateWatchDirsList;
 window.getWatchDirs = getWatchDirs;
 window.addWatchDir = addWatchDir;

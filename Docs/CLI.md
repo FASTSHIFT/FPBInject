@@ -71,8 +71,6 @@ fpb_cli.py disasm <elf_path> <func_name>
 fpb_cli.py decompile <elf_path> <func_name>
 ```
 
-**Note:** Requires `angr` library (`pip install angr`)
-
 #### 4. `signature` - Get function signature
 
 ```bash

@@ -399,6 +399,69 @@ class TestConfigAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         mock_fpb.set_toolchain_path.assert_called_with("/opt/gcc-arm")
 
+    def test_update_ghidra_path(self):
+        """Test updating Ghidra path"""
+        response = self.client.post(
+            "/api/config",
+            data=json.dumps({"ghidra_path": "/opt/ghidra_11.0"}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(state.device.ghidra_path, "/opt/ghidra_11.0")
+
+    def test_get_config_includes_ghidra_path(self):
+        """Test GET config includes ghidra_path"""
+        state.device.ghidra_path = "/home/user/ghidra"
+        response = self.client.get("/api/config")
+        data = json.loads(response.data)
+
+        self.assertIn("ghidra_path", data)
+        self.assertEqual(data["ghidra_path"], "/home/user/ghidra")
+
+    def test_update_verify_crc(self):
+        """Test updating verify_crc setting"""
+        response = self.client.post(
+            "/api/config",
+            data=json.dumps({"verify_crc": False}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertFalse(state.device.verify_crc)
+
+    def test_get_config_includes_verify_crc(self):
+        """Test GET config includes verify_crc"""
+        state.device.verify_crc = True
+        response = self.client.get("/api/config")
+        data = json.loads(response.data)
+
+        self.assertIn("verify_crc", data)
+        self.assertTrue(data["verify_crc"])
+
+    def test_update_enable_decompile(self):
+        """Test updating enable_decompile setting"""
+        response = self.client.post(
+            "/api/config",
+            data=json.dumps({"enable_decompile": True}),
+            content_type="application/json",
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertTrue(state.device.enable_decompile)
+
+    def test_get_config_includes_enable_decompile(self):
+        """Test GET config includes enable_decompile"""
+        state.device.enable_decompile = True
+        response = self.client.get("/api/config")
+        data = json.loads(response.data)
+
+        self.assertIn("enable_decompile", data)
+        self.assertTrue(data["enable_decompile"])
+
 
 class TestFPBPingAPI(TestRoutesBase):
     """FPB Ping API tests"""
@@ -627,10 +690,10 @@ class TestDecompileAPI(TestRoutesBase):
         self.assertIn("ELF", data["error"])
 
     @patch("routes.get_fpb_inject")
-    def test_decompile_angr_not_installed(self, mock_get_fpb):
-        """Test decompile when angr is not installed"""
+    def test_decompile_ghidra_not_configured(self, mock_get_fpb):
+        """Test decompile when Ghidra is not configured"""
         mock_fpb = Mock()
-        mock_fpb.decompile_function.return_value = (False, "ANGR_NOT_INSTALLED")
+        mock_fpb.decompile_function.return_value = (False, "GHIDRA_NOT_CONFIGURED")
         mock_get_fpb.return_value = mock_fpb
 
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -643,7 +706,7 @@ class TestDecompileAPI(TestRoutesBase):
             data = json.loads(response.data)
 
             self.assertFalse(data["success"])
-            self.assertEqual(data["error"], "ANGR_NOT_INSTALLED")
+            self.assertEqual(data["error"], "GHIDRA_NOT_CONFIGURED")
         finally:
             os.unlink(elf_path)
 

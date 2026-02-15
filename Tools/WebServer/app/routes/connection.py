@@ -184,6 +184,10 @@ def api_get_config():
             "transfer_max_retries": device.transfer_max_retries,
             "auto_compile": device.auto_compile,
             "enable_decompile": device.enable_decompile,
+            "ghidra_path": device.ghidra_path,
+            "verify_crc": device.verify_crc,
+            "log_file_enabled": device.log_file_enabled,
+            "log_file_path": device.log_file_path,
         }
     )
 
@@ -248,6 +252,12 @@ def api_config():
 
     if "enable_decompile" in data:
         device.enable_decompile = data["enable_decompile"]
+
+    if "ghidra_path" in data:
+        device.ghidra_path = data["ghidra_path"]
+
+    if "verify_crc" in data:
+        device.verify_crc = data["verify_crc"]
 
     if "patch_source_path" in data:
         device.patch_source_path = data["patch_source_path"]

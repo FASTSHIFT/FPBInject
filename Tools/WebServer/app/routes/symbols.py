@@ -267,7 +267,7 @@ def api_disasm_symbol():
 
 @bp.route("/symbols/decompile", methods=["GET"])
 def api_decompile_symbol():
-    """Decompile a specific function using angr."""
+    """Decompile a specific function using Ghidra."""
     func_name = request.args.get("func", "")
     if not func_name:
         return jsonify({"success": False, "error": "Function name not specified"})

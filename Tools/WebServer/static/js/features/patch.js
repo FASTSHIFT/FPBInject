@@ -11,7 +11,7 @@ function generatePatchTemplate(
   signature = null,
   sourceFile = null,
   decompiled = null,
-  angrNotInstalled = false,
+  ghidraNotConfigured = false,
 ) {
   let returnType = 'void';
   let params = '';
@@ -39,12 +39,13 @@ ${decompiledLines}
  */
 
 `;
-  } else if (angrNotInstalled) {
+  } else if (ghidraNotConfigured) {
     decompiledSection = `
 /*
- * TIP: Install 'angr' for automatic decompilation reference:
- *   pip install angr
- * Then enable "Enable Decompilation" in Settings panel.
+ * TIP: Configure Ghidra for automatic decompilation reference:
+ *   1. Download Ghidra from https://ghidra-sre.org/
+ *   2. Set "Ghidra Path" in Settings panel to your Ghidra installation directory
+ *   3. Enable "Enable Decompilation" checkbox
  */
 
 `;

@@ -326,9 +326,9 @@ class TestFPBCLIDecompile(unittest.TestCase):
             self.assertEqual(output["language"], "c")
 
     def test_decompile_import_error(self):
-        """Test decompile without angr"""
+        """Test decompile without Ghidra configured"""
         with patch.object(self.cli._fpb, "decompile_function") as mock_dec:
-            mock_dec.side_effect = ImportError("No module named 'angr'")
+            mock_dec.return_value = (False, "GHIDRA_NOT_CONFIGURED")
 
             f = io.StringIO()
             with redirect_stdout(f):
@@ -336,7 +336,7 @@ class TestFPBCLIDecompile(unittest.TestCase):
 
             output = json.loads(f.getvalue())
             self.assertFalse(output["success"])
-            self.assertIn("angr", output["error"])
+            self.assertIn("GHIDRA", output["error"])
 
 
 class TestFPBCLISignature(unittest.TestCase):

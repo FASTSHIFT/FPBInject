@@ -160,6 +160,25 @@
             <i class="codicon codicon-folder-opened"></i>
           </button>
         </div>
+        <div class="flex-row">
+          <label
+            for="ghidraPath"
+            style="font-size: 11px; width: 80px"
+            title="Path to Ghidra installation directory (containing support/analyzeHeadless)"
+            >Ghidra Path</label
+          >
+          <input
+            type="text"
+            id="ghidraPath"
+            class="vscode-input"
+            style="flex: 1"
+            placeholder="/path/to/ghidra"
+            onchange="onGhidraPathChange()"
+          />
+          <button class="vscode-btn icon-only secondary" onclick="browseDir('ghidraPath')">
+            <i class="codicon codicon-folder-opened"></i>
+          </button>
+        </div>
         <div class="flex-row" title="Record serial communication logs to file">
           <input type="checkbox" id="logFileEnabled" onchange="onLogFileEnabledChange()" />
           <label for="logFileEnabled" style="font-size: 11px">Record Serial Logs</label>
@@ -172,10 +191,7 @@
           <input type="checkbox" id="verifyCrc" checked onchange="onVerifyCrcChange()" />
           <label for="verifyCrc" style="font-size: 11px">Verify CRC after Transfer</label>
         </div>
-        <div
-          class="flex-row"
-          title="Enable decompilation when creating patch templates (requires angr, may increase wait time)"
-        >
+        <div class="flex-row" title="Enable decompilation when creating patch templates (requires Ghidra)">
           <input type="checkbox" id="enableDecompile" onchange="onEnableDecompileChange()" />
           <label for="enableDecompile" style="font-size: 11px">Enable Decompilation</label>
         </div>

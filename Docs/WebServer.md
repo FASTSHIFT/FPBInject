@@ -40,6 +40,7 @@ python3 main.py
 2. **ELF Path**: Compiled firmware ELF file path
 3. **Toolchain Path**: Cross-compiler prefix (e.g., `arm-none-eabi-`)
 4. **Compile Commands**: Path to `compile_commands.json` for include paths and defines
+5. **Ghidra Path**: Path to Ghidra installation directory for decompilation (optional)
 
 Click **Connect** to establish device connection.
 

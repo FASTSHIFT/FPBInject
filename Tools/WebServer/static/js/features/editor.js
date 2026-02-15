@@ -281,7 +281,7 @@ async function openManualPatchTab(funcName) {
 
   let template = '';
   let decompiled = null;
-  let angrNotInstalled = false;
+  let ghidraNotConfigured = false;
 
   let decompilePromise = Promise.resolve(null);
   if (enableDecompile) {
@@ -297,7 +297,7 @@ async function openManualPatchTab(funcName) {
         if (data.success && data.decompiled) {
           return { decompiled: data.decompiled, notInstalled: false };
         }
-        if (data.error === 'ANGR_NOT_INSTALLED') {
+        if (data.error === 'GHIDRA_NOT_CONFIGURED') {
           return { decompiled: null, notInstalled: true };
         }
         return { decompiled: null, notInstalled: false };
@@ -321,7 +321,7 @@ async function openManualPatchTab(funcName) {
 
     const decompileResult = await decompilePromise;
     decompiled = decompileResult?.decompiled || null;
-    angrNotInstalled = decompileResult?.notInstalled || false;
+    ghidraNotConfigured = decompileResult?.notInstalled || false;
 
     template = generatePatchTemplate(
       funcName,
@@ -329,28 +329,28 @@ async function openManualPatchTab(funcName) {
       signature,
       sourceFile,
       decompiled,
-      angrNotInstalled,
+      ghidraNotConfigured,
     );
 
     if (decompiled) {
       writeToOutput(`[INFO] Decompiled code included as reference`, 'info');
-    } else if (angrNotInstalled) {
+    } else if (ghidraNotConfigured) {
       writeToOutput(
-        `[INFO] angr not installed - install with: pip install angr`,
+        `[INFO] Ghidra not configured - set Ghidra Path in Settings panel`,
         'info',
       );
     }
   } catch (e) {
     const decompileResult = await decompilePromise;
     decompiled = decompileResult?.decompiled || null;
-    angrNotInstalled = decompileResult?.notInstalled || false;
+    ghidraNotConfigured = decompileResult?.notInstalled || false;
     template = generatePatchTemplate(
       funcName,
       state.selectedSlot,
       null,
       null,
       decompiled,
-      angrNotInstalled,
+      ghidraNotConfigured,
     );
   }
 

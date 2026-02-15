@@ -243,8 +243,9 @@ class FPBInject:
         return elf_utils.disassemble_function(elf_path, func_name, self._toolchain_path)
 
     def decompile_function(self, elf_path: str, func_name: str) -> Tuple[bool, str]:
-        """Decompile a specific function from ELF file using angr."""
-        return elf_utils.decompile_function(elf_path, func_name)
+        """Decompile a specific function from ELF file using Ghidra."""
+        ghidra_path = getattr(self.device, "ghidra_path", None)
+        return elf_utils.decompile_function(elf_path, func_name, ghidra_path)
 
     def get_signature(self, elf_path: str, func_name: str) -> Optional[str]:
         """Get function signature from ELF file."""

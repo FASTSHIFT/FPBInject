@@ -63,7 +63,7 @@ $ fpb_cli.py disasm firmware.elf digitalWrite
 fpb_cli.py decompile <elf_path> <func_name>
 ```
 
-**Note:** Requires `angr` library (`pip install angr`)
+**Note:** Requires Ghidra. Set `ghidra_path` in config or ensure `analyzeHeadless` is in PATH.
 
 ### 4. `signature` - Get function signature
 ```bash
@@ -301,7 +301,7 @@ void myFunc(void) {
 - Python 3.8+
 - ARM GCC toolchain (arm-none-eabi-gcc)
 - pyserial (`pip install pyserial`) for device communication
-- Optional: `angr` for decompilation
+- Optional: Ghidra for decompilation (https://ghidra-sre.org/)
 
 ## Version
 

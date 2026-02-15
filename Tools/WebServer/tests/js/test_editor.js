@@ -438,7 +438,7 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
 
-    it('handles angr not installed', async () => {
+    it('handles Ghidra not configured', async () => {
       resetMocks();
       w.FPBState.editorTabs = [];
       const mockTerm = new MockTerminal();
@@ -448,12 +448,12 @@ module.exports = function (w) {
       setFetchResponse('/api/symbols/signature', { success: false });
       setFetchResponse('/api/symbols/decompile', {
         success: false,
-        error: 'ANGR_NOT_INSTALLED',
+        error: 'GHIDRA_NOT_CONFIGURED',
       });
-      await w.openManualPatchTab('angr_func');
+      await w.openManualPatchTab('ghidra_func');
       assertTrue(
         mockTerm._writes.some(
-          (wr) => wr.msg && wr.msg.includes('angr not installed'),
+          (wr) => wr.msg && wr.msg.includes('Ghidra not configured'),
         ),
       );
       w.FPBState.editorTabs = [];

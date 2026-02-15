@@ -1887,15 +1887,16 @@ class TestDecompileFunction(unittest.TestCase):
         self.device = DeviceState()
         self.fpb = FPBInject(self.device)
 
-    def test_decompile_angr_not_installed(self):
-        """Test decompile when angr is not installed"""
-        with patch.dict("sys.modules", {"angr": None}):
-            # Force reimport check
-            success, msg = self.fpb.decompile_function("/tmp/test.elf", "test_func")
+    def test_decompile_ghidra_not_configured(self):
+        """Test decompile when Ghidra is not configured"""
+        # Mock device without ghidra_path
+        self.fpb.device.ghidra_path = None
 
-            # Should return ANGR_NOT_INSTALLED since we're mocking import failure
-            self.assertFalse(success)
-            self.assertEqual(msg, "ANGR_NOT_INSTALLED")
+        success, msg = self.fpb.decompile_function("/tmp/test.elf", "test_func")
+
+        # Should return GHIDRA_NOT_CONFIGURED since ghidra_path is not set
+        self.assertFalse(success)
+        self.assertEqual(msg, "GHIDRA_NOT_CONFIGURED")
 
     @patch("fpb_inject.FPBInject.decompile_function")
     def test_decompile_success_mock(self, mock_decompile):

@@ -182,15 +182,11 @@ class FPBCLI:
             self.output_error(f"Disassembly failed: {str(e)}", e)
 
     def decompile(self, elf_path: str, func_name: str) -> None:
-        """Decompile function using angr"""
+        """Decompile function using Ghidra"""
         try:
-            # Try to decompile using angr
-            try:
-                success, decompiled = self._fpb.decompile_function(elf_path, func_name)
-                if not success:
-                    raise FPBCLIError(f"Decompilation failed: {decompiled}")
-            except ImportError:
-                raise FPBCLIError("angr not installed. Install with: pip install angr")
+            success, decompiled = self._fpb.decompile_function(elf_path, func_name)
+            if not success:
+                raise FPBCLIError(f"Decompilation failed: {decompiled}")
 
             self.output_json(
                 {
@@ -198,7 +194,7 @@ class FPBCLI:
                     "func_name": func_name,
                     "decompiled": decompiled,
                     "language": "c",
-                    "note": "This is AI-generated pseudo-code. Verify before using.",
+                    "note": "This is machine-generated pseudo-code. Verify before using.",
                 }
             )
         except Exception as e:

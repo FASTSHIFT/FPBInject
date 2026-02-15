@@ -216,79 +216,179 @@ def disassemble_function(
         return False, str(e)
 
 
-def decompile_function(elf_path: str, func_name: str) -> Tuple[bool, str]:
-    """Decompile a specific function from ELF file using angr."""
+def decompile_function(
+    elf_path: str, func_name: str, ghidra_path: str = None
+) -> Tuple[bool, str]:
+    """Decompile a specific function from ELF file using Ghidra.
+
+    Args:
+        elf_path: Path to the ELF file
+        func_name: Name of the function to decompile
+        ghidra_path: Path to Ghidra installation directory (containing analyzeHeadless)
+
+    Returns:
+        Tuple of (success, decompiled_code_or_error_message)
+    """
+    import tempfile
+    import shutil
+
+    # Find analyzeHeadless script
+    analyze_headless = None
+    if ghidra_path:
+        # Check common locations within Ghidra installation
+        candidates = [
+            os.path.join(ghidra_path, "support", "analyzeHeadless"),
+            os.path.join(ghidra_path, "analyzeHeadless"),
+            os.path.join(ghidra_path, "support", "analyzeHeadless.bat"),
+            os.path.join(ghidra_path, "analyzeHeadless.bat"),
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                analyze_headless = candidate
+                break
+
+    if not analyze_headless:
+        # Try to find in PATH
+        analyze_headless = shutil.which("analyzeHeadless")
+
+    if not analyze_headless:
+        return False, "GHIDRA_NOT_CONFIGURED"
+
+    if not os.path.exists(elf_path):
+        return False, f"ELF file not found: {elf_path}"
+
+    # Create temporary directory for Ghidra project
+    temp_dir = tempfile.mkdtemp(prefix="ghidra_decompile_")
+    project_name = "fpb_decompile"
+    output_file = os.path.join(temp_dir, "decompiled.c")
+
+    # Create a simple Ghidra script to decompile the function
+    script_content = f"""
+# Ghidra decompile script for FPBInject
+# @category FPBInject
+# @runtime Jython
+
+from ghidra.app.decompiler import DecompInterface
+from ghidra.util.task import ConsoleTaskMonitor
+import os
+
+func_name = "{func_name}"
+output_path = "{output_file}"
+
+# Initialize decompiler
+decomp = DecompInterface()
+decomp.openProgram(currentProgram)
+
+# Find the function
+func = None
+func_manager = currentProgram.getFunctionManager()
+
+# Try exact match first
+for f in func_manager.getFunctions(True):
+    if f.getName() == func_name:
+        func = f
+        break
+
+# Try with underscore prefix (common in C)
+if func is None:
+    for f in func_manager.getFunctions(True):
+        if f.getName() == "_" + func_name:
+            func = f
+            break
+
+# Try partial match
+if func is None:
+    for f in func_manager.getFunctions(True):
+        if func_name in f.getName():
+            func = f
+            break
+
+if func is None:
+    with open(output_path, "w") as f:
+        f.write("ERROR: Function '{{}}' not found".format(func_name))
+else:
+    # Decompile the function
+    monitor = ConsoleTaskMonitor()
+    results = decomp.decompileFunction(func, 60, monitor)
+
+    if results.decompileCompleted():
+        decompiled = results.getDecompiledFunction()
+        if decompiled:
+            c_code = decompiled.getC()
+            with open(output_path, "w") as f:
+                f.write(c_code)
+        else:
+            with open(output_path, "w") as f:
+                f.write("ERROR: Decompilation produced no output")
+    else:
+        with open(output_path, "w") as f:
+            f.write("ERROR: Decompilation failed - {{}}".format(results.getErrorMessage() or "unknown error"))
+
+decomp.dispose()
+"""
+
+    script_file = os.path.join(temp_dir, "decompile_func.py")
+    with open(script_file, "w") as f:
+        f.write(script_content)
+
     try:
-        import angr
-        from angr.analyses.decompiler.structured_codegen import (
-            DummyStructuredCodeGenerator,
+        # Run Ghidra headless analysis
+        cmd = [
+            analyze_headless,
+            temp_dir,
+            project_name,
+            "-import",
+            elf_path,
+            "-postScript",
+            script_file,
+            "-scriptPath",
+            temp_dir,
+            "-deleteProject",
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,  # 2 minute timeout for analysis
         )
-    except ImportError:
-        return False, "ANGR_NOT_INSTALLED"
 
-    import logging as angr_logging
+        # Check if output file was created
+        if os.path.exists(output_file):
+            with open(output_file, "r") as f:
+                content = f.read()
 
-    for name in ["angr", "cle", "pyvex", "angr.analyses.calling_convention"]:
-        angr_logging.getLogger(name).setLevel(angr_logging.CRITICAL)
+            if content.startswith("ERROR:"):
+                error_msg = content[6:].strip()
+                return False, error_msg
 
-    try:
-        proj = angr.Project(elf_path, auto_load_libs=False)
-
-        func_symbol = proj.loader.find_symbol(func_name)
-        if not func_symbol:
-            func_symbol = proj.loader.find_symbol(f"_{func_name}")
-
-        if not func_symbol:
-            return False, f"Function '{func_name}' not found in ELF"
-
-        cfg = proj.analyses.CFGFast(normalize=True, data_references=True)
-
-        func_addr = func_symbol.rebased_addr
-        func = cfg.kb.functions.get(func_addr)
-
-        if not func:
-            for f in cfg.kb.functions.values():
-                if f.name == func_name or f.name == f"_{func_name}":
-                    func = f
-                    break
-
-        if not func:
-            return False, f"Could not analyze function '{func_name}'"
-
-        try:
-            dec = proj.analyses.Decompiler(func, cfg=cfg)
-
-            if dec.codegen is None or isinstance(
-                dec.codegen, DummyStructuredCodeGenerator
-            ):
-                return False, f"Could not decompile '{func_name}' - analysis failed"
-
-            decompiled = dec.codegen.text
-
-            if not decompiled or not decompiled.strip():
-                return False, f"Decompilation produced empty output for '{func_name}'"
-
+            # Add header
             header = f"// Decompiled from: {os.path.basename(elf_path)}\n"
-            header += f"// Function: {func_name} @ 0x{func_addr:08x}\n"
+            header += f"// Function: {func_name}\n"
+            header += "// Decompiler: Ghidra\n"
             header += "// Note: This is machine-generated pseudocode\n\n"
 
-            return True, header + decompiled
+            return True, header + content
+        else:
+            # Check stderr for errors
+            if result.returncode != 0:
+                logger.error(f"Ghidra analysis failed: {result.stderr}")
+                return False, f"Ghidra analysis failed: {result.stderr[:200]}"
+            return False, "Decompilation produced no output"
 
-        except Exception as e:
-            logger.error(f"Decompilation analysis failed: {e}")
-            return False, f"Decompilation failed: {str(e)}"
-
+    except subprocess.TimeoutExpired:
+        return False, "Decompilation timed out (>120s)"
+    except FileNotFoundError:
+        return False, "Ghidra analyzeHeadless not found"
     except Exception as e:
-        err_msg = str(e)
-        # Handle angr/cle internal errors for complex embedded ELF files
-        if "backer" in err_msg.lower() or "Can't find" in err_msg:
-            logger.info(f"angr cannot load this ELF (complex memory layout): {err_msg}")
-            return (
-                False,
-                "Decompilation unavailable: ELF has complex memory layout not supported by angr",
-            )
         logger.error(f"Error decompiling function: {e}")
         return False, str(e)
+    finally:
+        # Cleanup temporary directory
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 def get_signature(

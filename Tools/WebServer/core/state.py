@@ -37,6 +37,7 @@ PERSISTENT_KEYS = [
     "auto_connect",
     "auto_compile",
     "enable_decompile",
+    "ghidra_path",
     "transfer_max_retries",
     "verify_crc",
     "log_file_enabled",
@@ -72,7 +73,8 @@ class DeviceState:
         # Auto settings
         self.auto_connect = False
         self.auto_compile = False  # Auto compile and inject on file change
-        self.enable_decompile = False  # Enable decompilation (requires angr)
+        self.enable_decompile = False  # Enable decompilation (requires Ghidra)
+        self.ghidra_path = ""  # Path to Ghidra installation (analyzeHeadless)
         self.verify_crc = True  # Verify CRC after file transfer (default enabled)
 
         # Device info (from fl --info)

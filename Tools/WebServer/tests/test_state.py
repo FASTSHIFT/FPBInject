@@ -228,6 +228,11 @@ class TestPersistentKeys(unittest.TestCase):
         device1.auto_connect = True
         device1.auto_compile = True
         device1.enable_decompile = True
+        device1.ghidra_path = "/opt/ghidra_11.0"
+        device1.verify_crc = False
+        device1.transfer_max_retries = 5
+        device1.log_file_enabled = True
+        device1.log_file_path = "/tmp/test.log"
 
         data = device1.to_dict()
 
@@ -240,3 +245,16 @@ class TestPersistentKeys(unittest.TestCase):
                 getattr(device2, key),
                 f"Key mismatch: {key}",
             )
+
+    def test_ghidra_path_persistence(self):
+        """Test ghidra_path is properly persisted"""
+        device = DeviceState()
+        device.ghidra_path = "/home/user/ghidra_11.2.1_PUBLIC"
+
+        data = device.to_dict()
+        self.assertIn("ghidra_path", data)
+        self.assertEqual(data["ghidra_path"], "/home/user/ghidra_11.2.1_PUBLIC")
+
+        device2 = DeviceState()
+        device2.from_dict(data)
+        self.assertEqual(device2.ghidra_path, "/home/user/ghidra_11.2.1_PUBLIC")

@@ -214,7 +214,7 @@ module.exports = function (w) {
       assertContains(template, 'DECOMPILED REFERENCE');
       assertContains(template, 'int x = 0');
     });
-    it('includes angr tip when not installed', () => {
+    it('includes Ghidra tip when not configured', () => {
       const template = w.generatePatchTemplate(
         'func',
         0,
@@ -223,7 +223,7 @@ module.exports = function (w) {
         null,
         true,
       );
-      assertContains(template, 'pip install angr');
+      assertContains(template, 'Ghidra');
     });
     it('generates return statement for non-void', () => {
       const template = w.generatePatchTemplate(
