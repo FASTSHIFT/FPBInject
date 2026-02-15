@@ -99,6 +99,21 @@ const globalFunctions = [
   'getTerminalTheme',
   'getAceEditorContent',
   'HOME_PATH',
+  // Config schema functions
+  'loadConfigSchema',
+  'getConfigSchema',
+  'resetConfigSchema',
+  'renderConfigPanel',
+  'loadConfigValues',
+  'saveConfigValues',
+  'onConfigItemChange',
+  'updatePathList',
+  'getPathListValues',
+  'addPathListItem',
+  'addPathListItemElement',
+  'browsePathListItem',
+  'removePathListItem',
+  'keyToElementId',
 ];
 
 // Sync window exports to global scope after each module load
@@ -146,6 +161,7 @@ const modules = [
   'core/connection.js',
   'core/logs.js',
   'core/slots.js',
+  'core/config-schema.js',
   'ui/sash.js',
   'ui/sidebar.js',
   'features/fpb.js',
@@ -183,6 +199,7 @@ require('./js/test_sidebar')(w);
 require('./js/test_patch')(w);
 require('./js/test_editor')(w);
 require('./js/test_config')(w);
+require('./js/test_config_schema')(w);
 require('./js/test_log_file')(w);
 require('./js/test_features')(w);
 require('./js/test_transfer')(w);

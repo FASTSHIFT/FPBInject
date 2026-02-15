@@ -211,18 +211,39 @@ module.exports = function (w) {
 
     it('sets auto_compile checkbox', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.autoInjectPollInterval = null;
+      // Mock schema endpoint
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'auto_compile', config_type: 'boolean', default: false },
+        ],
+        groups: { inject: 'Injection' },
+        group_order: ['inject'],
+      });
       const el = browserGlobals.document.getElementById('autoCompile');
       setFetchResponse('/api/config', { auto_compile: true });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
+      // The checkbox should be set by loadConfigValuesFromData
       assertEqual(el.checked, true);
+      w.stopAutoInjectPolling();
       w.FPBState.toolTerminal = null;
     });
 
     it('sets enable_decompile checkbox', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
+      // Mock schema endpoint
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'enable_decompile', config_type: 'boolean', default: false },
+        ],
+        groups: { tools: 'Analysis Tools' },
+        group_order: ['tools'],
+      });
       const el = browserGlobals.document.getElementById('enableDecompile');
       setFetchResponse('/api/config', { enable_decompile: true });
       setFetchResponse('/api/status', { connected: false });
@@ -248,7 +269,22 @@ module.exports = function (w) {
 
     it('sends POST to /api/config', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
+      // Mock schema endpoint for schema-based saveConfig
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'elf_path', config_type: 'file_path', default: '' },
+          {
+            key: 'chunk_size',
+            config_type: 'number',
+            default: 128,
+            ui_multiplier: 1,
+          },
+        ],
+        groups: { project: 'Project Paths' },
+        group_order: ['project'],
+      });
       setFetchResponse('/api/config', { success: true });
       await w.saveConfig(true);
       // Should complete without error
@@ -258,8 +294,14 @@ module.exports = function (w) {
 
     it('writes success message when not silent', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/config/schema', {
+        schema: [{ key: 'elf_path', config_type: 'file_path', default: '' }],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { success: true });
       await w.saveConfig(false);
       assertTrue(
@@ -270,8 +312,14 @@ module.exports = function (w) {
 
     it('does not write message when silent', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/config/schema', {
+        schema: [{ key: 'elf_path', config_type: 'file_path', default: '' }],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { success: true });
       const writesBefore = mockTerm._writes.length;
       await w.saveConfig(true);
@@ -281,8 +329,14 @@ module.exports = function (w) {
 
     it('handles save failure', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/config/schema', {
+        schema: [{ key: 'elf_path', config_type: 'file_path', default: '' }],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', {
         success: false,
         message: 'Save failed',
@@ -296,10 +350,24 @@ module.exports = function (w) {
 
     it('collects config from form elements', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('elfPath').value =
         '/test/path.elf';
       browserGlobals.document.getElementById('chunkSize').value = '256';
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'elf_path', config_type: 'file_path', default: '' },
+          {
+            key: 'chunk_size',
+            config_type: 'number',
+            default: 128,
+            ui_multiplier: 1,
+          },
+        ],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { success: true });
       await w.saveConfig(true);
       // Should complete without error
@@ -309,24 +377,19 @@ module.exports = function (w) {
   });
 
   describe('setupAutoSave Function', () => {
-    it('adds change listeners to text inputs', () => {
+    // Note: setupAutoSave is now a no-op since auto-save is handled by
+    // onConfigItemChange in config-schema.js. These tests verify backward compatibility.
+    it('is callable without error', () => {
       resetMocks();
       w.setupAutoSave();
-      const elfPath = browserGlobals.document.getElementById('elfPath');
-      assertTrue(
-        elfPath._eventListeners['change'] &&
-          elfPath._eventListeners['change'].length > 0,
-      );
+      assertEqual(typeof w.setupAutoSave, 'function');
     });
 
-    it('adds change listeners to select inputs', () => {
+    it('does not throw when called multiple times', () => {
       resetMocks();
       w.setupAutoSave();
-      const patchMode = browserGlobals.document.getElementById('patchMode');
-      assertTrue(
-        patchMode._eventListeners['change'] &&
-          patchMode._eventListeners['change'].length > 0,
-      );
+      w.setupAutoSave();
+      assertEqual(typeof w.setupAutoSave, 'function');
     });
   });
 
@@ -513,6 +576,13 @@ module.exports = function (w) {
       w.FPBState.autoInjectPollInterval = null;
       const watchDirsSection =
         browserGlobals.document.getElementById('watchDirsSection');
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'auto_compile', config_type: 'boolean', default: false },
+        ],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { auto_compile: true });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
@@ -527,6 +597,13 @@ module.exports = function (w) {
       const watchDirsSection =
         browserGlobals.document.getElementById('watchDirsSection');
       watchDirsSection.style.display = 'block';
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'auto_compile', config_type: 'boolean', default: false },
+        ],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { auto_compile: false });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
@@ -537,6 +614,11 @@ module.exports = function (w) {
     it('calls updateWatchDirsList with watch_dirs', async () => {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/config/schema', {
+        schema: [{ key: 'watch_dirs', config_type: 'path_list', default: [] }],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { watch_dirs: ['/path1', '/path2'] });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
@@ -549,6 +631,11 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = new MockTerminal();
       const portSelect = browserGlobals.document.getElementById('portSelect');
       portSelect.options = [];
+      setFetchResponse('/api/config/schema', {
+        schema: [],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { port: '/dev/ttyUSB1' });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
@@ -576,7 +663,13 @@ module.exports = function (w) {
   describe('saveConfig Function - Extended', () => {
     it('includes watch_dirs in config', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/config/schema', {
+        schema: [{ key: 'watch_dirs', config_type: 'path_list', default: [] }],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { success: true });
       await w.saveConfig(true);
       // Should complete without error
@@ -586,8 +679,16 @@ module.exports = function (w) {
 
     it('includes auto_compile in config', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('autoCompile').checked = true;
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'auto_compile', config_type: 'boolean', default: false },
+        ],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { success: true });
       await w.saveConfig(true);
       // Should complete without error
@@ -597,8 +698,16 @@ module.exports = function (w) {
 
     it('includes enable_decompile in config', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('enableDecompile').checked = true;
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'enable_decompile', config_type: 'boolean', default: false },
+        ],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { success: true });
       await w.saveConfig(true);
       // Should complete without error
@@ -608,10 +717,27 @@ module.exports = function (w) {
 
     it('handles fetch exception', async () => {
       resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
+      let callCount = 0;
       const origFetch = browserGlobals.fetch;
-      browserGlobals.fetch = async () => {
+      browserGlobals.fetch = async (url) => {
+        callCount++;
+        if (url.includes('/api/config/schema')) {
+          // Return mock schema
+          return {
+            ok: true,
+            json: async () => ({
+              schema: [
+                { key: 'elf_path', config_type: 'file_path', default: '' },
+              ],
+              groups: {},
+              group_order: [],
+            }),
+          };
+        }
+        // Config endpoint - throw error
         throw new Error('Network error');
       };
       global.fetch = browserGlobals.fetch;
@@ -774,6 +900,13 @@ module.exports = function (w) {
       w.FPBState.autoInjectPollInterval = null;
       const watcherStatus =
         browserGlobals.document.getElementById('watcherStatus');
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'auto_compile', config_type: 'boolean', default: false },
+        ],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { auto_compile: true });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
@@ -788,6 +921,13 @@ module.exports = function (w) {
       const watcherStatus =
         browserGlobals.document.getElementById('watcherStatus');
       watcherStatus.textContent = 'Watcher: On';
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'auto_compile', config_type: 'boolean', default: false },
+        ],
+        groups: {},
+        group_order: [],
+      });
       setFetchResponse('/api/config', { auto_compile: false });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();

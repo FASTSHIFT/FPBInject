@@ -12,6 +12,13 @@
 let _configSchema = null;
 
 /**
+ * Reset cached schema (for testing purposes).
+ */
+function resetConfigSchema() {
+  _configSchema = null;
+}
+
+/**
  * Load configuration schema from backend.
  * @returns {Promise<Object>} Schema object with schema, groups, group_order
  */
@@ -523,6 +530,7 @@ function escapeHtml(text) {
 // Export for global access
 window.loadConfigSchema = loadConfigSchema;
 window.getConfigSchema = getConfigSchema;
+window.resetConfigSchema = resetConfigSchema;
 window.renderConfigPanel = renderConfigPanel;
 window.loadConfigValues = loadConfigValues;
 window.saveConfigValues = saveConfigValues;

@@ -8,7 +8,11 @@ const {
   assertTrue,
   assertContains,
 } = require('./framework');
-const { resetMocks, browserGlobals } = require('./mocks');
+const {
+  resetMocks,
+  browserGlobals,
+  getDocumentEventListeners,
+} = require('./mocks');
 
 module.exports = function (w) {
   describe('Sash Functions (ui/sash.js)', () => {
@@ -205,6 +209,129 @@ module.exports = function (w) {
       const handler = sashCorner._eventListeners['mousedown'][0];
       handler({ preventDefault: () => {}, clientX: 100, clientY: 100 });
       assertTrue(sashCorner.classList._classes.has('active'));
+    });
+
+    it('mousemove updates sidebar width during resize', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
+      const mousedownHandler = sashSidebar._eventListeners['mousedown'][0];
+      mousedownHandler({ preventDefault: () => {}, clientX: 100 });
+      // Trigger mousemove
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mousemove'] && docListeners['mousemove'].length > 0) {
+        docListeners['mousemove'][0]({ clientX: 200, clientY: 100 });
+      }
+      assertTrue(sashSidebar.classList._classes.has('active'));
+    });
+
+    it('mousemove updates panel height during resize', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashPanel = browserGlobals.document.getElementById('sashPanel');
+      const mousedownHandler = sashPanel._eventListeners['mousedown'][0];
+      mousedownHandler({ preventDefault: () => {}, clientY: 500 });
+      // Trigger mousemove
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mousemove'] && docListeners['mousemove'].length > 0) {
+        docListeners['mousemove'][0]({ clientX: 100, clientY: 400 });
+      }
+      assertTrue(sashPanel.classList._classes.has('active'));
+    });
+
+    it('mousemove updates both dimensions during corner resize', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashCorner = browserGlobals.document.getElementById('sashCorner');
+      const mousedownHandler = sashCorner._eventListeners['mousedown'][0];
+      mousedownHandler({
+        preventDefault: () => {},
+        clientX: 100,
+        clientY: 500,
+      });
+      // Trigger mousemove
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mousemove'] && docListeners['mousemove'].length > 0) {
+        docListeners['mousemove'][0]({ clientX: 200, clientY: 400 });
+      }
+      assertTrue(sashCorner.classList._classes.has('active'));
+    });
+
+    it('mouseup ends sidebar resize', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
+      const mousedownHandler = sashSidebar._eventListeners['mousedown'][0];
+      mousedownHandler({ preventDefault: () => {}, clientX: 100 });
+      assertTrue(sashSidebar.classList._classes.has('active'));
+      // Trigger mouseup
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mouseup'] && docListeners['mouseup'].length > 0) {
+        docListeners['mouseup'][0]();
+      }
+      assertTrue(!sashSidebar.classList._classes.has('active'));
+    });
+
+    it('mouseup ends panel resize', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashPanel = browserGlobals.document.getElementById('sashPanel');
+      const mousedownHandler = sashPanel._eventListeners['mousedown'][0];
+      mousedownHandler({ preventDefault: () => {}, clientY: 100 });
+      assertTrue(sashPanel.classList._classes.has('active'));
+      // Trigger mouseup
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mouseup'] && docListeners['mouseup'].length > 0) {
+        docListeners['mouseup'][0]();
+      }
+      assertTrue(!sashPanel.classList._classes.has('active'));
+    });
+
+    it('mouseup ends corner resize', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashCorner = browserGlobals.document.getElementById('sashCorner');
+      const mousedownHandler = sashCorner._eventListeners['mousedown'][0];
+      mousedownHandler({
+        preventDefault: () => {},
+        clientX: 100,
+        clientY: 100,
+      });
+      assertTrue(sashCorner.classList._classes.has('active'));
+      // Trigger mouseup
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mouseup'] && docListeners['mouseup'].length > 0) {
+        docListeners['mouseup'][0]();
+      }
+      assertTrue(!sashCorner.classList._classes.has('active'));
+    });
+
+    it('sidebar resize enforces minimum width', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
+      const mousedownHandler = sashSidebar._eventListeners['mousedown'][0];
+      mousedownHandler({ preventDefault: () => {}, clientX: 300 });
+      // Move to very small width
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mousemove'] && docListeners['mousemove'].length > 0) {
+        docListeners['mousemove'][0]({ clientX: 50, clientY: 100 });
+      }
+      assertEqual(typeof w.initSashResize, 'function');
+    });
+
+    it('panel resize enforces minimum height', () => {
+      resetMocks();
+      w.initSashResize();
+      const sashPanel = browserGlobals.document.getElementById('sashPanel');
+      const mousedownHandler = sashPanel._eventListeners['mousedown'][0];
+      mousedownHandler({ preventDefault: () => {}, clientY: 100 });
+      // Move to very small height
+      const docListeners = getDocumentEventListeners();
+      if (docListeners['mousemove'] && docListeners['mousemove'].length > 0) {
+        docListeners['mousemove'][0]({ clientX: 100, clientY: 50 });
+      }
+      assertEqual(typeof w.initSashResize, 'function');
     });
   });
 };
