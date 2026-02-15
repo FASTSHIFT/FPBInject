@@ -168,46 +168,37 @@ def api_status():
 @bp.route("/config", methods=["GET"])
 def api_get_config():
     """Get current device configuration."""
+    from core.config_schema import PERSISTENT_KEYS
+
     device = state.device
-    return jsonify(
-        {
-            "port": device.port,
-            "baudrate": device.baudrate,
-            "elf_path": device.elf_path,
-            "toolchain_path": device.toolchain_path,
-            "compile_commands_path": device.compile_commands_path,
-            "watch_dirs": device.watch_dirs,
-            "patch_mode": device.patch_mode,
-            "chunk_size": device.chunk_size,
-            "tx_chunk_size": device.tx_chunk_size,
-            "tx_chunk_delay": device.tx_chunk_delay,
-            "transfer_max_retries": device.transfer_max_retries,
-            "auto_compile": device.auto_compile,
-            "enable_decompile": device.enable_decompile,
-            "ghidra_path": device.ghidra_path,
-            "verify_crc": device.verify_crc,
-            "log_file_enabled": device.log_file_enabled,
-            "log_file_path": device.log_file_path,
-        }
-    )
+    return jsonify({key: getattr(device, key) for key in PERSISTENT_KEYS})
+
+
+@bp.route("/config/schema", methods=["GET"])
+def api_get_config_schema():
+    """Get configuration schema for frontend dynamic rendering."""
+    from core.config_schema import get_schema_as_dict
+
+    return jsonify(get_schema_as_dict())
 
 
 @bp.route("/config", methods=["POST"])
 def api_config():
     """Update device configuration."""
+    from core.config_schema import PERSISTENT_KEYS
+
     _, get_fpb_inject, _restart_file_watcher, _stop_file_watcher, _, _ = _get_helpers()
 
     data = request.json or {}
     device = state.device
 
-    if "port" in data:
-        device.port = data["port"]
+    # Update all config values from request
+    for key in PERSISTENT_KEYS:
+        if key in data:
+            setattr(device, key, data[key])
 
-    if "baudrate" in data:
-        device.baudrate = data["baudrate"]
-
+    # Special handling for certain config changes
     if "elf_path" in data:
-        device.elf_path = data["elf_path"]
         # Reload symbols
         if device.elf_path and os.path.exists(device.elf_path):
             fpb = get_fpb_inject()
@@ -215,52 +206,21 @@ def api_config():
             state.symbols_loaded = True
 
     if "toolchain_path" in data:
-        device.toolchain_path = data["toolchain_path"]
         fpb = get_fpb_inject()
         fpb.set_toolchain_path(device.toolchain_path)
 
-    if "compile_commands_path" in data:
-        device.compile_commands_path = data["compile_commands_path"]
-
     if "watch_dirs" in data:
-        device.watch_dirs = data["watch_dirs"]
         # Restart file watcher if needed
         _restart_file_watcher()
 
-    if "patch_mode" in data:
-        device.patch_mode = data["patch_mode"]
-
-    if "chunk_size" in data:
-        device.chunk_size = data["chunk_size"]
-
-    if "tx_chunk_size" in data:
-        device.tx_chunk_size = data["tx_chunk_size"]
-
-    if "tx_chunk_delay" in data:
-        device.tx_chunk_delay = data["tx_chunk_delay"]
-
-    if "transfer_max_retries" in data:
-        device.transfer_max_retries = data["transfer_max_retries"]
-
     if "auto_compile" in data:
-        device.auto_compile = data["auto_compile"]
         # Start or stop file watcher based on auto_compile setting
         if device.auto_compile:
             _restart_file_watcher()
         else:
             _stop_file_watcher()
 
-    if "enable_decompile" in data:
-        device.enable_decompile = data["enable_decompile"]
-
-    if "ghidra_path" in data:
-        device.ghidra_path = data["ghidra_path"]
-
-    if "verify_crc" in data:
-        device.verify_crc = data["verify_crc"]
-
     if "patch_source_path" in data:
-        device.patch_source_path = data["patch_source_path"]
         # Load patch source content if file exists
         if device.patch_source_path and os.path.exists(device.patch_source_path):
             try:

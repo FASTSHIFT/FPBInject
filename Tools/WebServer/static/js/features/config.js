@@ -1,5 +1,8 @@
 /*========================================
   FPBInject Workbench - Configuration Module
+  
+  This module integrates with config-schema.js for schema-driven
+  configuration management.
   ========================================*/
 
 /* ===========================
@@ -7,6 +10,9 @@
    =========================== */
 async function loadConfig() {
   try {
+    // Render config panel from schema
+    await renderConfigPanel('configContainer');
+
     const res = await fetch('/api/config');
 
     if (!res.ok) return;
@@ -16,66 +22,38 @@ async function loadConfig() {
 
     const data = await res.json();
 
+    // Load port/baudrate (connection section, not in schema UI)
     if (data.port) {
       const portSelect = document.getElementById('portSelect');
-      let portExists = false;
-      for (let opt of portSelect.options) {
-        if (opt.value === data.port) {
-          portExists = true;
-          break;
+      if (portSelect) {
+        let portExists = false;
+        for (let opt of portSelect.options) {
+          if (opt.value === data.port) {
+            portExists = true;
+            break;
+          }
         }
+        if (!portExists && data.port) {
+          const opt = document.createElement('option');
+          opt.value = data.port;
+          opt.textContent = data.port;
+          portSelect.appendChild(opt);
+        }
+        portSelect.value = data.port;
       }
-      if (!portExists && data.port) {
-        const opt = document.createElement('option');
-        opt.value = data.port;
-        opt.textContent = data.port;
-        portSelect.appendChild(opt);
-      }
-      portSelect.value = data.port;
     }
-    if (data.baudrate)
-      document.getElementById('baudrate').value = data.baudrate;
+    if (data.baudrate) {
+      const baudrateEl = document.getElementById('baudrate');
+      if (baudrateEl) baudrateEl.value = data.baudrate;
+    }
 
-    if (data.elf_path) document.getElementById('elfPath').value = data.elf_path;
-    if (data.compile_commands_path)
-      document.getElementById('compileCommandsPath').value =
-        data.compile_commands_path;
-    if (data.toolchain_path)
-      document.getElementById('toolchainPath').value = data.toolchain_path;
-    if (data.patch_mode)
-      document.getElementById('patchMode').value = data.patch_mode;
-    if (data.chunk_size)
-      document.getElementById('chunkSize').value = data.chunk_size;
-    if (data.tx_chunk_size !== undefined)
-      document.getElementById('txChunkSize').value = data.tx_chunk_size;
-    if (data.tx_chunk_delay !== undefined)
-      document.getElementById('txChunkDelay').value = Math.round(
-        data.tx_chunk_delay * 1000,
-      );
-    if (data.transfer_max_retries !== undefined)
-      document.getElementById('transferMaxRetries').value =
-        data.transfer_max_retries;
-    if (data.watch_dirs) updateWatchDirsList(data.watch_dirs);
-    if (data.auto_compile !== undefined) {
-      document.getElementById('autoCompile').checked = data.auto_compile;
-    }
-    if (data.enable_decompile !== undefined) {
-      document.getElementById('enableDecompile').checked =
-        data.enable_decompile;
-    }
-    if (data.ghidra_path !== undefined) {
-      document.getElementById('ghidraPath').value = data.ghidra_path;
-    }
-    if (data.verify_crc !== undefined)
-      document.getElementById('verifyCrc').checked = data.verify_crc;
-    if (data.log_file_enabled !== undefined)
-      document.getElementById('logFileEnabled').checked = data.log_file_enabled;
-    if (data.log_file_path)
-      document.getElementById('logFilePath').value = data.log_file_path;
+    // Load all config values using schema
+    await loadConfigValuesFromData(data);
 
     // Update path input state based on recording status
     updateLogFilePathState(data.log_file_enabled || false);
 
+    // Update watch dirs section visibility
     const watchDirsSection = document.getElementById('watchDirsSection');
     if (watchDirsSection) {
       watchDirsSection.style.display = data.auto_compile ? 'block' : 'none';
@@ -93,24 +71,130 @@ async function loadConfig() {
   }
 }
 
+/**
+ * Load config values from data object into form elements.
+ * Uses schema for proper type handling.
+ */
+async function loadConfigValuesFromData(data) {
+  const schema = await loadConfigSchema();
+  if (!schema) return;
+
+  for (const item of schema.schema) {
+    const elementId = keyToElementId(item.key);
+    const el = document.getElementById(elementId);
+    if (!el) continue;
+
+    let value = data[item.key];
+    if (value === undefined || value === null) {
+      value = item.default;
+    }
+
+    if (item.config_type === 'boolean') {
+      el.checked = value;
+    } else if (item.config_type === 'number' && item.ui_multiplier !== 1) {
+      // Apply UI multiplier (e.g., seconds to ms)
+      el.value = Math.round(value * item.ui_multiplier);
+    } else if (item.config_type === 'path_list') {
+      // Handle path list separately
+      updatePathList(item.key, value || []);
+    } else {
+      el.value = value || '';
+    }
+  }
+
+  // Setup dependency visibility
+  setupDependenciesFromSchema(schema);
+}
+
+/**
+ * Setup visibility dependencies between config items.
+ */
+function setupDependenciesFromSchema(schema) {
+  for (const item of schema.schema) {
+    if (item.depends_on) {
+      const dependsOnId = keyToElementId(item.depends_on);
+      const dependsOnEl = document.getElementById(dependsOnId);
+      const sectionId = keyToElementId(item.key) + 'Section';
+      const sectionEl = document.getElementById(sectionId);
+
+      if (dependsOnEl && sectionEl) {
+        // Set initial visibility
+        sectionEl.style.display = dependsOnEl.checked ? 'block' : 'none';
+      }
+    }
+  }
+}
+
 async function saveConfig(silent = false) {
+  const schema = getConfigSchema();
+  if (!schema) {
+    // Fallback to legacy save if schema not loaded
+    return saveConfigLegacy(silent);
+  }
+
+  const config = {};
+
+  for (const item of schema.schema) {
+    const elementId = keyToElementId(item.key);
+    const el = document.getElementById(elementId);
+    if (!el) continue;
+
+    if (item.config_type === 'boolean') {
+      config[item.key] = el.checked;
+    } else if (item.config_type === 'number') {
+      let value = parseFloat(el.value) || item.default;
+      // Reverse UI multiplier
+      if (item.ui_multiplier !== 1) {
+        value = value / item.ui_multiplier;
+      }
+      config[item.key] = value;
+    } else if (item.config_type === 'path_list') {
+      config[item.key] = getPathListValues(item.key);
+    } else {
+      config[item.key] = el.value;
+    }
+  }
+
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      if (!silent) writeToOutput('[SUCCESS] Configuration saved', 'success');
+    } else {
+      throw new Error(data.message || 'Save failed');
+    }
+  } catch (e) {
+    writeToOutput(`[ERROR] Save failed: ${e}`, 'error');
+  }
+}
+
+/**
+ * Legacy save function for backward compatibility.
+ */
+async function saveConfigLegacy(silent = false) {
   const config = {
-    elf_path: document.getElementById('elfPath').value,
-    compile_commands_path: document.getElementById('compileCommandsPath').value,
-    toolchain_path: document.getElementById('toolchainPath').value,
-    patch_mode: document.getElementById('patchMode').value,
-    chunk_size: parseInt(document.getElementById('chunkSize').value) || 128,
-    tx_chunk_size: parseInt(document.getElementById('txChunkSize').value) || 0,
+    elf_path: document.getElementById('elfPath')?.value || '',
+    compile_commands_path:
+      document.getElementById('compileCommandsPath')?.value || '',
+    toolchain_path: document.getElementById('toolchainPath')?.value || '',
+    patch_mode: document.getElementById('patchMode')?.value || 'trampoline',
+    chunk_size: parseInt(document.getElementById('chunkSize')?.value) || 128,
+    tx_chunk_size: parseInt(document.getElementById('txChunkSize')?.value) || 0,
     tx_chunk_delay:
-      (parseInt(document.getElementById('txChunkDelay').value) || 5) / 1000,
+      (parseInt(document.getElementById('txChunkDelay')?.value) || 5) / 1000,
     transfer_max_retries:
-      parseInt(document.getElementById('transferMaxRetries').value) || 3,
+      parseInt(document.getElementById('transferMaxRetries')?.value) || 3,
     watch_dirs: getWatchDirs(),
-    auto_compile: document.getElementById('autoCompile').checked,
-    enable_decompile: document.getElementById('enableDecompile').checked,
-    ghidra_path: document.getElementById('ghidraPath').value,
-    verify_crc: document.getElementById('verifyCrc').checked,
-    // Note: log_file_enabled and log_file_path are saved separately
+    auto_compile: document.getElementById('autoCompile')?.checked || false,
+    enable_decompile:
+      document.getElementById('enableDecompile')?.checked || false,
+    ghidra_path: document.getElementById('ghidraPath')?.value || '',
+    verify_crc: document.getElementById('verifyCrc')?.checked ?? true,
   };
 
   try {
@@ -132,27 +216,8 @@ async function saveConfig(silent = false) {
 }
 
 function setupAutoSave() {
-  const textInputs = ['elfPath', 'compileCommandsPath', 'toolchainPath'];
-  textInputs.forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('change', () => saveConfig(true));
-    }
-  });
-
-  const selectInputs = [
-    'patchMode',
-    'chunkSize',
-    'txChunkSize',
-    'txChunkDelay',
-    'transferMaxRetries',
-  ];
-  selectInputs.forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('change', () => saveConfig(true));
-    }
-  });
+  // Auto-save is now handled by onConfigItemChange in config-schema.js
+  // This function is kept for backward compatibility
 }
 
 function onEnableDecompileChange() {
@@ -167,7 +232,15 @@ function onGhidraPathChange() {
    WATCH DIRS MANAGEMENT
    =========================== */
 function updateWatchDirsList(dirs) {
+  // Use schema-based path list if available
+  if (typeof updatePathList === 'function') {
+    updatePathList('watch_dirs', dirs || []);
+    return;
+  }
+
+  // Legacy fallback
   const list = document.getElementById('watchDirsList');
+  if (!list) return;
   list.innerHTML = '';
 
   if (!dirs || dirs.length === 0) return;
@@ -178,6 +251,12 @@ function updateWatchDirsList(dirs) {
 }
 
 function getWatchDirs() {
+  // Use schema-based path list if available
+  if (typeof getPathListValues === 'function') {
+    return getPathListValues('watch_dirs');
+  }
+
+  // Legacy fallback
   const items = document.querySelectorAll(
     '#watchDirsList .watch-dir-item input',
   );
@@ -187,6 +266,13 @@ function getWatchDirs() {
 }
 
 function addWatchDir() {
+  // Use schema-based function if available
+  if (typeof addPathListItem === 'function') {
+    addPathListItem('watch_dirs');
+    return;
+  }
+
+  // Legacy fallback
   const state = window.FPBState;
   state.fileBrowserCallback = (path) => {
     addWatchDirItem(path);
@@ -198,8 +284,15 @@ function addWatchDir() {
 }
 
 function addWatchDirItem(path, index = null) {
+  // Use schema-based function if available
+  if (typeof addPathListItemElement === 'function') {
+    addPathListItemElement('watch_dirs', path);
+    return;
+  }
+
+  // Legacy fallback
   const list = document.getElementById('watchDirsList');
-  const itemIndex = index !== null ? index : list.children.length;
+  if (!list) return;
 
   const item = document.createElement('div');
   item.className = 'watch-dir-item';
@@ -235,8 +328,9 @@ function removeWatchDir(btn) {
 }
 
 function onAutoCompileChange() {
-  const enabled = document.getElementById('autoCompile').checked;
+  const enabled = document.getElementById('autoCompile')?.checked || false;
 
+  // Update watch dirs section visibility
   const watchDirsSection = document.getElementById('watchDirsSection');
   if (watchDirsSection) {
     watchDirsSection.style.display = enabled ? 'block' : 'none';
@@ -248,11 +342,8 @@ function onAutoCompileChange() {
     `[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`,
     'info',
   );
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ auto_compile: enabled }),
-  });
+
+  saveConfig(true);
 
   if (enabled) {
     startAutoInjectPolling();
@@ -262,27 +353,23 @@ function onAutoCompileChange() {
 }
 
 function onVerifyCrcChange() {
-  const enabled = document.getElementById('verifyCrc').checked;
+  const enabled = document.getElementById('verifyCrc')?.checked ?? true;
   writeToOutput(
     `[INFO] Verify CRC after transfer: ${enabled ? 'Enabled' : 'Disabled'}`,
     'info',
   );
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verify_crc: enabled }),
-  });
+  saveConfig(true);
 }
 
 async function onLogFileEnabledChange() {
-  const enabled = document.getElementById('logFileEnabled').checked;
+  const enabled = document.getElementById('logFileEnabled')?.checked || false;
   const pathInput = document.getElementById('logFilePath');
 
   if (enabled) {
-    let path = pathInput.value.trim();
+    let path = pathInput?.value?.trim() || '';
     if (!path) {
       path = '~/fpb_console.log';
-      pathInput.value = path;
+      if (pathInput) pathInput.value = path;
     }
 
     try {
@@ -311,11 +398,13 @@ async function onLogFileEnabledChange() {
         updateLogFilePathState(true);
       } else {
         writeToOutput(`[ERROR] ${data.error}`, 'error');
-        document.getElementById('logFileEnabled').checked = false;
+        const checkbox = document.getElementById('logFileEnabled');
+        if (checkbox) checkbox.checked = false;
       }
     } catch (e) {
       writeToOutput(`[ERROR] Failed to start log recording: ${e}`, 'error');
-      document.getElementById('logFileEnabled').checked = false;
+      const checkbox = document.getElementById('logFileEnabled');
+      if (checkbox) checkbox.checked = false;
     }
   } else {
     try {
@@ -339,16 +428,20 @@ function updateLogFilePathState(recording) {
   const browseBtn = document.getElementById('browseLogFileBtn');
 
   if (recording) {
-    pathInput.disabled = true;
-    pathInput.style.opacity = '0.5';
+    if (pathInput) {
+      pathInput.disabled = true;
+      pathInput.style.opacity = '0.5';
+    }
     if (browseBtn) {
       browseBtn.disabled = true;
       browseBtn.style.opacity = '0.5';
       browseBtn.style.cursor = 'not-allowed';
     }
   } else {
-    pathInput.disabled = false;
-    pathInput.style.opacity = '1';
+    if (pathInput) {
+      pathInput.disabled = false;
+      pathInput.style.opacity = '1';
+    }
     if (browseBtn) {
       browseBtn.disabled = false;
       browseBtn.style.opacity = '1';
@@ -359,20 +452,9 @@ function updateLogFilePathState(recording) {
 
 async function onLogFilePathChange() {
   // Only save path when not recording
-  const enabled = document.getElementById('logFileEnabled').checked;
+  const enabled = document.getElementById('logFileEnabled')?.checked || false;
   if (!enabled) {
-    const path = document.getElementById('logFilePath').value.trim();
-    if (path) {
-      try {
-        await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ log_file_path: path }),
-        });
-      } catch (e) {
-        console.error('Failed to save log path:', e);
-      }
-    }
+    saveConfig(true);
   }
 }
 
@@ -381,7 +463,7 @@ function browseLogFile() {
   const input = document.getElementById('logFilePath');
 
   // Don't allow browsing while recording
-  if (document.getElementById('logFileEnabled').checked) {
+  if (document.getElementById('logFileEnabled')?.checked) {
     return;
   }
 
@@ -389,13 +471,13 @@ function browseLogFile() {
     if (!path.endsWith('.log')) {
       path = path + (path.endsWith('/') ? '' : '/') + 'console.log';
     }
-    input.value = path;
+    if (input) input.value = path;
     onLogFilePathChange();
   };
   state.fileBrowserFilter = '';
   state.fileBrowserMode = 'dir';
 
-  const currentPath = input.value || HOME_PATH;
+  const currentPath = input?.value || HOME_PATH;
   const startPath = currentPath.includes('/')
     ? currentPath.substring(0, currentPath.lastIndexOf('/'))
     : HOME_PATH;

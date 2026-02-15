@@ -1421,3 +1421,141 @@ input[type="checkbox"] {
   background: transparent !important;
   color: var(--vscode-editor-fg) !important;
 }
+
+/* ===========================
+   CONFIG PANEL - Schema-driven
+   =========================== */
+.config-group {
+  margin-bottom: 12px;
+}
+
+.config-group-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-foreground);
+  opacity: 0.7;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.config-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Config item base styles */
+.config-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.config-item label {
+  font-size: 11px;
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.config-item .vscode-input,
+.config-item .vscode-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Path input with browse button */
+.config-item-path .vscode-input {
+  flex: 1;
+}
+
+/* Number input - fixed width */
+.config-item-number .vscode-input {
+  width: 60px;
+  flex: none;
+}
+
+.config-unit {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+/* Checkbox items */
+.config-item-checkbox {
+  gap: 6px;
+}
+
+.config-item-checkbox label {
+  width: auto;
+  flex: 1;
+}
+
+.config-item-checkbox input[type="checkbox"] {
+  flex-shrink: 0;
+}
+
+/* Select items */
+.config-item-select .vscode-select {
+  flex: 1;
+}
+
+/* Path list */
+.config-item-path-list {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.config-path-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.config-path-list-header button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+.config-path-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.config-path-list-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  background: var(--vscode-input-bg);
+  border-radius: 3px;
+}
+
+.config-path-list-item .vscode-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  font-size: 11px;
+}
+
+.config-path-list-item button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.config-path-list-item button .codicon {
+  font-size: 12px;
+}

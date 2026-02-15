@@ -276,6 +276,35 @@ class TestRoutesFPB(TestRoutesBase):
 class TestConfigAPI(TestRoutesBase):
     """Configuration API tests"""
 
+    def test_get_config_schema(self):
+        """Test GET config schema endpoint"""
+        response = self.client.get("/api/config/schema")
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.data)
+        self.assertIn("schema", data)
+        self.assertIn("groups", data)
+        self.assertIn("group_order", data)
+
+        # Schema should be a list
+        self.assertIsInstance(data["schema"], list)
+        self.assertGreater(len(data["schema"]), 0)
+
+        # Each item should have required fields
+        for item in data["schema"]:
+            self.assertIn("key", item)
+            self.assertIn("label", item)
+            self.assertIn("group", item)
+            self.assertIn("config_type", item)
+            self.assertIn("default", item)
+
+        # Groups should include expected groups
+        self.assertIn("project", data["groups"])
+        self.assertIn("transfer", data["groups"])
+
+        # Connection should not be in group_order (not shown in sidebar)
+        self.assertNotIn("connection", data["group_order"])
+
     def test_get_config_includes_transfer_max_retries(self):
         """Test GET config includes transfer_max_retries"""
         state.device.transfer_max_retries = 20

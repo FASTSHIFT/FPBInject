@@ -14,6 +14,12 @@ import logging
 import os
 import threading
 
+from core.config_schema import (
+    CONFIG_SCHEMA,
+    PERSISTENT_KEYS,
+    get_config_defaults,
+)
+
 # Config file path (relative to WebServer directory, not core/)
 CONFIG_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json"
@@ -22,60 +28,23 @@ CONFIG_FILE = os.path.join(
 # Config version for migration support
 CONFIG_VERSION = 1
 
-# Keys to persist
-PERSISTENT_KEYS = [
-    "port",
-    "baudrate",
-    "elf_path",
-    "toolchain_path",
-    "compile_commands_path",
-    "watch_dirs",
-    "patch_mode",
-    "chunk_size",
-    "tx_chunk_size",
-    "tx_chunk_delay",
-    "auto_connect",
-    "auto_compile",
-    "enable_decompile",
-    "ghidra_path",
-    "transfer_max_retries",
-    "verify_crc",
-    "log_file_enabled",
-    "log_file_path",
-]
-
 
 class DeviceState:
     """State container for FPBInject device."""
 
     def __init__(self):
-        # Serial connection
-        self.ser = None
-        self.port = None
-        self.baudrate = 115200
-        self.timeout = 2
+        # Initialize all persistent config from schema defaults
+        defaults = get_config_defaults()
+        for key, value in defaults.items():
+            setattr(self, key, value)
 
-        # FPB Inject configuration
-        self.elf_path = ""
-        self.toolchain_path = ""
-        self.compile_commands_path = ""
-        self.watch_dirs = []
-        self.patch_mode = "trampoline"  # trampoline, debugmon, direct
-        self.chunk_size = 128
-        self.tx_chunk_size = 0  # 0 = disabled, >0 = chunk size for TX
-        self.tx_chunk_delay = 0.005  # Delay between TX chunks (seconds)
-        self.transfer_max_retries = 10  # Max retries for file transfer
+        # Non-persistent runtime state
+        self.ser = None
+        self.timeout = 2
 
         # Patch source settings
         self.patch_source_path = ""  # Current patch source file path
         self.patch_source_content = ""  # Editable patch source content
-
-        # Auto settings
-        self.auto_connect = False
-        self.auto_compile = False  # Auto compile and inject on file change
-        self.enable_decompile = False  # Enable decompilation (requires Ghidra)
-        self.ghidra_path = ""  # Path to Ghidra installation (analyzeHeadless)
-        self.verify_crc = True  # Verify CRC after file transfer (default enabled)
 
         # Device info (from fl --info)
         self.device_info = None
@@ -120,9 +89,7 @@ class DeviceState:
         self.slot_update_id = 0  # Incremented on slot info change
         self.cached_slots = []  # Cached slot info from last info response
 
-        # Log file recording
-        self.log_file_enabled = False
-        self.log_file_path = ""
+        # Log file line buffer (not persisted)
         self.log_file_line_buffer = ""  # Buffer for line-based logging
 
     def add_tool_log(self, message):
