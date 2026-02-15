@@ -15,7 +15,6 @@ import os
 import threading
 
 from core.config_schema import (
-    CONFIG_SCHEMA,
     PERSISTENT_KEYS,
     get_config_defaults,
 )

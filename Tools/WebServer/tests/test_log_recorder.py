@@ -9,7 +9,6 @@ Unit tests for log file recorder service.
 
 import os
 import tempfile
-import time
 import unittest
 
 from services.log_recorder import LogFileRecorder
