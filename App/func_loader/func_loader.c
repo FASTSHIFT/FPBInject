@@ -29,7 +29,20 @@
 #include "func_loader.h"
 #include "func_loader_log.h"
 #include "fpbinject_version.h"
+
+/* External argparse support */
+#ifdef FL_USE_EXTERNAL_ARGPARSE
+#include FL_USE_EXTERNAL_ARGPARSE
+#define fl_argparse_init argparse_init
+#define fl_argparse_parse argparse_parse
+#define fl_argparse_usage argparse_usage
+#define fl_argparse_describe argparse_describe
+#define fl_argparse_help_cb argparse_help_cb
+#define fl_argparse_help_cb_no_exit argparse_help_cb_no_exit
+#else
 #include "argparse/argparse.h"
+#endif
+
 #include "fpb_inject.h"
 #include "fpb_trampoline.h"
 #include "fpb_debugmon.h"
