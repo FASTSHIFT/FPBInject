@@ -91,16 +91,6 @@ typedef struct fl_context_s {
 #endif
 } fl_context_t;
 
-#if FL_USE_FILE
-/**
- * @brief Initialize file transfer context for fl_context
- * @param ctx Function loader context
- * @param fs_ops Filesystem operations (NULL for default POSIX)
- * @return 0 on success, -1 on error
- */
-int fl_file_ctx_init(fl_context_t* ctx, const struct fl_fs_ops_s* fs_ops);
-#endif
-
 /**
  * @brief Initialize context with default settings
  */

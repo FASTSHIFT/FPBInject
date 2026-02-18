@@ -41,6 +41,10 @@
 #define FL_FILE_USE_LIBC 0
 #endif
 
+#ifndef FL_FILE_USE_FATFS
+#define FL_FILE_USE_FATFS 0
+#endif
+
 #if FL_USE_FILE
 
 #ifdef __cplusplus
@@ -178,6 +182,16 @@ const fl_fs_ops_t* fl_file_get_posix_ops(void);
 const fl_fs_ops_t* fl_file_get_libc_ops(void);
 
 #endif /* FL_FILE_USE_LIBC */
+
+#if FL_FILE_USE_FATFS
+
+/**
+ * @brief Get FatFS filesystem operations
+ * @return Pointer to FatFS fs_ops
+ */
+const fl_fs_ops_t* fl_file_get_fatfs_ops(void);
+
+#endif /* FL_FILE_USE_FATFS */
 
 /**
  * @brief Open a file
