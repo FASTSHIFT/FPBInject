@@ -74,6 +74,21 @@ set(SUT_SOURCES_COMMON
     # Argparse library
     ${FUNC_LOADER_DIR}/argparse/argparse.c)
 
+# FatFS test sources (uses mock FatFS)
+set(SUT_SOURCES_FATFS
+    # FPB core
+    ${SRC_DIR}/fpb_inject.c
+    ${SRC_DIR}/fpb_trampoline.c
+    # Function loader core
+    ${FUNC_LOADER_DIR}/func_loader.c
+    ${FUNC_LOADER_DIR}/func_loader_stream.c
+    ${FUNC_LOADER_DIR}/func_loader_log.c
+    ${FUNC_LOADER_DIR}/func_allocator.c
+    # File transfer (FatFS backend)
+    ${FUNC_LOADER_DIR}/func_loader_file_fatfs.c
+    # Argparse library
+    ${FUNC_LOADER_DIR}/argparse/argparse.c)
+
 # Main test runner uses standard debugmon
 set(SUT_SOURCES_MAIN
     ${SUT_SOURCES_COMMON}
@@ -95,6 +110,8 @@ set(MOCK_SOURCES fpb_mock_regs.c mock_hardware.c)
 set(MOCK_SOURCES_NUTTX fpb_mock_regs.c mock_hardware.c
                        ${NUTTX_MOCK_DIR}/nuttx_mock.c)
 
+set(MOCK_SOURCES_FATFS fpb_mock_regs.c mock_hardware.c mock_fatfs.c)
+
 set(TEST_FRAMEWORK_SOURCES test_framework.c)
 
 # ============================================================================
@@ -112,6 +129,8 @@ set(TEST_SOURCES_MAIN
 
 set(TEST_SOURCES_NUTTX test_fpb_debugmon_nuttx.c)
 
+set(TEST_SOURCES_FATFS test_main_fatfs.c test_func_loader_file_fatfs.c)
+
 # ============================================================================
 # Main test executable (standard debugmon)
 # ============================================================================
@@ -128,6 +147,17 @@ add_executable(
 target_compile_definitions(test_runner_nuttx PRIVATE FPB_HOST_TESTING_NUTTX=1)
 target_link_libraries(test_runner_nuttx m)
 
+# ============================================================================
+# FatFS test executable
+# ============================================================================
+add_executable(
+  test_runner_fatfs
+  ${SUT_SOURCES_FATFS} ${MOCK_SOURCES_FATFS} ${TEST_FRAMEWORK_SOURCES}
+  ${TEST_SOURCES_FATFS} ${SRC_DIR}/fpb_debugmon.c)
+target_compile_definitions(test_runner_fatfs PRIVATE FL_USE_FILE=1
+                                                     FL_FILE_USE_FATFS=1)
+target_link_libraries(test_runner_fatfs m)
+
 # Custom target for running all tests
 add_custom_target(
   run_tests
@@ -136,7 +166,10 @@ add_custom_target(
   COMMAND ${CMAKE_COMMAND} -E echo ""
   COMMAND ${CMAKE_COMMAND} -E echo "=== Running NuttX debugmon tests ==="
   COMMAND ./test_runner_nuttx
-  DEPENDS test_runner test_runner_nuttx
+  COMMAND ${CMAKE_COMMAND} -E echo ""
+  COMMAND ${CMAKE_COMMAND} -E echo "=== Running FatFS tests ==="
+  COMMAND ./test_runner_fatfs
+  DEPENDS test_runner test_runner_nuttx test_runner_fatfs
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   COMMENT "Running all unit tests...")
 

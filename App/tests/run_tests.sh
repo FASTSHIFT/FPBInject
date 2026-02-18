@@ -83,8 +83,13 @@ run_tests() {
     ./test_runner_nuttx
     NUTTX_EXIT_CODE=$?
     
+    # Run FatFS backend tests
+    print_info "Running FatFS backend tests..."
+    ./test_runner_fatfs
+    FATFS_EXIT_CODE=$?
+    
     # Check results
-    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ]; then
+    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ]; then
         print_success "All tests passed"
     else
         if [ $MAIN_EXIT_CODE -ne 0 ]; then
@@ -92,6 +97,9 @@ run_tests() {
         fi
         if [ $NUTTX_EXIT_CODE -ne 0 ]; then
             print_error "NuttX tests failed (exit code: $NUTTX_EXIT_CODE)"
+        fi
+        if [ $FATFS_EXIT_CODE -ne 0 ]; then
+            print_error "FatFS tests failed (exit code: $FATFS_EXIT_CODE)"
         fi
         exit 1
     fi
