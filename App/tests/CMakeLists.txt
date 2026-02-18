@@ -84,7 +84,8 @@ set(SUT_SOURCES_FATFS
     ${FUNC_LOADER_DIR}/func_loader_stream.c
     ${FUNC_LOADER_DIR}/func_loader_log.c
     ${FUNC_LOADER_DIR}/func_allocator.c
-    # File transfer (FatFS backend)
+    # File transfer (generic + FatFS backend)
+    ${FUNC_LOADER_DIR}/func_loader_file.c
     ${FUNC_LOADER_DIR}/func_loader_file_fatfs.c
     # Argparse library
     ${FUNC_LOADER_DIR}/argparse/argparse.c)
