@@ -22,6 +22,15 @@
 
 #include <string.h>
 
+/* Dynamic allocation support */
+#ifndef FL_FATFS_USE_MALLOC
+#define FL_FATFS_USE_MALLOC 0
+#endif
+
+#if FL_FATFS_USE_MALLOC
+#include <stdlib.h>
+#endif
+
 /* FatFS file handle wrapper */
 typedef struct {
     FIL fil;
@@ -34,7 +43,46 @@ typedef struct {
     uint8_t is_open;
 } fatfs_dir_t;
 
-/* Static file/dir handles pool (avoid dynamic allocation) */
+#if FL_FATFS_USE_MALLOC
+
+/* Dynamic allocation */
+static fatfs_file_t* fatfs_alloc_file(void)
+{
+    fatfs_file_t* f = malloc(sizeof(fatfs_file_t));
+    if (f) {
+        memset(f, 0, sizeof(fatfs_file_t));
+        f->is_open = 1;
+    }
+    return f;
+}
+
+static void fatfs_free_file(fatfs_file_t* f)
+{
+    if (f) {
+        free(f);
+    }
+}
+
+static fatfs_dir_t* fatfs_alloc_dir(void)
+{
+    fatfs_dir_t* d = malloc(sizeof(fatfs_dir_t));
+    if (d) {
+        memset(d, 0, sizeof(fatfs_dir_t));
+        d->is_open = 1;
+    }
+    return d;
+}
+
+static void fatfs_free_dir(fatfs_dir_t* d)
+{
+    if (d) {
+        free(d);
+    }
+}
+
+#else /* !FL_FATFS_USE_MALLOC */
+
+/* Static allocation pool */
 #ifndef FL_FATFS_MAX_FILES
 #define FL_FATFS_MAX_FILES 1
 #endif
@@ -46,7 +94,8 @@ typedef struct {
 static fatfs_file_t s_files[FL_FATFS_MAX_FILES];
 static fatfs_dir_t s_dirs[FL_FATFS_MAX_DIRS];
 
-static fatfs_file_t* fatfs_alloc_file(void) {
+static fatfs_file_t* fatfs_alloc_file(void)
+{
     for (int i = 0; i < FL_FATFS_MAX_FILES; i++) {
         if (!s_files[i].is_open) {
             s_files[i].is_open = 1;
@@ -56,13 +105,15 @@ static fatfs_file_t* fatfs_alloc_file(void) {
     return NULL;
 }
 
-static void fatfs_free_file(fatfs_file_t* f) {
+static void fatfs_free_file(fatfs_file_t* f)
+{
     if (f) {
         f->is_open = 0;
     }
 }
 
-static fatfs_dir_t* fatfs_alloc_dir(void) {
+static fatfs_dir_t* fatfs_alloc_dir(void)
+{
     for (int i = 0; i < FL_FATFS_MAX_DIRS; i++) {
         if (!s_dirs[i].is_open) {
             s_dirs[i].is_open = 1;
@@ -72,11 +123,14 @@ static fatfs_dir_t* fatfs_alloc_dir(void) {
     return NULL;
 }
 
-static void fatfs_free_dir(fatfs_dir_t* d) {
+static void fatfs_free_dir(fatfs_dir_t* d)
+{
     if (d) {
         d->is_open = 0;
     }
 }
+
+#endif /* FL_FATFS_USE_MALLOC */
 
 /* Convert FL flags to FatFS mode */
 static BYTE fl_flags_to_fatfs(int flags) {
