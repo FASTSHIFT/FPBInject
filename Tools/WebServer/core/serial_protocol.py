@@ -494,7 +494,7 @@ class FPBProtocol:
                 "max_working_size": 0,
                 "failed_size": 0,
                 "tests": [],
-                "recommended_chunk_size": 64,
+                "recommended_chunk_size": 16,
             }
 
         results = {
@@ -502,7 +502,7 @@ class FPBProtocol:
             "max_working_size": 0,
             "failed_size": 0,
             "tests": [],
-            "recommended_chunk_size": 64,
+            "recommended_chunk_size": 16,
         }
 
         try:
@@ -571,9 +571,13 @@ class FPBProtocol:
 
             results["max_working_size"] = max_working
             if max_working > 0:
-                results["recommended_chunk_size"] = max(64, (max_working * 3) // 4)
+                # Use 75% of max working size as safe chunk size
+                # Don't force minimum - respect actual device capability
+                results["recommended_chunk_size"] = (max_working * 3) // 4
+                if results["recommended_chunk_size"] < 16:
+                    results["recommended_chunk_size"] = max_working
             else:
-                results["recommended_chunk_size"] = 64
+                results["recommended_chunk_size"] = 16
 
         except Exception as e:
             results["success"] = False
