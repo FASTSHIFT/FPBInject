@@ -276,7 +276,7 @@ static void cmd_info(fl_context_t* ctx) {
     }
 
     fl_println("FPBInject " FPBINJECT_VERSION_STRING);
-    fl_println("Build: %s %s", __DATE__, __TIME__);
+    fl_println("Build: " __DATE__ " " __TIME__);
     fl_println("Used: %u", (unsigned)total_used);
     fl_println("Slots: %u/%u", (unsigned)active_count, (unsigned)num_comps);
 
