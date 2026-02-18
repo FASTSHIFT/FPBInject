@@ -105,6 +105,16 @@ def restore_state():
         restore_file_watcher()
         logger.info("File watcher restored")
 
+    # Restore ELF file watcher if elf_path is configured
+    if device.elf_path:
+        from services.file_watcher_manager import start_elf_watcher
+
+        logger.info(f"Restoring ELF file watcher for: {device.elf_path}")
+        if start_elf_watcher(device.elf_path):
+            logger.info("ELF file watcher restored")
+        else:
+            logger.warning("Failed to restore ELF file watcher")
+
     # Restore log file recording if enabled
     if device.log_file_enabled and device.log_file_path:
         from services.log_recorder import log_recorder

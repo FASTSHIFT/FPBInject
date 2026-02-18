@@ -101,3 +101,34 @@ def api_auto_inject_reset():
     device.auto_inject_progress = 0
     device.auto_inject_last_update = 0
     return jsonify({"success": True})
+
+
+# =============================================================================
+# ELF File Watcher API
+# =============================================================================
+
+
+def _get_elf_watcher_helpers():
+    """Lazy import to avoid circular dependency."""
+    from services.file_watcher_manager import (
+        check_elf_file_changed,
+        acknowledge_elf_change,
+    )
+
+    return check_elf_file_changed, acknowledge_elf_change
+
+
+@bp.route("/watch/elf_status", methods=["GET"])
+def api_elf_status():
+    """Get ELF file change status."""
+    check_elf_file_changed, _ = _get_elf_watcher_helpers()
+    result = check_elf_file_changed()
+    return jsonify({"success": True, **result})
+
+
+@bp.route("/watch/elf_acknowledge", methods=["POST"])
+def api_elf_acknowledge():
+    """Acknowledge ELF file change (user chose to reload or ignore)."""
+    _, acknowledge_elf_change = _get_elf_watcher_helpers()
+    acknowledge_elf_change()
+    return jsonify({"success": True})

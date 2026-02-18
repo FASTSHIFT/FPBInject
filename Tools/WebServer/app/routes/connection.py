@@ -22,7 +22,11 @@ bp = Blueprint("connection", __name__)
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
     from routes import get_fpb_inject
-    from services.file_watcher_manager import restart_file_watcher, stop_file_watcher
+    from services.file_watcher_manager import (
+        restart_file_watcher,
+        stop_file_watcher,
+        start_elf_watcher,
+    )
     from fpb_inject import scan_serial_ports, serial_open
     from core.state import state
 
@@ -36,13 +40,20 @@ def _get_helpers():
         stop_file_watcher,
         scan_serial_ports,
         serial_open,
+        start_elf_watcher,
     )
+
+
+def _start_elf_watcher(elf_path):
+    """Start ELF file watcher."""
+    *_, start_elf_watcher = _get_helpers()
+    start_elf_watcher(elf_path)
 
 
 @bp.route("/ports", methods=["GET"])
 def api_get_ports():
     """Get available serial ports."""
-    _, _, _, _, scan_serial_ports, _ = _get_helpers()
+    _, _, _, _, scan_serial_ports, _, _ = _get_helpers()
     ports = scan_serial_ports()
     return jsonify({"success": True, "ports": ports})
 
@@ -50,7 +61,7 @@ def api_get_ports():
 @bp.route("/connect", methods=["POST"])
 def api_connect():
     """Connect to a serial port."""
-    add_tool_log, get_fpb_inject, _, _, _, serial_open = _get_helpers()
+    add_tool_log, get_fpb_inject, _, _, _, serial_open, _ = _get_helpers()
 
     data = request.json or {}
     port = data.get("port")
@@ -106,7 +117,7 @@ def api_connect():
 @bp.route("/disconnect", methods=["POST"])
 def api_disconnect():
     """Disconnect from serial port."""
-    add_tool_log, _, _, _, _, _ = _get_helpers()
+    add_tool_log, _, _, _, _, _, _ = _get_helpers()
 
     device = state.device
 
@@ -187,7 +198,9 @@ def api_config():
     """Update device configuration."""
     from core.config_schema import PERSISTENT_KEYS
 
-    _, get_fpb_inject, _restart_file_watcher, _stop_file_watcher, _, _ = _get_helpers()
+    _, get_fpb_inject, _restart_file_watcher, _stop_file_watcher, _, _, _ = (
+        _get_helpers()
+    )
 
     data = request.json or {}
     device = state.device
@@ -204,6 +217,9 @@ def api_config():
             fpb = get_fpb_inject()
             state.symbols = fpb.get_symbols(device.elf_path)
             state.symbols_loaded = True
+
+        # Start ELF file watcher
+        _start_elf_watcher(device.elf_path)
 
     if "toolchain_path" in data:
         fpb = get_fpb_inject()

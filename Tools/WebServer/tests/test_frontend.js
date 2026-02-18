@@ -170,6 +170,7 @@ const modules = [
   'features/editor.js',
   'features/config.js',
   'features/autoinject.js',
+  'features/elfwatcher.js',
   'features/filebrowser.js',
   'features/transfer.js',
 ];
@@ -202,6 +203,7 @@ require('./js/test_config')(w);
 require('./js/test_config_schema')(w);
 require('./js/test_log_file')(w);
 require('./js/test_features')(w);
+require('./js/test_elfwatcher')(w);
 require('./js/test_transfer')(w);
 
 // Wait for all async tests to complete then report results

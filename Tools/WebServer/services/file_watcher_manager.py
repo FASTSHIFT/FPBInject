@@ -18,6 +18,9 @@ from core.state import state
 
 logger = logging.getLogger(__name__)
 
+# ELF file watcher instance
+_elf_watcher = None
+
 
 def start_file_watcher(dirs):
     """Start file watcher for given directories."""
@@ -54,6 +57,116 @@ def restore_file_watcher():
     """Restore file watcher on startup if auto_compile is enabled."""
     if state.device.auto_compile and state.device.watch_dirs:
         start_file_watcher(state.device.watch_dirs)
+
+
+# =============================================================================
+# ELF File Watcher
+# =============================================================================
+
+
+def start_elf_watcher(elf_path):
+    """Start watching ELF file for changes."""
+    global _elf_watcher
+
+    stop_elf_watcher()
+
+    if not elf_path or not os.path.exists(elf_path):
+        return False
+
+    try:
+        from services.file_watcher import start_watching
+
+        elf_dir = os.path.dirname(elf_path)
+
+        # Watch the directory containing the ELF file
+        # Filter to only watch .elf files
+        _elf_watcher = start_watching(
+            [elf_dir], _on_elf_file_change, extensions=[".elf"]
+        )
+
+        # Record initial mtime
+        state.device.elf_file_mtime = os.path.getmtime(elf_path)
+        state.device.elf_file_changed = False
+
+        logger.info(f"Started ELF file watcher for: {elf_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to start ELF watcher: {e}")
+        return False
+
+
+def stop_elf_watcher():
+    """Stop ELF file watcher."""
+    global _elf_watcher
+
+    if _elf_watcher:
+        try:
+            from services.file_watcher import stop_watching
+
+            stop_watching(_elf_watcher)
+        except Exception:
+            pass
+        _elf_watcher = None
+        logger.info("Stopped ELF file watcher")
+
+
+def check_elf_file_changed():
+    """
+    Check if ELF file has changed since last load.
+
+    Returns:
+        dict with 'changed' (bool) and 'elf_path' (str)
+    """
+    device = state.device
+    elf_path = device.elf_path
+
+    if not elf_path or not os.path.exists(elf_path):
+        return {"changed": False, "elf_path": elf_path}
+
+    try:
+        current_mtime = os.path.getmtime(elf_path)
+        if device.elf_file_mtime > 0 and current_mtime > device.elf_file_mtime:
+            device.elf_file_changed = True
+    except OSError:
+        pass
+
+    return {"changed": device.elf_file_changed, "elf_path": elf_path}
+
+
+def acknowledge_elf_change():
+    """Acknowledge ELF file change (user chose to reload or ignore)."""
+    device = state.device
+    device.elf_file_changed = False
+
+    # Update mtime to current
+    if device.elf_path and os.path.exists(device.elf_path):
+        try:
+            device.elf_file_mtime = os.path.getmtime(device.elf_path)
+        except OSError:
+            pass
+
+
+def _on_elf_file_change(path, change_type):
+    """Callback when ELF file changes."""
+    device = state.device
+
+    # Only care about the configured ELF file
+    if not device.elf_path:
+        return
+
+    # Normalize paths for comparison
+    changed_path = os.path.normpath(os.path.abspath(path))
+    elf_path = os.path.normpath(os.path.abspath(device.elf_path))
+
+    if changed_path == elf_path:
+        logger.info(f"ELF file changed: {path} ({change_type})")
+        device.elf_file_changed = True
+
+        # Update mtime
+        try:
+            device.elf_file_mtime = os.path.getmtime(path)
+        except OSError:
+            pass
 
 
 def _on_file_change(path, change_type):

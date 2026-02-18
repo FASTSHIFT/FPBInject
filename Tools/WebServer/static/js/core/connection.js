@@ -72,6 +72,11 @@ function handleConnected(port, message = null) {
   startLogPolling();
   fpbInfo();
   updateDisabledState();
+
+  // Start ELF file watcher
+  if (typeof startElfWatcherPolling === 'function') {
+    startElfWatcherPolling();
+  }
 }
 
 function handleDisconnected() {
@@ -86,6 +91,11 @@ function handleDisconnected() {
   writeToOutput('[DISCONNECTED]', 'warning');
   stopLogPolling();
   updateDisabledState();
+
+  // Stop ELF file watcher
+  if (typeof stopElfWatcherPolling === 'function') {
+    stopElfWatcherPolling();
+  }
 }
 
 async function toggleConnect() {

@@ -91,6 +91,10 @@ class DeviceState:
         # Log file line buffer (not persisted)
         self.log_file_line_buffer = ""  # Buffer for line-based logging
 
+        # ELF file change tracking
+        self.elf_file_changed = False  # True when ELF file modified since last load
+        self.elf_file_mtime = 0  # Last known modification time of ELF file
+
     def add_tool_log(self, message):
         """Add a message to tool output log (shown in OUTPUT terminal)."""
         log_id = self.tool_log_next_id
