@@ -128,7 +128,7 @@ class FPBProtocol:
     def send_cmd(
         self,
         cmd: str,
-        timeout: float = 2.0,
+        timeout: float = 0.5,
         retry_on_missing_cmd: bool = True,
         max_retries: int = 3,
     ) -> str:
