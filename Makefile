@@ -23,6 +23,7 @@ CSRCS += $(wildcard Source/*.c)
 # Definitions
 CFLAGS += -DFL_NUTTX_BUF_SIZE=$(CONFIG_FPBINJECT_BUF_SIZE) \
           -DFL_NUTTX_LINE_SIZE=$(CONFIG_FPBINJECT_LINE_SIZE) \
+          -DFL_USE_FILE=1 \
           -DFL_FILE_USE_POSIX=1
 
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)/examples/FPBInject/App/func_loader \

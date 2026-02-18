@@ -30,7 +30,7 @@
 #define __FUNC_LOADER_FILE_H
 
 #ifndef FL_USE_FILE
-#define FL_USE_FILE 1
+#define FL_USE_FILE 0
 #endif
 
 #ifndef FL_FILE_USE_POSIX
