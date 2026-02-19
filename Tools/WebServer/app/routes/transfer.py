@@ -31,12 +31,21 @@ _transfer_cancelled = threading.Event()
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
     from routes import get_fpb_inject
-    from core.state import state
+    from core.state import state, tool_log
 
-    def add_tool_log(msg):
-        state.device.add_tool_log(msg)
+    def log_info(msg):
+        tool_log(state.device, "INFO", msg)
 
-    return add_tool_log, get_fpb_inject
+    def log_success(msg):
+        tool_log(state.device, "SUCCESS", msg)
+
+    def log_error(msg):
+        tool_log(state.device, "ERROR", msg)
+
+    def log_warn(msg):
+        tool_log(state.device, "WARN", msg)
+
+    return log_info, log_success, log_error, log_warn, get_fpb_inject
 
 
 def _run_serial_op(func, timeout=10.0):
@@ -62,7 +71,7 @@ def _run_serial_op(func, timeout=10.0):
 
 def _get_file_transfer(log_callback=None):
     """Get FileTransfer instance."""
-    _, get_fpb_inject = _get_helpers()
+    *_, get_fpb_inject = _get_helpers()
     fpb = get_fpb_inject()
     chunk_size = state.device.chunk_size or 256
     max_retries = (
@@ -83,9 +92,9 @@ def api_transfer_cancel():
     Returns:
         JSON with success status
     """
-    add_tool_log, _ = _get_helpers()
+    log_info, _, _, _, _ = _get_helpers()
     _transfer_cancelled.set()
-    add_tool_log("[TRANSFER] Cancel requested")
+    log_info("Cancel requested")
     return jsonify({"success": True, "message": "Cancel requested"})
 
 
@@ -100,7 +109,7 @@ def api_transfer_list():
     Returns:
         JSON with entries list
     """
-    add_tool_log, _ = _get_helpers()
+    _, _, log_error, _, _ = _get_helpers()
     path = request.args.get("path", "/")
 
     ft = _get_file_transfer()
@@ -116,7 +125,7 @@ def api_transfer_list():
     result = _run_serial_op(do_list, timeout=10.0)
 
     if "error" in result and result.get("error"):
-        add_tool_log(f"[ERROR] List failed: {result['error']}")
+        log_error(f"List failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     return jsonify(result)
@@ -133,7 +142,6 @@ def api_transfer_stat():
     Returns:
         JSON with file stat info
     """
-    add_tool_log, _ = _get_helpers()
     path = request.args.get("path")
 
     if not path:
@@ -168,7 +176,7 @@ def api_transfer_mkdir():
     Returns:
         JSON with success status
     """
-    add_tool_log, _ = _get_helpers()
+    _, log_success, log_error, _, _ = _get_helpers()
     data = request.json or {}
     path = data.get("path")
 
@@ -188,11 +196,11 @@ def api_transfer_mkdir():
     result = _run_serial_op(do_mkdir, timeout=5.0)
 
     if "error" in result and result.get("error"):
-        add_tool_log(f"[ERROR] Mkdir failed: {result['error']}")
+        log_error(f"Mkdir failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
-        add_tool_log(f"[SUCCESS] Created directory: {path}")
+        log_success(f"Created directory: {path}")
 
     return jsonify(result)
 
@@ -208,7 +216,7 @@ def api_transfer_delete():
     Returns:
         JSON with success status
     """
-    add_tool_log, _ = _get_helpers()
+    _, log_success, log_error, _, _ = _get_helpers()
     data = request.json or {}
     path = data.get("path")
 
@@ -228,11 +236,11 @@ def api_transfer_delete():
     result = _run_serial_op(do_delete, timeout=5.0)
 
     if "error" in result and result.get("error"):
-        add_tool_log(f"[ERROR] Delete failed: {result['error']}")
+        log_error(f"Delete failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
-        add_tool_log(f"[SUCCESS] Deleted: {path}")
+        log_success(f"Deleted: {path}")
 
     return jsonify(result)
 
@@ -249,7 +257,7 @@ def api_transfer_rename():
     Returns:
         JSON with success status
     """
-    add_tool_log, _ = _get_helpers()
+    _, log_success, log_error, _, _ = _get_helpers()
     data = request.json or {}
     old_path = data.get("old_path")
     new_path = data.get("new_path")
@@ -272,11 +280,11 @@ def api_transfer_rename():
     result = _run_serial_op(do_rename, timeout=5.0)
 
     if "error" in result and result.get("error"):
-        add_tool_log(f"[ERROR] Rename failed: {result['error']}")
+        log_error(f"Rename failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
-        add_tool_log(f"[SUCCESS] Renamed: {old_path} -> {new_path}")
+        log_success(f"Renamed: {old_path} -> {new_path}")
 
     return jsonify(result)
 
@@ -295,7 +303,7 @@ def api_transfer_upload():
     """
     import time
 
-    add_tool_log, _ = _get_helpers()
+    log_info, log_success, log_error, log_warn, _ = _get_helpers()
 
     # Get file from request
     if "file" not in request.files:
@@ -311,9 +319,7 @@ def api_transfer_upload():
     file_data = file.read()
     total_size = len(file_data)
 
-    add_tool_log(
-        f"[UPLOAD] Starting upload: {file.filename} -> {remote_path} ({total_size} bytes)"
-    )
+    log_info(f"Starting upload: {file.filename} -> {remote_path} ({total_size} bytes)")
 
     # Clear cancel flag at start
     _transfer_cancelled.clear()
@@ -326,7 +332,7 @@ def api_transfer_upload():
         def log_callback(msg):
             """Send log messages to frontend via progress queue."""
             progress_queue.put({"type": "log", "message": msg})
-            # Note: Don't call add_tool_log here to avoid duplicate logs
+            # Note: Don't call log_xxx here to avoid duplicate logs
             # Frontend will display via SSE, backend tool_log is separate channel
 
         ft = _get_file_transfer(log_callback=log_callback)
@@ -383,7 +389,7 @@ def api_transfer_upload():
                 # Use "rw" mode to allow CRC verification after write
                 success, msg = ft.fopen(remote_path, "rw")
                 if not success:
-                    add_tool_log(f"[ERROR] Upload failed to open: {msg}")
+                    log_error(f"Upload failed to open: {msg}")
                     progress_queue.put(
                         {
                             "type": "result",
@@ -401,7 +407,7 @@ def api_transfer_upload():
                     if _transfer_cancelled.is_set():
                         cancelled = True
                         ft.fclose()
-                        add_tool_log("[UPLOAD] Cancelled by user")
+                        log_info("Upload cancelled by user")
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -416,7 +422,7 @@ def api_transfer_upload():
                     success, msg = ft.fwrite(chunk, current_offset=uploaded)
                     if not success:
                         ft.fclose()
-                        add_tool_log(f"[ERROR] Upload write failed: {msg}")
+                        log_error(f"Upload write failed: {msg}")
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -438,9 +444,7 @@ def api_transfer_upload():
                     expected_crc = crc16(file_data)
                     success, dev_size, dev_crc = ft.fcrc(total_size)
                     if not success:
-                        add_tool_log(
-                            "[WARNING] CRC verification failed: could not get device CRC"
-                        )
+                        log_warn("CRC verification failed: could not get device CRC")
                         progress_queue.put(
                             {
                                 "type": "crc_warning",
@@ -450,7 +454,7 @@ def api_transfer_upload():
                     elif dev_size != total_size:
                         ft.fclose()
                         error_msg = f"Size mismatch: expected {total_size}, device has {dev_size}"
-                        add_tool_log(f"[ERROR] {error_msg}")
+                        log_error(error_msg)
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -463,7 +467,7 @@ def api_transfer_upload():
                     elif dev_crc != expected_crc:
                         ft.fclose()
                         error_msg = f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}"
-                        add_tool_log(f"[ERROR] {error_msg}")
+                        log_error(error_msg)
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -474,15 +478,15 @@ def api_transfer_upload():
                         )
                         return
                     else:
-                        add_tool_log(f"[INFO] CRC verified: 0x{dev_crc:04X}")
+                        log_info(f"CRC verified: 0x{dev_crc:04X}")
 
                 success, msg = ft.fclose()
                 elapsed = time.time() - start_time
                 avg_speed = total_size / elapsed if elapsed > 0 else 0
                 transfer_stats = ft.get_stats()
 
-                add_tool_log(
-                    f"[SUCCESS] Upload complete: {remote_path} "
+                log_success(
+                    f"Upload complete: {remote_path} "
                     f"({total_size} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s, "
                     f"loss rate: {transfer_stats['packet_loss_rate']}%)"
                 )
@@ -559,7 +563,7 @@ def api_transfer_download():
     """
     import time
 
-    add_tool_log, _ = _get_helpers()
+    log_info, log_success, log_error, log_warn, _ = _get_helpers()
 
     data = request.json or {}
     remote_path = data.get("remote_path")
@@ -567,7 +571,7 @@ def api_transfer_download():
     if not remote_path:
         return jsonify({"success": False, "error": "Remote path not specified"})
 
-    add_tool_log(f"[DOWNLOAD] Starting download: {remote_path}")
+    log_info(f"Starting download: {remote_path}")
 
     # Clear cancel flag at start
     _transfer_cancelled.clear()
@@ -580,7 +584,7 @@ def api_transfer_download():
         def log_callback(msg):
             """Send log messages to frontend via progress queue."""
             progress_queue.put({"type": "log", "message": msg})
-            # Note: Don't call add_tool_log here to avoid duplicate logs
+            # Note: Don't call log_xxx here to avoid duplicate logs
             # Frontend will display via SSE, backend tool_log is separate channel
 
         ft = _get_file_transfer(log_callback=log_callback)
@@ -636,8 +640,8 @@ def api_transfer_download():
                 # Get file size first
                 success, stat = ft.fstat(remote_path)
                 if not success:
-                    add_tool_log(
-                        f"[ERROR] Download failed to stat: {stat.get('error', 'unknown')}"
+                    log_error(
+                        f"Download failed to stat: {stat.get('error', 'unknown')}"
                     )
                     progress_queue.put(
                         {
@@ -672,7 +676,7 @@ def api_transfer_download():
                 # Open file for reading
                 success, msg = ft.fopen(remote_path, "r")
                 if not success:
-                    add_tool_log(f"[ERROR] Download failed to open: {msg}")
+                    log_error(f"Download failed to open: {msg}")
                     progress_queue.put(
                         {
                             "type": "result",
@@ -691,7 +695,7 @@ def api_transfer_download():
                     if _transfer_cancelled.is_set():
                         cancelled = True
                         ft.fclose()
-                        add_tool_log("[DOWNLOAD] Cancelled by user")
+                        log_info("Download cancelled by user")
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -707,7 +711,7 @@ def api_transfer_download():
                     )
                     if not success:
                         ft.fclose()
-                        add_tool_log(f"[ERROR] Download read failed: {msg}")
+                        log_error(f"Download read failed: {msg}")
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -733,9 +737,7 @@ def api_transfer_download():
                     local_crc = crc16(file_data)
                     success, dev_size, dev_crc = ft.fcrc(len(file_data))
                     if not success:
-                        add_tool_log(
-                            "[WARNING] CRC verification failed: could not get device CRC"
-                        )
+                        log_warn("CRC verification failed: could not get device CRC")
                         progress_queue.put(
                             {
                                 "type": "crc_warning",
@@ -745,7 +747,7 @@ def api_transfer_download():
                     elif dev_crc != local_crc:
                         ft.fclose()
                         error_msg = f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}"
-                        add_tool_log(f"[ERROR] {error_msg}")
+                        log_error(error_msg)
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -756,7 +758,7 @@ def api_transfer_download():
                         )
                         return
                     else:
-                        add_tool_log(f"[INFO] CRC verified: 0x{dev_crc:04X}")
+                        log_info(f"CRC verified: 0x{dev_crc:04X}")
 
                 ft.fclose()
                 elapsed = time.time() - start_time
@@ -767,8 +769,8 @@ def api_transfer_download():
                 avg_speed = len(file_data) / elapsed if elapsed > 0 else 0
                 transfer_stats = ft.get_stats()
 
-                add_tool_log(
-                    f"[SUCCESS] Download complete: {remote_path} "
+                log_success(
+                    f"Download complete: {remote_path} "
                     f"({len(file_data)} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s, "
                     f"loss rate: {transfer_stats['packet_loss_rate']}%)"
                 )

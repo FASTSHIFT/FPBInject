@@ -114,7 +114,9 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = mockTerm;
       w.handleConnected('/dev/ttyUSB0');
       assertTrue(
-        mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('CONNECTED')),
+        mockTerm._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Connected to'),
+        ),
       );
       w.FPBState.toolTerminal = null;
     });
@@ -180,7 +182,7 @@ module.exports = function (w) {
       w.handleDisconnected();
       assertTrue(
         mockTerm._writes.some(
-          (wr) => wr.msg && wr.msg.includes('DISCONNECTED'),
+          (wr) => wr.msg && wr.msg.includes('Disconnected'),
         ),
       );
       w.FPBState.toolTerminal = null;

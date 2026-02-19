@@ -43,6 +43,12 @@ class TestTransferRoutes(unittest.TestCase):
         self.mock_device.chunk_size = 256
         self.mock_device.add_tool_log = Mock()
 
+        # Create mock log functions
+        self.mock_log_info = Mock()
+        self.mock_log_success = Mock()
+        self.mock_log_error = Mock()
+        self.mock_log_warn = Mock()
+
         # Set up patches
         self.state_patcher = patch("app.routes.transfer.state")
         self.mock_state = self.state_patcher.start()
@@ -51,7 +57,10 @@ class TestTransferRoutes(unittest.TestCase):
         self.helpers_patcher = patch("app.routes.transfer._get_helpers")
         self.mock_helpers = self.helpers_patcher.start()
         self.mock_helpers.return_value = (
-            self.mock_device.add_tool_log,
+            self.mock_log_info,
+            self.mock_log_success,
+            self.mock_log_error,
+            self.mock_log_warn,
             lambda: self.mock_fpb,
         )
 
@@ -357,10 +366,10 @@ class TestTransferRoutes(unittest.TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        # Verify add_tool_log was called with success message
-        self.mock_device.add_tool_log.assert_called()
-        calls = [str(c) for c in self.mock_device.add_tool_log.call_args_list]
-        self.assertTrue(any("SUCCESS" in c and "Renamed" in c for c in calls))
+        # Verify log_success was called with success message
+        self.mock_log_success.assert_called()
+        calls = [str(c) for c in self.mock_log_success.call_args_list]
+        self.assertTrue(any("Renamed" in c for c in calls))
 
     def test_transfer_delete_logs_success(self):
         """Test delete logs success message."""
@@ -371,10 +380,10 @@ class TestTransferRoutes(unittest.TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        # Verify add_tool_log was called with success message
-        self.mock_device.add_tool_log.assert_called()
-        calls = [str(c) for c in self.mock_device.add_tool_log.call_args_list]
-        self.assertTrue(any("SUCCESS" in c and "Deleted" in c for c in calls))
+        # Verify log_success was called with success message
+        self.mock_log_success.assert_called()
+        calls = [str(c) for c in self.mock_log_success.call_args_list]
+        self.assertTrue(any("Deleted" in c for c in calls))
 
     def test_transfer_mkdir_logs_success(self):
         """Test mkdir logs success message."""
@@ -385,10 +394,10 @@ class TestTransferRoutes(unittest.TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        # Verify add_tool_log was called with success message
-        self.mock_device.add_tool_log.assert_called()
-        calls = [str(c) for c in self.mock_device.add_tool_log.call_args_list]
-        self.assertTrue(any("SUCCESS" in c and "Created" in c for c in calls))
+        # Verify log_success was called with success message
+        self.mock_log_success.assert_called()
+        calls = [str(c) for c in self.mock_log_success.call_args_list]
+        self.assertTrue(any("Created" in c for c in calls))
 
     def test_transfer_list_with_files_only(self):
         """Test listing directory with only files."""

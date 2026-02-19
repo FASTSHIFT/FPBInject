@@ -24,6 +24,21 @@ def mock_run_in_device_worker(device, func, timeout=5.0):
     return True
 
 
+def make_mock_helpers(mock_fpb, mock_build_slot=None):
+    """Create mock helpers return value with proper structure.
+
+    Returns: (log_info, log_success, log_error, log_warn, get_fpb_inject, _build_slot_response)
+    """
+    return (
+        Mock(),  # log_info
+        Mock(),  # log_success
+        Mock(),  # log_error
+        Mock(),  # log_warn
+        lambda: mock_fpb,  # get_fpb_inject
+        mock_build_slot or Mock(),  # _build_slot_response
+    )
+
+
 class TestFPBRoutesBase(unittest.TestCase):
     """FPB routes test base class"""
 
@@ -61,7 +76,7 @@ class TestFPBPingRoute(TestFPBRoutesBase):
         """Test ping success"""
         mock_fpb = Mock()
         mock_fpb.ping.return_value = (True, "Pong!")
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post("/api/fpb/ping")
         data = json.loads(response.data)
@@ -74,7 +89,7 @@ class TestFPBPingRoute(TestFPBRoutesBase):
         """Test ping failure"""
         mock_fpb = Mock()
         mock_fpb.ping.return_value = (False, "Timeout")
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post("/api/fpb/ping")
         data = json.loads(response.data)
@@ -95,7 +110,7 @@ class TestFPBTestSerialRoute(TestFPBRoutesBase):
             "failed_size": 512,
             "recommended_chunk_size": 192,
         }
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post(
             "/api/fpb/test-serial",
@@ -114,7 +129,7 @@ class TestFPBTestSerialRoute(TestFPBRoutesBase):
             "success": False,
             "error": "Not connected",
         }
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post("/api/fpb/test-serial", json={})
         data = json.loads(response.data)
@@ -139,7 +154,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         mock_build_slot = Mock(
             return_value={"slots": [], "memory": {"base": 0x20000000, "size": 1024}}
         )
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, mock_build_slot)
+        mock_helpers.return_value = make_mock_helpers(mock_fpb, mock_build_slot)
 
         response = self.client.get("/api/fpb/info")
         data = json.loads(response.data)
@@ -153,7 +168,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         mock_fpb = Mock()
         mock_fpb.info.return_value = (None, "Device not responding")
         mock_fpb.exit_fl_mode = Mock()
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.get("/api/fpb/info")
         data = json.loads(response.data)
@@ -173,7 +188,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         mock_fpb.get_elf_build_time.return_value = "Jan 16 2025 11:00:00"
 
         mock_build_slot = Mock(return_value={"slots": [], "memory": {}})
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, mock_build_slot)
+        mock_helpers.return_value = make_mock_helpers(mock_fpb, mock_build_slot)
 
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
@@ -196,7 +211,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
         """Test unpatch single slot"""
         mock_fpb = Mock()
         mock_fpb.unpatch.return_value = (True, "OK")
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         state.device.inject_active = True
 
@@ -212,7 +227,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
         """Test unpatch all slots"""
         mock_fpb = Mock()
         mock_fpb.unpatch.return_value = (True, "OK")
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         state.device.inject_active = True
         state.device.last_inject_target = "test_func"
@@ -229,7 +244,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
         """Test unpatch failure"""
         mock_fpb = Mock()
         mock_fpb.unpatch.return_value = (False, "Error")
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post("/api/fpb/unpatch", json={})
         data = json.loads(response.data)
@@ -241,7 +256,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
         """Test unpatch with exception"""
         mock_fpb = Mock()
         mock_fpb.unpatch.side_effect = Exception("Unexpected error")
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post("/api/fpb/unpatch", json={})
         data = json.loads(response.data)
@@ -256,7 +271,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
     @patch("app.routes.fpb._get_helpers")
     def test_inject_no_source(self, mock_helpers):
         """Test inject without source content"""
-        mock_helpers.return_value = (Mock(), Mock(), Mock())
+        mock_helpers.return_value = make_mock_helpers(Mock())
 
         response = self.client.post("/api/fpb/inject", json={"target_func": "main"})
         data = json.loads(response.data)
@@ -267,7 +282,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
     @patch("app.routes.fpb._get_helpers")
     def test_inject_no_target(self, mock_helpers):
         """Test inject without target function"""
-        mock_helpers.return_value = (Mock(), Mock(), Mock())
+        mock_helpers.return_value = make_mock_helpers(Mock())
 
         response = self.client.post(
             "/api/fpb/inject", json={"source_content": "void test() {}"}
@@ -284,7 +299,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
         mock_fpb.inject.return_value = (True, {"slot": 0, "time": 0.5})
         mock_fpb.enter_fl_mode = Mock()
         mock_fpb.exit_fl_mode = Mock()
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post(
             "/api/fpb/inject",
@@ -306,7 +321,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
         mock_fpb.inject.return_value = (False, {"error": "Compile error"})
         mock_fpb.enter_fl_mode = Mock()
         mock_fpb.exit_fl_mode = Mock()
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post(
             "/api/fpb/inject",
@@ -326,7 +341,7 @@ class TestFPBInjectMultiRoute(TestFPBRoutesBase):
     @patch("app.routes.fpb._get_helpers")
     def test_inject_multi_no_source(self, mock_helpers):
         """Test inject_multi without source content"""
-        mock_helpers.return_value = (Mock(), Mock(), Mock())
+        mock_helpers.return_value = make_mock_helpers(Mock())
 
         response = self.client.post("/api/fpb/inject/multi", json={})
         data = json.loads(response.data)
@@ -344,7 +359,7 @@ class TestFPBInjectMultiRoute(TestFPBRoutesBase):
         )
         mock_fpb.enter_fl_mode = Mock()
         mock_fpb.exit_fl_mode = Mock()
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post(
             "/api/fpb/inject/multi",
@@ -364,7 +379,7 @@ class TestFPBInjectMultiRoute(TestFPBRoutesBase):
         mock_fpb.inject_multi.return_value = (False, {"error": "No inject functions"})
         mock_fpb.enter_fl_mode = Mock()
         mock_fpb.exit_fl_mode = Mock()
-        mock_helpers.return_value = (Mock(), lambda: mock_fpb, Mock())
+        mock_helpers.return_value = make_mock_helpers(mock_fpb)
 
         response = self.client.post(
             "/api/fpb/inject/multi",
@@ -381,7 +396,7 @@ class TestFPBInjectStreamRoute(TestFPBRoutesBase):
     @patch("app.routes.fpb._get_helpers")
     def test_inject_stream_no_source(self, mock_helpers):
         """Test inject_stream without source content"""
-        mock_helpers.return_value = (Mock(), Mock(), Mock())
+        mock_helpers.return_value = make_mock_helpers(Mock())
 
         response = self.client.post(
             "/api/fpb/inject/stream", json={"target_func": "main"}
@@ -394,7 +409,7 @@ class TestFPBInjectStreamRoute(TestFPBRoutesBase):
     @patch("app.routes.fpb._get_helpers")
     def test_inject_stream_no_target(self, mock_helpers):
         """Test inject_stream without target function"""
-        mock_helpers.return_value = (Mock(), Mock(), Mock())
+        mock_helpers.return_value = make_mock_helpers(Mock())
 
         response = self.client.post(
             "/api/fpb/inject/stream", json={"source_content": "void test() {}"}

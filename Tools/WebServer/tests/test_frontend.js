@@ -78,6 +78,7 @@ const jsDir = path.join(__dirname, '..', 'static', 'js');
 const globalFunctions = [
   'writeToOutput',
   'writeToSerial',
+  'log',
   'startLogPolling',
   'stopLogPolling',
   'fpbInfo',

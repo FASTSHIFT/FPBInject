@@ -22,7 +22,7 @@ function browseFile(inputId, filter = '') {
 }
 
 async function refreshSymbolsFromELF(elfPath) {
-  writeToOutput(`[INFO] Loading symbols from ${elfPath}...`, 'system');
+  log.debug(`Loading symbols from ${elfPath}...`);
   try {
     await fetch('/api/config', {
       method: 'POST',
@@ -32,9 +32,9 @@ async function refreshSymbolsFromELF(elfPath) {
     const list = document.getElementById('symbolList');
     list.innerHTML =
       '<div style="padding: 8px; font-size: 11px; opacity: 0.7;">Symbols ready. Search above...</div>';
-    writeToOutput(`[SUCCESS] ELF loaded: ${elfPath}`, 'success');
+    log.success(`ELF loaded: ${elfPath}`);
   } catch (e) {
-    writeToOutput(`[ERROR] Failed to load ELF: ${e}`, 'error');
+    log.error(`Failed to load ELF: ${e}`);
   }
 }
 
@@ -121,7 +121,7 @@ async function openFileBrowser(path) {
       list.appendChild(div);
     });
   } catch (e) {
-    writeToOutput(`[ERROR] Browse failed: ${e}`, 'error');
+    log.error(`Browse failed: ${e}`);
   }
 }
 

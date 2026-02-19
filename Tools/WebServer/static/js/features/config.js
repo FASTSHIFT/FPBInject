@@ -164,12 +164,12 @@ async function saveConfig(silent = false) {
     const data = await res.json();
 
     if (data.success) {
-      if (!silent) writeToOutput('[SUCCESS] Configuration saved', 'success');
+      if (!silent) log.success('Configuration saved');
     } else {
       throw new Error(data.message || 'Save failed');
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Save failed: ${e}`, 'error');
+    log.error(`Save failed: ${e}`);
   }
 }
 
@@ -206,12 +206,12 @@ async function saveConfigLegacy(silent = false) {
     const data = await res.json();
 
     if (data.success) {
-      if (!silent) writeToOutput('[SUCCESS] Configuration saved', 'success');
+      if (!silent) log.success('Configuration saved');
     } else {
       throw new Error(data.message || 'Save failed');
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Save failed: ${e}`, 'error');
+    log.error(`Save failed: ${e}`);
   }
 }
 
@@ -338,10 +338,7 @@ function onAutoCompileChange() {
 
   updateWatcherStatus(enabled);
 
-  writeToOutput(
-    `[INFO] Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`,
-    'info',
-  );
+  log.info(`Auto-inject on save: ${enabled ? 'Enabled' : 'Disabled'}`);
 
   saveConfig(true);
 
@@ -354,10 +351,7 @@ function onAutoCompileChange() {
 
 function onVerifyCrcChange() {
   const enabled = document.getElementById('verifyCrc')?.checked ?? true;
-  writeToOutput(
-    `[INFO] Verify CRC after transfer: ${enabled ? 'Enabled' : 'Disabled'}`,
-    'info',
-  );
+  log.info(`Verify CRC after transfer: ${enabled ? 'Enabled' : 'Disabled'}`);
   saveConfig(true);
 }
 
@@ -394,15 +388,15 @@ async function onLogFileEnabledChange() {
       const data = await res.json();
 
       if (data.success) {
-        writeToOutput(`[SUCCESS] Log recording started: ${path}`, 'success');
+        log.success(`Log recording started: ${path}`);
         updateLogFilePathState(true);
       } else {
-        writeToOutput(`[ERROR] ${data.error}`, 'error');
+        log.error(data.error);
         const checkbox = document.getElementById('logFileEnabled');
         if (checkbox) checkbox.checked = false;
       }
     } catch (e) {
-      writeToOutput(`[ERROR] Failed to start log recording: ${e}`, 'error');
+      log.error(`Failed to start log recording: ${e}`);
       const checkbox = document.getElementById('logFileEnabled');
       if (checkbox) checkbox.checked = false;
     }
@@ -412,13 +406,13 @@ async function onLogFileEnabledChange() {
       const data = await res.json();
 
       if (data.success) {
-        writeToOutput('[SUCCESS] Log recording stopped', 'success');
+        log.success('Log recording stopped');
         updateLogFilePathState(false);
       } else {
-        writeToOutput(`[ERROR] ${data.error}`, 'error');
+        log.error(data.error);
       }
     } catch (e) {
-      writeToOutput(`[ERROR] Failed to stop log recording: ${e}`, 'error');
+      log.error(`Failed to stop log recording: ${e}`);
     }
   }
 }

@@ -51,7 +51,7 @@ function selectSlot(slotId) {
   const state = window.FPBState;
   state.selectedSlot = parseInt(slotId);
   updateSlotUI();
-  writeToOutput(`[INFO] Selected Slot ${slotId}`, 'info');
+  log.info(`Selected Slot ${slotId}`);
 
   const slotState = state.slotStates[slotId];
   if (slotState && slotState.func) {
@@ -76,7 +76,7 @@ function initSlotSelectListener() {
 async function fpbUnpatch(slotId) {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
@@ -97,23 +97,20 @@ async function fpbUnpatch(slotId) {
         code_size: 0,
       };
       updateSlotUI();
-      writeToOutput(`[SUCCESS] Slot ${slotId} cleared`, 'success');
+      log.success(`Slot ${slotId} cleared`);
       fpbInfo();
     } else {
-      writeToOutput(
-        `[ERROR] Failed to clear slot ${slotId}: ${data.message}`,
-        'error',
-      );
+      log.error(`Failed to clear slot ${slotId}: ${data.message}`);
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Unpatch error: ${e}`, 'error');
+    log.error(`Unpatch error: ${e}`);
   }
 }
 
 async function fpbUnpatchAll() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
@@ -144,13 +141,13 @@ async function fpbUnpatchAll() {
           code_size: 0,
         }));
       updateSlotUI();
-      writeToOutput('[SUCCESS] All slots cleared and memory freed', 'success');
+      log.success('All slots cleared and memory freed');
       fpbInfo();
     } else {
-      writeToOutput(`[ERROR] Failed to clear all: ${data.message}`, 'error');
+      log.error(`Failed to clear all: ${data.message}`);
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Unpatch all error: ${e}`, 'error');
+    log.error(`Unpatch all error: ${e}`);
   }
 }
 

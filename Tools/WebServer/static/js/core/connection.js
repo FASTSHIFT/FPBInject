@@ -55,7 +55,7 @@ async function refreshPorts() {
       sel.value = prevValue;
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Failed to refresh ports: ${e}`, 'error');
+    log.error(`Failed to refresh ports: ${e}`);
   }
 }
 
@@ -68,7 +68,7 @@ function handleConnected(port, message = null) {
   btn.textContent = 'Disconnect';
   btn.classList.add('connected');
   statusEl.textContent = port;
-  writeToOutput(message || `[CONNECTED] ${port}`, 'success');
+  log.success(message || `Connected to ${port}`);
   startLogPolling();
   fpbInfo();
   updateDisabledState();
@@ -88,7 +88,7 @@ function handleDisconnected() {
   btn.textContent = 'Connect';
   btn.classList.remove('connected');
   statusEl.textContent = 'Disconnected';
-  writeToOutput('[DISCONNECTED]', 'warning');
+  log.warn('Disconnected');
   stopLogPolling();
   updateDisabledState();
 
@@ -114,10 +114,7 @@ async function toggleConnect() {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         if (attempt > 0) {
-          writeToOutput(
-            `[CONNECTION] Retry ${attempt}/${maxRetries}...`,
-            'warning',
-          );
+          log.warn(`Retry ${attempt}/${maxRetries}...`);
           // Wait before retry
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
@@ -130,7 +127,7 @@ async function toggleConnect() {
         const data = await res.json();
 
         if (data.success) {
-          handleConnected(port, `[CONNECTED] ${port} @ ${baud} baud`);
+          handleConnected(port, `Connected to ${port} @ ${baud} baud`);
           btn.disabled = false;
           return;
         } else {
@@ -142,10 +139,7 @@ async function toggleConnect() {
     }
 
     // All retries failed
-    writeToOutput(
-      `[ERROR] Connection failed after ${maxRetries} retries: ${lastError}`,
-      'error',
-    );
+    log.error(`Connection failed after ${maxRetries} retries: ${lastError}`);
     btn.textContent = 'Connect';
     btn.disabled = false;
   } else {
@@ -153,7 +147,7 @@ async function toggleConnect() {
       await fetch('/api/disconnect', { method: 'POST' });
       handleDisconnected();
     } catch (e) {
-      writeToOutput(`[ERROR] Disconnect failed: ${e}`, 'error');
+      log.error(`Disconnect failed: ${e}`);
     }
   }
 }
@@ -167,7 +161,7 @@ async function checkConnectionStatus() {
     if (data.connected) {
       handleConnected(
         data.port || 'Connected',
-        `[AUTO-CONNECTED] ${data.port}`,
+        `Auto-connected to ${data.port}`,
       );
     }
   } catch (e) {

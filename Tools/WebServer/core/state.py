@@ -96,7 +96,10 @@ class DeviceState:
         self.elf_file_mtime = 0  # Last known modification time of ELF file
 
     def add_tool_log(self, message):
-        """Add a message to tool output log (shown in OUTPUT terminal)."""
+        """Add a message to tool output log (shown in OUTPUT terminal).
+
+        The message should already be formatted as "[LEVEL] func_name: content".
+        """
         log_id = self.tool_log_next_id
         self.tool_log_next_id += 1
         entry = {"id": log_id, "message": message}
@@ -113,6 +116,42 @@ class DeviceState:
         for key in PERSISTENT_KEYS:
             if key in data:
                 setattr(self, key, data[key])
+
+
+def _get_caller_name(depth=2):
+    """Get the name of the calling function.
+
+    Args:
+        depth: Stack depth to look up (2 = caller of the function that called this)
+
+    Returns:
+        Function name string
+    """
+    import inspect
+
+    try:
+        frame = inspect.currentframe()
+        for _ in range(depth):
+            if frame is not None:
+                frame = frame.f_back
+        if frame is not None:
+            return frame.f_code.co_name
+    except Exception:
+        pass
+    return "unknown"
+
+
+def tool_log(device, level, message):
+    """Add a formatted log message to tool output.
+
+    Args:
+        device: DeviceState instance
+        level: Log level (INFO, SUCCESS, ERROR, WARN, DEBUG)
+        message: Log message content
+    """
+    func_name = _get_caller_name(depth=2)
+    formatted = f"[{level}] {func_name}: {message}"
+    device.add_tool_log(formatted)
 
 
 class AppState:

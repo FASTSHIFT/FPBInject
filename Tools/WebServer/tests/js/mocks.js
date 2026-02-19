@@ -572,6 +572,13 @@ browserGlobals.window = {
   // These will be populated when application code loads
   writeToOutput: null,
   writeToSerial: null,
+  log: {
+    info: function () {},
+    success: function () {},
+    warn: function () {},
+    error: function () {},
+    debug: function () {},
+  },
   startLogPolling: null,
   stopLogPolling: null,
   fpbInfo: null,

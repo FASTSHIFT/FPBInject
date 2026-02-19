@@ -27,7 +27,7 @@ function startElfWatcherPolling() {
     pollElfStatus,
     ELF_WATCHER_POLL_INTERVAL,
   );
-  writeToOutput('[INFO] ELF file watcher started', 'system');
+  log.info('ELF file watcher started');
 }
 
 /**
@@ -37,7 +37,7 @@ function stopElfWatcherPolling() {
   if (elfWatcherPollInterval) {
     clearInterval(elfWatcherPollInterval);
     elfWatcherPollInterval = null;
-    writeToOutput('[INFO] ELF file watcher stopped', 'system');
+    log.info('ELF file watcher stopped');
   }
 }
 
@@ -73,7 +73,7 @@ function showElfChangeDialog(elfPath) {
 
   const fileName = elfPath ? elfPath.split('/').pop() : 'ELF file';
 
-  writeToOutput(`[WARNING] ELF file changed: ${fileName}`, 'warning');
+  log.warn(`ELF file changed: ${fileName}`);
 
   const userChoice = confirm(
     `ELF file "${fileName}" has changed.\n\nReload symbols now?`,
@@ -93,7 +93,7 @@ function showElfChangeDialog(elfPath) {
  * @param {string} elfPath - Path to the ELF file
  */
 async function reloadElfSymbols(elfPath) {
-  writeToOutput(`[INFO] Reloading symbols from ${elfPath}...`, 'system');
+  log.info(`Reloading symbols from ${elfPath}...`);
 
   try {
     // Acknowledge the change first
@@ -118,9 +118,9 @@ async function reloadElfSymbols(elfPath) {
       await fpbInfo();
     }
 
-    writeToOutput(`[SUCCESS] Symbols reloaded from ${elfPath}`, 'success');
+    log.success(`Symbols reloaded from ${elfPath}`);
   } catch (e) {
-    writeToOutput(`[ERROR] Failed to reload symbols: ${e}`, 'error');
+    log.error(`Failed to reload symbols: ${e}`);
   }
 }
 
@@ -130,9 +130,9 @@ async function reloadElfSymbols(elfPath) {
 async function acknowledgeElfChange() {
   try {
     await fetch('/api/watch/elf_acknowledge', { method: 'POST' });
-    writeToOutput('[INFO] ELF change acknowledged (ignored)', 'system');
+    log.info('ELF change acknowledged (ignored)');
   } catch (e) {
-    writeToOutput(`[ERROR] Failed to acknowledge ELF change: ${e}`, 'error');
+    log.error(`Failed to acknowledge ELF change: ${e}`);
   }
 }
 

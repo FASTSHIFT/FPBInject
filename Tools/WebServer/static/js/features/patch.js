@@ -275,7 +275,7 @@ function extractParamNames(params) {
 async function performInject() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
@@ -325,7 +325,7 @@ async function performInject() {
   }
 
   if (!state.currentPatchTab || !state.currentPatchTab.funcName) {
-    writeToOutput('[ERROR] No patch tab selected', 'error');
+    log.error('No patch tab selected');
     return;
   }
 
@@ -334,12 +334,12 @@ async function performInject() {
 
   const source = getAceEditorContent(tabId);
   if (!source) {
-    writeToOutput('[ERROR] Editor not found', 'error');
+    log.error('Editor not found');
     return;
   }
 
   if (!source.trim()) {
-    writeToOutput('[ERROR] No patch source code', 'error');
+    log.error('No patch source code');
     return;
   }
 
@@ -361,9 +361,8 @@ async function performInject() {
   progressFill.style.width = '5%';
   progressFill.style.background = '';
 
-  writeToOutput(
-    `[INJECT] Starting injection of ${targetFunc} to slot ${state.selectedSlot}...`,
-    'system',
+  log.info(
+    `Starting injection of ${targetFunc} to slot ${state.selectedSlot}...`,
   );
 
   try {
@@ -439,7 +438,7 @@ async function performInject() {
   } catch (e) {
     progressText.textContent = 'Failed!';
     progressFill.style.background = '#f44336';
-    writeToOutput(`[ERROR] ${e}`, 'error');
+    log.error(`${e}`);
     hideProgress();
   }
 }
@@ -453,7 +452,7 @@ function displayInjectionStats(data, targetFunc) {
   const patchMode =
     data.patch_mode || document.getElementById('patchMode').value;
 
-  writeToOutput(`[SUCCESS] Injection complete!`, 'success');
+  log.success('Injection complete!');
   writeToOutput(`--- Injection Statistics ---`, 'system');
   writeToOutput(
     `Target:        ${targetFunc} @ ${data.target_addr || 'unknown'}`,

@@ -8,30 +8,31 @@
 async function fpbPing() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
   try {
     const res = await fetch('/api/fpb/ping', { method: 'POST' });
     const data = await res.json();
-    writeToOutput(`[PING] ${data.message}`, data.success ? 'success' : 'error');
+    if (data.success) {
+      log.success(data.message);
+    } else {
+      log.error(data.message);
+    }
   } catch (e) {
-    writeToOutput(`[ERROR] Ping failed: ${e}`, 'error');
+    log.error(`Ping failed: ${e}`);
   }
 }
 
 async function fpbTestSerial() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
-  writeToOutput(
-    '[TEST] Starting serial throughput test (x2 stepping)...',
-    'info',
-  );
+  log.info('Starting serial throughput test (x2 stepping)...');
 
   try {
     const res = await fetch('/api/fpb/test-serial', {
@@ -47,7 +48,7 @@ async function fpbTestSerial() {
 
     if (data.success) {
       writeToOutput('─'.repeat(50), 'info');
-      writeToOutput('[TEST] Serial Throughput Test Results:', 'info');
+      log.info('Serial Throughput Test Results:');
 
       if (data.tests && data.tests.length > 0) {
         data.tests.forEach((test) => {
@@ -65,22 +66,15 @@ async function fpbTestSerial() {
       }
 
       writeToOutput('─'.repeat(50), 'info');
-      writeToOutput(
-        `[RESULT] Max working size: ${data.max_working_size} bytes`,
-        'success',
-      );
+      log.success(`Max working size: ${data.max_working_size} bytes`);
       if (data.failed_size > 0) {
-        writeToOutput(
-          `[RESULT] Failed at: ${data.failed_size} bytes`,
-          'warning',
-        );
+        log.warn(`Failed at: ${data.failed_size} bytes`);
       }
-      writeToOutput(
-        `[RESULT] Recommended chunk size: ${data.recommended_chunk_size} bytes`,
-        'success',
+      log.success(
+        `Recommended chunk size: ${data.recommended_chunk_size} bytes`,
       );
 
-      // Ask user if they want to apply recommended chunk size
+      /* Ask user if they want to apply recommended chunk size */
       const recommendedSize = data.recommended_chunk_size;
       const currentSize =
         parseInt(document.getElementById('chunkSize')?.value) || 128;
@@ -97,32 +91,23 @@ async function fpbTestSerial() {
         if (chunkInput) {
           chunkInput.value = recommendedSize;
           await saveConfig(true);
-          writeToOutput(
-            `[CONFIG] Chunk size updated to ${recommendedSize} bytes`,
-            'success',
-          );
+          log.success(`Chunk size updated to ${recommendedSize} bytes`);
         }
       } else {
-        writeToOutput(
-          `[CONFIG] Chunk size unchanged (${currentSize} bytes)`,
-          'info',
-        );
+        log.info(`Chunk size unchanged (${currentSize} bytes)`);
       }
     } else {
-      writeToOutput(
-        `[ERROR] Test failed: ${data.error || 'Unknown error'}`,
-        'error',
-      );
+      log.error(`Test failed: ${data.error || 'Unknown error'}`);
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Serial test failed: ${e}`, 'error');
+    log.error(`Serial test failed: ${e}`);
   }
 }
 
 async function fpbInfo() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
@@ -135,7 +120,7 @@ async function fpbInfo() {
         const deviceTime = data.device_build_time || 'Unknown';
         const elfTime = data.elf_build_time || 'Unknown';
 
-        writeToOutput(`[WARNING] Build time mismatch detected!`, 'error');
+        log.warn('Build time mismatch detected!');
         writeToOutput(`  Device firmware: ${deviceTime}`, 'error');
         writeToOutput(`  ELF file: ${elfTime}`, 'error');
 
@@ -169,35 +154,32 @@ async function fpbInfo() {
       }
 
       if (data.device_build_time) {
-        writeToOutput(`[INFO] Device build: ${data.device_build_time}`, 'info');
+        log.info(`Device build: ${data.device_build_time}`);
       }
 
-      writeToOutput('[INFO] Device info updated', 'success');
+      log.success('Device info updated');
     } else {
-      writeToOutput(
-        `[ERROR] ${data.error || 'Failed to get device info'}`,
-        'error',
-      );
+      log.error(data.error || 'Failed to get device info');
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Info failed: ${e}`, 'error');
+    log.error(`Info failed: ${e}`);
   }
 }
 
 async function fpbInjectMulti() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
   const patchSource = document.getElementById('patchSource')?.value || '';
   if (!patchSource.trim()) {
-    writeToOutput('[ERROR] No patch source code available', 'error');
+    log.error('No patch source code available');
     return;
   }
 
-  writeToOutput('[INFO] Injecting all functions...', 'info');
+  log.info('Injecting all functions...');
 
   try {
     const patchMode =
@@ -215,20 +197,14 @@ async function fpbInjectMulti() {
     if (data.success) {
       const successCount = data.successful_count || 0;
       const totalCount = data.total_count || 0;
-      writeToOutput(
-        `[SUCCESS] Injected ${successCount}/${totalCount} functions`,
-        'success',
-      );
+      log.success(`Injected ${successCount}/${totalCount} functions`);
       displayAutoInjectStats(data, 'multi');
       await fpbInfo();
     } else {
-      writeToOutput(
-        `[ERROR] Multi-inject failed: ${data.error || 'Unknown error'}`,
-        'error',
-      );
+      log.error(`Multi-inject failed: ${data.error || 'Unknown error'}`);
     }
   } catch (e) {
-    writeToOutput(`[ERROR] Multi-inject error: ${e}`, 'error');
+    log.error(`Multi-inject error: ${e}`);
   }
 }
 

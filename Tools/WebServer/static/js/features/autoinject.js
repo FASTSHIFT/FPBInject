@@ -10,7 +10,7 @@ function startAutoInjectPolling() {
   if (state.autoInjectPollInterval) return;
 
   state.autoInjectPollInterval = setInterval(pollAutoInjectStatus, 500);
-  writeToOutput('[INFO] Auto-inject status monitoring started', 'system');
+  log.debug('Auto-inject status monitoring started');
 }
 
 function stopAutoInjectPolling() {
@@ -18,7 +18,7 @@ function stopAutoInjectPolling() {
   if (state.autoInjectPollInterval) {
     clearInterval(state.autoInjectPollInterval);
     state.autoInjectPollInterval = null;
-    writeToOutput('[INFO] Auto-inject status monitoring stopped', 'system');
+    log.debug('Auto-inject status monitoring stopped');
   }
 }
 

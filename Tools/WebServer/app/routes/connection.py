@@ -28,13 +28,21 @@ def _get_helpers():
         start_elf_watcher,
     )
     from fpb_inject import scan_serial_ports, serial_open
-    from core.state import state
+    from core.state import state, tool_log
 
-    def add_tool_log(msg):
-        state.device.add_tool_log(msg)
+    def log_info(msg):
+        tool_log(state.device, "INFO", msg)
+
+    def log_success(msg):
+        tool_log(state.device, "SUCCESS", msg)
+
+    def log_error(msg):
+        tool_log(state.device, "ERROR", msg)
 
     return (
-        add_tool_log,
+        log_info,
+        log_success,
+        log_error,
         get_fpb_inject,
         restart_file_watcher,
         stop_file_watcher,
@@ -53,7 +61,7 @@ def _start_elf_watcher(elf_path):
 @bp.route("/ports", methods=["GET"])
 def api_get_ports():
     """Get available serial ports."""
-    _, _, _, _, scan_serial_ports, _, _ = _get_helpers()
+    *_, scan_serial_ports, _, _ = _get_helpers()
     ports = scan_serial_ports()
     return jsonify({"success": True, "ports": ports})
 
@@ -61,7 +69,7 @@ def api_get_ports():
 @bp.route("/connect", methods=["POST"])
 def api_connect():
     """Connect to a serial port."""
-    add_tool_log, get_fpb_inject, _, _, _, serial_open, _ = _get_helpers()
+    _, log_success, log_error, get_fpb_inject, _, _, _, serial_open, _ = _get_helpers()
 
     data = request.json or {}
     port = data.get("port")
@@ -99,7 +107,7 @@ def api_connect():
         return jsonify({"success": False, "error": "Connect timeout"})
 
     if result["error"]:
-        add_tool_log(f"[ERROR] Connection failed: {result['error']}")
+        log_error(f"Connection failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     device.auto_connect = True
@@ -110,14 +118,14 @@ def api_connect():
     if device.toolchain_path:
         fpb.set_toolchain_path(device.toolchain_path)
 
-    add_tool_log(f"[SUCCESS] Connected to {port} @ {baudrate}")
+    log_success(f"Connected to {port} @ {baudrate}")
     return jsonify({"success": True, "port": port})
 
 
 @bp.route("/disconnect", methods=["POST"])
 def api_disconnect():
     """Disconnect from serial port."""
-    add_tool_log, _, _, _, _, _, _ = _get_helpers()
+    log_info, _, _, _, _, _, _, _, _ = _get_helpers()
 
     device = state.device
 
@@ -136,7 +144,7 @@ def api_disconnect():
     device.inject_active = False
     state.save_config()
 
-    add_tool_log("[INFO] Disconnected from serial port")
+    log_info("Disconnected from serial port")
     return jsonify({"success": True})
 
 
@@ -198,7 +206,7 @@ def api_config():
     """Update device configuration."""
     from core.config_schema import PERSISTENT_KEYS
 
-    _, get_fpb_inject, _restart_file_watcher, _stop_file_watcher, _, _, _ = (
+    _, _, _, get_fpb_inject, _restart_file_watcher, _stop_file_watcher, _, _, _ = (
         _get_helpers()
     )
 

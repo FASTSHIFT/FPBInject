@@ -48,8 +48,9 @@ function initTerminals() {
     });
 
     state.toolTerminal.writeln(
-      '\x1b[36m[OUTPUT] FPBInject Workbench Ready\x1b[0m',
+      '\x1b[36m[INFO] initTerminals: FPBInject Workbench Ready\x1b[0m',
     );
+    /* Note: Using direct writeln here because writeToOutput is not yet available during init */
   }
 
   // Raw Terminal (SERIAL PORT - interactive)
@@ -138,7 +139,7 @@ function clearCurrentTerminal() {
   const state = window.FPBState;
   if (state.currentTerminalTab === 'tool' && state.toolTerminal) {
     state.toolTerminal.clear();
-    state.toolTerminal.writeln('\x1b[36m[OUTPUT] Terminal cleared\x1b[0m');
+    log.info('Terminal cleared');
   } else if (state.currentTerminalTab === 'raw' && state.rawTerminal) {
     state.rawTerminal.clear();
   }
@@ -169,6 +170,97 @@ function writeToOutput(message, type = 'info') {
     toolTerminal.writeln(`${color}${line}\x1b[0m`);
   });
 }
+
+/**
+ * Get caller function name from stack trace
+ * @returns {string} Caller function name or 'anonymous'
+ */
+function _getCallerName() {
+  try {
+    const stack = new Error().stack;
+    const lines = stack.split('\n');
+    /* Skip internal functions: Error, _getCallerName, _write, log.xxx */
+    const skipPatterns = [
+      '_getCallerName',
+      '_write',
+      'Object.info',
+      'Object.success',
+      'Object.warn',
+      'Object.error',
+      'Object.debug',
+    ];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      /* Skip internal log functions */
+      if (skipPatterns.some((p) => line.includes(p))) continue;
+
+      /* Match async function: "at async functionName (" */
+      let match = line.match(/at\s+async\s+(\w+)\s*\(/);
+      if (match && match[1]) return match[1];
+
+      /* Match regular function: "at functionName (" */
+      match = line.match(/at\s+(\w+)\s*\(/);
+      if (
+        match &&
+        match[1] &&
+        match[1] !== 'Object' &&
+        !match[1].startsWith('_')
+      ) {
+        return match[1];
+      }
+
+      /* Match method: "at Object.methodName (" or "at ClassName.methodName (" */
+      match = line.match(/at\s+\w+\.(\w+)\s*\(/);
+      if (
+        match &&
+        match[1] &&
+        !match[1].startsWith('_') &&
+        !['info', 'success', 'warn', 'error', 'debug'].includes(match[1])
+      ) {
+        return match[1];
+      }
+    }
+  } catch (e) {
+    /* Ignore */
+  }
+  return 'anonymous';
+}
+
+/**
+ * Structured logging with automatic function name detection
+ * Usage: log.info('message'), log.error('message'), etc.
+ */
+const log = {
+  _write(level, message) {
+    const funcName = _getCallerName();
+    const typeMap = {
+      INFO: 'info',
+      SUCCESS: 'success',
+      WARN: 'warning',
+      ERROR: 'error',
+      DEBUG: 'system',
+    };
+    writeToOutput(
+      `[${level}] ${funcName}: ${message}`,
+      typeMap[level] || 'info',
+    );
+  },
+  info(msg) {
+    this._write('INFO', msg);
+  },
+  success(msg) {
+    this._write('SUCCESS', msg);
+  },
+  warn(msg) {
+    this._write('WARN', msg);
+  },
+  error(msg) {
+    this._write('ERROR', msg);
+  },
+  debug(msg) {
+    this._write('DEBUG', msg);
+  },
+};
 
 function writeToSerial(data) {
   const state = window.FPBState;
@@ -244,3 +336,4 @@ window.writeToOutput = writeToOutput;
 window.writeToSerial = writeToSerial;
 window.toggleTerminalPause = toggleTerminalPause;
 window.flushPausedLogs = flushPausedLogs;
+window.log = log;

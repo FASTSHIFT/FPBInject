@@ -18,7 +18,7 @@ let transferAbortController = null;
  * @param {string} message - Warning message
  */
 function showCrcWarning(message) {
-  writeToOutput(`[WARNING] ${message}`, 'warning');
+  log.warn(message);
   // Use non-blocking notification
   if (typeof showNotification === 'function') {
     showNotification(message, 'warning');
@@ -32,7 +32,7 @@ function showCrcWarning(message) {
  * @param {string} message - Error message
  */
 function showCrcError(message) {
-  writeToOutput(`[ERROR] ${message}`, 'error');
+  log.error(message);
   // Use blocking alert for critical CRC errors
   alert(
     `CRC Verification Failed!\n\n${message}\n\nThe transferred file may be corrupted.`,
@@ -56,7 +56,7 @@ async function listDeviceDirectory(path = '/') {
     const data = await res.json();
     return data;
   } catch (e) {
-    writeToOutput(`[ERROR] List directory failed: ${e}`, 'error');
+    log.error(`List directory failed: ${e}`);
     return { success: false, entries: [], error: e.message };
   }
 }
@@ -74,7 +74,7 @@ async function statDeviceFile(path) {
     const data = await res.json();
     return data;
   } catch (e) {
-    writeToOutput(`[ERROR] Stat file failed: ${e}`, 'error');
+    log.error(`Stat file failed: ${e}`);
     return { success: false, error: e.message };
   }
 }
@@ -100,7 +100,7 @@ async function createDeviceDirectory(path) {
     }
     return data;
   } catch (e) {
-    writeToOutput(`[ERROR] Create directory failed: ${e}`, 'error');
+    log.error(`Create directory failed: ${e}`);
     return { success: false, error: e.message };
   }
 }
@@ -126,7 +126,7 @@ async function deleteDeviceFile(path) {
     }
     return data;
   } catch (e) {
-    writeToOutput(`[ERROR] Delete failed: ${e}`, 'error');
+    log.error(`Delete failed: ${e}`);
     return { success: false, error: e.message };
   }
 }
@@ -153,7 +153,7 @@ async function renameDeviceFile(oldPath, newPath) {
     }
     return data;
   } catch (e) {
-    writeToOutput(`[ERROR] Rename failed: ${e}`, 'error');
+    log.error(`Rename failed: ${e}`);
     return { success: false, error: e.message };
   }
 }
@@ -602,7 +602,7 @@ async function cancelTransfer() {
 
     transferAbortController.abort();
     transferAbortController = null;
-    writeToOutput('[TRANSFER] Cancelled', 'warning');
+    log.warn('Transfer cancelled');
     hideTransferProgress();
   }
 }
@@ -817,7 +817,7 @@ async function uploadFolderEntry(dirEntry, remotePath) {
   const targetPath =
     remotePath === '/' ? `/${folderName}` : `${remotePath}/${folderName}`;
 
-  writeToOutput(`[UPLOAD] Scanning folder: ${folderName}...`, 'info');
+  log.info(`Scanning folder: ${folderName}...`);
 
   // Collect all files first (only collect contents, not the root folder itself)
   const dirReader = dirEntry.createReader();
@@ -830,17 +830,14 @@ async function uploadFolderEntry(dirEntry, remotePath) {
   }
 
   if (files.length === 0) {
-    writeToOutput(`[INFO] Folder is empty: ${folderName}`, 'warning');
+    log.warn(`Folder is empty: ${folderName}`);
     // Still create the empty directory
     await createDeviceDirectory(targetPath);
     refreshDeviceFiles();
     return;
   }
 
-  writeToOutput(
-    `[UPLOAD] Found ${files.length} files in ${folderName}`,
-    'info',
-  );
+  log.info(`Found ${files.length} files in ${folderName}`);
 
   // Upload folder
   await uploadFolderFiles(files, targetPath, folderName);
@@ -868,7 +865,7 @@ async function uploadFolderFiles(files, targetPath, folderName) {
   for (const { file, relativePath } of files) {
     // Check if cancelled
     if (transferAbortController && transferAbortController.signal.aborted) {
-      writeToOutput(`[INFO] Folder upload cancelled`, 'warning');
+      log.warn('Folder upload cancelled');
       hideTransferProgress();
       return;
     }
@@ -922,17 +919,14 @@ async function uploadFolderFiles(files, targetPath, folderName) {
         uploadedBytes += file.size;
         uploadedFiles++;
       } else if (result.cancelled) {
-        writeToOutput(`[INFO] Folder upload cancelled`, 'warning');
+        log.warn('Folder upload cancelled');
         hideTransferProgress();
         return;
       } else {
-        writeToOutput(
-          `[ERROR] Failed to upload ${relativePath}: ${result.error}`,
-          'error',
-        );
+        log.error(`Failed to upload ${relativePath}: ${result.error}`);
       }
     } catch (e) {
-      writeToOutput(`[ERROR] Upload error for ${relativePath}: ${e}`, 'error');
+      log.error(`Upload error for ${relativePath}: ${e}`);
     }
   }
 
@@ -941,9 +935,8 @@ async function uploadFolderFiles(files, targetPath, folderName) {
   const elapsed = (Date.now() - startTime) / 1000;
   const avgSpeed = elapsed > 0 ? uploadedBytes / elapsed : 0;
 
-  writeToOutput(
-    `[SUCCESS] Folder upload complete: ${folderName} (${uploadedFiles}/${totalFiles} files, ${formatSpeed(avgSpeed)})`,
-    'success',
+  log.success(
+    `Folder upload complete: ${folderName} (${uploadedFiles}/${totalFiles} files, ${formatSpeed(avgSpeed)})`,
   );
 
   refreshDeviceFiles();
@@ -1003,7 +996,7 @@ async function uploadDroppedFile(file) {
     remotePath = `${remotePath}/${file.name}`;
   }
 
-  writeToOutput(`[UPLOAD] Starting: ${file.name} -> ${remotePath}`, 'info');
+  log.info(`Starting upload: ${file.name} -> ${remotePath}`);
   updateTransferProgress(0, 'Uploading...');
   updateTransferControls(true);
 
@@ -1025,24 +1018,21 @@ async function uploadDroppedFile(file) {
     hideTransferProgress();
 
     if (result.cancelled) {
-      writeToOutput(`[INFO] Upload cancelled: ${file.name}`, 'warning');
+      log.warn(`Upload cancelled: ${file.name}`);
     } else if (result.success) {
       const speedStr = result.avg_speed
         ? ` (${formatSpeed(result.avg_speed)})`
         : '';
       const statsStr = formatTransferStats(result.stats);
-      writeToOutput(
-        `[SUCCESS] Upload complete: ${remotePath}${speedStr}${statsStr}`,
-        'success',
-      );
+      log.success(`Upload complete: ${remotePath}${speedStr}${statsStr}`);
       refreshDeviceFiles();
     } else {
-      writeToOutput(`[ERROR] Upload failed: ${result.error}`, 'error');
+      log.error(`Upload failed: ${result.error}`);
       showTransferErrorAlert('Upload', file.name, result.error, result.stats);
     }
   } catch (e) {
     hideTransferProgress();
-    writeToOutput(`[ERROR] Upload error: ${e}`, 'error');
+    log.error(`Upload error: ${e}`);
     showTransferErrorAlert('Upload', file.name, e.message || String(e));
   }
 }
@@ -1053,7 +1043,7 @@ async function uploadDroppedFile(file) {
 async function uploadToDevice() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
@@ -1078,7 +1068,7 @@ async function uploadToDevice() {
 async function uploadFolderToDevice() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
@@ -1126,19 +1116,19 @@ async function uploadFolderToDevice() {
 async function downloadFromDevice() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
   if (!transferSelectedFile || transferSelectedFile.type === 'dir') {
-    writeToOutput('[ERROR] Please select a file to download', 'error');
+    log.error('Please select a file to download');
     return;
   }
 
   const remotePath = transferSelectedFile.path;
   const fileName = remotePath.split('/').pop();
 
-  writeToOutput(`[DOWNLOAD] Starting: ${remotePath}`, 'info');
+  log.info(`Starting download: ${remotePath}`);
   updateTransferProgress(0, 'Downloading...');
   updateTransferControls(true);
 
@@ -1159,7 +1149,7 @@ async function downloadFromDevice() {
     hideTransferProgress();
 
     if (result.cancelled) {
-      writeToOutput(`[INFO] Download cancelled: ${fileName}`, 'warning');
+      log.warn(`Download cancelled: ${fileName}`);
     } else if (result.success && result.blob) {
       // Trigger browser download
       const url = URL.createObjectURL(result.blob);
@@ -1173,17 +1163,14 @@ async function downloadFromDevice() {
         ? ` (${formatSpeed(result.avg_speed)})`
         : '';
       const statsStr = formatTransferStats(result.stats);
-      writeToOutput(
-        `[SUCCESS] Download complete: ${fileName}${speedStr}${statsStr}`,
-        'success',
-      );
+      log.success(`Download complete: ${fileName}${speedStr}${statsStr}`);
     } else {
-      writeToOutput(`[ERROR] Download failed: ${result.error}`, 'error');
+      log.error(`Download failed: ${result.error}`);
       showTransferErrorAlert('Download', fileName, result.error, result.stats);
     }
   } catch (e) {
     hideTransferProgress();
-    writeToOutput(`[ERROR] Download error: ${e}`, 'error');
+    log.error(`Download error: ${e}`);
     showTransferErrorAlert('Download', fileName, e.message || String(e));
   }
 }
@@ -1194,12 +1181,12 @@ async function downloadFromDevice() {
 async function deleteFromDevice() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
   if (!transferSelectedFile) {
-    writeToOutput('[ERROR] Please select a file to delete', 'error');
+    log.error('Please select a file to delete');
     return;
   }
 
@@ -1222,7 +1209,7 @@ async function deleteFromDevice() {
 async function createDeviceDir() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
@@ -1248,15 +1235,12 @@ async function createDeviceDir() {
 async function renameOnDevice() {
   const state = window.FPBState;
   if (!state.isConnected) {
-    writeToOutput('[ERROR] Not connected', 'error');
+    log.error('Not connected');
     return;
   }
 
   if (!transferSelectedFile) {
-    writeToOutput(
-      '[ERROR] Please select a file or directory to rename',
-      'error',
-    );
+    log.error('Please select a file or directory to rename');
     return;
   }
 

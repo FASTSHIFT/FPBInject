@@ -144,7 +144,7 @@ class FileTransfer:
             if attempt > 0:
                 self.stats["retry_count"] += 1
                 if current_offset is not None:
-                    log_msg = f"[TRANSFER] fwrite retry {attempt}/{max_retries}, offset={current_offset}, len={data_len}"
+                    log_msg = f"[WARN] fwrite: retry {attempt}/{max_retries}, offset={current_offset}, len={data_len}"
                     self._log(log_msg)
                     logger.warning(
                         f"fwrite retry {attempt}/{max_retries}, seeking to offset {current_offset}"
@@ -160,7 +160,7 @@ class FileTransfer:
 
             # Check if it's a CRC mismatch (retryable)
             if "CRC mismatch" in response and attempt < max_retries:
-                log_msg = f"[TRANSFER] fwrite CRC mismatch at offset={current_offset}, len={data_len}, retry {attempt + 1}/{max_retries}"
+                log_msg = f"[WARN] fwrite: CRC mismatch at offset={current_offset}, len={data_len}, retry {attempt + 1}/{max_retries}"
                 self._log(log_msg)
                 logger.warning(
                     f"fwrite CRC mismatch, retry {attempt + 1}/{max_retries}"
@@ -203,7 +203,7 @@ class FileTransfer:
             if attempt > 0:
                 self.stats["retry_count"] += 1
                 if current_offset is not None:
-                    log_msg = f"[TRANSFER] fread retry {attempt}/{max_retries}, offset={current_offset}, len={size}"
+                    log_msg = f"[WARN] fread: retry {attempt}/{max_retries}, offset={current_offset}, len={size}"
                     self._log(log_msg)
                     logger.warning(
                         f"fread retry {attempt}/{max_retries}, seeking to offset {current_offset}"
@@ -217,7 +217,7 @@ class FileTransfer:
 
             if not success:
                 if attempt < max_retries:
-                    log_msg = f"[TRANSFER] fread timeout at offset={current_offset}, len={size}, retry {attempt + 1}/{max_retries}"
+                    log_msg = f"[WARN] fread: timeout at offset={current_offset}, len={size}, retry {attempt + 1}/{max_retries}"
                     self._log(log_msg)
                     logger.warning(f"fread failed, retry {attempt + 1}/{max_retries}")
                     self.stats["timeout_errors"] += 1
@@ -273,7 +273,7 @@ class FileTransfer:
                 if expected_crc != actual_crc:
                     if attempt < max_retries:
                         log_msg = f"fread CRC mismatch: expected 0x{expected_crc:04X}, got 0x{actual_crc:04X}, at offset={current_offset}, len={len(data)}, retry {attempt + 1}/{max_retries}"
-                        self._log("[TRANSFER] " + log_msg)
+                        self._log("[WARN] fread: " + log_msg)
                         logger.warning(log_msg)
                         self.stats["crc_errors"] += 1
                         continue
@@ -490,7 +490,7 @@ class FileTransfer:
                 success, dev_size, dev_crc = self.fcrc(total_size)
                 if not success:
                     self._log(
-                        "[TRANSFER] CRC verification failed: could not get device CRC"
+                        "[WARN] upload: CRC verification failed: could not get device CRC"
                     )
                     logger.warning("Failed to get device CRC for verification")
                 elif dev_size != total_size:
@@ -506,7 +506,7 @@ class FileTransfer:
                         f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}",
                     )
                 else:
-                    self._log(f"[TRANSFER] CRC verified: 0x{dev_crc:04X}")
+                    self._log(f"[SUCCESS] upload: CRC verified: 0x{dev_crc:04X}")
                     logger.info(f"Upload CRC verified: 0x{dev_crc:04X}")
 
             # Close file
@@ -581,7 +581,7 @@ class FileTransfer:
                 success, dev_size, dev_crc = self.fcrc(len(data))
                 if not success:
                     self._log(
-                        "[TRANSFER] CRC verification failed: could not get device CRC"
+                        "[WARN] download: CRC verification failed: could not get device CRC"
                     )
                     logger.warning("Failed to get device CRC for verification")
                 elif dev_crc != local_crc:
@@ -592,7 +592,7 @@ class FileTransfer:
                         f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}",
                     )
                 else:
-                    self._log(f"[TRANSFER] CRC verified: 0x{dev_crc:04X}")
+                    self._log(f"[SUCCESS] download: CRC verified: 0x{dev_crc:04X}")
                     logger.info(f"Download CRC verified: 0x{dev_crc:04X}")
 
             # Close file

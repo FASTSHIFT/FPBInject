@@ -342,15 +342,15 @@ async function saveConfigValues(silent = false) {
     const data = await res.json();
 
     if (data.success) {
-      if (!silent && typeof writeToOutput === 'function') {
-        writeToOutput('[SUCCESS] Configuration saved', 'success');
+      if (!silent && typeof log !== 'undefined') {
+        log.success('Configuration saved');
       }
     } else {
       throw new Error(data.message || 'Save failed');
     }
   } catch (e) {
-    if (typeof writeToOutput === 'function') {
-      writeToOutput(`[ERROR] Save failed: ${e}`, 'error');
+    if (typeof log !== 'undefined') {
+      log.error(`Save failed: ${e}`);
     }
   }
 }

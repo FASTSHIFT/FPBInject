@@ -51,7 +51,7 @@ async function searchSymbols() {
 }
 
 function selectSymbol(name) {
-  writeToOutput(`[INFO] Selected symbol: ${name}`, 'info');
+  log.info(`Selected symbol: ${name}`);
 }
 
 // Export for global access

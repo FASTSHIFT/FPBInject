@@ -150,17 +150,14 @@ async function openDisassembly(funcName, addr) {
     return;
   }
 
-  writeToOutput(`[DISASM] Loading disassembly for ${funcName}...`, 'system');
+  log.debug(`Loading disassembly for ${funcName}...`);
 
   try {
     const res = await fetch(
       `/api/symbols/disasm?func=${encodeURIComponent(funcName)}`,
     );
     if (!res.ok) {
-      writeToOutput(
-        `[ERROR] Failed to load disassembly: HTTP ${res.status}`,
-        'error',
-      );
+      log.error(`Failed to load disassembly: HTTP ${res.status}`);
       return;
     }
     const data = await res.json();
@@ -208,9 +205,9 @@ async function openDisassembly(funcName, addr) {
 
     switchEditorTab(tabId);
     initAceEditor(tabId, disasmCode, 'assembly_x86', true);
-    writeToOutput(`[SUCCESS] Disassembly loaded for ${funcName}`, 'success');
+    log.success(`Disassembly loaded for ${funcName}`);
   } catch (e) {
-    writeToOutput(`[ERROR] Failed to load disassembly: ${e}`, 'error');
+    log.error(`Failed to load disassembly: ${e}`);
   }
 }
 
@@ -226,10 +223,7 @@ async function openManualPatchTab(funcName) {
 
   const enableDecompile = document.getElementById('enableDecompile')?.checked;
 
-  writeToOutput(
-    `[PATCH] Creating manual patch tab for ${funcName}...`,
-    'system',
-  );
+  log.debug(`Creating manual patch tab for ${funcName}...`);
 
   const loadingContent = enableDecompile
     ? `/*\n * Loading...\n * \n * Decompiling ${funcName}, please wait...\n * This may take a few seconds.\n */\n`
@@ -304,10 +298,7 @@ async function openManualPatchTab(funcName) {
 
   let decompilePromise = Promise.resolve(null);
   if (enableDecompile) {
-    writeToOutput(
-      `[DECOMPILE] Requesting decompilation for ${funcName}...`,
-      'system',
-    );
+    log.debug(`Requesting decompilation for ${funcName}...`);
 
     /* Use streaming API for progress feedback */
     decompilePromise = (async () => {
@@ -401,12 +392,9 @@ async function openManualPatchTab(funcName) {
     );
 
     if (decompiled) {
-      writeToOutput(`[INFO] Decompiled code included as reference`, 'info');
+      log.info('Decompiled code included as reference');
     } else if (ghidraNotConfigured) {
-      writeToOutput(
-        `[INFO] Ghidra not configured - set Ghidra Path in Settings panel`,
-        'info',
-      );
+      log.info('Ghidra not configured - set Ghidra Path in Settings panel');
     }
   } catch (e) {
     const decompileResult = await decompilePromise;
@@ -433,13 +421,13 @@ async function openManualPatchTab(funcName) {
     tabEntry.content = template;
   }
 
-  writeToOutput(`[SUCCESS] Created patch tab: ${tabTitle}`, 'success');
+  log.success(`Created patch tab: ${tabTitle}`);
 }
 
 async function savePatchFile() {
   const state = window.FPBState;
   if (!state.currentPatchTab || !state.currentPatchTab.funcName) {
-    writeToOutput('[ERROR] No patch tab selected', 'error');
+    log.error('No patch tab selected');
     return;
   }
 
@@ -448,7 +436,7 @@ async function savePatchFile() {
 
   const content = getAceEditorContent(tabId);
   if (!content) {
-    writeToOutput('[ERROR] Editor not found', 'error');
+    log.error('Editor not found');
     return;
   }
 
@@ -470,12 +458,12 @@ async function savePatchFile() {
       const data = await res.json();
 
       if (data.success) {
-        writeToOutput(`[SUCCESS] Saved patch to: ${fullPath}`, 'success');
+        log.success(`Saved patch to: ${fullPath}`);
       } else {
-        writeToOutput(`[ERROR] Failed to save: ${data.error}`, 'error');
+        log.error(`Failed to save: ${data.error}`);
       }
     } catch (e) {
-      writeToOutput(`[ERROR] Failed to save file: ${e}`, 'error');
+      log.error(`Failed to save file: ${e}`);
     }
   };
   state.fileBrowserFilter = '';

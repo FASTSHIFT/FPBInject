@@ -29,16 +29,32 @@ def _get_helpers():
     """Lazy import to avoid circular dependency."""
     from routes import get_fpb_inject
     from utils.helpers import build_slot_response
-    from core.state import state
+    from core.state import state, tool_log
 
-    def add_tool_log(msg):
-        state.device.add_tool_log(msg)
+    def log_info(msg):
+        tool_log(state.device, "INFO", msg)
+
+    def log_success(msg):
+        tool_log(state.device, "SUCCESS", msg)
+
+    def log_error(msg):
+        tool_log(state.device, "ERROR", msg)
+
+    def log_warn(msg):
+        tool_log(state.device, "WARN", msg)
 
     def _build_slot_response(device, app_state):
         """Wrapper to call build_slot_response with get_fpb_inject."""
         return build_slot_response(device, app_state, get_fpb_inject)
 
-    return add_tool_log, get_fpb_inject, _build_slot_response
+    return (
+        log_info,
+        log_success,
+        log_error,
+        log_warn,
+        get_fpb_inject,
+        _build_slot_response,
+    )
 
 
 def _run_serial_op(func, timeout=10.0):
@@ -74,7 +90,7 @@ def _run_serial_op(func, timeout=10.0):
 @bp.route("/fpb/ping", methods=["POST"])
 def api_fpb_ping():
     """Ping device to test connection."""
-    _, get_fpb_inject, _ = _get_helpers()
+    _, _, _, _, get_fpb_inject, _ = _get_helpers()
     fpb = get_fpb_inject()
 
     def do_ping():
@@ -95,7 +111,7 @@ def api_fpb_test_serial():
     Uses x2 stepping to probe device's receive buffer limit.
     Returns max working size and recommended chunk size.
     """
-    add_tool_log, get_fpb_inject, _ = _get_helpers()
+    log_info, log_success, log_error, _, get_fpb_inject, _ = _get_helpers()
 
     data = request.json or {}
     start_size = data.get("start_size", 16)
@@ -104,7 +120,7 @@ def api_fpb_test_serial():
 
     fpb = get_fpb_inject()
 
-    add_tool_log("[TEST] Starting serial throughput test...")
+    log_info("Starting serial throughput test...")
 
     def do_test():
         return fpb.test_serial_throughput(
@@ -114,7 +130,7 @@ def api_fpb_test_serial():
     result = _run_serial_op(do_test, timeout=30.0)
 
     if "error" in result and result.get("error"):
-        add_tool_log(f"[ERROR] Serial test failed: {result['error']}")
+        log_error(f"Serial test failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
@@ -123,15 +139,14 @@ def api_fpb_test_serial():
         recommended = result.get("recommended_chunk_size", 64)
 
         if failed_at > 0:
-            add_tool_log(
-                f"[TEST] Max working size: {max_working} bytes, "
-                f"failed at: {failed_at} bytes"
+            log_info(
+                f"Max working size: {max_working} bytes, failed at: {failed_at} bytes"
             )
         else:
-            add_tool_log(f"[TEST] All tests passed up to {max_working} bytes")
-        add_tool_log(f"[TEST] Recommended chunk size: {recommended} bytes")
+            log_success(f"All tests passed up to {max_working} bytes")
+        log_info(f"Recommended chunk size: {recommended} bytes")
     else:
-        add_tool_log(f"[ERROR] Serial test failed: {result.get('error', 'Unknown')}")
+        log_error(f"Serial test failed: {result.get('error', 'Unknown')}")
 
     return jsonify(result)
 
@@ -139,7 +154,7 @@ def api_fpb_test_serial():
 @bp.route("/fpb/info", methods=["GET"])
 def api_fpb_info():
     """Get device info including slot states."""
-    _, get_fpb_inject, _build_slot_response = _get_helpers()
+    _, _, _, _, get_fpb_inject, _build_slot_response = _get_helpers()
 
     fpb = get_fpb_inject()
 
@@ -200,7 +215,7 @@ def api_fpb_info():
 @bp.route("/fpb/unpatch", methods=["POST"])
 def api_fpb_unpatch():
     """Clear FPB patch. Use all=True to clear all patches and free memory."""
-    add_tool_log, get_fpb_inject, _ = _get_helpers()
+    log_info, _, _, _, get_fpb_inject, _ = _get_helpers()
 
     try:
         data = request.json or {}
@@ -224,9 +239,7 @@ def api_fpb_unpatch():
                 state.device.inject_active = False
                 state.device.last_inject_target = None
                 state.device.last_inject_func = None
-            add_tool_log(
-                f"[UNPATCH] {'All slots' if clear_all else f'Slot {comp}'} cleared"
-            )
+            log_info(f"{'All slots' if clear_all else f'Slot {comp}'} cleared")
 
         return jsonify({"success": success, "message": msg})
     except Exception as e:
@@ -236,7 +249,7 @@ def api_fpb_unpatch():
 @bp.route("/fpb/inject", methods=["POST"])
 def api_fpb_inject():
     """Perform code injection."""
-    add_tool_log, get_fpb_inject, _ = _get_helpers()
+    log_info, log_success, log_error, _, get_fpb_inject, _ = _get_helpers()
 
     data = request.json or {}
     source_content = data.get("source_content")
@@ -254,7 +267,7 @@ def api_fpb_inject():
 
     fpb = get_fpb_inject()
 
-    add_tool_log(f"[INJECT] Starting injection for {target_func} (mode: {patch_mode})")
+    log_info(f"Starting injection for {target_func} (mode: {patch_mode})")
 
     def do_inject():
         fpb.enter_fl_mode()
@@ -274,20 +287,18 @@ def api_fpb_inject():
     result = _run_serial_op(do_inject, timeout=30.0)
 
     if "error" in result and result.get("error"):
-        add_tool_log(f"[ERROR] Injection failed: {result['error']}")
+        log_error(f"Injection failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     success = result.get("success", False)
     inject_result = result.get("result", {})
 
     if success:
-        add_tool_log(
-            f"[SUCCESS] Injection complete: {target_func} @ slot {inject_result.get('slot', '?')}"
+        log_success(
+            f"Injection complete: {target_func} @ slot {inject_result.get('slot', '?')}"
         )
     else:
-        add_tool_log(
-            f"[ERROR] Injection failed: {inject_result.get('error', 'unknown error')}"
-        )
+        log_error(f"Injection failed: {inject_result.get('error', 'unknown error')}")
 
     return jsonify({"success": success, **inject_result})
 
@@ -295,7 +306,7 @@ def api_fpb_inject():
 @bp.route("/fpb/inject/multi", methods=["POST"])
 def api_fpb_inject_multi():
     """Perform multi-function code injection. Each inject_* function gets its own Slot."""
-    add_tool_log, get_fpb_inject, _ = _get_helpers()
+    log_info, log_success, log_error, _, get_fpb_inject, _ = _get_helpers()
 
     data = request.json or {}
     source_content = data.get("source_content")
@@ -307,9 +318,7 @@ def api_fpb_inject_multi():
 
     fpb = get_fpb_inject()
 
-    add_tool_log(
-        f"[INJECT_MULTI] Starting multi-function injection (mode: {patch_mode})"
-    )
+    log_info(f"Starting multi-function injection (mode: {patch_mode})")
 
     def do_inject_multi():
         fpb.enter_fl_mode()
@@ -326,7 +335,7 @@ def api_fpb_inject_multi():
     result = _run_serial_op(do_inject_multi, timeout=60.0)
 
     if "error" in result and result.get("error"):
-        add_tool_log(f"[ERROR] Multi-injection failed: {result['error']}")
+        log_error(f"Multi-injection failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     success = result.get("success", False)
@@ -335,12 +344,10 @@ def api_fpb_inject_multi():
     if success:
         successful = inject_result.get("successful_count", 0)
         total = inject_result.get("total_count", 0)
-        add_tool_log(
-            f"[SUCCESS] Multi-injection complete: {successful}/{total} functions"
-        )
+        log_success(f"Multi-injection complete: {successful}/{total} functions")
     else:
-        add_tool_log(
-            f"[ERROR] Multi-injection failed: {inject_result.get('error', 'unknown error')}"
+        log_error(
+            f"Multi-injection failed: {inject_result.get('error', 'unknown error')}"
         )
 
     return jsonify({"success": success, **inject_result})
@@ -349,7 +356,7 @@ def api_fpb_inject_multi():
 @bp.route("/fpb/inject/stream", methods=["POST"])
 def api_fpb_inject_stream():
     """Perform code injection with streaming progress via SSE."""
-    add_tool_log, get_fpb_inject, _ = _get_helpers()
+    log_info, log_success, log_error, _, get_fpb_inject, _ = _get_helpers()
 
     data = request.json or {}
     source_content = data.get("source_content")
@@ -380,9 +387,7 @@ def api_fpb_inject_stream():
     def inject_task():
         """Execute injection in device worker thread."""
         fpb = get_fpb_inject()
-        add_tool_log(
-            f"[INJECT] Starting injection for {target_func} (mode: {patch_mode})"
-        )
+        log_info(f"Starting injection for {target_func} (mode: {patch_mode})")
 
         def do_inject():
             fpb.enter_fl_mode()
@@ -400,12 +405,10 @@ def api_fpb_inject_stream():
                 )
 
                 if success:
-                    add_tool_log(f"[SUCCESS] Injection complete: {target_func}")
+                    log_success(f"Injection complete: {target_func}")
                     progress_queue.put({"type": "result", "success": True, **result})
                 else:
-                    add_tool_log(
-                        f"[ERROR] Injection failed: {result.get('error', 'unknown')}"
-                    )
+                    log_error(f"Injection failed: {result.get('error', 'unknown')}")
                     progress_queue.put({"type": "result", "success": False, **result})
             finally:
                 fpb.exit_fl_mode()

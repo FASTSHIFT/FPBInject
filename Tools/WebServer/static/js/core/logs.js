@@ -58,8 +58,8 @@ async function fetchLogs() {
       Array.isArray(data.tool_logs) &&
       data.tool_logs.length > 0
     ) {
-      data.tool_logs.forEach((log) => {
-        writeToOutput(log, 'info');
+      data.tool_logs.forEach((logMsg) => {
+        writeToOutput(logMsg, 'info');
       });
     }
 
