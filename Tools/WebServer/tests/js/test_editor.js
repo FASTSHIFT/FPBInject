@@ -426,9 +426,11 @@ module.exports = function (w) {
       w.FPBState.aceEditors = new Map();
       browserGlobals.document.getElementById('enableDecompile').checked = true;
       setFetchResponse('/api/symbols/signature', { success: false });
-      setFetchResponse('/api/symbols/decompile', {
-        success: true,
-        decompiled: 'int x = 0;\nreturn x;',
+      setFetchResponse('/api/symbols/decompile/stream', {
+        _stream: [
+          'data: {"type":"status","stage":"decompiling","message":"Decompiling..."}\n',
+          'data: {"type":"result","success":true,"decompiled":"int x = 0;\\nreturn x;"}\n',
+        ],
       });
       await w.openManualPatchTab('decompile_func');
       assertTrue(
@@ -446,9 +448,10 @@ module.exports = function (w) {
       w.FPBState.aceEditors = new Map();
       browserGlobals.document.getElementById('enableDecompile').checked = true;
       setFetchResponse('/api/symbols/signature', { success: false });
-      setFetchResponse('/api/symbols/decompile', {
-        success: false,
-        error: 'GHIDRA_NOT_CONFIGURED',
+      setFetchResponse('/api/symbols/decompile/stream', {
+        _stream: [
+          'data: {"type":"result","success":false,"error":"GHIDRA_NOT_CONFIGURED"}\n',
+        ],
       });
       await w.openManualPatchTab('ghidra_func');
       assertTrue(

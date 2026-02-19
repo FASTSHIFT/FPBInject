@@ -11,7 +11,7 @@ Provides endpoints for symbol query, search, disassembly and decompilation.
 
 import os
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 
 from core.state import state
 
@@ -300,3 +300,62 @@ def api_decompile_symbol():
                 "decompiled": f"// Error: {e}",
             }
         )
+
+
+@bp.route("/symbols/decompile/stream", methods=["GET"])
+def api_decompile_symbol_stream():
+    """Decompile a specific function using Ghidra with streaming progress."""
+    import json
+    from core import elf_utils
+
+    func_name = request.args.get("func", "")
+    if not func_name:
+        return jsonify({"success": False, "error": "Function name not specified"})
+
+    device = state.device
+    if not device.elf_path or not os.path.exists(device.elf_path):
+        return jsonify(
+            {"success": False, "error": "ELF file not configured or not found"}
+        )
+
+    ghidra_path = getattr(device, "ghidra_path", None)
+    if not ghidra_path:
+        return jsonify({"success": False, "error": "GHIDRA_NOT_CONFIGURED"})
+
+    def generate():
+        try:
+            # Check if we have a cached project
+            cached = elf_utils._ghidra_project_cache
+            elf_mtime = os.path.getmtime(device.elf_path)
+            use_cache = (
+                cached["elf_path"] == device.elf_path
+                and cached["elf_mtime"] == elf_mtime
+                and cached["project_dir"]
+                and os.path.exists(cached["project_dir"])
+            )
+
+            if use_cache:
+                yield f"data: {json.dumps({'type': 'status', 'stage': 'decompiling', 'message': 'Using cached analysis...'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'status', 'stage': 'analyzing', 'message': 'Analyzing ELF file (first time, may take a while)...'})}\n\n"
+
+            # Call decompile function
+            fpb = _get_fpb_inject()
+            success, result = fpb.decompile_function(device.elf_path, func_name)
+
+            if success:
+                yield f"data: {json.dumps({'type': 'result', 'success': True, 'decompiled': result})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'result', 'success': False, 'error': result})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'result', 'success': False, 'error': str(e)})}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

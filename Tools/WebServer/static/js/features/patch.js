@@ -347,9 +347,19 @@ async function performInject() {
   const progressText = document.getElementById('injectProgressText');
   const progressFill = document.getElementById('injectProgressFill');
 
+  /* Helper to hide progress bar */
+  const hideProgress = (delay = 2000) => {
+    setTimeout(() => {
+      progressEl.style.display = 'none';
+      progressFill.style.width = '0%';
+      progressFill.style.background = '';
+    }, delay);
+  };
+
   progressEl.style.display = 'flex';
   progressText.textContent = 'Starting...';
   progressFill.style.width = '5%';
+  progressFill.style.background = '';
 
   writeToOutput(
     `[INJECT] Starting injection of ${targetFunc} to slot ${state.selectedSlot}...`,
@@ -415,12 +425,14 @@ async function performInject() {
       progressFill.style.width = '100%';
 
       displayInjectionStats(finalResult, targetFunc);
-      await fpbInfo();
 
-      setTimeout(() => {
-        progressEl.style.display = 'none';
-        progressFill.style.width = '0%';
-      }, 2000);
+      try {
+        await fpbInfo();
+      } catch (infoErr) {
+        console.warn('Failed to refresh FPB info:', infoErr);
+      }
+
+      hideProgress();
     } else {
       throw new Error(finalResult?.error || 'Injection failed');
     }
@@ -428,12 +440,7 @@ async function performInject() {
     progressText.textContent = 'Failed!';
     progressFill.style.background = '#f44336';
     writeToOutput(`[ERROR] ${e}`, 'error');
-
-    setTimeout(() => {
-      progressEl.style.display = 'none';
-      progressFill.style.width = '0%';
-      progressFill.style.background = '';
-    }, 2000);
+    hideProgress();
   }
 }
 

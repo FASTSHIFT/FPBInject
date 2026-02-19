@@ -283,26 +283,94 @@ async function openManualPatchTab(funcName) {
   let decompiled = null;
   let ghidraNotConfigured = false;
 
+  const progressEl = document.getElementById('injectProgress');
+  const progressText = document.getElementById('injectProgressText');
+  const progressFill = document.getElementById('injectProgressFill');
+
+  /* Helper to show/hide progress */
+  const showProgress = (text, percent = 0) => {
+    progressEl.style.display = 'flex';
+    progressText.textContent = text;
+    progressFill.style.width = `${percent}%`;
+    progressFill.style.background = '';
+  };
+
+  const hideProgress = (delay = 0) => {
+    setTimeout(() => {
+      progressEl.style.display = 'none';
+      progressFill.style.width = '0%';
+    }, delay);
+  };
+
   let decompilePromise = Promise.resolve(null);
   if (enableDecompile) {
     writeToOutput(
       `[DECOMPILE] Requesting decompilation for ${funcName}...`,
       'system',
     );
-    decompilePromise = fetch(
-      `/api/symbols/decompile?func=${encodeURIComponent(funcName)}`,
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.decompiled) {
-          return { decompiled: data.decompiled, notInstalled: false };
+
+    /* Use streaming API for progress feedback */
+    decompilePromise = (async () => {
+      try {
+        showProgress('Starting decompilation...', 10);
+
+        const response = await fetch(
+          `/api/symbols/decompile/stream?func=${encodeURIComponent(funcName)}`,
+        );
+
+        if (!response.ok) {
+          hideProgress();
+          return { decompiled: null, notInstalled: false };
         }
-        if (data.error === 'GHIDRA_NOT_CONFIGURED') {
-          return { decompiled: null, notInstalled: true };
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let result = { decompiled: null, notInstalled: false };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === 'status') {
+                  if (data.stage === 'analyzing') {
+                    showProgress('Analyzing ELF (first time)...', 30);
+                  } else if (data.stage === 'decompiling') {
+                    showProgress('Decompiling function...', 60);
+                  }
+                } else if (data.type === 'result') {
+                  if (data.success && data.decompiled) {
+                    result = {
+                      decompiled: data.decompiled,
+                      notInstalled: false,
+                    };
+                  } else if (data.error === 'GHIDRA_NOT_CONFIGURED') {
+                    result = { decompiled: null, notInstalled: true };
+                  }
+                }
+              } catch (e) {
+                console.warn('Failed to parse SSE data:', e);
+              }
+            }
+          }
         }
+
+        hideProgress();
+        return result;
+      } catch (e) {
+        hideProgress();
         return { decompiled: null, notInstalled: false };
-      })
-      .catch(() => ({ decompiled: null, notInstalled: false }));
+      }
+    })();
   }
 
   try {
