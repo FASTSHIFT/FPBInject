@@ -94,6 +94,9 @@ function initTerminals() {
   if (rawPanel) rawPanel.style.display = rawDisplay || 'none';
 
   window.addEventListener('resize', fitTerminals);
+
+  // Delay fit to ensure layout is complete
+  setTimeout(fitTerminals, 0);
 }
 
 function fitTerminals() {

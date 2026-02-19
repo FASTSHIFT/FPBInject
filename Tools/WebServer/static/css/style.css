@@ -955,7 +955,8 @@ select.form-control {
 
 #terminal-container,
 #raw-terminal-container {
-  height: 300px;
+  width: 100%;
+  height: 100%;
 }
 
 /* Modal */
