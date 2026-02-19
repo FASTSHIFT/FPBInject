@@ -216,10 +216,76 @@ def disassemble_function(
         return False, str(e)
 
 
+# Global cache for Ghidra project to avoid re-analyzing the same ELF file
+_ghidra_project_cache = {
+    "elf_path": None,
+    "elf_mtime": None,
+    "project_dir": None,
+    "project_name": "fpb_decompile",
+}
+
+
+def _get_cached_ghidra_project(
+    elf_path: str, ghidra_path: str
+) -> Tuple[str, str, bool]:
+    """Get or create a cached Ghidra project for the ELF file.
+
+    Returns:
+        Tuple of (project_dir, project_name, is_new_project)
+    """
+    import tempfile
+    import shutil
+
+    cache = _ghidra_project_cache
+    elf_mtime = os.path.getmtime(elf_path)
+
+    # Check if we can reuse the cached project
+    if (
+        cache["elf_path"] == elf_path
+        and cache["elf_mtime"] == elf_mtime
+        and cache["project_dir"]
+        and os.path.exists(cache["project_dir"])
+    ):
+        return cache["project_dir"], cache["project_name"], False
+
+    # Clean up old project if exists
+    if cache["project_dir"] and os.path.exists(cache["project_dir"]):
+        try:
+            shutil.rmtree(cache["project_dir"], ignore_errors=True)
+        except Exception:
+            pass
+
+    # Create new project directory
+    project_dir = tempfile.mkdtemp(prefix="ghidra_project_")
+    cache["elf_path"] = elf_path
+    cache["elf_mtime"] = elf_mtime
+    cache["project_dir"] = project_dir
+
+    return project_dir, cache["project_name"], True
+
+
+def clear_ghidra_cache():
+    """Clear the Ghidra project cache."""
+    import shutil
+
+    cache = _ghidra_project_cache
+    if cache["project_dir"] and os.path.exists(cache["project_dir"]):
+        try:
+            shutil.rmtree(cache["project_dir"], ignore_errors=True)
+        except Exception:
+            pass
+    cache["elf_path"] = None
+    cache["elf_mtime"] = None
+    cache["project_dir"] = None
+
+
 def decompile_function(
     elf_path: str, func_name: str, ghidra_path: str = None
 ) -> Tuple[bool, str]:
     """Decompile a specific function from ELF file using Ghidra.
+
+    Uses a cached Ghidra project to avoid re-analyzing the same ELF file,
+    which significantly speeds up subsequent decompilation requests.
 
     Args:
         elf_path: Path to the ELF file
@@ -257,9 +323,13 @@ def decompile_function(
     if not os.path.exists(elf_path):
         return False, f"ELF file not found: {elf_path}"
 
-    # Create temporary directory for Ghidra project
+    # Get or create cached project
+    project_dir, project_name, is_new_project = _get_cached_ghidra_project(
+        elf_path, ghidra_path
+    )
+
+    # Create temporary directory for script output
     temp_dir = tempfile.mkdtemp(prefix="ghidra_decompile_")
-    project_name = "fpb_decompile"
     output_file = os.path.join(temp_dir, "decompiled.c")
 
     # Create a simple Ghidra script to decompile the function
@@ -268,35 +338,52 @@ def decompile_function(
 # @category FPBInject
 # @runtime Jython
 
-from ghidra.app.decompiler import DecompInterface
+from ghidra.app.decompiler import DecompInterface, DecompileOptions
 from ghidra.util.task import ConsoleTaskMonitor
-import os
+from ghidra.program.model.symbol import SourceType
 
 func_name = "{func_name}"
 output_path = "{output_file}"
 
-# Initialize decompiler
+# Initialize decompiler with options to use debug info
 decomp = DecompInterface()
+options = DecompileOptions()
+# Enable using parameter names from debug info (DWARF)
+options.setEliminateUnreachable(True)
+decomp.setOptions(options)
 decomp.openProgram(currentProgram)
 
-# Find the function
+# Find the function by symbol name first (faster)
 func = None
+symbol_table = currentProgram.getSymbolTable()
 func_manager = currentProgram.getFunctionManager()
 
-# Try exact match first
-for f in func_manager.getFunctions(True):
-    if f.getName() == func_name:
-        func = f
-        break
+# Try to find symbol directly (much faster than iterating all functions)
+symbols = symbol_table.getSymbols(func_name)
+for sym in symbols:
+    if sym.getSymbolType().toString() == "Function":
+        func = func_manager.getFunctionAt(sym.getAddress())
+        if func:
+            break
 
 # Try with underscore prefix (common in C)
 if func is None:
+    symbols = symbol_table.getSymbols("_" + func_name)
+    for sym in symbols:
+        if sym.getSymbolType().toString() == "Function":
+            func = func_manager.getFunctionAt(sym.getAddress())
+            if func:
+                break
+
+# Fallback: iterate functions (slower, but handles edge cases)
+if func is None:
     for f in func_manager.getFunctions(True):
-        if f.getName() == "_" + func_name:
+        name = f.getName()
+        if name == func_name or name == "_" + func_name:
             func = f
             break
 
-# Try partial match
+# Last resort: partial match
 if func is None:
     for f in func_manager.getFunctions(True):
         if func_name in f.getName():
@@ -307,11 +394,51 @@ if func is None:
     with open(output_path, "w") as f:
         f.write("ERROR: Function '{{}}' not found".format(func_name))
 else:
-    # Decompile the function
-    monitor = ConsoleTaskMonitor()
-    results = decomp.decompileFunction(func, 60, monitor)
+    # Try to apply parameter names from debug info before decompiling
+    try:
+        params = func.getParameters()
+        high_func = None
 
-    if results.decompileCompleted():
+        # First decompile to get high function for parameter mapping
+        monitor = ConsoleTaskMonitor()
+        results = decomp.decompileFunction(func, 60, monitor)
+
+        if results.decompileCompleted():
+            high_func = results.getHighFunction()
+
+            if high_func:
+                # Get local symbol map which contains parameter info from debug
+                local_symbols = high_func.getLocalSymbolMap()
+                if local_symbols:
+                    # Map debug parameter names to decompiler parameters
+                    for i, param in enumerate(params):
+                        param_name = param.getName()
+                        # If parameter has a real name (not param_N), it's from debug info
+                        if param_name and not param_name.startswith("param_"):
+                            # Parameter already has debug name, good
+                            pass
+                        else:
+                            # Try to find corresponding high variable
+                            for sym in local_symbols.getSymbols():
+                                if sym.isParameter():
+                                    slot = sym.getStorage().getFirstVarnode()
+                                    if slot and i < len(params):
+                                        # Check if this is the i-th parameter
+                                        debug_name = sym.getName()
+                                        if debug_name and not debug_name.startswith("param_"):
+                                            try:
+                                                param.setName(debug_name, SourceType.IMPORTED)
+                                            except:
+                                                pass
+
+                # Re-decompile with updated parameter names
+                results = decomp.decompileFunction(func, 60, monitor)
+    except Exception as e:
+        # If parameter name extraction fails, continue with default names
+        pass
+
+    # Get final decompiled code
+    if results and results.decompileCompleted():
         decompiled = results.getDecompiledFunction()
         if decompiled:
             c_code = decompiled.getC()
@@ -322,7 +449,7 @@ else:
                 f.write("ERROR: Decompilation produced no output")
     else:
         with open(output_path, "w") as f:
-            f.write("ERROR: Decompilation failed - {{}}".format(results.getErrorMessage() or "unknown error"))
+            f.write("ERROR: Decompilation failed - {{}}".format(results.getErrorMessage() if results else "unknown error"))
 
 decomp.dispose()
 """
@@ -332,25 +459,42 @@ decomp.dispose()
         f.write(script_content)
 
     try:
-        # Run Ghidra headless analysis
-        cmd = [
-            analyze_headless,
-            temp_dir,
-            project_name,
-            "-import",
-            elf_path,
-            "-postScript",
-            script_file,
-            "-scriptPath",
-            temp_dir,
-            "-deleteProject",
-        ]
+        if is_new_project:
+            # First time: import ELF and run analysis, then run script
+            # Use -postScript so script runs after analysis
+            cmd = [
+                analyze_headless,
+                project_dir,
+                project_name,
+                "-import",
+                elf_path,
+                "-postScript",
+                script_file,
+                "-scriptPath",
+                temp_dir,
+            ]
+            timeout = 180  # 3 minutes for initial analysis
+        else:
+            # Subsequent calls: just process the existing project with script
+            cmd = [
+                analyze_headless,
+                project_dir,
+                project_name,
+                "-process",
+                os.path.basename(elf_path),
+                "-noanalysis",
+                "-postScript",
+                script_file,
+                "-scriptPath",
+                temp_dir,
+            ]
+            timeout = 30  # 30 seconds for cached project
 
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=120,  # 2 minute timeout for analysis
+            timeout=timeout,
         )
 
         # Check if output file was created
@@ -373,18 +517,26 @@ decomp.dispose()
             # Check stderr for errors
             if result.returncode != 0:
                 logger.error(f"Ghidra analysis failed: {result.stderr}")
+                # If cached project failed, clear cache and suggest retry
+                if not is_new_project:
+                    clear_ghidra_cache()
                 return False, f"Ghidra analysis failed: {result.stderr[:200]}"
             return False, "Decompilation produced no output"
 
     except subprocess.TimeoutExpired:
-        return False, "Decompilation timed out (>120s)"
+        if is_new_project:
+            return False, "Decompilation timed out (>180s) - ELF file may be too large"
+        else:
+            # Clear cache on timeout for cached project
+            clear_ghidra_cache()
+            return False, "Decompilation timed out (>30s)"
     except FileNotFoundError:
         return False, "Ghidra analyzeHeadless not found"
     except Exception as e:
         logger.error(f"Error decompiling function: {e}")
         return False, str(e)
     finally:
-        # Cleanup temporary directory
+        # Cleanup temporary script directory (but keep project cache)
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception:

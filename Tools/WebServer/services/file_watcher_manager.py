@@ -145,6 +145,14 @@ def acknowledge_elf_change():
         except OSError:
             pass
 
+    # Clear Ghidra decompilation cache since ELF file changed
+    try:
+        from core.elf_utils import clear_ghidra_cache
+
+        clear_ghidra_cache()
+    except ImportError:
+        pass
+
 
 def _on_elf_file_change(path, change_type):
     """Callback when ELF file changes."""

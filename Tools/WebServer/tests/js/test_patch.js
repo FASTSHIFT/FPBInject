@@ -21,6 +21,10 @@ module.exports = function (w) {
   describe('Patch Functions (features/patch.js)', () => {
     it('generatePatchTemplate is a function', () =>
       assertTrue(typeof w.generatePatchTemplate === 'function'));
+    it('formatCCode is a function', () =>
+      assertTrue(typeof w.formatCCode === 'function'));
+    it('processDecompiledCode is a function', () =>
+      assertTrue(typeof w.processDecompiledCode === 'function'));
     it('parseSignature is a function', () =>
       assertTrue(typeof w.parseSignature === 'function'));
     it('extractParamNames is a function', () =>
@@ -29,6 +33,78 @@ module.exports = function (w) {
       assertTrue(typeof w.performInject === 'function'));
     it('displayInjectionStats is a function', () =>
       assertTrue(typeof w.displayInjectionStats === 'function'));
+  });
+
+  describe('formatCCode Function', () => {
+    it('returns empty string for null input', () => {
+      const result = w.formatCCode(null);
+      assertEqual(result, '');
+    });
+    it('returns empty string for empty input', () => {
+      const result = w.formatCCode('');
+      assertEqual(result, '');
+    });
+    it('returns code as-is when js_beautify not available', () => {
+      const code = 'int x = 0;';
+      const result = w.formatCCode(code);
+      assertTrue(result.includes('int x = 0'));
+    });
+  });
+
+  describe('processDecompiledCode Function', () => {
+    it('returns empty string for null input', () => {
+      const result = w.processDecompiledCode(null);
+      assertEqual(result, '');
+    });
+    it('returns empty string for empty input', () => {
+      const result = w.processDecompiledCode('');
+      assertEqual(result, '');
+    });
+    it('removes header comments', () => {
+      const result = w.processDecompiledCode(
+        '// Comment\n// Another\nvoid func() { return; }',
+      );
+      assertTrue(!result.includes('// Comment'));
+    });
+    it('replaces param_1 with first parameter name', () => {
+      const result = w.processDecompiledCode(
+        'void func(int param_1) { use(param_1); }',
+        ['x'],
+      );
+      assertContains(result, 'x');
+      assertTrue(!result.includes('param_1'));
+    });
+    it('replaces multiple param_N with parameter names', () => {
+      const result = w.processDecompiledCode(
+        'void func(int param_1, int param_2) { use(param_1, param_2); }',
+        ['a', 'b'],
+      );
+      assertContains(result, 'a');
+      assertContains(result, 'b');
+      assertTrue(!result.includes('param_1'));
+      assertTrue(!result.includes('param_2'));
+    });
+    it('extracts function body only', () => {
+      const result = w.processDecompiledCode(
+        'int test(int x) {\n  return x + 1;\n}',
+      );
+      /* Should not contain the function signature */
+      assertTrue(!result.includes('int test('));
+      assertContains(result, 'return');
+    });
+    it('preserves Ghidra types as-is', () => {
+      const result = w.processDecompiledCode(
+        'void func() { uint x = 0; ushort y = 1; }',
+      );
+      assertContains(result, 'uint');
+      assertContains(result, 'ushort');
+    });
+    it('preserves DAT_ symbols as-is', () => {
+      const result = w.processDecompiledCode(
+        'void func() { int x = DAT_08007e08; }',
+      );
+      assertContains(result, 'DAT_08007e08');
+    });
   });
 
   describe('parseSignature Function', () => {
@@ -195,7 +271,7 @@ module.exports = function (w) {
         1,
         'int my_func(int x)',
       );
-      // Signature is used to generate function definition, not as a comment
+      /* Signature is used to generate function definition */
       assertContains(template, 'int my_func(int x)');
       assertContains(template, '__attribute__');
     });
@@ -209,10 +285,97 @@ module.exports = function (w) {
         0,
         null,
         null,
-        'int x = 0;\nreturn x;',
+        'void func() { int x = 0;\nreturn; }',
       );
       assertContains(template, 'DECOMPILED REFERENCE');
-      assertContains(template, 'int x = 0');
+      assertContains(template, '#if 0');
+      assertContains(template, '#endif');
+    });
+    it('decompiled code is inside function body', () => {
+      const template = w.generatePatchTemplate(
+        'func',
+        0,
+        null,
+        null,
+        'void func() { int x = 0;\nreturn; }',
+      );
+      /* Check that #if 0 appears after the function opening brace */
+      const funcStart = template.indexOf('func(');
+      const bracePos = template.indexOf('{', funcStart);
+      const ifZeroPos = template.indexOf('#if 0');
+      assertTrue(
+        ifZeroPos > bracePos,
+        'Decompiled code should be inside function body',
+      );
+    });
+    it('filters out header comments from decompiled code', () => {
+      const template = w.generatePatchTemplate(
+        'func',
+        0,
+        null,
+        null,
+        '// Decompiled from: test.elf\n// Function: func\nvoid func() { int x = 0; }',
+      );
+      /* Header comments should be filtered out */
+      assertTrue(!template.includes('Decompiled from: test.elf'));
+    });
+    it('replaces param_N with actual parameter names', () => {
+      const template = w.generatePatchTemplate(
+        'digitalWrite',
+        0,
+        'void digitalWrite(uint8_t pin, uint8_t value)',
+        null,
+        'void digitalWrite(int param_1, int param_2) {\n  if (param_1 > 0) {\n    use(param_2);\n  }\n}',
+      );
+      /* param_1 should be replaced with pin, param_2 with value */
+      assertContains(template, 'pin');
+      assertContains(template, 'value');
+      assertTrue(!template.includes('param_1'));
+      assertTrue(!template.includes('param_2'));
+    });
+    it('extracts function body only from decompiled code', () => {
+      const template = w.generatePatchTemplate(
+        'test',
+        0,
+        'int test(int x)',
+        null,
+        'int test(int param_1) {\n  return param_1 + 1;\n}',
+      );
+      /* Should not have duplicate function definition inside #if 0 */
+      const ifZeroStart = template.indexOf('#if 0');
+      const endifPos = template.indexOf('#endif');
+      const decompiledSection = template.substring(ifZeroStart, endifPos);
+      /* The decompiled section should not contain the full function signature */
+      assertTrue(!decompiledSection.includes('int test(int'));
+    });
+    it('skips printf when decompiled code is provided', () => {
+      const template = w.generatePatchTemplate(
+        'func',
+        0,
+        'void func(void)',
+        null,
+        'void func() { return; }',
+      );
+      /* Should not have printf when decompiled code is present */
+      assertTrue(!template.includes('printf'));
+    });
+    it('includes printf when no decompiled code', () => {
+      const template = w.generatePatchTemplate('func', 0);
+      /* Should have printf when no decompiled code */
+      assertContains(template, 'printf');
+    });
+    it('uses block comments style consistently', () => {
+      const template = w.generatePatchTemplate(
+        'func',
+        0,
+        'void func(void)',
+        null,
+        'void func() { return; }',
+      );
+      /* Should use block comments, not line comments */
+      assertTrue(!template.includes('// '));
+      assertContains(template, '/*');
+      assertContains(template, '*/');
     });
     it('includes Ghidra tip when not configured', () => {
       const template = w.generatePatchTemplate(
@@ -239,7 +402,8 @@ module.exports = function (w) {
         0,
         'void do_thing(void)',
       );
-      assertContains(template, 'Do not call the original function');
+      /* Should have TODO comment */
+      assertContains(template, 'TODO');
     });
     it('includes param names in function', () => {
       const template = w.generatePatchTemplate(
@@ -261,6 +425,7 @@ module.exports = function (w) {
     });
     it('includes standard headers', () => {
       const template = w.generatePatchTemplate('func', 0);
+      assertContains(template, '#include <stdbool.h>');
       assertContains(template, '#include <stdint.h>');
       assertContains(template, '#include <stdio.h>');
     });

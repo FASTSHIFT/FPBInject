@@ -3,8 +3,79 @@
   ========================================*/
 
 /* ===========================
+   CODE FORMATTING
+   =========================== */
+
+/**
+ * Format C code using js-beautify (WebKit style)
+ * @param {string} code - C code to format
+ * @returns {string} Formatted code
+ */
+function formatCCode(code) {
+  if (!code) return '';
+
+  /* Use js-beautify if available */
+  if (typeof js_beautify === 'function') {
+    return js_beautify(code, {
+      indent_size: 4,
+      indent_char: ' ',
+      max_preserve_newlines: 2,
+      preserve_newlines: true,
+      keep_array_indentation: false,
+      break_chained_methods: false,
+      brace_style: 'collapse,preserve-inline',
+      space_before_conditional: true,
+      unescape_strings: false,
+      jslint_happy: false,
+      end_with_newline: true,
+      wrap_line_length: 0,
+      indent_empty_lines: false,
+    });
+  }
+
+  /* Fallback: return as-is */
+  return code;
+}
+
+/* ===========================
    PATCH TEMPLATE GENERATION
    =========================== */
+
+/**
+ * Process decompiled code from Ghidra
+ * @param {string} decompiled - Raw decompiled code from Ghidra
+ * @param {string[]} paramNames - Original parameter names from signature
+ * @returns {string} Processed function body
+ */
+function processDecompiledCode(decompiled, paramNames = []) {
+  if (!decompiled) return '';
+
+  let code = decompiled;
+
+  /* Remove header comments (lines starting with //) */
+  code = code
+    .split('\n')
+    .filter((line) => !line.startsWith('//'))
+    .join('\n')
+    .trim();
+
+  /* Replace param_N with actual parameter names from signature */
+  if (paramNames && paramNames.length > 0) {
+    paramNames.forEach((name, index) => {
+      const paramPattern = new RegExp(`\\bparam_${index + 1}\\b`, 'g');
+      code = code.replace(paramPattern, name);
+    });
+  }
+
+  /* Extract function body only (content between first { and last }) */
+  const funcBodyMatch = code.match(/\{([\s\S]*)\}/);
+  if (funcBodyMatch) {
+    return funcBodyMatch[1].trim();
+  }
+
+  return code;
+}
+
 function generatePatchTemplate(
   funcName,
   slot,
@@ -23,53 +94,75 @@ function generatePatchTemplate(
   }
 
   const paramNames = extractParamNames(params);
-  const callParams = paramNames.length > 0 ? paramNames.join(', ') : '';
+  const hasDecompiled = !!decompiled;
 
-  let decompiledSection = '';
-  if (decompiled) {
-    const decompiledLines = decompiled
-      .split('\n')
-      .map((line) => ' * ' + line)
-      .join('\n');
-    decompiledSection = `
-/*
- * ============== DECOMPILED REFERENCE ==============
-${decompiledLines}
- * ==================================================
- */
-
-`;
-  } else if (ghidraNotConfigured) {
-    decompiledSection = `
+  let ghidraTip = '';
+  if (ghidraNotConfigured) {
+    ghidraTip = `
 /*
  * TIP: Configure Ghidra for automatic decompilation reference:
  *   1. Download Ghidra from https://ghidra-sre.org/
  *   2. Set "Ghidra Path" in Settings panel to your Ghidra installation directory
  *   3. Enable "Enable Decompilation" checkbox
  */
-
 `;
   }
 
-  return `/*
+  /* Build decompiled reference section */
+  let decompiledSection = '';
+  if (hasDecompiled) {
+    const processedBody = processDecompiledCode(decompiled, paramNames);
+    decompiledSection = `
+/* ============== DECOMPILED REFERENCE ==============
+ * Original function body decompiled by Ghidra.
+ * This is for reference only, may not be accurate.
+ * ================================================== */
+#if 0
+${processedBody}
+#endif
+`;
+  }
+
+  /* Build function body */
+  let functionBody = '';
+  if (hasDecompiled) {
+    functionBody = `/* TODO: Your patch code here */
+${decompiledSection}`;
+  } else {
+    functionBody = `printf("Patched ${funcName} executed!\\n");
+
+/* TODO: Your patch code here */`;
+  }
+
+  /* Add return statement for non-void functions */
+  if (returnType !== 'void') {
+    functionBody += `
+
+/* TODO: return appropriate value */
+return 0;`;
+  }
+
+  /* Build complete template */
+  let template = `/*
  * Patch for: ${funcName}
  * Slot: ${slot}
 ${sourceFile ? ` * Source: ${sourceFile}` : ''}
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-${decompiledSection}
+${ghidraTip}
 /* FPB_INJECT */
 __attribute__((section(".fpb.text"), used))
-${returnType} ${funcName}(${params || 'void'}) {
-    printf("Patched ${funcName} executed!\\n");
-
-    // Your patch code here
-    // NOTE: Do not call the original function, as this will result in a double hijacked recursion.
-${returnType !== 'void' ? `    // TODO: return appropriate value\n    return 0;` : ``}
+${returnType} ${funcName}(${params || 'void'})
+{
+${functionBody}
 }
 `;
+
+  /* Format the complete template */
+  return formatCCode(template);
 }
 
 function parseSignature(signature, funcName) {
@@ -373,7 +466,9 @@ function displayInjectionStats(data, targetFunc) {
   writeToOutput(`Injection active! (mode: ${patchMode})`, 'success');
 }
 
-// Export for global access
+/* Export for global access */
+window.formatCCode = formatCCode;
+window.processDecompiledCode = processDecompiledCode;
 window.generatePatchTemplate = generatePatchTemplate;
 window.parseSignature = parseSignature;
 window.extractParamNames = extractParamNames;

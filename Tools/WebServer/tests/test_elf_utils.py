@@ -225,6 +225,14 @@ class TestDisassembleFunction(unittest.TestCase):
 class TestDecompileFunction(unittest.TestCase):
     """decompile_function tests"""
 
+    def setUp(self):
+        """Clear cache before each test"""
+        elf_utils.clear_ghidra_cache()
+
+    def tearDown(self):
+        """Clear cache after each test"""
+        elf_utils.clear_ghidra_cache()
+
     def test_decompile_ghidra_not_configured(self):
         """Test decompile when Ghidra is not configured"""
         # Without ghidra_path, should return GHIDRA_NOT_CONFIGURED
@@ -270,6 +278,125 @@ class TestDecompileFunction(unittest.TestCase):
 
             self.assertFalse(success)
             self.assertIn("not found", result.lower())
+
+
+class TestGhidraProjectCache(unittest.TestCase):
+    """Tests for Ghidra project caching functionality"""
+
+    def setUp(self):
+        """Clear cache before each test"""
+        elf_utils.clear_ghidra_cache()
+
+    def tearDown(self):
+        """Clear cache after each test"""
+        elf_utils.clear_ghidra_cache()
+
+    def test_clear_ghidra_cache(self):
+        """Test clearing the Ghidra cache"""
+        # Set up some cache state
+        cache = elf_utils._ghidra_project_cache
+        cache["elf_path"] = "/some/path.elf"
+        cache["elf_mtime"] = 12345
+
+        elf_utils.clear_ghidra_cache()
+
+        self.assertIsNone(cache["elf_path"])
+        self.assertIsNone(cache["elf_mtime"])
+        self.assertIsNone(cache["project_dir"])
+
+    def test_get_cached_ghidra_project_new(self):
+        """Test getting a new Ghidra project"""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+            f.write(b"test")
+
+        try:
+            project_dir, project_name, is_new = elf_utils._get_cached_ghidra_project(
+                elf_path, None
+            )
+
+            self.assertTrue(is_new)
+            self.assertEqual(project_name, "fpb_decompile")
+            self.assertTrue(os.path.exists(project_dir))
+        finally:
+            os.unlink(elf_path)
+
+    def test_get_cached_ghidra_project_reuse(self):
+        """Test reusing a cached Ghidra project"""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+            f.write(b"test")
+
+        try:
+            # First call creates new project
+            project_dir1, _, is_new1 = elf_utils._get_cached_ghidra_project(
+                elf_path, None
+            )
+            self.assertTrue(is_new1)
+
+            # Second call should reuse
+            project_dir2, _, is_new2 = elf_utils._get_cached_ghidra_project(
+                elf_path, None
+            )
+            self.assertFalse(is_new2)
+            self.assertEqual(project_dir1, project_dir2)
+        finally:
+            os.unlink(elf_path)
+
+    def test_get_cached_ghidra_project_different_elf(self):
+        """Test that different ELF files get different projects"""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f1:
+            elf_path1 = f1.name
+            f1.write(b"test1")
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f2:
+            elf_path2 = f2.name
+            f2.write(b"test2")
+
+        try:
+            # First ELF
+            project_dir1, _, is_new1 = elf_utils._get_cached_ghidra_project(
+                elf_path1, None
+            )
+            self.assertTrue(is_new1)
+
+            # Different ELF should create new project
+            project_dir2, _, is_new2 = elf_utils._get_cached_ghidra_project(
+                elf_path2, None
+            )
+            self.assertTrue(is_new2)
+            self.assertNotEqual(project_dir1, project_dir2)
+        finally:
+            os.unlink(elf_path1)
+            os.unlink(elf_path2)
+
+    def test_get_cached_ghidra_project_modified_elf(self):
+        """Test that modified ELF file invalidates cache"""
+        import time
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+            f.write(b"test")
+
+        try:
+            # First call
+            project_dir1, _, is_new1 = elf_utils._get_cached_ghidra_project(
+                elf_path, None
+            )
+            self.assertTrue(is_new1)
+
+            # Modify the file
+            time.sleep(0.1)  # Ensure mtime changes
+            with open(elf_path, "wb") as f:
+                f.write(b"modified")
+
+            # Should create new project due to mtime change
+            project_dir2, _, is_new2 = elf_utils._get_cached_ghidra_project(
+                elf_path, None
+            )
+            self.assertTrue(is_new2)
+        finally:
+            os.unlink(elf_path)
 
 
 class TestGetSignature(unittest.TestCase):
