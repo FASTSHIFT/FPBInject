@@ -6,15 +6,23 @@
 """
 Compile commands parsing for FPBInject Web Server.
 
-Provides functions for parsing compile_commands.json and .d dependency files.
+Provides functions for parsing compile_commands.json and .d dependency files
+with robust error handling and cross-platform path support.
 """
 
 import json
 import logging
 import os
-import shlex
 import subprocess
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from core.safe_parser import (
+    safe_shlex_split,
+    parse_dep_file_command,
+    path_matches_suffix,
+    cached_parse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,42 +36,43 @@ def parse_dep_file_for_compile_command(
 
     vendor/bes build system stores compile commands in .d files with format:
     cmd_<path>/<file>.o := <full compile command>
+
+    Also supports other common formats via safe_parser.parse_dep_file_command.
+
+    Args:
+        source_file: Path to source file
+        build_output_dir: Build output directory to search
+
+    Returns:
+        Compile command string or None
     """
     if not source_file:
         return None
 
-    source_file = os.path.normpath(source_file)
-    source_basename = os.path.basename(source_file)
-    source_name_no_ext = os.path.splitext(source_basename)[0]
+    source_path = Path(source_file).resolve()
+    source_basename = source_path.name
+    source_name_no_ext = source_path.stem
 
-    search_dirs = []
+    search_dirs: List[Path] = []
     if build_output_dir:
-        search_dirs.append(build_output_dir)
+        search_dirs.append(Path(build_output_dir))
 
     # Search in common build output locations
-    workspace_root = os.path.dirname(
-        os.path.dirname(
-            os.path.dirname(
-                os.path.dirname(
-                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                )
-            )
-        )
-    )
-
-    out_dir = os.path.join(workspace_root, "out")
-    if os.path.isdir(out_dir):
+    workspace_root = Path(__file__).parent.parent.parent.parent.parent.parent
+    out_dir = workspace_root / "out"
+    if out_dir.is_dir():
         search_dirs.append(out_dir)
 
     dep_file_pattern = f".{source_name_no_ext}.o.d"
 
     for search_dir in search_dirs:
-        if not os.path.isdir(search_dir):
+        if not search_dir.is_dir():
             continue
 
         try:
+            # Use find command for efficiency
             result = subprocess.run(
-                ["find", search_dir, "-name", dep_file_pattern, "-type", "f"],
+                ["find", str(search_dir), "-name", dep_file_pattern, "-type", "f"],
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -73,58 +82,118 @@ def parse_dep_file_for_compile_command(
                 for dep_file_path in dep_files:
                     if not dep_file_path:
                         continue
-                    logger.info(f"Found potential .d file: {dep_file_path}")
 
-                    try:
-                        with open(dep_file_path, "r") as df:
-                            content = df.read()
+                    compile_cmd = _try_parse_dep_file(
+                        dep_file_path, str(source_path), source_basename
+                    )
+                    if compile_cmd:
+                        return compile_cmd
 
-                        if source_file in content or source_basename in content:
-                            for line in content.split("\n"):
-                                if line.startswith("cmd_") and ":=" in line:
-                                    cmd_start = line.find(":=")
-                                    if cmd_start != -1:
-                                        compile_cmd = line[cmd_start + 2 :].strip()
-                                        logger.info(
-                                            f"Found compile command in .d file: {dep_file_path}"
-                                        )
-                                        return compile_cmd
-                    except Exception as e:
-                        logger.debug(f"Error reading .d file {dep_file_path}: {e}")
-                        continue
         except subprocess.TimeoutExpired:
             logger.warning(f"Timeout searching for .d files in {search_dir}")
             continue
+        except FileNotFoundError:
+            # 'find' command not available (Windows), use os.walk fallback
+            compile_cmd = _search_dep_files_walk(
+                search_dir, dep_file_pattern, str(source_path), source_basename
+            )
+            if compile_cmd:
+                return compile_cmd
         except Exception as e:
             logger.debug(f"Error searching for .d files: {e}")
             # Fallback to os.walk
-            for root, dirs, files in os.walk(search_dir):
-                for f in files:
-                    if f == dep_file_pattern:
-                        dep_file_path = os.path.join(root, f)
-                        logger.info(f"Found potential .d file: {dep_file_path}")
-
-                        try:
-                            with open(dep_file_path, "r") as df:
-                                content = df.read()
-
-                            if source_file in content or source_basename in content:
-                                for line in content.split("\n"):
-                                    if line.startswith("cmd_") and ":=" in line:
-                                        cmd_start = line.find(":=")
-                                        if cmd_start != -1:
-                                            compile_cmd = line[cmd_start + 2 :].strip()
-                                            logger.info(
-                                                f"Found compile command in .d file: {dep_file_path}"
-                                            )
-                                            return compile_cmd
-                        except Exception as e2:
-                            logger.debug(f"Error reading .d file {dep_file_path}: {e2}")
-                            continue
+            compile_cmd = _search_dep_files_walk(
+                search_dir, dep_file_pattern, str(source_path), source_basename
+            )
+            if compile_cmd:
+                return compile_cmd
 
     return None
 
 
+def _try_parse_dep_file(
+    dep_file_path: str, source_file: str, source_basename: str
+) -> Optional[str]:
+    """
+    Try to parse a single .d file for compile command.
+
+    Args:
+        dep_file_path: Path to .d file
+        source_file: Full source file path
+        source_basename: Source file basename
+
+    Returns:
+        Compile command or None
+    """
+    try:
+        content = Path(dep_file_path).read_text(errors="replace")
+
+        # Check if this .d file is for our source
+        if source_file not in content and source_basename not in content:
+            return None
+
+        logger.info(f"Found potential .d file: {dep_file_path}")
+
+        # Try the new parser first (supports multiple formats)
+        compile_cmd = parse_dep_file_command(content, source_file)
+        if compile_cmd:
+            logger.info(f"Found compile command in .d file: {dep_file_path}")
+            return compile_cmd
+
+        # Fallback: legacy parsing for cmd_... := format
+        for line in content.split("\n"):
+            if line.startswith("cmd_") and ":=" in line:
+                cmd_start = line.find(":=")
+                if cmd_start != -1:
+                    compile_cmd = line[cmd_start + 2 :].strip()
+                    logger.info(f"Found compile command in .d file: {dep_file_path}")
+                    return compile_cmd
+
+    except Exception as e:
+        logger.debug(f"Error reading .d file {dep_file_path}: {e}")
+
+    return None
+
+
+def _search_dep_files_walk(
+    search_dir: Path, dep_file_pattern: str, source_file: str, source_basename: str
+) -> Optional[str]:
+    """
+    Search for .d files using os.walk (cross-platform fallback).
+
+    Args:
+        search_dir: Directory to search
+        dep_file_pattern: Pattern to match .d files
+        source_file: Full source file path
+        source_basename: Source file basename
+
+    Returns:
+        Compile command or None
+    """
+    try:
+        for root, dirs, files in os.walk(search_dir):
+            # Skip common non-build directories
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in {".git", "__pycache__", "node_modules", ".svn", ".hg"}
+            ]
+
+            for f in files:
+                if f == dep_file_pattern:
+                    dep_file_path = os.path.join(root, f)
+                    compile_cmd = _try_parse_dep_file(
+                        dep_file_path, source_file, source_basename
+                    )
+                    if compile_cmd:
+                        return compile_cmd
+    except Exception as e:
+        logger.debug(f"Error in os.walk search: {e}")
+
+    return None
+
+
+@cached_parse(maxsize=64)
 def parse_compile_commands(
     compile_commands_path: str,
     source_file: str = None,
@@ -132,16 +201,39 @@ def parse_compile_commands(
 ) -> Optional[Dict]:
     """
     Parse standard CMake compile_commands.json to extract compiler flags.
+
+    Features:
+    - Supports both "command" (string) and "arguments" (array) formats
+    - Robust path matching with suffix comparison
+    - Fallback to .d file parsing
+    - Safe command parsing with fallback on shlex errors
+    - LRU caching for repeated calls
+
+    Args:
+        compile_commands_path: Path to compile_commands.json
+        source_file: Optional source file to match
+        verbose: Enable verbose logging
+
+    Returns:
+        Dictionary with compiler configuration or None
     """
-    if not os.path.exists(compile_commands_path):
-        logger.error(f"compile_commands.json not found: {compile_commands_path}")
+    cc_path = Path(compile_commands_path)
+
+    try:
+        if not cc_path.exists():
+            logger.error(f"compile_commands.json not found: {compile_commands_path}")
+            return None
+    except (PermissionError, OSError) as e:
+        logger.error(f"Cannot access compile_commands.json: {e}")
         return None
 
     try:
-        with open(compile_commands_path, "r") as f:
-            commands = json.load(f)
+        commands = json.loads(cc_path.read_text())
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in compile_commands.json: {e}")
+        return None
+    except (PermissionError, OSError) as e:
+        logger.error(f"Cannot read compile_commands.json: {e}")
         return None
     except Exception as e:
         logger.error(f"Error loading compile_commands.json: {e}")
@@ -159,63 +251,66 @@ def parse_compile_commands(
         return None
 
     selected_entry = None
+    source_file_normalized = None
 
     # First pass: try to match the exact source file
     if source_file:
-        source_file_normalized = os.path.normpath(source_file)
-        source_file_basename = os.path.basename(source_file_normalized)
+        source_file_normalized = str(Path(source_file).resolve())
+        source_file_basename = Path(source_file).name
         logger.info(
             f"Looking for source file in compile_commands: {source_file_normalized}"
         )
+
         for entry in commands:
             if not isinstance(entry, dict):
                 continue
             file_path = entry.get("file", "")
-            file_path_normalized = os.path.normpath(file_path)
+            file_path_normalized = str(Path(file_path).resolve()) if file_path else ""
+
             # Try exact match first
             if file_path_normalized == source_file_normalized:
                 selected_entry = entry
                 logger.info(f"Found exact match in compile_commands.json: {file_path}")
                 break
-            # Try matching by relative path suffix (handles different base paths)
-            if file_path_normalized.endswith(source_file_basename):
-                # Check if the relative path matches (e.g., App/func_loader/func_loader.c)
-                source_parts = source_file_normalized.replace("\\", "/").split("/")
-                file_parts = file_path_normalized.replace("\\", "/").split("/")
-                # Find the longest matching suffix (at least 3 components for meaningful match)
-                max_depth = min(len(source_parts), len(file_parts))
-                for depth in range(max_depth, 2, -1):  # Try from max down to 3
-                    if source_parts[-depth:] == file_parts[-depth:]:
-                        selected_entry = entry
-                        logger.info(
-                            f"Found path suffix match in compile_commands.json: {file_path} "
-                            f"(matches {'/'.join(source_parts[-depth:])})"
-                        )
-                        break
-                if selected_entry:
+
+            # Try matching by path suffix
+            if file_path.endswith(source_file_basename):
+                if path_matches_suffix(
+                    source_file_normalized, file_path_normalized, min_depth=3
+                ):
+                    selected_entry = entry
+                    logger.info(
+                        f"Found path suffix match in compile_commands.json: {file_path}"
+                    )
                     break
 
-    # Second pass: try to find a file in the same directory or parent directories
+    # Second pass: try to find a file in the same directory tree
     if not selected_entry and source_file:
-        source_dir = os.path.dirname(os.path.normpath(source_file))
+        source_dir = Path(source_file).parent.resolve()
         search_dirs = [source_dir]
+
+        # Add parent directories
         parent = source_dir
         for _ in range(3):
-            parent = os.path.dirname(parent)
-            if parent:
+            parent = parent.parent
+            if parent and parent.is_dir():
                 search_dirs.append(parent)
 
         for search_dir in search_dirs:
-            if not search_dir:
-                continue
             for entry in commands:
                 if not isinstance(entry, dict):
                     continue
                 file_path = entry.get("file", "")
                 if not file_path.endswith(".c"):
                     continue
-                file_dir = os.path.dirname(os.path.normpath(file_path))
-                if file_dir.startswith(search_dir) or search_dir.startswith(file_dir):
+
+                file_dir = Path(file_path).parent.resolve()
+                search_dir_str = str(search_dir)
+                file_dir_str = str(file_dir)
+
+                if file_dir_str.startswith(search_dir_str) or search_dir_str.startswith(
+                    file_dir_str
+                ):
                     selected_entry = entry
                     logger.info(
                         f"Found related file in compile_commands.json: {file_path} "
@@ -228,7 +323,7 @@ def parse_compile_commands(
     # Third pass: try to find compile command from .d dependency file
     dep_file_command = None
     if not selected_entry and source_file:
-        build_output_dir = os.path.dirname(compile_commands_path)
+        build_output_dir = str(cc_path.parent)
         dep_file_command = parse_dep_file_for_compile_command(
             source_file, build_output_dir
         )
@@ -255,49 +350,85 @@ def parse_compile_commands(
         logger.error("No suitable C file entry found in compile_commands.json")
         return None
 
+    # Parse the command
     if dep_file_command:
-        command_str = dep_file_command
-        try:
-            tokens = shlex.split(command_str)
-        except Exception as e:
-            logger.error(f"Error parsing command from .d file: {e}")
+        tokens = safe_shlex_split(dep_file_command, fallback=True)
+        if not tokens:
+            logger.error("Failed to parse command from .d file")
             return None
     else:
-        # Support both "command" (string) and "arguments" (array) formats
-        command_str = selected_entry.get("command", "")
-        arguments = selected_entry.get("arguments", [])
-
-        if arguments:
-            # Bear or newer CMake uses "arguments" array
-            if isinstance(arguments, list):
-                tokens = arguments
-                logger.info("Using 'arguments' field from compile_commands.json")
-            else:
-                logger.error(
-                    "Invalid 'arguments' field in compile_commands.json: expected array"
-                )
-                return None
-        elif command_str:
-            # Older CMake uses "command" string
-            try:
-                tokens = shlex.split(command_str)
-                logger.info("Using 'command' field from compile_commands.json")
-            except Exception as e:
-                logger.error(f"Error parsing command in compile_commands.json: {e}")
-                return None
-        else:
-            logger.error("No command or arguments found in compile_commands.json entry")
+        tokens = _extract_tokens_from_entry(selected_entry)
+        if not tokens:
             return None
 
+    # Extract compiler configuration from tokens
+    return _parse_tokens(tokens, source_file, dep_file_command)
+
+
+def _extract_tokens_from_entry(entry: Dict) -> Optional[List[str]]:
+    """
+    Extract command tokens from compile_commands.json entry.
+
+    Supports both "command" (string) and "arguments" (array) formats.
+
+    Args:
+        entry: compile_commands.json entry
+
+    Returns:
+        List of tokens or None
+    """
+    # Support both "command" (string) and "arguments" (array) formats
+    command_str = entry.get("command", "")
+    arguments = entry.get("arguments", [])
+
+    if arguments:
+        # Bear or newer CMake uses "arguments" array
+        if isinstance(arguments, list):
+            logger.info("Using 'arguments' field from compile_commands.json")
+            return arguments
+        else:
+            logger.error(
+                "Invalid 'arguments' field in compile_commands.json: expected array"
+            )
+            return None
+    elif command_str:
+        # Older CMake uses "command" string
+        tokens = safe_shlex_split(command_str, fallback=True)
+        if tokens:
+            logger.info("Using 'command' field from compile_commands.json")
+            return tokens
+        else:
+            logger.error("Failed to parse command in compile_commands.json")
+            return None
+    else:
+        logger.error("No command or arguments found in compile_commands.json entry")
+        return None
+
+
+def _parse_tokens(
+    tokens: List[str], source_file: str = None, raw_command: str = None
+) -> Dict:
+    """
+    Parse compiler tokens into configuration dictionary.
+
+    Args:
+        tokens: List of command tokens
+        source_file: Optional source file path
+        raw_command: Raw command string (if from .d file)
+
+    Returns:
+        Configuration dictionary
+    """
     compiler = tokens[0] if tokens else "arm-none-eabi-gcc"
-    includes = []
-    defines = []
-    cflags = []
+    includes: List[str] = []
+    defines: List[str] = []
+    cflags: List[str] = []
 
     i = 1
     while i < len(tokens):
         token = tokens[i]
 
+        # Include paths
         if token == "-I" and i + 1 < len(tokens):
             includes.append(tokens[i + 1])
             i += 2
@@ -307,14 +438,15 @@ def parse_compile_commands(
             i += 1
             continue
 
+        # System include paths
         if token == "-isystem" and i + 1 < len(tokens):
             includes.append(tokens[i + 1])
             i += 2
             continue
 
+        # Undefine macros
         if token == "-U" and i + 1 < len(tokens):
-            undef_value = tokens[i + 1]
-            cflags.extend(["-U", undef_value])
+            cflags.extend(["-U", tokens[i + 1]])
             i += 2
             continue
         elif token.startswith("-U"):
@@ -322,33 +454,37 @@ def parse_compile_commands(
             i += 1
             continue
 
+        # Define macros
         if token == "-D" and i + 1 < len(tokens):
-            define_value = tokens[i + 1]
-            defines.append(define_value)
+            defines.append(tokens[i + 1])
             i += 2
             continue
         elif token.startswith("-D"):
-            define_value = token[2:]
-            defines.append(define_value)
+            defines.append(token[2:])
             i += 1
             continue
 
+        # Skip output file
         if token == "-o" and i + 1 < len(tokens):
             i += 2
             continue
 
+        # Skip source/object files
         if token.endswith((".c", ".cpp", ".S", ".s", ".o")):
             i += 1
             continue
 
+        # Skip --param
         if token == "--param" and i + 1 < len(tokens):
             i += 2
             continue
 
+        # Skip assembler flags
         if token.startswith("-Wa,"):
             i += 1
             continue
 
+        # Architecture flags
         if any(
             token.startswith(p)
             for p in ["-mthumb", "-mcpu", "-mtune", "-march", "-mfpu", "-mfloat-abi"]
@@ -364,29 +500,41 @@ def parse_compile_commands(
 
         i += 1
 
+    # Ensure -Os is present
     if "-Os" not in cflags:
         cflags.append("-Os")
 
     # Add source file directory and parent directories as include paths
-    if source_file and os.path.exists(source_file):
-        source_dir = os.path.dirname(os.path.abspath(source_file))
-        for _ in range(4):
-            if source_dir and os.path.isdir(source_dir):
-                if source_dir not in includes:
-                    includes.append(source_dir)
-                    logger.info(f"Added source directory to includes: {source_dir}")
-                source_dir = os.path.dirname(source_dir)
-            else:
-                break
+    if source_file:
+        source_path = Path(source_file)
+        if source_path.exists():
+            source_dir = source_path.parent.resolve()
+            for _ in range(4):
+                if source_dir.is_dir():
+                    source_dir_str = str(source_dir)
+                    if source_dir_str not in includes:
+                        includes.append(source_dir_str)
+                        logger.info(
+                            f"Added source directory to includes: {source_dir_str}"
+                        )
+                    source_dir = source_dir.parent
+                else:
+                    break
 
+    # Remove duplicates while preserving order
     includes = list(dict.fromkeys(includes))
     defines = list(dict.fromkeys(defines))
     cflags = list(dict.fromkeys(cflags))
 
-    compiler_dir = os.path.dirname(compiler)
-    compiler_name = os.path.basename(compiler)
+    # Derive objcopy path from compiler
+    compiler_path = Path(compiler)
+    compiler_name = compiler_path.name
     objcopy_name = compiler_name.replace("gcc", "objcopy").replace("g++", "objcopy")
-    objcopy = os.path.join(compiler_dir, objcopy_name) if compiler_dir else objcopy_name
+    objcopy = (
+        str(compiler_path.parent / objcopy_name)
+        if compiler_path.parent.name
+        else objcopy_name
+    )
 
     return {
         "compiler": compiler,
@@ -395,5 +543,5 @@ def parse_compile_commands(
         "defines": defines,
         "cflags": cflags,
         "ldflags": [],
-        "raw_command": dep_file_command,
+        "raw_command": raw_command,
     }

@@ -29,7 +29,11 @@ import logging
 import os
 import re
 import subprocess
-from typing import List, Optional, Tuple
+from functools import lru_cache
+from pathlib import Path
+from typing import List, Optional, Set, Tuple
+
+from core.safe_parser import FPBMarkerParser
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,46 @@ FPB_INJECT_MARKER = "FPB_INJECT"
 
 # Section attribute for FPB inject functions
 FPB_SECTION_ATTR = '__attribute__((section(".fpb.text"), used))'
+
+# Standard library headers (not to be converted to absolute paths)
+STD_HEADERS: Set[str] = {
+    "stdio.h",
+    "stdlib.h",
+    "string.h",
+    "stdint.h",
+    "stdbool.h",
+    "stddef.h",
+    "stdarg.h",
+    "limits.h",
+    "math.h",
+    "time.h",
+    "assert.h",
+    "errno.h",
+    "signal.h",
+    "setjmp.h",
+    "ctype.h",
+    "locale.h",
+    "float.h",
+    "iso646.h",
+    "wchar.h",
+    "wctype.h",
+    "complex.h",
+    "fenv.h",
+    "inttypes.h",
+    "tgmath.h",
+}
+
+# Directories to skip during header search
+SKIP_DIRS: Set[str] = {
+    ".git",
+    "build",
+    "out",
+    "__pycache__",
+    "node_modules",
+    ".svn",
+    ".hg",
+    "CMakeFiles",
+}
 
 
 class PatchGenerator:
@@ -50,19 +94,20 @@ class PatchGenerator:
         Args:
             repo_root: Git repository root path (optional, for include path resolution)
         """
-        self.repo_root = repo_root
+        self.repo_root = Path(repo_root) if repo_root else None
+        self._header_cache: dict = {}
 
     def find_marked_functions(self, content: str) -> List[str]:
         """
         Find all functions marked with FPB_INJECT comment.
 
+        Uses the robust FPBMarkerParser for accurate detection.
+
         Supported formats (case-insensitive):
         - /* FPB_INJECT */
         - /* FPB-INJECT */
         - /* fpb inject */
-        - /* fpb  inject  */
         - // FPB_INJECT
-        - /* fpbinject */
         - /* FPB_INJECT: description */
 
         Args:
@@ -71,41 +116,7 @@ class PatchGenerator:
         Returns:
             List of function names marked for injection
         """
-        marked_functions = []
-
-        # Pattern supports:
-        # - Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ or /* fpb inject */ etc.
-        # - Line comment: // FPB_INJECT or // FPB-INJECT
-        # - Optional description after colon
-        # - Case-insensitive matching
-        # - Flexible spacing between fpb and inject (space, underscore, or hyphen)
-        # followed by optional whitespace/newlines, then function signature
-        patterns = [
-            # Block comment: /* FPB_INJECT */ or /* FPB-INJECT */ or /* fpb inject */ etc.
-            # Supports: fpb[_\- ]inject with flexible spacing (including no space)
-            r"/\*\s*[Ff][Pp][Bb][\s_\-]*[Ii][Nn][Jj][Ee][Cc][Tt](?:\s*:\s*[^*]*)?\s*\*/",
-            # Line comment: // FPB_INJECT or // FPB-INJECT etc.
-            r"//\s*[Ff][Pp][Bb][_\-]?[Ii][Nn][Jj][Ee][Cc][Tt](?:\s*:.*)?$",
-        ]
-
-        combined_pattern = f"(?:{patterns[0]}|{patterns[1]})"
-        # Full pattern: marker + optional __attribute__ + function signature
-        # Note: __attribute__((...)) has nested parens, use .*? with DOTALL
-        full_pattern = (
-            rf"(?:{combined_pattern})\s*\n?"
-            r"(?:__attribute__\s*\(\(.*?\)\)\s*\n?)?"
-            r"(?:(?:static|inline|extern|const|volatile)\s+)*"
-            r"[\w\s\*]+?\s+(\w+)\s*\("
-        )
-
-        for match in re.finditer(full_pattern, content, re.MULTILINE | re.DOTALL):
-            func_name = match.group(1)
-            # Skip common keywords that might be matched
-            if func_name not in ("if", "while", "for", "switch", "return"):
-                marked_functions.append(func_name)
-                logger.info(f"Found marked function: {func_name}")
-
-        return marked_functions
+        return FPBMarkerParser.extract_function_names(content)
 
     def generate_patch(
         self,
@@ -117,7 +128,7 @@ class PatchGenerator:
 
         Strategy:
         1. Copy the entire file
-        2. Rename marked functions to inject_xxx
+        2. Add section attribute to marked functions
         3. Convert relative includes to absolute paths
 
         Args:
@@ -127,9 +138,10 @@ class PatchGenerator:
         Returns:
             Tuple of (patch_content, list_of_injected_functions)
         """
+        file_path = Path(file_path)
+
         # Read source content
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
+        content = file_path.read_text(encoding="utf-8", errors="replace")
 
         # Find marked functions
         marked_functions = self.find_marked_functions(content)
@@ -144,18 +156,18 @@ class PatchGenerator:
         )
 
         # Get source directory for resolving includes
-        source_dir = os.path.dirname(os.path.abspath(file_path))
+        source_dir = file_path.parent.resolve()
 
         # Process content
         patch_content = self._process_content(
-            content, marked_functions, source_dir, file_path
+            content, marked_functions, source_dir, str(file_path)
         )
 
         # Save to file if output_path specified
         if output_path:
-            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(patch_content)
+            output = Path(output_path)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(patch_content, encoding="utf-8")
             logger.info(f"Patch saved to: {output_path}")
 
         return patch_content, marked_functions
@@ -164,7 +176,7 @@ class PatchGenerator:
         self,
         content: str,
         marked_functions: List[str],
-        source_dir: str,
+        source_dir: Path,
         file_path: str,
     ) -> str:
         """
@@ -183,16 +195,19 @@ class PatchGenerator:
         result_lines = []
 
         # Add header
-        result_lines.append("/**")
-        result_lines.append(" * Auto-generated patch file by FPBInject")
-        result_lines.append(f" * Source: {file_path}")
-        result_lines.append(f" * Inject functions: {', '.join(marked_functions)}")
-        result_lines.append(" */")
-        result_lines.append("")
+        result_lines.extend(
+            [
+                "/**",
+                " * Auto-generated patch file by FPBInject",
+                f" * Source: {file_path}",
+                f" * Inject functions: {', '.join(marked_functions)}",
+                " */",
+                "",
+            ]
+        )
 
         # Track if we just saw an FPB_INJECT marker
         saw_marker = False
-        # Track if next function definition needs attribute (to avoid double add)
         needs_attribute = False
 
         # Process each line
@@ -211,7 +226,6 @@ class PatchGenerator:
                     if FPB_SECTION_ATTR in lines[j] or ".fpb.text" in lines[j]:
                         needs_attribute = False
                         break
-                    # Stop looking if we hit the function definition
                     if self._is_function_definition(lines[j], marked_functions):
                         break
                 result_lines.append(processed_line)
@@ -221,7 +235,6 @@ class PatchGenerator:
             if saw_marker and self._is_function_definition(
                 processed_line, marked_functions
             ):
-                # Add section attribute before the function only if not already present
                 if needs_attribute:
                     result_lines.append(FPB_SECTION_ATTR)
                 saw_marker = False
@@ -237,141 +250,150 @@ class PatchGenerator:
             r"/\*\s*[Ff][Pp][Bb][\s_\-]*[Ii][Nn][Jj][Ee][Cc][Tt]",
             r"//\s*[Ff][Pp][Bb][_\-]?[Ii][Nn][Jj][Ee][Cc][Tt]",
         ]
-        for pattern in marker_patterns:
-            if re.search(pattern, line):
-                return True
-        return False
+        return any(re.search(pattern, line) for pattern in marker_patterns)
 
     def _is_function_definition(self, line: str, marked_functions: List[str]) -> bool:
         """Check if line is a function definition for one of the marked functions."""
         for func_name in marked_functions:
-            # Pattern to match function definition start
             pattern = rf"\b{re.escape(func_name)}\s*\("
             if re.search(pattern, line):
                 return True
         return False
 
-    # Note: _rename_function method removed in v2.1
-    # Functions are no longer renamed to inject_xxx
-    # Instead, section attribute is added to marked functions
-
-    def _convert_include_path(self, line: str, source_dir: str) -> str:
+    def _convert_include_path(self, line: str, source_dir) -> str:
         """
         Convert relative #include paths to absolute paths.
+
+        Uses pathlib for cross-platform compatibility.
 
         Examples:
             #include "lv_mem.h"          -> #include "/abs/path/to/lv_mem.h"
             #include "../misc/lv_log.h"  -> #include "/abs/path/to/misc/lv_log.h"
-            #include <stdio.h>           -> unchanged (unless found in source tree)
+            #include <stdio.h>           -> unchanged (standard library)
             #include <local_header.h>    -> #include "/abs/path/to/local_header.h" (if found)
         """
+        # Ensure source_dir is a Path
+        if isinstance(source_dir, str):
+            source_dir = Path(source_dir)
+
         # Handle double-quoted includes
         match = re.match(r'^(\s*#\s*include\s*)"([^"]+)"(.*)', line)
         if match:
-            prefix = match.group(1)
-            include_path = match.group(2)
-            suffix = match.group(3)
+            prefix, include_path, suffix = match.groups()
 
             # Skip if already absolute
-            if os.path.isabs(include_path):
+            if Path(include_path).is_absolute():
                 return line
 
             # Resolve relative path
-            abs_path = os.path.normpath(os.path.join(source_dir, include_path))
+            abs_path = (source_dir / include_path).resolve()
 
             # Only convert if file exists
-            if os.path.exists(abs_path):
+            if abs_path.exists():
                 return f'{prefix}"{abs_path}"{suffix}'
 
             return line
 
-        # Handle angle-bracket includes - try to find in source directory tree
+        # Handle angle-bracket includes
         match = re.match(r"^(\s*#\s*include\s*)<([^>]+)>(.*)", line)
         if match:
-            prefix = match.group(1)
-            include_path = match.group(2)
-            suffix = match.group(3)
+            prefix, include_path, suffix = match.groups()
 
-            # Skip standard library headers (heuristic: no path separator and common names)
-            std_headers = {
-                "stdio.h",
-                "stdlib.h",
-                "string.h",
-                "stdint.h",
-                "stdbool.h",
-                "stddef.h",
-                "stdarg.h",
-                "limits.h",
-                "math.h",
-                "time.h",
-                "assert.h",
-                "errno.h",
-                "signal.h",
-                "setjmp.h",
-                "ctype.h",
-                "locale.h",
-                "float.h",
-                "iso646.h",
-                "wchar.h",
-                "wctype.h",
-                "complex.h",
-                "fenv.h",
-                "inttypes.h",
-                "tgmath.h",
-            }
-            if include_path in std_headers:
+            # Skip standard library headers
+            if include_path in STD_HEADERS:
                 return line
 
-            # Search for the header in source directory and parent directories
-            search_dir = source_dir
-            for _ in range(5):  # Search up to 5 levels up
-                if not search_dir or not os.path.isdir(search_dir):
-                    break
+            # Search for the header
+            found_path = self._find_header(include_path, source_dir)
+            if found_path:
+                return f'{prefix}"{found_path}"{suffix}'
 
-                # Try direct path
-                abs_path = os.path.normpath(os.path.join(search_dir, include_path))
-                if os.path.exists(abs_path):
-                    # Convert to double-quoted include with absolute path
-                    return f'{prefix}"{abs_path}"{suffix}'
+        return line
 
-                # Search recursively in this directory (limited depth)
+    def _find_header(self, header_path: str, source_dir) -> Optional[str]:
+        """
+        Search for a header file in source directory tree.
+
+        Uses caching to avoid repeated filesystem searches.
+
+        Args:
+            header_path: Header path from include directive
+            source_dir: Starting directory for search
+
+        Returns:
+            Absolute path to header or None
+        """
+        # Ensure source_dir is a Path
+        if isinstance(source_dir, str):
+            source_dir = Path(source_dir)
+
+        cache_key = (header_path, str(source_dir))
+        if cache_key in self._header_cache:
+            return self._header_cache[cache_key]
+
+        result = self._search_header(header_path, source_dir)
+        self._header_cache[cache_key] = result
+        return result
+
+    def _search_header(self, header_path: str, source_dir) -> Optional[str]:
+        """
+        Actually search for header file.
+
+        Args:
+            header_path: Header path from include directive
+            source_dir: Starting directory for search
+
+        Returns:
+            Absolute path to header or None
+        """
+        # Ensure source_dir is a Path
+        if isinstance(source_dir, str):
+            source_dir = Path(source_dir)
+        header_name = Path(header_path).name
+        search_dir = source_dir
+
+        # Search up to 5 levels up
+        for _ in range(5):
+            if not search_dir or not search_dir.is_dir():
+                break
+
+            # Try direct path first
+            direct_path = search_dir / header_path
+            if direct_path.exists():
+                return str(direct_path.resolve())
+
+            # Search recursively (limited depth)
+            try:
                 for root, dirs, files in os.walk(search_dir):
+                    root_path = Path(root)
+
                     # Limit search depth
-                    depth = root[len(search_dir) :].count(os.sep)
+                    try:
+                        depth = len(root_path.relative_to(search_dir).parts)
+                    except ValueError:
+                        depth = 0
+
                     if depth > 3:
                         dirs[:] = []
                         continue
 
-                    # Skip common non-source directories
-                    dirs[:] = [
-                        d
-                        for d in dirs
-                        if d
-                        not in [
-                            ".git",
-                            "build",
-                            "out",
-                            "__pycache__",
-                            "node_modules",
-                            ".svn",
-                            ".hg",
-                            "CMakeFiles",
-                        ]
-                    ]
+                    # Skip non-source directories
+                    dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
 
-                    # Check if the header exists here
-                    header_name = os.path.basename(include_path)
+                    # Check if header exists here
                     if header_name in files:
-                        abs_path = os.path.join(root, header_name)
-                        # Verify it's the right file (path suffix matches)
-                        if include_path == header_name or abs_path.endswith(
-                            include_path
+                        found_path = root_path / header_name
+                        # Verify path suffix matches
+                        if header_path == header_name or str(found_path).endswith(
+                            header_path
                         ):
-                            return f'{prefix}"{abs_path}"{suffix}'
+                            return str(found_path.resolve())
+            except Exception as e:
+                logger.debug(f"Error searching for header: {e}")
 
-                search_dir = os.path.dirname(search_dir)
+            search_dir = search_dir.parent
 
-        return line
+        return None
 
     def generate_patch_from_file(
         self,
@@ -388,27 +410,30 @@ class PatchGenerator:
         Returns:
             Tuple of (patch_file_path, list_of_injected_functions)
         """
-        if not os.path.exists(file_path):
+        file_path = Path(file_path)
+
+        if not file_path.exists():
             logger.error(f"File not found: {file_path}")
             return None, []
 
         # Generate output path
         if output_dir:
-            basename = os.path.basename(file_path)
-            name, ext = os.path.splitext(basename)
-            output_path = os.path.join(output_dir, f"patch_{name}{ext}")
+            output_path = Path(output_dir) / f"patch_{file_path.stem}{file_path.suffix}"
         else:
             output_path = None
 
         # Generate patch
-        patch_content, injected = self.generate_patch(file_path, output_path)
+        patch_content, injected = self.generate_patch(
+            str(file_path), str(output_path) if output_path else None
+        )
 
         if not injected:
             return None, []
 
-        return output_path, injected
+        return str(output_path) if output_path else None, injected
 
 
+@lru_cache(maxsize=128)
 def find_function_signature(content: str, func_name: str) -> Optional[str]:
     """
     Find function signature in source code.
@@ -421,29 +446,19 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
         Function signature string or None if not found
     """
     # Pattern to match function definition
-    # Handles: return_type func_name(params)
-    # Including: static, inline, const, volatile, pointers, etc.
-
-    # More robust pattern that captures:
-    # 1. Optional modifiers (static, inline, etc.)
-    # 2. Return type (including pointers like void *, int **, etc.)
-    # 3. Function name
-    # 4. Parameters
-
-    # First try to find the function name followed by (
     func_pattern = rf"\b{re.escape(func_name)}\s*\("
 
     for match in re.finditer(func_pattern, content):
         func_start = match.start()
 
-        # Look backward to find the return type (up to 200 chars or newline with non-space start)
+        # Look backward to find the return type
         start_search = max(0, func_start - 200)
         prefix = content[start_search:func_start]
 
-        # Find the start of the declaration (usually after a newline or semicolon/brace)
+        # Find the start of the declaration
         lines = prefix.split("\n")
-        # Take the last line(s) that form the declaration
         decl_parts = []
+
         for line in reversed(lines):
             stripped = line.strip()
             if (
@@ -452,39 +467,35 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
                 and not stripped.startswith("*")
             ):
                 decl_parts.insert(0, stripped)
-                # Stop if we hit a line that looks like the start of declaration
+                # Stop if we hit the start of declaration
                 if re.match(
-                    r"^(?:static|inline|extern|const|volatile|unsigned|signed|void|int|char|short|long|float|double|struct|union|enum|\w+_t)\b",
+                    r"^(?:static|inline|extern|const|volatile|unsigned|signed|"
+                    r"void|int|char|short|long|float|double|struct|union|enum|\w+_t)\b",
                     stripped,
                 ):
                     break
-            elif not stripped:
-                if decl_parts:
-                    break
+            elif not stripped and decl_parts:
+                break
 
         if not decl_parts:
             continue
 
         return_type = " ".join(decl_parts)
-
-        # Clean up return type - remove any trailing content after the type
         return_type = re.sub(r"\s+", " ", return_type).strip()
 
-        # Skip if return_type looks like an assignment or function call
-        # e.g., "void * new = " or "result = "
+        # Skip invalid patterns
         if "=" in return_type or ";" in return_type or "(" in return_type:
             continue
-
-        # Skip if return_type starts with keywords that indicate a statement
         if re.match(
             r"^(if|else|while|for|switch|case|return|break|continue)\b", return_type
         ):
             continue
 
         # Find parameters
-        paren_start = match.end() - 1  # Position of (
+        paren_start = match.end() - 1
         depth = 1
         i = match.end()
+
         while i < len(content) and depth > 0:
             if content[i] == "(":
                 depth += 1
@@ -494,9 +505,8 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
 
         if depth == 0:
             params = content[paren_start:i]
-
-            # Check if this is followed by { or ; (definition or declaration)
             rest = content[i:].lstrip()
+
             if rest and (rest[0] == "{" or rest[0] == ";"):
                 return f"{return_type} {func_name}{params}"
 
@@ -505,9 +515,7 @@ def find_function_signature(content: str, func_name: str) -> Optional[str]:
 
 def check_dependencies() -> dict:
     """Check if required dependencies are available."""
-    status = {
-        "git": False,
-    }
+    status = {"git": False}
 
     try:
         result = subprocess.run(["git", "--version"], capture_output=True, text=True)
@@ -532,8 +540,6 @@ if __name__ == "__main__":
         print(f"\nAnalyzing: {file_path}")
 
         gen = PatchGenerator()
-
-        # Generate patch
         patch_content, injected = gen.generate_patch(file_path)
 
         if injected:

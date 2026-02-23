@@ -6,19 +6,25 @@
 """
 Patch compiler for FPBInject Web Server.
 
-Provides functions for compiling injection code.
+Provides functions for compiling injection code with robust
+command construction and cross-platform support.
 """
 
 import logging
 import os
-import re
 import subprocess
 import tempfile
-from typing import Dict, Optional, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 from utils.toolchain import get_tool_path, get_subprocess_env
 from core.compile_commands import parse_compile_commands
 from core.compile_commands import parse_dep_file_for_compile_command  # noqa: F401
+from core.safe_parser import (
+    safe_shlex_split,
+    FPBMarkerParser,
+)
+from core.linker_script import LinkerScriptGenerator, LinkerScriptConfig
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +38,7 @@ def compile_inject(
     source_ext: str = None,
     original_source_file: str = None,
     toolchain_path: Optional[str] = None,
+    linker_config: Dict = None,
 ) -> Tuple[Optional[bytes], Optional[Dict[str, int]], str]:
     """
     Compile injection code from source content to binary.
@@ -45,6 +52,7 @@ def compile_inject(
         source_ext: Source file extension (.c or .cpp), auto-detect if None
         original_source_file: Path to original source file for matching compile flags
         toolchain_path: Path to toolchain binaries
+        linker_config: Optional linker script configuration
 
     Returns:
         Tuple of (binary_data, symbols, error_message)
@@ -52,6 +60,7 @@ def compile_inject(
     logger.info(
         f"compile_inject called with original_source_file={original_source_file}"
     )
+
     config = None
     if compile_commands_path:
         config = parse_compile_commands(
@@ -69,8 +78,9 @@ def compile_inject(
 
     compiler = config.get("compiler", "arm-none-eabi-gcc")
     objcopy = config.get("objcopy", "arm-none-eabi-objcopy")
-    raw_command = config.get("raw_command")  # Raw command from .d file
+    raw_command = config.get("raw_command")
 
+    # Resolve tool paths
     if not os.path.isabs(compiler):
         compiler = get_tool_path(compiler, toolchain_path)
     if not os.path.isabs(objcopy):
@@ -81,149 +91,56 @@ def compile_inject(
     cflags = config.get("cflags", [])
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Determine file extension: use provided or default to .c
+        tmpdir_path = Path(tmpdir)
+
+        # Determine file extension
         ext = source_ext if source_ext else ".c"
         if not ext.startswith("."):
             ext = "." + ext
 
         # Write source to file
-        source_file = os.path.join(tmpdir, f"inject{ext}")
-        with open(source_file, "w") as f:
-            f.write(source_content)
+        source_file = tmpdir_path / f"inject{ext}"
+        source_file.write_text(source_content)
 
-        obj_file = os.path.join(tmpdir, "inject.o")
-        elf_file = os.path.join(tmpdir, "inject.elf")
-        bin_file = os.path.join(tmpdir, "inject.bin")
+        obj_file = tmpdir_path / "inject.o"
+        elf_file = tmpdir_path / "inject.elf"
+        bin_file = tmpdir_path / "inject.bin"
 
-        # Use raw command from .d file if available (direct passthrough)
+        # Build compile command
         if raw_command:
-            import shlex
-
-            # Parse the raw command and replace input/output files
-            raw_tokens = shlex.split(raw_command)
-            cmd = []
-            i = 0
-            while i < len(raw_tokens):
-                token = raw_tokens[i]
-                # Skip dependency generation flags
-                if token in ["-MD", "-MP"]:
-                    i += 1
-                    continue
-                elif token in ["-MF", "-MT", "-MQ"] and i + 1 < len(raw_tokens):
-                    i += 2  # Skip flag and its argument
-                    continue
-                elif token == "-o" and i + 1 < len(raw_tokens):
-                    # Replace output file
-                    cmd.extend(["-o", obj_file])
-                    i += 2
-                elif token == "-c":
-                    cmd.append(token)
-                    i += 1
-                elif token.endswith((".c", ".cpp", ".S", ".s")):
-                    # Skip original source file (we'll add ours at the end)
-                    i += 1
-                else:
-                    cmd.append(token)
-                    i += 1
-            # Add our source file and -Wno-error
-            cmd.extend(["-Wno-error", source_file])
+            cmd = _build_command_from_raw(raw_command, str(obj_file), str(source_file))
             logger.info("Using raw command from .d file (passthrough)")
         else:
-            # Build command from parsed components
-            cmd = (
-                [compiler]
-                + cflags
-                + [
-                    "-c",
-                    "-ffunction-sections",
-                    "-fdata-sections",
-                    "-Wno-error",  # Don't treat warnings as errors (vendor code may have warnings)
-                ]
+            cmd = _build_compile_command(
+                compiler, cflags, includes, defines, str(obj_file), str(source_file)
             )
-
-            for inc in includes:
-                if os.path.isdir(inc):
-                    cmd.extend(["-I", inc])
-
-            for d in defines:
-                cmd.extend(["-D", d])
-
-            cmd.extend(["-o", obj_file, source_file])
 
         if verbose:
             logger.info(f"Compile: {' '.join(cmd)}")
 
-        # Use environment with toolchain path in PATH for ccache to find compiler
+        # Execute compilation
         env = get_subprocess_env(toolchain_path)
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if result.returncode != 0:
             return None, None, f"Compile error:\n{result.stderr}"
 
-        # Create linker script
-        # Note: We include .bss in the binary by adding a marker section after it.
-        # This ensures that static/global variables with zero initialization
-        # are properly zeroed in the uploaded binary.
-        ld_content = f"""
-SECTIONS
-{{
-    . = 0x{base_addr:08X};
-    .text : {{
-        KEEP(*(.fpb.text))     /* FPB inject functions */
-        *(.text .text.*)
-    }}
-    .rodata : {{ *(.rodata .rodata.*) }}
-    .data : {{ *(.data .data.*) }}
-    .bss : {{
-        __bss_start__ = .;
-        *(.bss .bss.* COMMON)
-        . = ALIGN(4);
-        __bss_end__ = .;
-    }}
-    /* Force objcopy to include BSS section (with zeros) in the binary */
-    .fpb_end : {{
-        BYTE(0x00)
-    }}
-}}
-"""
-        ld_file = os.path.join(tmpdir, "inject.ld")
-        with open(ld_file, "w") as f:
-            f.write(ld_content)
+        # Generate linker script using template system
+        ld_file = tmpdir_path / "inject.ld"
+        _generate_linker_script(base_addr, str(ld_file), linker_config)
 
-        # Link with --gc-sections to remove unused code
-        # Use --allow-multiple-definition to let patch functions override firmware symbols
-        link_cmd = (
-            [compiler] + cflags[:2] + ["-nostartfiles", "-nostdlib", f"-T{ld_file}"]
+        # Find FPB_INJECT marked functions using robust parser
+        fpb_funcs = FPBMarkerParser.extract_function_names(source_content)
+
+        # Build link command
+        link_cmd = _build_link_command(
+            compiler,
+            cflags,
+            str(ld_file),
+            str(elf_file),
+            str(obj_file),
+            elf_path,
+            fpb_funcs,
         )
-        link_cmd.append("-Wl,--gc-sections")
-        link_cmd.append("-Wl,--allow-multiple-definition")
-
-        # Find FPB_INJECT marked functions from source to keep them with -u
-        # Pattern: /* FPB_INJECT */ followed by optional __attribute__ and function definition
-        # Use .*? with DOTALL to handle __attribute__((...)) with nested parentheses
-        fpb_marker_pattern = re.compile(
-            r"/\*\s*FPB_INJECT\s*\*/\s*\n"
-            r"(?:__attribute__\s*\(\(.*?\)\)\s*\n?)?"
-            r"(?:extern\s+\"C\"\s+)?"
-            r"(?:static\s+|inline\s+|const\s+|volatile\s+)*"
-            r"(?:void|int|char|unsigned|signed|long|short|float|double|"
-            r"uint\d+_t|int\d+_t|size_t|ssize_t|bool|_Bool|"
-            r"\w+\s*\*?)\s+"
-            r"(\w+)\s*\(",
-            re.MULTILINE | re.IGNORECASE | re.DOTALL,
-        )
-        fpb_funcs = fpb_marker_pattern.findall(source_content)
-        for func in set(fpb_funcs):
-            if func not in ("if", "while", "for", "switch", "return"):
-                link_cmd.append(f"-Wl,-u,{func}")
-
-        # IMPORTANT: obj_file MUST come BEFORE --just-symbols!
-        # With --allow-multiple-definition, the linker uses the FIRST definition.
-        # If --just-symbols comes first, the firmware's symbol address will be used
-        # instead of our patch function definition.
-        link_cmd.extend(["-o", elf_file, obj_file])
-
-        if elf_path and os.path.exists(elf_path):
-            link_cmd.append(f"-Wl,--just-symbols={elf_path}")
 
         if verbose:
             logger.info(f"Link: {' '.join(link_cmd)}")
@@ -234,7 +151,7 @@ SECTIONS
 
         # Extract binary
         result = subprocess.run(
-            [objcopy, "-O", "binary", elf_file, bin_file],
+            [objcopy, "-O", "binary", str(elf_file), str(bin_file)],
             capture_output=True,
             text=True,
             env=env,
@@ -243,80 +160,250 @@ SECTIONS
             return None, None, f"Objcopy error:\n{result.stderr}"
 
         # Read binary
-        with open(bin_file, "rb") as f:
-            data = f.read()
+        data = bin_file.read_bytes()
 
         # Fix Thumb bit in veneer addresses
-        # When using --just-symbols, the linker generates veneers for long calls
-        # but doesn't set the Thumb bit (bit 0) for Thumb functions.
-        # Veneer pattern: LDR PC, [PC, #0] followed by 4-byte address
-        # Machine code: F8 5F F0 00 (ldr.w pc, [pc]) followed by address
         data = fix_veneer_thumb_bits(data, base_addr, elf_path, toolchain_path, verbose)
 
-        # Get symbols - use --defined-only to exclude symbols from --just-symbols
-        # and filter by address range to only include symbols in our inject code
-        nm_cmd = objcopy.replace("objcopy", "nm")
-        result = subprocess.run(
-            [nm_cmd, "-C", "--defined-only", elf_file],
-            capture_output=True,
-            text=True,
-            env=env,
+        # Get symbols
+        symbols = _extract_symbols(
+            objcopy, str(elf_file), base_addr, fpb_funcs, source_content, env
         )
 
-        symbols = {}
-        all_symbols_debug = []  # For debugging: collect all parsed symbols
-        for line in result.stdout.strip().split("\n"):
-            parts = line.split()
-            if len(parts) >= 3:
-                try:
-                    addr = int(parts[0], 16)
-                    sym_type = parts[1]  # T=text global, t=text local, etc.
-                    # For demangled names (nm -C), the name may contain spaces
-                    # e.g., "foo(int, char*)" becomes multiple parts
-                    # Join all parts after the type to get the full name
-                    full_name = " ".join(parts[2:])
-                    # Extract just the function name (before the first '(' if present)
-                    if "(" in full_name:
-                        name = full_name.split("(")[0]
-                    else:
-                        name = full_name
-                    all_symbols_debug.append(f"{parts[0]} {sym_type} {name}")
-                    # Only include text section symbols (T or t) that are in our base_addr range
-                    # This filters out symbols imported via --just-symbols
-                    if sym_type.upper() == "T" and addr >= base_addr:
-                        symbols[name] = addr
-                        logger.debug(
-                            f"Including symbol: {name} @ 0x{addr:08X} (type={sym_type})"
-                        )
-                    else:
-                        logger.debug(
-                            f"Excluding symbol: {name} @ 0x{addr:08X} (type={sym_type}, base_addr=0x{base_addr:08X})"
-                        )
-                except (ValueError, IndexError):
-                    # Address field is not a valid hex number or malformed line
-                    logger.debug(f"Skipping malformed nm line: {line}")
-                    pass
-
-        # Log FPB inject symbols for debugging
-        fpb_syms = {k: v for k, v in symbols.items() if k in fpb_funcs}
-        if fpb_syms:
-            logger.info(f"Found FPB inject symbols: {fpb_syms}")
-        elif fpb_funcs:
-            logger.warning(
-                f"Expected FPB inject functions {fpb_funcs} not found in compiled ELF. Total symbols: {len(symbols)}"
-            )
-            # Log all symbols for debugging (use warning level to ensure visibility)
-            logger.warning(f"All defined text symbols: {list(symbols.keys())}")
-            # Also log raw nm output for debugging
-            logger.warning(f"Raw nm output:\n{result.stdout[:2000]}")
-            # Log source content first 1000 chars
-            logger.warning(
-                f"Source content preview (first 1000 chars):\n{source_content[:1000]}"
-            )
-        else:
-            logger.warning("No FPB_INJECT markers found in source code!")
-
         return data, symbols, ""
+
+
+def _build_command_from_raw(
+    raw_command: str, obj_file: str, source_file: str
+) -> List[str]:
+    """
+    Build compile command from raw .d file command.
+
+    Args:
+        raw_command: Raw command string from .d file
+        obj_file: Output object file path
+        source_file: Input source file path
+
+    Returns:
+        Command as list of arguments
+    """
+    raw_tokens = safe_shlex_split(raw_command, fallback=True)
+    cmd = []
+    i = 0
+
+    while i < len(raw_tokens):
+        token = raw_tokens[i]
+
+        # Skip dependency generation flags
+        if token in ["-MD", "-MP"]:
+            i += 1
+            continue
+        elif token in ["-MF", "-MT", "-MQ"] and i + 1 < len(raw_tokens):
+            i += 2
+            continue
+        elif token == "-o" and i + 1 < len(raw_tokens):
+            # Replace output file with our path (properly quoted)
+            cmd.extend(["-o", obj_file])
+            i += 2
+        elif token == "-c":
+            cmd.append(token)
+            i += 1
+        elif token.endswith((".c", ".cpp", ".S", ".s")):
+            # Skip original source file
+            i += 1
+        else:
+            cmd.append(token)
+            i += 1
+
+    # Add our source file and -Wno-error
+    cmd.extend(["-Wno-error", source_file])
+    return cmd
+
+
+def _build_compile_command(
+    compiler: str,
+    cflags: List[str],
+    includes: List[str],
+    defines: List[str],
+    obj_file: str,
+    source_file: str,
+) -> List[str]:
+    """
+    Build compile command from parsed components.
+
+    All paths are properly handled for cross-platform compatibility.
+
+    Args:
+        compiler: Compiler path
+        cflags: Compiler flags
+        includes: Include directories
+        defines: Preprocessor definitions
+        obj_file: Output object file
+        source_file: Input source file
+
+    Returns:
+        Command as list of arguments
+    """
+    cmd = (
+        [compiler]
+        + cflags
+        + [
+            "-c",
+            "-ffunction-sections",
+            "-fdata-sections",
+            "-Wno-error",
+        ]
+    )
+
+    # Add include paths (only existing directories)
+    for inc in includes:
+        inc_path = Path(inc)
+        if inc_path.is_dir():
+            cmd.extend(["-I", str(inc_path)])
+
+    # Add defines
+    for d in defines:
+        cmd.extend(["-D", d])
+
+    cmd.extend(["-o", obj_file, source_file])
+    return cmd
+
+
+def _generate_linker_script(
+    base_addr: int, output_path: str, config: Dict = None
+) -> None:
+    """
+    Generate linker script using template system.
+
+    Args:
+        base_addr: Base address for injection code
+        output_path: Output file path
+        config: Optional configuration dictionary
+    """
+    if config:
+        ld_config = LinkerScriptConfig.from_dict(config)
+    else:
+        ld_config = LinkerScriptConfig()
+
+    generator = LinkerScriptGenerator(config=ld_config)
+    generator.save_to_file(base_addr, output_path)
+
+
+def _build_link_command(
+    compiler: str,
+    cflags: List[str],
+    ld_file: str,
+    elf_file: str,
+    obj_file: str,
+    main_elf_path: str,
+    fpb_funcs: List[str],
+) -> List[str]:
+    """
+    Build link command.
+
+    Args:
+        compiler: Compiler path
+        cflags: Compiler flags (first 2 used for arch)
+        ld_file: Linker script path
+        elf_file: Output ELF file
+        obj_file: Input object file
+        main_elf_path: Main ELF for symbol resolution
+        fpb_funcs: FPB inject function names
+
+    Returns:
+        Link command as list of arguments
+    """
+    # Use first 2 cflags (typically arch flags like -mcpu, -mthumb)
+    link_cmd = (
+        [compiler]
+        + cflags[:2]
+        + [
+            "-nostartfiles",
+            "-nostdlib",
+            f"-T{ld_file}",
+            "-Wl,--gc-sections",
+            "-Wl,--allow-multiple-definition",
+        ]
+    )
+
+    # Add -u flags for FPB inject functions to prevent garbage collection
+    for func in set(fpb_funcs):
+        if func not in ("if", "while", "for", "switch", "return"):
+            link_cmd.append(f"-Wl,-u,{func}")
+
+    # IMPORTANT: obj_file MUST come BEFORE --just-symbols!
+    # With --allow-multiple-definition, the linker uses the FIRST definition.
+    link_cmd.extend(["-o", elf_file, obj_file])
+
+    if main_elf_path and os.path.exists(main_elf_path):
+        link_cmd.append(f"-Wl,--just-symbols={main_elf_path}")
+
+    return link_cmd
+
+
+def _extract_symbols(
+    objcopy: str,
+    elf_file: str,
+    base_addr: int,
+    fpb_funcs: List[str],
+    source_content: str,
+    env: Dict,
+) -> Dict[str, int]:
+    """
+    Extract symbols from compiled ELF.
+
+    Args:
+        objcopy: objcopy tool path
+        elf_file: ELF file path
+        base_addr: Base address for filtering
+        fpb_funcs: Expected FPB function names
+        source_content: Source content for debugging
+        env: Subprocess environment
+
+    Returns:
+        Dictionary of symbol name to address
+    """
+    nm_cmd = objcopy.replace("objcopy", "nm")
+    result = subprocess.run(
+        [nm_cmd, "-C", "--defined-only", elf_file],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    symbols = {}
+    for line in result.stdout.strip().split("\n"):
+        parts = line.split()
+        if len(parts) >= 3:
+            try:
+                addr = int(parts[0], 16)
+                sym_type = parts[1]
+
+                # Handle demangled names with spaces
+                full_name = " ".join(parts[2:])
+                name = full_name.split("(")[0] if "(" in full_name else full_name
+
+                # Only include text section symbols in our address range
+                if sym_type.upper() == "T" and addr >= base_addr:
+                    symbols[name] = addr
+                    logger.debug(f"Including symbol: {name} @ 0x{addr:08X}")
+            except (ValueError, IndexError):
+                pass
+
+    # Log FPB inject symbols for debugging
+    fpb_syms = {k: v for k, v in symbols.items() if k in fpb_funcs}
+    if fpb_syms:
+        logger.info(f"Found FPB inject symbols: {fpb_syms}")
+    elif fpb_funcs:
+        logger.warning(
+            f"Expected FPB inject functions {fpb_funcs} not found in compiled ELF. "
+            f"Total symbols: {len(symbols)}"
+        )
+        logger.warning(f"All defined text symbols: {list(symbols.keys())}")
+    else:
+        logger.warning("No FPB_INJECT markers found in source code!")
+
+    return symbols
 
 
 def fix_veneer_thumb_bits(
@@ -334,6 +421,16 @@ def fix_veneer_thumb_bits(
         .word <address>      ; Target address (missing Thumb bit)
 
     For Thumb functions, the target address must have bit 0 set.
+
+    Args:
+        data: Binary data
+        base_addr: Base address
+        elf_path: Path to main ELF
+        toolchain_path: Toolchain path
+        verbose: Enable verbose logging
+
+    Returns:
+        Fixed binary data
     """
     if not elf_path or len(data) < 8:
         return data

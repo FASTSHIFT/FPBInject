@@ -1,0 +1,58 @@
+/*
+ * FPBInject Linker Script Template
+ * 
+ * This template is used to generate linker scripts for injection code.
+ * Variables are substituted using Python string.Template syntax.
+ * 
+ * Available variables:
+ *   ${base_addr}         - Base address in hex (e.g., 20001000)
+ *   ${text_section}      - Text section name (default: .text)
+ *   ${rodata_section}    - Read-only data section name (default: .rodata)
+ *   ${data_section}      - Data section name (default: .data)
+ *   ${bss_section}       - BSS section name (default: .bss)
+ *   ${fpb_text_section}  - FPB text section name (default: .fpb.text)
+ *   ${fpb_end_section}   - FPB end marker section (default: .fpb_end)
+ *   ${section_alignment} - Section alignment (default: 4)
+ *   ${bss_alignment}     - BSS alignment (default: 4)
+ *   ${extra_sections}    - Additional custom sections
+ *   ${bss_marker}        - BSS marker section (for objcopy)
+ */
+
+SECTIONS
+{
+    /* Set origin to injection base address */
+    . = 0x${base_addr};
+    
+    /* Text section - executable code */
+    ${text_section} : {
+        /* FPB inject functions are placed first and kept */
+        KEEP(*(${fpb_text_section}))
+        
+        /* All other text */
+        *(${text_section} ${text_section}.*)
+    }
+    
+    /* Read-only data section */
+    ${rodata_section} : {
+        *(${rodata_section} ${rodata_section}.*)
+    }
+    
+    /* Initialized data section */
+    ${data_section} : {
+        *(${data_section} ${data_section}.*)
+    }
+    
+    /* Uninitialized data section (BSS) */
+    ${bss_section} : {
+        __bss_start__ = .;
+        *(${bss_section} ${bss_section}.* COMMON)
+        . = ALIGN(${bss_alignment});
+        __bss_end__ = .;
+    }
+    
+    /* Extra sections (if any) */
+${extra_sections}
+    
+    /* BSS marker section */
+${bss_marker}
+}
