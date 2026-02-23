@@ -125,7 +125,6 @@ def api_transfer_list():
     result = _run_serial_op(do_list, timeout=10.0)
 
     if "error" in result and result.get("error"):
-        log_error(f"List failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     return jsonify(result)
@@ -196,7 +195,6 @@ def api_transfer_mkdir():
     result = _run_serial_op(do_mkdir, timeout=5.0)
 
     if "error" in result and result.get("error"):
-        log_error(f"Mkdir failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
@@ -236,7 +234,6 @@ def api_transfer_delete():
     result = _run_serial_op(do_delete, timeout=5.0)
 
     if "error" in result and result.get("error"):
-        log_error(f"Delete failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
@@ -280,7 +277,6 @@ def api_transfer_rename():
     result = _run_serial_op(do_rename, timeout=5.0)
 
     if "error" in result and result.get("error"):
-        log_error(f"Rename failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
@@ -389,7 +385,6 @@ def api_transfer_upload():
                 # Use "rw" mode to allow CRC verification after write
                 success, msg = ft.fopen(remote_path, "rw")
                 if not success:
-                    log_error(f"Upload failed to open: {msg}")
                     progress_queue.put(
                         {
                             "type": "result",
@@ -422,7 +417,6 @@ def api_transfer_upload():
                     success, msg = ft.fwrite(chunk, current_offset=uploaded)
                     if not success:
                         ft.fclose()
-                        log_error(f"Upload write failed: {msg}")
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -454,7 +448,6 @@ def api_transfer_upload():
                     elif dev_size != total_size:
                         ft.fclose()
                         error_msg = f"Size mismatch: expected {total_size}, device has {dev_size}"
-                        log_error(error_msg)
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -467,7 +460,6 @@ def api_transfer_upload():
                     elif dev_crc != expected_crc:
                         ft.fclose()
                         error_msg = f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}"
-                        log_error(error_msg)
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -640,9 +632,6 @@ def api_transfer_download():
                 # Get file size first
                 success, stat = ft.fstat(remote_path)
                 if not success:
-                    log_error(
-                        f"Download failed to stat: {stat.get('error', 'unknown')}"
-                    )
                     progress_queue.put(
                         {
                             "type": "result",
@@ -676,7 +665,6 @@ def api_transfer_download():
                 # Open file for reading
                 success, msg = ft.fopen(remote_path, "r")
                 if not success:
-                    log_error(f"Download failed to open: {msg}")
                     progress_queue.put(
                         {
                             "type": "result",
@@ -711,7 +699,6 @@ def api_transfer_download():
                     )
                     if not success:
                         ft.fclose()
-                        log_error(f"Download read failed: {msg}")
                         progress_queue.put(
                             {
                                 "type": "result",
@@ -747,7 +734,6 @@ def api_transfer_download():
                     elif dev_crc != local_crc:
                         ft.fclose()
                         error_msg = f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}"
-                        log_error(error_msg)
                         progress_queue.put(
                             {
                                 "type": "result",

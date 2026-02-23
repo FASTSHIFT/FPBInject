@@ -130,7 +130,6 @@ def api_fpb_test_serial():
     result = _run_serial_op(do_test, timeout=30.0)
 
     if "error" in result and result.get("error"):
-        log_error(f"Serial test failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
@@ -145,8 +144,6 @@ def api_fpb_test_serial():
         else:
             log_success(f"All tests passed up to {max_working} bytes")
         log_info(f"Recommended chunk size: {recommended} bytes")
-    else:
-        log_error(f"Serial test failed: {result.get('error', 'Unknown')}")
 
     return jsonify(result)
 
@@ -287,7 +284,6 @@ def api_fpb_inject():
     result = _run_serial_op(do_inject, timeout=30.0)
 
     if "error" in result and result.get("error"):
-        log_error(f"Injection failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     success = result.get("success", False)
@@ -297,8 +293,6 @@ def api_fpb_inject():
         log_success(
             f"Injection complete: {target_func} @ slot {inject_result.get('slot', '?')}"
         )
-    else:
-        log_error(f"Injection failed: {inject_result.get('error', 'unknown error')}")
 
     return jsonify({"success": success, **inject_result})
 
@@ -335,7 +329,6 @@ def api_fpb_inject_multi():
     result = _run_serial_op(do_inject_multi, timeout=60.0)
 
     if "error" in result and result.get("error"):
-        log_error(f"Multi-injection failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     success = result.get("success", False)
@@ -345,10 +338,6 @@ def api_fpb_inject_multi():
         successful = inject_result.get("successful_count", 0)
         total = inject_result.get("total_count", 0)
         log_success(f"Multi-injection complete: {successful}/{total} functions")
-    else:
-        log_error(
-            f"Multi-injection failed: {inject_result.get('error', 'unknown error')}"
-        )
 
     return jsonify({"success": success, **inject_result})
 
@@ -408,7 +397,6 @@ def api_fpb_inject_stream():
                     log_success(f"Injection complete: {target_func}")
                     progress_queue.put({"type": "result", "success": True, **result})
                 else:
-                    log_error(f"Injection failed: {result.get('error', 'unknown')}")
                     progress_queue.put({"type": "result", "success": False, **result})
             finally:
                 fpb.exit_fl_mode()

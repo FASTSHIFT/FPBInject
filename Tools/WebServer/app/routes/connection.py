@@ -107,7 +107,6 @@ def api_connect():
         return jsonify({"success": False, "error": "Connect timeout"})
 
     if result["error"]:
-        log_error(f"Connection failed: {result['error']}")
         return jsonify({"success": False, "error": result["error"]})
 
     device.auto_connect = True
