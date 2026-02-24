@@ -1571,3 +1571,137 @@ input[type="checkbox"] {
 .config-path-list-item button .codicon {
   font-size: 12px;
 }
+
+/* ===========================
+   HIGH DPI / HIGH RESOLUTION SCALING
+   =========================== */
+
+/* 2K displays (1440p and above, or high DPI) */
+@media screen and (min-width: 2400px),
+  screen and (min-resolution: 144dpi) and (min-width: 1800px) {
+  :root {
+    font-size: 14px;
+    --sash-size: 6px;
+  }
+
+  body {
+    font-size: 14px;
+  }
+
+  .vscode-btn {
+    padding: 6px 16px;
+    font-size: 13px;
+  }
+
+  .vscode-input,
+  .vscode-select {
+    height: 28px;
+    font-size: 13px;
+    padding: 4px 10px;
+  }
+
+  .sidebar-header {
+    font-size: 12px;
+    padding: 10px 16px;
+  }
+
+  .sidebar-item {
+    padding: 6px 16px;
+    font-size: 13px;
+  }
+
+  .tab {
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+
+  .statusbar {
+    height: 26px;
+    font-size: 13px;
+  }
+
+  .statusbar-item {
+    padding: 0 10px;
+  }
+
+  .codicon {
+    font-size: 18px;
+  }
+
+  .activitybar-item .codicon {
+    font-size: 26px;
+  }
+
+  .titlebar {
+    height: 36px;
+  }
+
+  .activitybar {
+    width: 54px;
+  }
+}
+
+/* 4K displays (2160p and above) */
+@media screen and (min-width: 3200px),
+  screen and (min-resolution: 192dpi) and (min-width: 2400px) {
+  :root {
+    font-size: 16px;
+    --sash-size: 8px;
+  }
+
+  body {
+    font-size: 16px;
+  }
+
+  .vscode-btn {
+    padding: 8px 20px;
+    font-size: 15px;
+  }
+
+  .vscode-input,
+  .vscode-select {
+    height: 34px;
+    font-size: 15px;
+    padding: 6px 12px;
+  }
+
+  .sidebar-header {
+    font-size: 14px;
+    padding: 12px 20px;
+  }
+
+  .sidebar-item {
+    padding: 8px 20px;
+    font-size: 15px;
+  }
+
+  .tab {
+    padding: 8px 18px;
+    font-size: 15px;
+  }
+
+  .statusbar {
+    height: 32px;
+    font-size: 15px;
+  }
+
+  .statusbar-item {
+    padding: 0 14px;
+  }
+
+  .codicon {
+    font-size: 22px;
+  }
+
+  .activitybar-item .codicon {
+    font-size: 32px;
+  }
+
+  .titlebar {
+    height: 44px;
+  }
+
+  .activitybar {
+    width: 64px;
+  }
+}
