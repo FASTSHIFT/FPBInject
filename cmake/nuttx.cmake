@@ -20,16 +20,35 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Detect build environment: - NuttX: NUTTX_APPS_DIR variable is defined by NuttX
-# CMake system - Bare-metal: standalone build with FPBINJECT_ROOT defined
-if(NUTTX_APPS_DIR)
-  include(${CMAKE_CURRENT_LIST_DIR}/cmake/nuttx.cmake)
-else()
-  cmake_minimum_required(VERSION 3.16)
-
-  # Standalone Bare-metal Build Mode (STM32F103)
-  if(NOT DEFINED FPBINJECT_ROOT)
-    set(FPBINJECT_ROOT ${CMAKE_CURRENT_LIST_DIR})
-  endif()
-  include(${FPBINJECT_ROOT}/cmake/stm32f103.cmake)
+# NuttX Build Configuration for FPBInject
+if(CONFIG_FPBINJECT)
+  nuttx_add_application(
+    NAME
+    fl
+    STACKSIZE
+    ${CONFIG_FPBINJECT_STACKSIZE}
+    PRIORITY
+    ${CONFIG_FPBINJECT_PRIORITY}
+    MODULE
+    ${CONFIG_FPBINJECT}
+    SRCS
+    App/func_loader/fl_port_nuttx.c
+    App/func_loader/fl.c
+    App/func_loader/fl_log.c
+    App/func_loader/fl_file.c
+    App/func_loader/fl_file_posix.c
+    App/func_loader/fl_stream.c
+    App/func_loader/argparse/argparse.c
+    Source/fpb_inject.c
+    Source/fpb_trampoline.c
+    Source/fpb_debugmon_nuttx.c
+    INCLUDE_DIRECTORIES
+    ${CMAKE_CURRENT_LIST_DIR}/../App/func_loader
+    ${CMAKE_CURRENT_LIST_DIR}/../App/func_loader/argparse
+    ${CMAKE_CURRENT_LIST_DIR}/../Source
+    DEFINITIONS
+    FL_NUTTX_BUF_SIZE=${CONFIG_FPBINJECT_BUF_SIZE}
+    FL_NUTTX_LINE_SIZE=${CONFIG_FPBINJECT_LINE_SIZE}
+    FL_USE_FILE=1
+    FL_FILE_USE_POSIX=1)
 endif()
