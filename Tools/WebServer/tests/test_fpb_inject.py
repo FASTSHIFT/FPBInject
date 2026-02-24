@@ -402,6 +402,9 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 10
 
+        # Skip try_enter_fl_mode by setting _in_fl_mode
+        self.fpb._protocol._in_fl_mode = True
+
         # Directly call internal method
         result = self.fpb._send_cmd("--cmd ping", timeout=0.1)
 
@@ -416,6 +419,9 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 20
+
+        # Skip try_enter_fl_mode by setting _in_fl_mode
+        self.fpb._protocol._in_fl_mode = True
 
         result = self.fpb._send_cmd("--cmd ping", timeout=0.1)
 
@@ -444,6 +450,9 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.read.side_effect = mock_read
         type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
 
+        # Skip try_enter_fl_mode by setting _in_fl_mode
+        self.fpb._protocol._in_fl_mode = True
+
         result = self.fpb._send_cmd("--cmd test", timeout=0.1)
 
         self.assertIn("FLOK", result)
@@ -467,6 +476,9 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.read.side_effect = mock_read
         type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
 
+        # Skip try_enter_fl_mode by setting _in_fl_mode
+        self.fpb._protocol._in_fl_mode = True
+
         result = self.fpb._send_cmd("--cmd test", timeout=0.1, max_retries=3)
 
         self.assertIn("FLOK", result)
@@ -481,6 +493,9 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 24
+
+        # Skip try_enter_fl_mode by setting _in_fl_mode
+        self.fpb._protocol._in_fl_mode = True
 
         # Use -c info command which triggers incomplete check
         # With max_retries=0, it should return the incomplete response
