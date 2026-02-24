@@ -53,6 +53,18 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief FPB API Result Codes
+ */
+typedef enum {
+    FPB_OK = 0,                 /**< Operation successful */
+    FPB_ERR_NOT_INIT = -1,      /**< FPB not initialized */
+    FPB_ERR_INVALID_PARAM = -2, /**< Invalid parameter */
+    FPB_ERR_INVALID_COMP = -3,  /**< Invalid comparator ID */
+    FPB_ERR_INVALID_ADDR = -4,  /**< Invalid address (not in Code region) */
+    FPB_ERR_NOT_SUPPORTED = -5, /**< FPB not supported on this device */
+} fpb_result_t;
+
 /* Maximum code comparator count (supports both FPB v1 and v2) */
 #define FPB_MAX_CODE_COMP 8
 
@@ -113,9 +125,9 @@ typedef struct {
 
 /**
  * @brief  Initialize FPB unit
- * @retval 0: Success, -1: Failure
+ * @retval FPB_OK: Success, FPB_ERR_NOT_SUPPORTED: FPB not supported
  */
-int fpb_init(void);
+fpb_result_t fpb_init(void);
 
 /**
  * @brief  Deinitialize FPB unit
@@ -127,24 +139,31 @@ void fpb_deinit(void);
  * @param  comp_id: Comparator ID (0 ~ FPB_MAX_CODE_COMP-1)
  * @param  original_addr: Original function address (must be in Code region: 0x00000000 - 0x1FFFFFFF)
  * @param  patch_addr: Patch function address
- * @retval 0: Success, -1: Invalid parameter, -2: Comparator unavailable
+ * @retval FPB_OK: Success
+ * @retval FPB_ERR_NOT_INIT: FPB not initialized
+ * @retval FPB_ERR_INVALID_COMP: Invalid comparator ID
+ * @retval FPB_ERR_INVALID_ADDR: Address not in Code region
  */
-int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr);
+fpb_result_t fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr);
 
 /**
  * @brief  Clear code patch
  * @param  comp_id: Comparator ID
- * @retval 0: Success, -1: Invalid parameter
+ * @retval FPB_OK: Success
+ * @retval FPB_ERR_NOT_INIT: FPB not initialized
+ * @retval FPB_ERR_INVALID_COMP: Invalid comparator ID
  */
-int fpb_clear_patch(uint8_t comp_id);
+fpb_result_t fpb_clear_patch(uint8_t comp_id);
 
 /**
  * @brief  Enable/disable specified comparator
  * @param  comp_id: Comparator ID
  * @param  enable: true-enable, false-disable
- * @retval 0: Success, -1: Invalid parameter
+ * @retval FPB_OK: Success
+ * @retval FPB_ERR_NOT_INIT: FPB not initialized
+ * @retval FPB_ERR_INVALID_COMP: Invalid comparator ID
  */
-int fpb_enable_comp(uint8_t comp_id, bool enable);
+fpb_result_t fpb_enable_comp(uint8_t comp_id, bool enable);
 
 /**
  * @brief  Get FPB state information
@@ -167,14 +186,16 @@ uint8_t fpb_get_num_code_comp(void);
 /**
  * @brief  Get detailed FPB device information
  * @param  info: Pointer to fpb_info_t structure to fill
- * @retval 0: Success, -1: FPB not supported or invalid parameter
+ * @retval FPB_OK: Success
+ * @retval FPB_ERR_INVALID_PARAM: Null pointer
+ * @retval FPB_ERR_NOT_SUPPORTED: FPB not supported
  *
  * This function reads all FPB registers and populates the info structure:
  * - FP_CTRL: revision, comparator counts, global enable
  * - FP_REMAP: remap base address, remap support flag
  * - FP_COMPn: each comparator's match address, mode, and enable status
  */
-int fpb_get_info(fpb_info_t* info);
+fpb_result_t fpb_get_info(fpb_info_t* info);
 
 /**
  * @brief  Set instruction-level patch (replace single Thumb instruction)
@@ -182,9 +203,12 @@ int fpb_get_info(fpb_info_t* info);
  * @param  addr: Instruction address (2-byte aligned)
  * @param  new_instruction: New Thumb instruction (16-bit)
  * @param  is_upper: true-replace upper halfword, false-replace lower halfword
- * @retval 0: Success, -1: Failure
+ * @retval FPB_OK: Success
+ * @retval FPB_ERR_NOT_INIT: FPB not initialized
+ * @retval FPB_ERR_INVALID_COMP: Invalid comparator ID
+ * @retval FPB_ERR_INVALID_ADDR: Address not in Code region
  */
-int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper);
+fpb_result_t fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper);
 
 /**
  * @brief  Generate Thumb branch instruction

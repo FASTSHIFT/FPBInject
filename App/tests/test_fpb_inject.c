@@ -30,16 +30,16 @@ static void setup_fpb_v2(void) {
 
 void test_fpb_init_success(void) {
     setup_fpb();
-    int ret = fpb_init();
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_init();
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
 }
 
 void test_fpb_init_idempotent(void) {
     setup_fpb();
-    int ret1 = fpb_init();
-    int ret2 = fpb_init();
-    TEST_ASSERT_EQUAL(0, ret1);
-    TEST_ASSERT_EQUAL(0, ret2);
+    fpb_result_t ret1 = fpb_init();
+    fpb_result_t ret2 = fpb_init();
+    TEST_ASSERT_EQUAL(FPB_OK, ret1);
+    TEST_ASSERT_EQUAL(FPB_OK, ret2);
 }
 
 void test_fpb_init_enables_fpb(void) {
@@ -51,8 +51,8 @@ void test_fpb_init_enables_fpb(void) {
 void test_fpb_init_no_comparators(void) {
     setup_fpb();
     fpb_mock_configure(0, 0);
-    int ret = fpb_init();
-    TEST_ASSERT(ret != 0); /* Should fail with no comparators */
+    fpb_result_t ret = fpb_init();
+    TEST_ASSERT_EQUAL(FPB_ERR_NOT_SUPPORTED, ret);
 }
 
 /* ============================================================================
@@ -92,8 +92,8 @@ void test_fpb_set_patch_basic(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_set_patch(0, 0x08001000, 0x20002000);
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_set_patch(0, 0x08001000, 0x20002000);
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
 }
 
 void test_fpb_set_patch_enables_comparator(void) {
@@ -108,16 +108,16 @@ void test_fpb_set_patch_invalid_comp(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_set_patch(99, 0x08001000, 0x20002000);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_set_patch(99, 0x08001000, 0x20002000);
+    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_COMP, ret);
 }
 
 void test_fpb_set_patch_not_initialized(void) {
     setup_fpb();
     /* Don't call fpb_init() */
 
-    int ret = fpb_set_patch(0, 0x08001000, 0x20002000);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_set_patch(0, 0x08001000, 0x20002000);
+    TEST_ASSERT_EQUAL(FPB_ERR_NOT_INIT, ret);
 }
 
 void test_fpb_set_patch_ram_address(void) {
@@ -125,17 +125,17 @@ void test_fpb_set_patch_ram_address(void) {
     fpb_init();
 
     /* Original address in RAM region should fail */
-    int ret = fpb_set_patch(0, 0x20001000, 0x20002000);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_set_patch(0, 0x20001000, 0x20002000);
+    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_ADDR, ret);
 }
 
 void test_fpb_set_patch_multiple(void) {
     setup_fpb();
     fpb_init();
 
-    TEST_ASSERT_EQUAL(0, fpb_set_patch(0, 0x08001000, 0x20002000));
-    TEST_ASSERT_EQUAL(0, fpb_set_patch(1, 0x08002000, 0x20003000));
-    TEST_ASSERT_EQUAL(0, fpb_set_patch(2, 0x08003000, 0x20004000));
+    TEST_ASSERT_EQUAL(FPB_OK, fpb_set_patch(0, 0x08001000, 0x20002000));
+    TEST_ASSERT_EQUAL(FPB_OK, fpb_set_patch(1, 0x08002000, 0x20003000));
+    TEST_ASSERT_EQUAL(FPB_OK, fpb_set_patch(2, 0x08003000, 0x20004000));
 }
 
 /* ============================================================================
@@ -147,8 +147,8 @@ void test_fpb_clear_patch_basic(void) {
     fpb_init();
     fpb_set_patch(0, 0x08001000, 0x20002000);
 
-    int ret = fpb_clear_patch(0);
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_clear_patch(0);
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
     TEST_ASSERT_FALSE(mock_fpb_comp_is_enabled(0));
 }
 
@@ -156,8 +156,8 @@ void test_fpb_clear_patch_invalid_comp(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_clear_patch(99);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_clear_patch(99);
+    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_COMP, ret);
 }
 
 void test_fpb_clear_patch_not_set(void) {
@@ -165,8 +165,8 @@ void test_fpb_clear_patch_not_set(void) {
     fpb_init();
 
     /* Clearing unset patch should be OK */
-    int ret = fpb_clear_patch(0);
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_clear_patch(0);
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
 }
 
 /* ============================================================================
@@ -179,8 +179,8 @@ void test_fpb_enable_comp_enable(void) {
     fpb_set_patch(0, 0x08001000, 0x20002000);
     fpb_enable_comp(0, false);
 
-    int ret = fpb_enable_comp(0, true);
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_enable_comp(0, true);
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
     TEST_ASSERT_TRUE(mock_fpb_comp_is_enabled(0));
 }
 
@@ -189,8 +189,8 @@ void test_fpb_enable_comp_disable(void) {
     fpb_init();
     fpb_set_patch(0, 0x08001000, 0x20002000);
 
-    int ret = fpb_enable_comp(0, false);
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_enable_comp(0, false);
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
     TEST_ASSERT_FALSE(mock_fpb_comp_is_enabled(0));
 }
 
@@ -198,8 +198,8 @@ void test_fpb_enable_comp_invalid(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_enable_comp(99, true);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_enable_comp(99, true);
+    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_COMP, ret);
 }
 
 /* ============================================================================
@@ -278,8 +278,8 @@ void test_fpb_get_info_basic(void) {
     fpb_init();
 
     fpb_info_t info;
-    int ret = fpb_get_info(&info);
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_get_info(&info);
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
     TEST_ASSERT_NOT_NULL(&info);
 }
 
@@ -309,9 +309,9 @@ void test_fpb_get_info_disabled(void) {
     fpb_deinit();
 
     fpb_info_t info;
-    int ret = fpb_get_info(&info);
+    fpb_result_t ret = fpb_get_info(&info);
     /* Should still succeed, but FPB is disabled */
-    TEST_ASSERT_EQUAL(0, ret);
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
     TEST_ASSERT_FALSE(info.enabled); /* FPB should be disabled after deinit */
 }
 
@@ -319,8 +319,8 @@ void test_fpb_get_info_null_pointer(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_get_info(NULL);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_get_info(NULL);
+    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_PARAM, ret);
 }
 
 void test_fpb_get_info_revision(void) {
@@ -428,32 +428,32 @@ void test_fpb_set_instruction_patch_basic(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false); /* BX LR */
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false); /* BX LR */
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
 }
 
 void test_fpb_set_instruction_patch_upper(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, true); /* Upper half */
-    TEST_ASSERT_EQUAL(0, ret);
+    fpb_result_t ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, true); /* Upper half */
+    TEST_ASSERT_EQUAL(FPB_OK, ret);
 }
 
 void test_fpb_set_instruction_patch_not_initialized(void) {
     setup_fpb();
     /* Don't init FPB */
 
-    int ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false);
+    TEST_ASSERT_EQUAL(FPB_ERR_NOT_INIT, ret);
 }
 
 void test_fpb_set_instruction_patch_invalid_comp(void) {
     setup_fpb();
     fpb_init();
 
-    int ret = fpb_set_instruction_patch(100, 0x08001000, 0x4770, false);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_set_instruction_patch(100, 0x08001000, 0x4770, false);
+    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_COMP, ret);
 }
 
 void test_fpb_set_instruction_patch_ram_address(void) {
@@ -461,8 +461,8 @@ void test_fpb_set_instruction_patch_ram_address(void) {
     fpb_init();
 
     /* RAM address should fail */
-    int ret = fpb_set_instruction_patch(0, 0x20001000, 0x4770, false);
-    TEST_ASSERT(ret != 0);
+    fpb_result_t ret = fpb_set_instruction_patch(0, 0x20001000, 0x4770, false);
+    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_ADDR, ret);
 }
 
 /* ============================================================================
@@ -574,8 +574,8 @@ void test_fpb_remap_table_all_slots(void) {
     for (uint8_t i = 0; i < num_code_comp; i++) {
         uint32_t orig_addr = 0x08001000 + (i * 0x1000);
         uint32_t patch_addr = 0x20002000 + (i * 0x1000);
-        int ret = fpb_set_patch(i, orig_addr, patch_addr);
-        TEST_ASSERT_EQUAL(0, ret);
+        fpb_result_t ret = fpb_set_patch(i, orig_addr, patch_addr);
+        TEST_ASSERT_EQUAL(FPB_OK, ret);
     }
 
     /* Verify all entries are set and unique */
@@ -597,8 +597,8 @@ void test_fpb_remap_table_all_slots_v2(void) {
     for (uint8_t i = 0; i < num_code_comp; i++) {
         uint32_t orig_addr = 0x08001000 + (i * 0x1000);
         uint32_t patch_addr = 0x20002000 + (i * 0x1000);
-        int ret = fpb_set_patch(i, orig_addr, patch_addr);
-        TEST_ASSERT_EQUAL(0, ret);
+        fpb_result_t ret = fpb_set_patch(i, orig_addr, patch_addr);
+        TEST_ASSERT_EQUAL(FPB_OK, ret);
     }
 
     /* Verify all 8 entries are set */

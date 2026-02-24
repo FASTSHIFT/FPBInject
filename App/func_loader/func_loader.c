@@ -287,7 +287,7 @@ static void cmd_info(fl_context_t* ctx) {
 #endif
 
     /* Get and print FPB detailed information */
-    if (fpb_get_info(&fpb_info) == 0) {
+    if (fpb_get_info(&fpb_info) == FPB_OK) {
         const char* rev_str = (fpb_info.rev == 0) ? "v1" : (fpb_info.rev == 1) ? "v2" : "unknown";
         fl_println("FPB: %s, %u code + %u lit = %u total, %s", rev_str, fpb_info.num_code_comp, fpb_info.num_lit_comp,
                    fpb_info.total_comp, fpb_info.enabled ? "enabled" : "disabled");
@@ -415,8 +415,8 @@ static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_
         return;
     }
 
-    int ret = fpb_set_patch(comp, orig, target);
-    if (ret != 0) {
+    fpb_result_t ret = fpb_set_patch(comp, orig, target);
+    if (ret != FPB_OK) {
         fl_response(false, "fpb_set_patch failed: %d", ret);
         return;
     }
@@ -447,8 +447,8 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
     uint32_t tramp_addr = fpb_trampoline_get_address(comp);
 
     /* Use FPB to redirect original function to trampoline */
-    int ret = fpb_set_patch(comp, orig, tramp_addr);
-    if (ret != 0) {
+    fpb_result_t ret = fpb_set_patch(comp, orig, tramp_addr);
+    if (ret != FPB_OK) {
         fpb_trampoline_clear_target(comp);
         fl_response(false, "fpb_set_patch failed: %d", ret);
         return;

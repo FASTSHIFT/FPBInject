@@ -130,10 +130,10 @@ static inline void isb(void) {
 }
 #endif /* !FPB_HOST_TESTING */
 
-int fpb_init(void) {
+fpb_result_t fpb_init(void) {
     /* If already initialized, return success (idempotent) */
     if (g_fpb_state.initialized) {
-        return 0;
+        return FPB_OK;
     }
 
     memset(&g_fpb_state, 0, sizeof(g_fpb_state));
@@ -141,8 +141,8 @@ int fpb_init(void) {
 
     /* Use fpb_get_info to parse FPB hardware configuration */
     fpb_info_t info;
-    if (fpb_get_info(&info) != 0) {
-        return -1;
+    if (fpb_get_info(&info) != FPB_OK) {
+        return FPB_ERR_NOT_SUPPORTED;
     }
 
     g_fpb_state.num_code_comp = info.num_code_comp;
@@ -163,7 +163,7 @@ int fpb_init(void) {
 
     g_fpb_state.initialized = true;
 
-    return 0;
+    return FPB_OK;
 }
 
 void fpb_deinit(void) {
@@ -179,17 +179,17 @@ void fpb_deinit(void) {
     isb();
 }
 
-int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) {
+fpb_result_t fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) {
     if (!g_fpb_state.initialized) {
-        return -1;
+        return FPB_ERR_NOT_INIT;
     }
 
     if (comp_id >= g_fpb_state.num_code_comp) {
-        return -1;
+        return FPB_ERR_INVALID_COMP;
     }
 
     if (original_addr >= 0x20000000UL) {
-        return -1;
+        return FPB_ERR_INVALID_ADDR;
     }
 
     original_addr &= ~1UL;
@@ -270,16 +270,16 @@ int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) 
     dsb();
     isb();
 
-    return 0;
+    return FPB_OK;
 }
 
-int fpb_clear_patch(uint8_t comp_id) {
+fpb_result_t fpb_clear_patch(uint8_t comp_id) {
     if (!g_fpb_state.initialized) {
-        return -1;
+        return FPB_ERR_NOT_INIT;
     }
 
     if (comp_id >= g_fpb_state.num_code_comp) {
-        return -1;
+        return FPB_ERR_INVALID_COMP;
     }
 
     FPB_COMP(comp_id) = 0;
@@ -294,12 +294,16 @@ int fpb_clear_patch(uint8_t comp_id) {
     dsb();
     isb();
 
-    return 0;
+    return FPB_OK;
 }
 
-int fpb_enable_comp(uint8_t comp_id, bool enable) {
-    if (!g_fpb_state.initialized || comp_id >= g_fpb_state.num_code_comp) {
-        return -1;
+fpb_result_t fpb_enable_comp(uint8_t comp_id, bool enable) {
+    if (!g_fpb_state.initialized) {
+        return FPB_ERR_NOT_INIT;
+    }
+
+    if (comp_id >= g_fpb_state.num_code_comp) {
+        return FPB_ERR_INVALID_COMP;
     }
 
     uint32_t comp_val = FPB_COMP(comp_id);
@@ -316,7 +320,7 @@ int fpb_enable_comp(uint8_t comp_id, bool enable) {
     dsb();
     isb();
 
-    return 0;
+    return FPB_OK;
 }
 
 const fpb_state_t* fpb_get_state(void) {
@@ -325,16 +329,16 @@ const fpb_state_t* fpb_get_state(void) {
 
 bool fpb_is_supported(void) {
     fpb_info_t info;
-    return (fpb_get_info(&info) == 0 && info.num_code_comp > 0);
+    return (fpb_get_info(&info) == FPB_OK && info.num_code_comp > 0);
 }
 
 uint8_t fpb_get_num_code_comp(void) {
     return g_fpb_state.num_code_comp;
 }
 
-int fpb_get_info(fpb_info_t* info) {
+fpb_result_t fpb_get_info(fpb_info_t* info) {
     if (!info) {
-        return -1;
+        return FPB_ERR_INVALID_PARAM;
     }
 
     memset(info, 0, sizeof(fpb_info_t));
@@ -353,7 +357,7 @@ int fpb_get_info(fpb_info_t* info) {
 
     /* Check if FPB is supported */
     if (num_code == 0) {
-        return -1;
+        return FPB_ERR_NOT_SUPPORTED;
     }
 
     /* Fill FP_CTRL fields */
@@ -388,18 +392,22 @@ int fpb_get_info(fpb_info_t* info) {
         }
     }
 
-    return 0;
+    return FPB_OK;
 }
 
-int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper) {
-    if (!g_fpb_state.initialized || comp_id >= g_fpb_state.num_code_comp) {
-        return -1;
+fpb_result_t fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper) {
+    if (!g_fpb_state.initialized) {
+        return FPB_ERR_NOT_INIT;
+    }
+
+    if (comp_id >= g_fpb_state.num_code_comp) {
+        return FPB_ERR_INVALID_COMP;
     }
 
     addr &= ~3UL;
 
     if (addr >= 0x20000000UL) {
-        return -1;
+        return FPB_ERR_INVALID_ADDR;
     }
 
     /*
@@ -440,7 +448,7 @@ int fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instr
     dsb();
     isb();
 
-    return 0;
+    return FPB_OK;
 }
 
 uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* instruction) {
