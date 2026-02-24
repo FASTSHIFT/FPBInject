@@ -21,7 +21,17 @@
 # SOFTWARE.
 
 # NuttX Build Configuration for FPBInject
+
 if(CONFIG_FPBINJECT)
+  # Collect func_loader sources
+  file(GLOB FL_SOURCES ${CMAKE_CURRENT_LIST_DIR}/../App/func_loader/*.c
+       ${CMAKE_CURRENT_LIST_DIR}/../App/func_loader/argparse/*.c)
+  # Exclude main source file
+  list(FILTER FL_SOURCES EXCLUDE REGEX ".*fl_port_nuttx\\.c$")
+
+  # Collect FPB sources
+  file(GLOB FPB_SOURCES ${CMAKE_CURRENT_LIST_DIR}/../Source/*.c)
+
   nuttx_add_application(
     NAME
     fl
@@ -33,15 +43,8 @@ if(CONFIG_FPBINJECT)
     ${CONFIG_FPBINJECT}
     SRCS
     App/func_loader/fl_port_nuttx.c
-    App/func_loader/fl.c
-    App/func_loader/fl_log.c
-    App/func_loader/fl_file.c
-    App/func_loader/fl_file_posix.c
-    App/func_loader/fl_stream.c
-    App/func_loader/argparse/argparse.c
-    Source/fpb_inject.c
-    Source/fpb_trampoline.c
-    Source/fpb_debugmon_nuttx.c
+    ${FL_SOURCES}
+    ${FPB_SOURCES}
     INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_LIST_DIR}/../App/func_loader
     ${CMAKE_CURRENT_LIST_DIR}/../App/func_loader/argparse
