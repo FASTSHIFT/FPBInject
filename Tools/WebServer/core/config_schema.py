@@ -265,6 +265,15 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         tooltip="Record serial communication logs to file",
         order=20,
     ),
+    ConfigItem(
+        key="serial_echo_enabled",
+        label="Serial TX Echo",
+        group=ConfigGroup.LOGGING,
+        config_type=ConfigType.BOOLEAN,
+        default=False,
+        tooltip="Echo TX commands to SERIAL panel (for debugging)",
+        order=30,
+    ),
     # === Analysis Tools ===
     ConfigItem(
         key="ghidra_path",

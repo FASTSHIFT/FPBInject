@@ -297,15 +297,33 @@ fl>"""
         self.assertFalse(success)
 
     def test_log_raw(self):
-        """Test raw log recording"""
+        """Test raw log recording with serial echo enabled"""
+        self.device.serial_echo_enabled = True
         self.fpb._log_raw("TX", "test command")
 
         self.assertEqual(len(self.device.raw_serial_log), 1)
         self.assertEqual(self.device.raw_serial_log[0]["dir"], "TX")
         self.assertEqual(self.device.raw_serial_log[0]["data"], "test command")
 
+    def test_log_raw_tx_disabled_by_default(self):
+        """Test TX not logged when serial_echo_enabled is False (default)"""
+        self.device.serial_echo_enabled = False
+        self.fpb._log_raw("TX", "test command")
+
+        self.assertEqual(len(self.device.raw_serial_log), 0)
+
+    def test_log_raw_rx_always_logged(self):
+        """Test RX is always logged regardless of serial_echo_enabled"""
+        self.device.serial_echo_enabled = False
+        self.fpb._log_raw("RX", "response data")
+
+        self.assertEqual(len(self.device.raw_serial_log), 1)
+        self.assertEqual(self.device.raw_serial_log[0]["dir"], "RX")
+        self.assertEqual(self.device.raw_serial_log[0]["data"], "response data")
+
     def test_log_raw_empty(self):
         """Test empty data not recorded"""
+        self.device.serial_echo_enabled = True
         self.fpb._log_raw("TX", "")
 
         self.assertEqual(len(self.device.raw_serial_log), 0)
@@ -313,6 +331,7 @@ fl>"""
     def test_log_raw_limit(self):
         """Test log size limit"""
         self.device.raw_log_max_size = 10
+        self.device.serial_echo_enabled = True
 
         for i in range(20):
             self.fpb._log_raw("TX", f"msg{i}")

@@ -175,7 +175,11 @@ class FPBProtocol:
                 logger.warning(
                     f"Retry {attempt}/{max_retries} for command: {cmd[:50]}..."
                 )
-                tool_log(self.device, "WARN", f"Retry attempt {attempt + 1}/{max_retries + 1}")
+                tool_log(
+                    self.device,
+                    "WARN",
+                    f"Retry attempt {attempt + 1}/{max_retries + 1}",
+                )
                 time.sleep(0.05)
 
             logger.debug(f"TX: {full_cmd}")
@@ -279,9 +283,19 @@ class FPBProtocol:
         return True
 
     def _log_raw(self, direction: str, data: str):
-        """Log raw serial communication."""
+        """Log raw serial communication.
+
+        TX logs are only recorded when serial_echo_enabled is True.
+        RX logs are always recorded.
+        """
         if not data:
             return
+
+        # TX logs only when serial echo is enabled
+        if direction == "TX":
+            if not getattr(self.device, "serial_echo_enabled", False):
+                return
+
         try:
             entry = {
                 "id": self.device.raw_log_next_id,
