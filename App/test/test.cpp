@@ -83,13 +83,13 @@ fpb_test_result_t fpb_test_init(void) {
     result.value = 0;
     result.passed = false;
 
-    if (!fpb_is_supported()) {
+    fpb_result_t ret = fpb_init();
+    if (ret == FPB_ERR_NOT_SUPPORTED) {
         result.message = "FPB not supported on this device";
         return result;
     }
 
-    int ret = fpb_init();
-    if (ret != 0) {
+    if (ret != FPB_OK) {
         result.message = "fpb_init failed";
         return result;
     }
@@ -133,8 +133,8 @@ fpb_test_result_t fpb_test_basic_redirect(void) {
         return result;
     }
 
-    int ret = fpb_set_patch(0, (uint32_t)test_func_original_a, (uint32_t)test_func_patched_a);
-    if (ret != 0) {
+    fpb_result_t ret = fpb_set_patch(0, (uint32_t)test_func_original_a, (uint32_t)test_func_patched_a);
+    if (ret != FPB_OK) {
         result.message = "fpb_set_patch failed";
         return result;
     }
@@ -179,8 +179,8 @@ fpb_test_result_t fpb_test_parameter_redirect(void) {
         return result;
     }
 
-    int ret = fpb_set_patch(1, (uint32_t)test_func_original_b, (uint32_t)test_func_patched_b);
-    if (ret != 0) {
+    fpb_result_t ret = fpb_set_patch(1, (uint32_t)test_func_original_b, (uint32_t)test_func_patched_b);
+    if (ret != FPB_OK) {
         result.message = "fpb_set_patch failed";
         return result;
     }
@@ -215,8 +215,8 @@ fpb_test_result_t fpb_test_void_redirect(void) {
         return result;
     }
 
-    int ret = fpb_set_patch(2, (uint32_t)test_func_original_c, (uint32_t)test_func_patched_c);
-    if (ret != 0) {
+    fpb_result_t ret = fpb_set_patch(2, (uint32_t)test_func_original_c, (uint32_t)test_func_patched_c);
+    if (ret != FPB_OK) {
         result.message = "fpb_set_patch failed";
         return result;
     }
@@ -243,13 +243,13 @@ fpb_test_result_t fpb_test_multi_patch(void) {
     result.value = 0;
     result.passed = false;
 
-    int ret = fpb_set_patch(0, (uint32_t)test_func_original_a, (uint32_t)test_func_patched_a);
-    if (ret != 0) {
+    fpb_result_t ret = fpb_set_patch(0, (uint32_t)test_func_original_a, (uint32_t)test_func_patched_a);
+    if (ret != FPB_OK) {
         result.message = "fpb_set_patch failed (comp 0)";
         return result;
     }
     ret = fpb_set_patch(1, (uint32_t)test_func_original_b, (uint32_t)test_func_patched_b);
-    if (ret != 0) {
+    if (ret != FPB_OK) {
         result.message = "fpb_set_patch failed (comp 1)";
         return result;
     }
@@ -262,17 +262,17 @@ fpb_test_result_t fpb_test_multi_patch(void) {
         return result;
     }
 
-    fpb_enable_comp(0, false);
+    /* Clear only comp 0, comp 1 should still work */
+    fpb_clear_patch(0);
 
     ret1 = test_func_original_a();
     ret2 = test_func_original_b(5);
 
     if (ret1 != 100 || ret2 != 15) {
-        result.message = "Selective disable failed";
+        result.message = "Selective clear failed";
         return result;
     }
 
-    fpb_clear_patch(0);
     fpb_clear_patch(1);
 
     result.passed = true;
