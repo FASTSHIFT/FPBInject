@@ -224,6 +224,197 @@ _ghidra_project_cache = {
     "project_name": "fpb_decompile",
 }
 
+# pyhidra program cache (keeps JVM and program in memory for fast decompilation)
+_pyhidra_cache = {
+    "elf_path": None,
+    "elf_mtime": None,
+    "program": None,
+    "flat_api": None,
+    "initialized": False,
+}
+
+
+def _init_pyhidra(ghidra_path: str) -> bool:
+    """Initialize pyhidra with Ghidra installation path.
+
+    Returns True if successful, False otherwise.
+    """
+    try:
+        import pyhidra
+
+        if not _pyhidra_cache["initialized"]:
+            # Set Ghidra installation path before starting
+            pyhidra.start(install_dir=ghidra_path)
+            _pyhidra_cache["initialized"] = True
+        return True
+    except ImportError:
+        logger.debug("pyhidra not installed, will use analyzeHeadless fallback")
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to initialize pyhidra: {e}")
+        return False
+
+
+def _get_pyhidra_program(elf_path: str, ghidra_path: str, analyze: bool = False):
+    """Get or load a Ghidra program using pyhidra.
+
+    Args:
+        elf_path: Path to ELF file
+        ghidra_path: Path to Ghidra installation
+        analyze: Whether to run full analysis (slow but better quality)
+
+    Returns (program, flat_api) tuple or (None, None) if failed.
+    """
+    try:
+        import pyhidra
+        from pyhidra import open_program
+
+        cache = _pyhidra_cache
+        elf_mtime = os.path.getmtime(elf_path)
+
+        # Check if we can reuse cached program
+        if (
+            cache["program"] is not None
+            and cache["elf_path"] == elf_path
+            and cache["elf_mtime"] == elf_mtime
+        ):
+            return cache["program"], cache["flat_api"]
+
+        # Close old program if exists
+        if cache["program"] is not None:
+            try:
+                cache["program"].close()
+            except Exception:
+                pass
+            cache["program"] = None
+            cache["flat_api"] = None
+
+        # Open new program (analyze=False skips slow auto-analysis)
+        program = open_program(elf_path, analyze=analyze)
+        cache["elf_path"] = elf_path
+        cache["elf_mtime"] = elf_mtime
+        cache["program"] = program
+        cache["flat_api"] = pyhidra.flatapi.FlatProgramAPI(program)
+
+        return program, cache["flat_api"]
+
+    except Exception as e:
+        logger.warning(f"Failed to open program with pyhidra: {e}")
+        return None, None
+
+
+def _decompile_with_pyhidra(
+    elf_path: str,
+    func_name: str,
+    ghidra_path: str,
+    progress_callback=None,
+    log_callback=None,
+) -> Tuple[bool, str]:
+    """Decompile using pyhidra (fast path - JVM stays in memory)."""
+
+    def report_progress(stage, message):
+        if progress_callback:
+            progress_callback(stage, message)
+
+    def report_log(message):
+        if log_callback:
+            log_callback(message)
+
+    try:
+        from ghidra.app.decompiler import DecompInterface, DecompileOptions
+        from ghidra.util.task import ConsoleTaskMonitor
+
+        report_progress("init", "Loading ELF file (skipping analysis)...")
+        report_log("[pyhidra] Using pyhidra for fast decompilation (no pre-analysis)")
+
+        # Load program without full analysis for speed
+        # Decompiler will analyze only the requested function
+        program, flat_api = _get_pyhidra_program(elf_path, ghidra_path, analyze=False)
+        if program is None:
+            return False, "Failed to open program with pyhidra"
+
+        report_progress("decompile", f"Decompiling {func_name}...")
+
+        # Find function
+        func = None
+        symbol_table = program.getSymbolTable()
+        func_manager = program.getFunctionManager()
+
+        # Try exact match first
+        symbols = symbol_table.getSymbols(func_name)
+        for sym in symbols:
+            if sym.getSymbolType().toString() == "Function":
+                func = func_manager.getFunctionAt(sym.getAddress())
+                if func:
+                    break
+
+        # Try with underscore prefix
+        if func is None:
+            symbols = symbol_table.getSymbols("_" + func_name)
+            for sym in symbols:
+                if sym.getSymbolType().toString() == "Function":
+                    func = func_manager.getFunctionAt(sym.getAddress())
+                    if func:
+                        break
+
+        # Fallback: iterate functions
+        if func is None:
+            for f in func_manager.getFunctions(True):
+                name = f.getName()
+                if name == func_name or name == "_" + func_name:
+                    func = f
+                    break
+
+        # Last resort: partial match
+        if func is None:
+            for f in func_manager.getFunctions(True):
+                if func_name in f.getName():
+                    func = f
+                    break
+
+        if func is None:
+            return False, f"Function '{func_name}' not found"
+
+        report_log(
+            f"[pyhidra] Found function: {func.getName()} at {func.getEntryPoint()}"
+        )
+
+        # Decompile
+        decomp = DecompInterface()
+        options = DecompileOptions()
+        options.setEliminateUnreachable(True)
+        decomp.setOptions(options)
+        decomp.openProgram(program)
+
+        monitor = ConsoleTaskMonitor()
+        results = decomp.decompileFunction(func, 60, monitor)
+
+        if results and results.decompileCompleted():
+            decompiled = results.getDecompiledFunction()
+            if decompiled:
+                c_code = decompiled.getC()
+                decomp.dispose()
+
+                # Add header
+                header = f"// Decompiled from: {os.path.basename(elf_path)}\n"
+                header += f"// Function: {func_name}\n"
+                header += "// Decompiler: Ghidra (pyhidra)\n"
+                header += "// Note: This is machine-generated pseudocode\n\n"
+
+                report_log("[pyhidra] Decompilation successful")
+                return True, header + c_code
+            else:
+                decomp.dispose()
+                return False, "Decompilation produced no output"
+        else:
+            error_msg = results.getErrorMessage() if results else "unknown error"
+            decomp.dispose()
+            return False, f"Decompilation failed: {error_msg}"
+
+    except Exception as e:
+        logger.error(f"pyhidra decompilation error: {e}")
+        return False, str(e)
+
 
 def _get_cached_ghidra_project(
     elf_path: str, ghidra_path: str
@@ -280,7 +471,11 @@ def clear_ghidra_cache():
 
 
 def decompile_function(
-    elf_path: str, func_name: str, ghidra_path: str = None
+    elf_path: str,
+    func_name: str,
+    ghidra_path: str = None,
+    progress_callback=None,
+    log_callback=None,
 ) -> Tuple[bool, str]:
     """Decompile a specific function from ELF file using Ghidra.
 
@@ -291,12 +486,40 @@ def decompile_function(
         elf_path: Path to the ELF file
         func_name: Name of the function to decompile
         ghidra_path: Path to Ghidra installation directory (containing analyzeHeadless)
+        progress_callback: Optional callback function(stage, message) for progress updates
+        log_callback: Optional callback function(message) for logging to OUTPUT terminal
 
     Returns:
         Tuple of (success, decompiled_code_or_error_message)
     """
     import tempfile
     import shutil
+
+    def report_progress(stage, message):
+        if progress_callback:
+            progress_callback(stage, message)
+
+    def report_log(message):
+        if log_callback:
+            log_callback(message)
+
+    # Try pyhidra first (fast path - JVM stays in memory)
+    if ghidra_path and os.path.exists(elf_path) and _init_pyhidra(ghidra_path):
+        report_log("[INFO] Using pyhidra for fast decompilation")
+        try:
+            success, result = _decompile_with_pyhidra(
+                elf_path, func_name, ghidra_path, progress_callback, log_callback
+            )
+            if success:
+                return success, result
+            # If pyhidra failed, log and fall back to analyzeHeadless
+            report_log(
+                f"[WARN] pyhidra failed: {result}, falling back to analyzeHeadless"
+            )
+        except Exception as e:
+            report_log(f"[WARN] pyhidra error: {e}, falling back to analyzeHeadless")
+
+    report_progress("init", "Initializing Ghidra (analyzeHeadless)...")
 
     # Find analyzeHeadless script
     analyze_headless = None
@@ -473,7 +696,11 @@ decomp.dispose()
                 "-scriptPath",
                 temp_dir,
             ]
-            timeout = 180  # 3 minutes for initial analysis
+            timeout = 600  # 10 minutes for initial analysis
+            report_progress(
+                "analyze",
+                "Importing and analyzing ELF file (first time, may take a while)...",
+            )
         else:
             # Subsequent calls: just process the existing project with script
             cmd = [
@@ -489,13 +716,86 @@ decomp.dispose()
                 temp_dir,
             ]
             timeout = 30  # 30 seconds for cached project
+            report_progress(
+                "decompile",
+                f"Decompiling function '{func_name}' (using cached project)...",
+            )
 
-        result = subprocess.run(
+        # Use Popen for real-time output streaming
+        process = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=timeout,
+            bufsize=1,
         )
+
+        # Read output line by line and report progress
+        stdout_lines = []
+        import time
+
+        start_time = time.time()
+
+        try:
+            while True:
+                # Check timeout
+                if time.time() - start_time > timeout:
+                    process.kill()
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+
+                if line:
+                    line = line.strip()
+                    stdout_lines.append(line)
+
+                    # Log all Ghidra output to OUTPUT terminal (skip Java version info)
+                    if (
+                        line
+                        and not line.startswith("openjdk")
+                        and not line.startswith("OpenJDK")
+                    ):
+                        report_log(f"[Ghidra] {line}")
+
+                    # Parse Ghidra output for meaningful progress messages
+                    if "INFO  ANALYZING" in line or "Analyzing" in line:
+                        report_progress("analyze", "Analyzing program structure...")
+                    elif "INFO  IMPORTING" in line or "Importing" in line:
+                        report_progress("import", "Importing ELF file...")
+                    elif "INFO  REPORT" in line:
+                        report_progress("report", "Generating analysis report...")
+                    elif "Decompiling" in line:
+                        report_progress("decompile", f"Decompiling {func_name}...")
+                    elif "AutoAnalysisManager" in line:
+                        # Extract analyzer name if possible
+                        if "scheduled" in line.lower():
+                            report_progress("analyze", "Scheduling analyzers...")
+                        elif "running" in line.lower():
+                            report_progress("analyze", "Running analyzers...")
+                    elif "DWARF" in line:
+                        report_progress("analyze", "Processing DWARF debug info...")
+                    elif "Function" in line and "created" in line.lower():
+                        report_progress("analyze", "Creating function definitions...")
+                    elif "Script" in line or "script" in line:
+                        report_progress("script", "Running decompile script...")
+                    elif "ERROR" in line or "Exception" in line:
+                        report_progress("error", line[:100])
+
+            process.wait()
+            returncode = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            raise
+
+        # Create a result-like object for compatibility
+        class Result:
+            def __init__(self, returncode, stderr):
+                self.returncode = returncode
+                self.stderr = stderr
+
+        result = Result(returncode, "\n".join(stdout_lines))
 
         # Check if output file was created
         if os.path.exists(output_file):
@@ -516,11 +816,24 @@ decomp.dispose()
         else:
             # Check stderr for errors
             if result.returncode != 0:
-                logger.error(f"Ghidra analysis failed: {result.stderr}")
+                # Filter out Java version info from error message
+                error_lines = [
+                    line
+                    for line in result.stderr.split("\n")
+                    if line.strip()
+                    and not line.startswith("openjdk")
+                    and not line.startswith("OpenJDK")
+                ]
+                # Get last meaningful error lines (usually at the end)
+                error_msg = (
+                    "\n".join(error_lines[-10:]) if error_lines else result.stderr
+                )
+                logger.error(f"Ghidra analysis failed: {error_msg}")
+                report_log(f"[ERROR] Ghidra analysis failed:\n{error_msg}")
                 # If cached project failed, clear cache and suggest retry
                 if not is_new_project:
                     clear_ghidra_cache()
-                return False, f"Ghidra analysis failed: {result.stderr[:200]}"
+                return False, f"Ghidra analysis failed: {error_msg}"
             return False, "Decompilation produced no output"
 
     except subprocess.TimeoutExpired:

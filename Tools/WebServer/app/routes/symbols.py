@@ -306,6 +306,8 @@ def api_decompile_symbol():
 def api_decompile_symbol_stream():
     """Decompile a specific function using Ghidra with streaming progress."""
     import json
+    import queue
+    import threading
     from core import elf_utils
 
     func_name = request.args.get("func", "")
@@ -323,30 +325,62 @@ def api_decompile_symbol_stream():
         return jsonify({"success": False, "error": "GHIDRA_NOT_CONFIGURED"})
 
     def generate():
+        # Use a queue to pass progress messages from callback to generator
+        progress_queue = queue.Queue()
+        result_holder = {"success": None, "result": None}
+
+        def progress_callback(stage, message):
+            """Callback invoked by decompile_function with progress updates."""
+            progress_queue.put({"type": "status", "stage": stage, "message": message})
+
+        def log_callback(message):
+            """Callback to log messages to OUTPUT terminal."""
+            device.add_tool_log(message)
+
+        def run_decompile():
+            """Run decompilation in a separate thread."""
+            try:
+                success, result = elf_utils.decompile_function(
+                    device.elf_path,
+                    func_name,
+                    ghidra_path,
+                    progress_callback=progress_callback,
+                    log_callback=log_callback,
+                )
+                result_holder["success"] = success
+                result_holder["result"] = result
+            except Exception as e:
+                result_holder["success"] = False
+                result_holder["result"] = str(e)
+            finally:
+                # Signal completion
+                progress_queue.put(None)
+
+        # Start decompilation in background thread
+        thread = threading.Thread(target=run_decompile)
+        thread.start()
+
         try:
-            # Check if we have a cached project
-            cached = elf_utils._ghidra_project_cache
-            elf_mtime = os.path.getmtime(device.elf_path)
-            use_cache = (
-                cached["elf_path"] == device.elf_path
-                and cached["elf_mtime"] == elf_mtime
-                and cached["project_dir"]
-                and os.path.exists(cached["project_dir"])
-            )
+            # Yield progress messages as they arrive
+            while True:
+                try:
+                    msg = progress_queue.get(timeout=0.5)
+                    if msg is None:
+                        # Decompilation finished
+                        break
+                    yield f"data: {json.dumps(msg)}\n\n"
+                except queue.Empty:
+                    # No message yet, continue waiting
+                    continue
 
-            if use_cache:
-                yield f"data: {json.dumps({'type': 'status', 'stage': 'decompiling', 'message': 'Using cached analysis...'})}\n\n"
+            # Wait for thread to finish
+            thread.join(timeout=5)
+
+            # Yield final result
+            if result_holder["success"]:
+                yield f"data: {json.dumps({'type': 'result', 'success': True, 'decompiled': result_holder['result']})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'status', 'stage': 'analyzing', 'message': 'Analyzing ELF file (first time, may take a while)...'})}\n\n"
-
-            # Call decompile function
-            fpb = _get_fpb_inject()
-            success, result = fpb.decompile_function(device.elf_path, func_name)
-
-            if success:
-                yield f"data: {json.dumps({'type': 'result', 'success': True, 'decompiled': result})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'result', 'success': False, 'error': result})}\n\n"
+                yield f"data: {json.dumps({'type': 'result', 'success': False, 'error': result_holder['result']})}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'result', 'success': False, 'error': str(e)})}\n\n"
