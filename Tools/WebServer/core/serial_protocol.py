@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Dict, Optional, Tuple
 
 from utils.crc import crc16
+from core.state import tool_log
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,7 @@ class FPBProtocol:
                 logger.warning(
                     f"Retry {attempt}/{max_retries} for command: {cmd[:50]}..."
                 )
-                self._log_raw("RETRY", f"Attempt {attempt + 1}/{max_retries + 1}")
+                tool_log(self.device, "WARN", f"Retry attempt {attempt + 1}/{max_retries + 1}")
                 time.sleep(0.05)
 
             logger.debug(f"TX: {full_cmd}")
@@ -225,13 +226,13 @@ class FPBProtocol:
                     break
                 else:
                     logger.warning("Response appears incomplete")
-                    self._log_raw("WARN", "Response incomplete, retrying...")
+                    tool_log(self.device, "WARN", "Response incomplete, retrying...")
                     continue
             elif "Missing --cmd" in response:
                 break
             else:
                 logger.warning("No valid response marker ([FLOK]/[FLERR]), retrying...")
-                self._log_raw("WARN", "No response marker, retrying...")
+                tool_log(self.device, "WARN", "No response marker, retrying...")
                 continue
 
         need_fl_mode = False
@@ -243,7 +244,7 @@ class FPBProtocol:
             need_fl_mode = True
 
         if retry_on_missing_cmd and need_fl_mode:
-            self._log_raw("INFO", "Entering fl interactive mode...")
+            tool_log(self.device, "INFO", "Entering fl interactive mode...")
             if self.enter_fl_mode():
                 return self.send_cmd(
                     cmd, timeout, retry_on_missing_cmd=False, max_retries=max_retries
