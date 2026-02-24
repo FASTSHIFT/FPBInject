@@ -136,6 +136,13 @@ async function saveConfig(silent = false) {
 
   for (const item of schema.schema) {
     const elementId = keyToElementId(item.key);
+
+    // path_list type doesn't have a direct element with elementId
+    if (item.config_type === 'path_list') {
+      config[item.key] = getPathListValues(item.key);
+      continue;
+    }
+
     const el = document.getElementById(elementId);
     if (!el) continue;
 
@@ -148,8 +155,6 @@ async function saveConfig(silent = false) {
         value = value / item.ui_multiplier;
       }
       config[item.key] = value;
-    } else if (item.config_type === 'path_list') {
-      config[item.key] = getPathListValues(item.key);
     } else {
       config[item.key] = el.value;
     }

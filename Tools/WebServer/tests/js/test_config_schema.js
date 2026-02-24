@@ -692,6 +692,83 @@ module.exports = function (w) {
       global.fetch = origFetch;
       w.FPBState.toolTerminal = null;
     });
+
+    it('saves path_list values without requiring element with elementId', async () => {
+      // This test covers the bug fix where path_list type config items
+      // (like watch_dirs) were not being saved because they don't have
+      // an element with id="watchDirs", only id="watchDirsSection" and
+      // id="watchDirsList"
+      resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'watch_dirs', config_type: 'path_list', default: [] },
+          { key: 'auto_compile', config_type: 'boolean', default: false },
+        ],
+        groups: {},
+        group_order: [],
+      });
+      await w.loadConfigSchema();
+
+      // Set up the watchDirsList element with mock input elements
+      const list = browserGlobals.document.getElementById('watchDirsList');
+      list.innerHTML = '';
+
+      // Mock querySelectorAll to return input elements with values
+      const mockInputs = [
+        { value: '/path/to/watch1', trim: () => '/path/to/watch1' },
+        { value: '/path/to/watch2', trim: () => '/path/to/watch2' },
+      ];
+      // Override value.trim() to return the paths
+      mockInputs.forEach((input) => {
+        input.value = { trim: () => input.value };
+        input.value = input._rawValue;
+      });
+
+      // Directly mock the querySelectorAll for this test
+      list.querySelectorAll = (selector) => {
+        if (selector === 'input[type="text"]') {
+          return [{ value: '/path/to/watch1' }, { value: '/path/to/watch2' }];
+        }
+        return [];
+      };
+
+      // Set up fetch mock to capture the POST request
+      let capturedBody = null;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async (url, options) => {
+        if (options?.method === 'POST' && url.includes('/api/config')) {
+          capturedBody = JSON.parse(options.body);
+        }
+        return { ok: true, json: async () => ({ success: true }) };
+      };
+      global.fetch = browserGlobals.fetch;
+
+      await w.saveConfigValues(true);
+
+      // Verify watch_dirs was included in the POST body
+      assertTrue(capturedBody !== null, 'POST request should have been made');
+      assertTrue(
+        Array.isArray(capturedBody.watch_dirs),
+        'watch_dirs should be an array',
+      );
+      assertEqual(
+        capturedBody.watch_dirs.length,
+        2,
+        'watch_dirs should have 2 items',
+      );
+      assertTrue(
+        capturedBody.watch_dirs.includes('/path/to/watch1'),
+        'watch_dirs should include /path/to/watch1',
+      );
+      assertTrue(
+        capturedBody.watch_dirs.includes('/path/to/watch2'),
+        'watch_dirs should include /path/to/watch2',
+      );
+
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+    });
   });
 
   describe('onConfigItemChange Function', () => {

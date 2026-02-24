@@ -374,6 +374,64 @@ module.exports = function (w) {
       assertEqual(typeof w.loadConfig, 'function');
       w.FPBState.toolTerminal = null;
     });
+
+    it('saves path_list config items (watch_dirs) correctly', async () => {
+      // Bug fix test: path_list items like watch_dirs should be saved
+      // even though they don't have an element with id="watchDirs"
+      resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
+      w.FPBState.toolTerminal = new MockTerminal();
+
+      // Set up schema with path_list type
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          { key: 'watch_dirs', config_type: 'path_list', default: [] },
+          { key: 'elf_path', config_type: 'file_path', default: '' },
+        ],
+        groups: {},
+        group_order: [],
+      });
+      await w.loadConfigSchema();
+
+      // Set up the watchDirsList element with mocked querySelectorAll
+      const list = browserGlobals.document.getElementById('watchDirsList');
+      list.innerHTML = '';
+      list.querySelectorAll = (selector) => {
+        if (selector === 'input[type="text"]') {
+          return [{ value: '/watch/path1' }, { value: '/watch/path2' }];
+        }
+        return [];
+      };
+
+      // Capture the POST request body
+      let capturedBody = null;
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async (url, options) => {
+        if (options?.method === 'POST' && url.includes('/api/config')) {
+          capturedBody = JSON.parse(options.body);
+        }
+        return { ok: true, json: async () => ({ success: true }) };
+      };
+      global.fetch = browserGlobals.fetch;
+
+      await w.saveConfig(true);
+
+      // Verify watch_dirs was included in the request
+      assertTrue(capturedBody !== null, 'POST request should be made');
+      assertTrue(
+        Array.isArray(capturedBody.watch_dirs),
+        'watch_dirs should be included as array',
+      );
+      assertEqual(
+        capturedBody.watch_dirs.length,
+        2,
+        'watch_dirs should have 2 items',
+      );
+
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+      w.FPBState.toolTerminal = null;
+    });
   });
 
   describe('setupAutoSave Function', () => {
