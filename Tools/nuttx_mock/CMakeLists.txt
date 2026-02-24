@@ -47,11 +47,9 @@ set(NUTTX_MOCK_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Include directories
 include_directories(
-  ${NUTTX_MOCK_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../Source
+  ${NUTTX_MOCK_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../Source
   ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/argparse
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/umm_malloc/src)
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/argparse)
 
 # Source files for NuttX build test
 set(FPB_SOURCES
@@ -66,14 +64,6 @@ set(FL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/func_loader_port_nuttx.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/argparse/argparse.c)
 
-# UMM malloc sources
-set(UMM_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/umm_malloc/src/umm_malloc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/umm_malloc/src/umm_info.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/umm_malloc/src/umm_integrity.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../App/func_loader/umm_malloc/src/umm_poison.c
-)
-
 # Options (mirrors main CMakeLists.txt)
 option(FPB_NO_TRAMPOLINE "Disable trampoline" OFF)
 option(FPB_TRAMPOLINE_NO_ASM "Use C trampoline instead of ASM" ON) # Use C for
@@ -81,7 +71,7 @@ option(FPB_TRAMPOLINE_NO_ASM "Use C trampoline instead of ASM" ON) # Use C for
 option(FPB_NO_DEBUGMON "Disable DebugMonitor" OFF)
 set(FL_ALLOC_MODE
     "STATIC"
-    CACHE STRING "Allocation mode: STATIC, LIBC, UMM")
+    CACHE STRING "Allocation mode: STATIC, LIBC")
 set(FL_NUTTX_BUF_SIZE
     "1024"
     CACHE STRING "NuttX buffer size (>0=static, 0=dynamic)")
@@ -110,9 +100,6 @@ if(FL_ALLOC_MODE STREQUAL "STATIC")
   add_definitions(-DFL_ALLOC_MODE=0)
 elseif(FL_ALLOC_MODE STREQUAL "LIBC")
   add_definitions(-DFL_ALLOC_MODE=1)
-elseif(FL_ALLOC_MODE STREQUAL "UMM")
-  add_definitions(-DFL_ALLOC_MODE=2)
-  list(APPEND FL_SOURCES ${UMM_SOURCES})
 endif()
 
 # NuttX buffer size

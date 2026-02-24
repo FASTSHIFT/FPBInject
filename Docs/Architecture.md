@@ -166,7 +166,7 @@ __attribute__((aligned(8), section(".ram_code")))
 static uint8_t inject_buffer[4096];
 ```
 
-### Dynamic Mode (LIBC/UMM)
+### Dynamic Mode (LIBC)
 
 Uses `malloc()` with 8-byte alignment handling:
 

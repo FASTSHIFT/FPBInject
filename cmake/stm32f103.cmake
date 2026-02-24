@@ -57,12 +57,11 @@ option(FPB_TRAMPOLINE_NO_ASM
 option(FPB_NO_DEBUGMON "Disable DebugMonitor-based redirection" OFF)
 
 # Function loader allocation mode: STATIC = Static buffer allocation (default)
-# LIBC   = Use standard libc malloc/free UMM    = Use umm_malloc (embedded
-# allocator)
+# LIBC   = Use standard libc malloc/free
 set(FL_ALLOC_MODE
     "STATIC"
-    CACHE STRING "Function loader memory allocation mode (STATIC/LIBC/UMM)")
-set_property(CACHE FL_ALLOC_MODE PROPERTY STRINGS "STATIC" "LIBC" "UMM")
+    CACHE STRING "Function loader memory allocation mode (STATIC/LIBC)")
+set_property(CACHE FL_ALLOC_MODE PROPERTY STRINGS "STATIC" "LIBC")
 
 # Compile definitions
 add_compile_definitions(
@@ -86,8 +85,6 @@ endif()
 # Add allocation mode definition
 if(FL_ALLOC_MODE STREQUAL "LIBC")
   add_compile_definitions(FL_ALLOC_LIBC)
-elseif(FL_ALLOC_MODE STREQUAL "UMM")
-  add_compile_definitions(FL_ALLOC_UMM)
 else()
   add_compile_definitions(FL_ALLOC_STATIC)
 endif()
@@ -121,13 +118,6 @@ file(GLOB APP_TEST_SOURCES ${APP_DIR}/test/*.c ${APP_DIR}/test/*.cpp)
 
 file(GLOB APP_FUNC_LOADER_SOURCES ${APP_DIR}/func_loader/*.c
      ${APP_DIR}/func_loader/*.cpp ${APP_DIR}/func_loader/argparse/*.c)
-
-# Add UMM_MALLOC sources only when needed
-if(FL_ALLOC_MODE STREQUAL "UMM")
-  list(APPEND APP_FUNC_LOADER_SOURCES
-       ${APP_DIR}/func_loader/umm_malloc/src/umm_malloc.c
-       ${APP_DIR}/func_loader/umm_malloc/src/umm_info.c)
-endif()
 
 # Arduino API
 file(GLOB ARDUINO_SOURCES ${ARDUINO_DIR}/*.c ${ARDUINO_DIR}/*.cpp)
@@ -168,7 +158,6 @@ set(INCLUDE_DIRS
     ${APP_DIR}/test
     ${APP_DIR}/func_loader
     ${APP_DIR}/func_loader/argparse
-    ${APP_DIR}/func_loader/umm_malloc/src
     ${ARDUINO_DIR}
     ${ARDUINO_DIR}/avr
     ${PLATFORM_DIR}/Config

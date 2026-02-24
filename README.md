@@ -78,7 +78,7 @@ void digitalWrite(uint8_t pin, uint8_t value) {
 | Option | Default | Description |
 |--------|---------|-------------|
 | `APP_SELECT` | 1 | Application (3=func_loader) |
-| `FL_ALLOC_MODE` | STATIC | Memory: STATIC/LIBC/UMM |
+| `FL_ALLOC_MODE` | STATIC | Memory: STATIC/LIBC |
 | `FPB_NO_DEBUGMON` | OFF | Disable DebugMonitor |
 
 ## Hardware

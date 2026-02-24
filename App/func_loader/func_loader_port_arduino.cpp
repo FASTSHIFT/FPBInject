@@ -25,10 +25,9 @@
  * @file   func_loader_port_arduino.cpp
  * @brief  Arduino/STM32 porting layer
  *
- * Supports three allocation modes (selected via CMake FL_ALLOC_MODE):
+ * Supports two allocation modes (selected via CMake FL_ALLOC_MODE):
  *   - FL_ALLOC_STATIC: Static buffer allocation (default)
  *   - FL_ALLOC_LIBC:   Use standard libc malloc/free
- *   - FL_ALLOC_UMM:    Use umm_malloc (embedded allocator)
  */
 
 #include "func_loader.h"
@@ -36,11 +35,6 @@
 #include "fpbinject_version.h"
 #include <Arduino.h>
 #include <stdio.h>
-
-/* Include UMM_MALLOC header only when needed */
-#if defined(FL_ALLOC_UMM)
-#include "umm_malloc.h"
-#endif
 
 /* Include stdlib for LIBC malloc */
 #if defined(FL_ALLOC_LIBC)
@@ -96,22 +90,6 @@ static void alloc_init(void) {
 
 static void print_alloc_info(void) {
     printf("Allocator: LIBC malloc/free");
-}
-
-#elif defined(FL_ALLOC_UMM)
-/* --------------------------------------------------------------------------
- * UMM_MALLOC Mode
- * -------------------------------------------------------------------------- */
-#define ALLOC_MODE_NAME "UMM"
-
-static uint8_t s_heap_buf[1024] __attribute__((aligned(4)));
-
-static void alloc_init(void) {
-    umm_init_heap(s_heap_buf, sizeof(s_heap_buf));
-}
-
-static void print_alloc_info(void) {
-    printf("Heap: %u bytes @ 0x%08lX (UMM_MALLOC)\n", (unsigned)sizeof(s_heap_buf), (unsigned long)s_heap_buf);
 }
 
 #else
@@ -176,9 +154,6 @@ void func_loader_run(void) {
 #elif defined(FL_ALLOC_LIBC)
     s_ctx.malloc_cb = malloc;
     s_ctx.free_cb = free;
-#elif defined(FL_ALLOC_UMM)
-    s_ctx.malloc_cb = umm_malloc;
-    s_ctx.free_cb = umm_free;
 #endif
 
     static fl_stream_t s_stream;
