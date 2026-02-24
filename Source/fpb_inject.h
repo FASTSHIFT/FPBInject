@@ -156,32 +156,10 @@ fpb_result_t fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t pat
 fpb_result_t fpb_clear_patch(uint8_t comp_id);
 
 /**
- * @brief  Enable/disable specified comparator
- * @param  comp_id: Comparator ID
- * @param  enable: true-enable, false-disable
- * @retval FPB_OK: Success
- * @retval FPB_ERR_NOT_INIT: FPB not initialized
- * @retval FPB_ERR_INVALID_COMP: Invalid comparator ID
- */
-fpb_result_t fpb_enable_comp(uint8_t comp_id, bool enable);
-
-/**
  * @brief  Get FPB state information
  * @return Pointer to FPB state structure
  */
 const fpb_state_t* fpb_get_state(void);
-
-/**
- * @brief  Check if FPB is supported
- * @retval true: Supported, false: Not supported
- */
-bool fpb_is_supported(void);
-
-/**
- * @brief  Get available code comparator count
- * @return Available comparator count
- */
-uint8_t fpb_get_num_code_comp(void);
 
 /**
  * @brief  Get detailed FPB device information
@@ -196,28 +174,6 @@ uint8_t fpb_get_num_code_comp(void);
  * - FP_COMPn: each comparator's match address, mode, and enable status
  */
 fpb_result_t fpb_get_info(fpb_info_t* info);
-
-/**
- * @brief  Set instruction-level patch (replace single Thumb instruction)
- * @param  comp_id: Comparator ID
- * @param  addr: Instruction address (2-byte aligned)
- * @param  new_instruction: New Thumb instruction (16-bit)
- * @param  is_upper: true-replace upper halfword, false-replace lower halfword
- * @retval FPB_OK: Success
- * @retval FPB_ERR_NOT_INIT: FPB not initialized
- * @retval FPB_ERR_INVALID_COMP: Invalid comparator ID
- * @retval FPB_ERR_INVALID_ADDR: Address not in Code region
- */
-fpb_result_t fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper);
-
-/**
- * @brief  Generate Thumb branch instruction
- * @param  from_addr: Branch source address
- * @param  to_addr: Branch target address
- * @param  instruction: Output instruction buffer (at least 4 bytes)
- * @return Instruction length (2 or 4 bytes)
- */
-uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* instruction);
 
 /**
  * @brief Get remap table base address for testing/debugging

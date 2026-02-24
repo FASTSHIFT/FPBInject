@@ -170,39 +170,6 @@ void test_fpb_clear_patch_not_set(void) {
 }
 
 /* ============================================================================
- * fpb_enable_comp Tests
- * ============================================================================ */
-
-void test_fpb_enable_comp_enable(void) {
-    setup_fpb();
-    fpb_init();
-    fpb_set_patch(0, 0x08001000, 0x20002000);
-    fpb_enable_comp(0, false);
-
-    fpb_result_t ret = fpb_enable_comp(0, true);
-    TEST_ASSERT_EQUAL(FPB_OK, ret);
-    TEST_ASSERT_TRUE(mock_fpb_comp_is_enabled(0));
-}
-
-void test_fpb_enable_comp_disable(void) {
-    setup_fpb();
-    fpb_init();
-    fpb_set_patch(0, 0x08001000, 0x20002000);
-
-    fpb_result_t ret = fpb_enable_comp(0, false);
-    TEST_ASSERT_EQUAL(FPB_OK, ret);
-    TEST_ASSERT_FALSE(mock_fpb_comp_is_enabled(0));
-}
-
-void test_fpb_enable_comp_invalid(void) {
-    setup_fpb();
-    fpb_init();
-
-    fpb_result_t ret = fpb_enable_comp(99, true);
-    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_COMP, ret);
-}
-
-/* ============================================================================
  * fpb_get_state Tests
  * ============================================================================ */
 
@@ -241,32 +208,6 @@ void test_fpb_get_state_after_patch(void) {
     const fpb_state_t* state = fpb_get_state();
     TEST_ASSERT_TRUE(state->comp[0].enabled);
     TEST_ASSERT_EQUAL_HEX(0x08001000, state->comp[0].original_addr);
-}
-
-/* ============================================================================
- * fpb_is_supported Tests
- * ============================================================================ */
-
-void test_fpb_is_supported_with_comps(void) {
-    setup_fpb();
-    fpb_init();
-    TEST_ASSERT_TRUE(fpb_is_supported());
-}
-
-/* ============================================================================
- * fpb_get_num_code_comp Tests
- * ============================================================================ */
-
-void test_fpb_get_num_code_comp(void) {
-    setup_fpb();
-    fpb_init();
-    TEST_ASSERT_EQUAL(6, fpb_get_num_code_comp());
-}
-
-void test_fpb_get_num_code_comp_v2(void) {
-    setup_fpb_v2();
-    fpb_init();
-    TEST_ASSERT_EQUAL(8, fpb_get_num_code_comp());
 }
 
 /* ============================================================================
@@ -399,73 +340,6 @@ void test_fpb_get_info_comp_raw(void) {
 }
 
 /* ============================================================================
- * fpb_generate_thumb_jump Tests
- * ============================================================================ */
-
-void test_fpb_generate_thumb_jump_short(void) {
-    uint8_t instr[4];
-    uint8_t len = fpb_generate_thumb_jump(0x08001000, 0x08001100, instr);
-    TEST_ASSERT(len == 2 || len == 4);
-}
-
-void test_fpb_generate_thumb_jump_long(void) {
-    uint8_t instr[4];
-    uint8_t len = fpb_generate_thumb_jump(0x08001000, 0x08100000, instr);
-    TEST_ASSERT_EQUAL(4, len);
-}
-
-void test_fpb_generate_thumb_jump_backward(void) {
-    uint8_t instr[4];
-    uint8_t len = fpb_generate_thumb_jump(0x08001100, 0x08001000, instr);
-    TEST_ASSERT(len == 2 || len == 4);
-}
-
-/* ============================================================================
- * fpb_set_instruction_patch Tests
- * ============================================================================ */
-
-void test_fpb_set_instruction_patch_basic(void) {
-    setup_fpb();
-    fpb_init();
-
-    fpb_result_t ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false); /* BX LR */
-    TEST_ASSERT_EQUAL(FPB_OK, ret);
-}
-
-void test_fpb_set_instruction_patch_upper(void) {
-    setup_fpb();
-    fpb_init();
-
-    fpb_result_t ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, true); /* Upper half */
-    TEST_ASSERT_EQUAL(FPB_OK, ret);
-}
-
-void test_fpb_set_instruction_patch_not_initialized(void) {
-    setup_fpb();
-    /* Don't init FPB */
-
-    fpb_result_t ret = fpb_set_instruction_patch(0, 0x08001000, 0x4770, false);
-    TEST_ASSERT_EQUAL(FPB_ERR_NOT_INIT, ret);
-}
-
-void test_fpb_set_instruction_patch_invalid_comp(void) {
-    setup_fpb();
-    fpb_init();
-
-    fpb_result_t ret = fpb_set_instruction_patch(100, 0x08001000, 0x4770, false);
-    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_COMP, ret);
-}
-
-void test_fpb_set_instruction_patch_ram_address(void) {
-    setup_fpb();
-    fpb_init();
-
-    /* RAM address should fail */
-    fpb_result_t ret = fpb_set_instruction_patch(0, 0x20001000, 0x4770, false);
-    TEST_ASSERT_EQUAL(FPB_ERR_INVALID_ADDR, ret);
-}
-
-/* ============================================================================
  * Remap Table Index Tests (Bug Regression Tests)
  *
  * These tests verify the fix for the remap table index bug where:
@@ -568,7 +442,7 @@ void test_fpb_remap_table_all_slots(void) {
     fpb_init();
 
     /* Get actual number of code comparators from hardware */
-    uint8_t num_code_comp = fpb_get_num_code_comp();
+    uint8_t num_code_comp = fpb_get_state()->num_code_comp;
 
     /* Set patches on all available slots */
     for (uint8_t i = 0; i < num_code_comp; i++) {
@@ -590,7 +464,7 @@ void test_fpb_remap_table_all_slots_v2(void) {
     fpb_init();
 
     /* FPB v2: 8 code comparators */
-    uint8_t num_code_comp = fpb_get_num_code_comp();
+    uint8_t num_code_comp = fpb_get_state()->num_code_comp;
     TEST_ASSERT_EQUAL(8, num_code_comp);
 
     /* Set patches on all 8 slots */
@@ -641,23 +515,11 @@ void run_fpb_tests(void) {
     RUN_TEST(test_fpb_clear_patch_not_set);
     TEST_SUITE_END();
 
-    TEST_SUITE_BEGIN("fpb_inject - Enable/Disable");
-    RUN_TEST(test_fpb_enable_comp_enable);
-    RUN_TEST(test_fpb_enable_comp_disable);
-    RUN_TEST(test_fpb_enable_comp_invalid);
-    TEST_SUITE_END();
-
     TEST_SUITE_BEGIN("fpb_inject - State Query");
     RUN_TEST(test_fpb_get_state_basic);
     RUN_TEST(test_fpb_get_state_num_comp);
     RUN_TEST(test_fpb_get_state_num_comp_v2);
     RUN_TEST(test_fpb_get_state_after_patch);
-    TEST_SUITE_END();
-
-    TEST_SUITE_BEGIN("fpb_inject - Support Query");
-    RUN_TEST(test_fpb_is_supported_with_comps);
-    RUN_TEST(test_fpb_get_num_code_comp);
-    RUN_TEST(test_fpb_get_num_code_comp_v2);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("fpb_inject - Device Info");
@@ -671,20 +533,6 @@ void run_fpb_tests(void) {
     RUN_TEST(test_fpb_get_info_remap_base);
     RUN_TEST(test_fpb_get_info_comp_fields);
     RUN_TEST(test_fpb_get_info_comp_raw);
-    TEST_SUITE_END();
-
-    TEST_SUITE_BEGIN("fpb_inject - Thumb Jump Generation");
-    RUN_TEST(test_fpb_generate_thumb_jump_short);
-    RUN_TEST(test_fpb_generate_thumb_jump_long);
-    RUN_TEST(test_fpb_generate_thumb_jump_backward);
-    TEST_SUITE_END();
-
-    TEST_SUITE_BEGIN("fpb_inject - Instruction Patch");
-    RUN_TEST(test_fpb_set_instruction_patch_basic);
-    RUN_TEST(test_fpb_set_instruction_patch_upper);
-    RUN_TEST(test_fpb_set_instruction_patch_not_initialized);
-    RUN_TEST(test_fpb_set_instruction_patch_invalid_comp);
-    RUN_TEST(test_fpb_set_instruction_patch_ram_address);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("fpb_inject - Remap Table Index (Bug Regression)");

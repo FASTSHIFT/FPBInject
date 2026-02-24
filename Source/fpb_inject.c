@@ -297,43 +297,8 @@ fpb_result_t fpb_clear_patch(uint8_t comp_id) {
     return FPB_OK;
 }
 
-fpb_result_t fpb_enable_comp(uint8_t comp_id, bool enable) {
-    if (!g_fpb_state.initialized) {
-        return FPB_ERR_NOT_INIT;
-    }
-
-    if (comp_id >= g_fpb_state.num_code_comp) {
-        return FPB_ERR_INVALID_COMP;
-    }
-
-    uint32_t comp_val = FPB_COMP(comp_id);
-
-    if (enable) {
-        comp_val |= FPB_COMP_ENABLE;
-    } else {
-        comp_val &= ~FPB_COMP_ENABLE;
-    }
-
-    FPB_COMP(comp_id) = comp_val;
-    g_fpb_state.comp[comp_id].enabled = enable;
-
-    dsb();
-    isb();
-
-    return FPB_OK;
-}
-
 const fpb_state_t* fpb_get_state(void) {
     return &g_fpb_state;
-}
-
-bool fpb_is_supported(void) {
-    fpb_info_t info;
-    return (fpb_get_info(&info) == FPB_OK && info.num_code_comp > 0);
-}
-
-uint8_t fpb_get_num_code_comp(void) {
-    return g_fpb_state.num_code_comp;
 }
 
 fpb_result_t fpb_get_info(fpb_info_t* info) {
@@ -393,85 +358,6 @@ fpb_result_t fpb_get_info(fpb_info_t* info) {
     }
 
     return FPB_OK;
-}
-
-fpb_result_t fpb_set_instruction_patch(uint8_t comp_id, uint32_t addr, uint16_t new_instruction, bool is_upper) {
-    if (!g_fpb_state.initialized) {
-        return FPB_ERR_NOT_INIT;
-    }
-
-    if (comp_id >= g_fpb_state.num_code_comp) {
-        return FPB_ERR_INVALID_COMP;
-    }
-
-    addr &= ~3UL;
-
-    if (addr >= 0x20000000UL) {
-        return FPB_ERR_INVALID_ADDR;
-    }
-
-    /*
-     * Note: This function is designed for FPB Version 1 REMAP mode.
-     *
-     * When REPLACE = 00 (REMAP mode), the FPB fetches from remap table.
-     * The remap table entry at index comp_id contains the replacement word.
-     *
-     * For 16-bit instruction replacement:
-     *   - is_upper=false: replace lower halfword at the matched address
-     *   - is_upper=true: replace upper halfword at the matched address
-     *
-     * The 32-bit remap table entry layout:
-     *   - bits[15:0] = lower halfword instruction
-     *   - bits[31:16] = upper halfword instruction
-     */
-
-    if (is_upper) {
-        /* Store instruction in upper halfword, preserve lower halfword */
-        g_fpb_remap_table[comp_id] = (g_fpb_remap_table[comp_id] & 0xFFFF) | ((uint32_t)new_instruction << 16);
-    } else {
-        /* Store instruction in lower halfword, preserve upper halfword */
-        g_fpb_remap_table[comp_id] = (g_fpb_remap_table[comp_id] & 0xFFFF0000) | new_instruction;
-    }
-
-    /* Set remap base - bits[28:5] of the table address, bits[31:29] hardwired to SRAM */
-    FPB_REMAP = ((uint32_t)(uintptr_t)g_fpb_remap_table) & 0x1FFFFFE0UL;
-
-    /* Configure comparator for REMAP mode (REPLACE = 00) */
-    uint32_t comp_val = (addr & FPB_COMP_ADDR_MASK) | FPB_REPLACE_REMAP | FPB_COMP_ENABLE;
-
-    FPB_COMP(comp_id) = comp_val;
-
-    g_fpb_state.comp[comp_id].original_addr = addr;
-    g_fpb_state.comp[comp_id].patch_addr = new_instruction;
-    g_fpb_state.comp[comp_id].enabled = true;
-
-    dsb();
-    isb();
-
-    return FPB_OK;
-}
-
-uint8_t fpb_generate_thumb_jump(uint32_t from_addr, uint32_t to_addr, uint8_t* instruction) {
-    int32_t offset = (int32_t)(to_addr - from_addr - 4);
-
-    if (offset >= -2048 && offset <= 2046) {
-        uint16_t imm11 = (offset >> 1) & 0x7FF;
-        uint16_t instr = 0xE000 | imm11;
-
-        instruction[0] = instr & 0xFF;
-        instruction[1] = (instr >> 8) & 0xFF;
-
-        return 2;
-    } else {
-        uint32_t instr = generate_b_w_instruction(from_addr, to_addr);
-
-        instruction[0] = instr & 0xFF;
-        instruction[1] = (instr >> 8) & 0xFF;
-        instruction[2] = (instr >> 16) & 0xFF;
-        instruction[3] = (instr >> 24) & 0xFF;
-
-        return 4;
-    }
 }
 
 /**
