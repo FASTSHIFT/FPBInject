@@ -13,11 +13,20 @@ import base64
 import logging
 import re
 import time
+from enum import Enum
 from typing import Dict, Optional, Tuple
 
 from utils.crc import crc16
 
 logger = logging.getLogger(__name__)
+
+
+class Platform(Enum):
+    """Platform types for FPB communication."""
+
+    UNKNOWN = "unknown"
+    NUTTX = "nuttx"
+    BARE_METAL = "bare-metal"
 
 
 class FPBProtocolError(Exception):
@@ -33,9 +42,9 @@ class FPBProtocol:
         """Initialize FPB protocol handler."""
         self.device = device_state
         self._in_fl_mode = False
-        self._platform = "unknown"
+        self._platform = Platform.UNKNOWN
 
-    def get_platform(self) -> str:
+    def get_platform(self) -> Platform:
         """Get detected platform type."""
         return self._platform
 
@@ -45,7 +54,7 @@ class FPBProtocol:
             logger.debug("Already in fl mode, skipping enter_fl_mode")
             return True
 
-        if self.get_platform() == "bare-metal":
+        if self._platform == Platform.BARE_METAL:
             logger.debug("Bare Metal platform, skipping enter_fl_mode")
             return True
 
@@ -56,7 +65,7 @@ class FPBProtocol:
         ser = self.device.ser
         if not ser:
             self._in_fl_mode = False
-            self._platform = "unknown"
+            self._platform = Platform.UNKNOWN
             return False
 
         # If already in fl mode, just return
@@ -88,11 +97,11 @@ class FPBProtocol:
 
             if "fl>" in response:
                 self._in_fl_mode = True
-                self._platform = "nuttx"
+                self._platform = Platform.NUTTX
                 logger.info("Detected NuttX platform (fl interactive mode)")
                 return True
             elif "Enter" in response and "interactive mode" in response:
-                self._platform = "nuttx"
+                self._platform = Platform.NUTTX
                 logger.info("Detected NuttX platform (requires interactive mode)")
                 start = time.time()
                 while time.time() - start < timeout:
@@ -109,12 +118,12 @@ class FPBProtocol:
                 return False
             else:
                 self._in_fl_mode = False
-                self._platform = "bare-metal"
+                self._platform = Platform.BARE_METAL
                 return False
         except Exception as e:
             logger.error(f"Error entering fl mode: {e}")
             self._in_fl_mode = False
-            self._platform = "unknown"
+            self._platform = Platform.UNKNOWN
             return False
 
     def exit_fl_mode(self, timeout: float = 0.3) -> bool:
@@ -221,7 +230,7 @@ class FPBProtocol:
 
         need_fl_mode = False
         if "Enter" in last_response and "interactive mode" in last_response:
-            self._platform = "nuttx"
+            self._platform = Platform.NUTTX
             need_fl_mode = True
             logger.info("Detected NuttX platform (requires fl interactive mode)")
         elif "Missing --cmd" in last_response:

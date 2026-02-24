@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fpb_inject import (  # noqa: E402
     FPBInject,
     FPBInjectError,
+    Platform,
     scan_serial_ports,
     serial_open,
 )
@@ -337,7 +338,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         result = self.fpb.enter_fl_mode(timeout=0.1)
 
         self.assertTrue(result)
-        self.assertEqual(self.fpb.get_platform(), "nuttx")
+        self.assertEqual(self.fpb.get_platform(), Platform.NUTTX)
         self.device.ser.write.assert_called()
 
     def test_enter_fl_mode_bare_metal(self):
@@ -348,7 +349,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         result = self.fpb.enter_fl_mode(timeout=0.1)
 
         self.assertFalse(result)
-        self.assertEqual(self.fpb.get_platform(), "bare-metal")
+        self.assertEqual(self.fpb.get_platform(), Platform.BARE_METAL)
 
     def test_enter_fl_mode_nuttx_hint(self):
         """Test detecting NuttX platform via hint message"""
@@ -377,11 +378,11 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         result = self.fpb.enter_fl_mode(timeout=0.2)
 
         self.assertTrue(result)
-        self.assertEqual(self.fpb.get_platform(), "nuttx")
+        self.assertEqual(self.fpb.get_platform(), Platform.NUTTX)
 
     def test_get_platform_default(self):
         """Test default platform value"""
-        self.assertEqual(self.fpb.get_platform(), "unknown")
+        self.assertEqual(self.fpb.get_platform(), Platform.UNKNOWN)
 
     def test_exit_fl_mode(self):
         """Test exiting fl mode"""

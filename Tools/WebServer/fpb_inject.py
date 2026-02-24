@@ -16,7 +16,7 @@ from typing import Dict, Optional, Tuple
 
 from core import elf_utils
 from core import compiler as compiler_utils
-from core.serial_protocol import FPBProtocol, FPBProtocolError
+from core.serial_protocol import FPBProtocol, FPBProtocolError, Platform
 from utils.serial import scan_serial_ports, serial_open
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ FPBInjectError = FPBProtocolError
 __all__ = [
     "FPBInject",
     "FPBInjectError",
+    "Platform",
     "scan_serial_ports",
     "serial_open",
 ]
@@ -79,7 +80,7 @@ class FPBInject:
         """Enter fl interactive mode."""
         return self._protocol.enter_fl_mode(timeout)
 
-    def get_platform(self) -> str:
+    def get_platform(self) -> Platform:
         """Get detected platform type."""
         return self._protocol.get_platform()
 
