@@ -64,13 +64,13 @@ set(SUT_SOURCES_COMMON
     # FPB trampoline (uses mock addresses when FPB_HOST_TESTING is defined)
     ${SRC_DIR}/fpb_trampoline.c
     # Function loader core
-    ${FUNC_LOADER_DIR}/func_loader.c
-    ${FUNC_LOADER_DIR}/func_loader_stream.c
-    ${FUNC_LOADER_DIR}/func_loader_log.c
-    ${FUNC_LOADER_DIR}/func_allocator.c
+    ${FUNC_LOADER_DIR}/fl.c
+    ${FUNC_LOADER_DIR}/fl_stream.c
+    ${FUNC_LOADER_DIR}/fl_log.c
+    ${FUNC_LOADER_DIR}/fl_allocator.c
     # File transfer (libc backend for host)
-    ${FUNC_LOADER_DIR}/func_loader_file.c
-    ${FUNC_LOADER_DIR}/func_loader_file_libc.c
+    ${FUNC_LOADER_DIR}/fl_file.c
+    ${FUNC_LOADER_DIR}/fl_file_libc.c
     # Argparse library
     ${FUNC_LOADER_DIR}/argparse/argparse.c)
 
@@ -80,13 +80,13 @@ set(SUT_SOURCES_FATFS
     ${SRC_DIR}/fpb_inject.c
     ${SRC_DIR}/fpb_trampoline.c
     # Function loader core
-    ${FUNC_LOADER_DIR}/func_loader.c
-    ${FUNC_LOADER_DIR}/func_loader_stream.c
-    ${FUNC_LOADER_DIR}/func_loader_log.c
-    ${FUNC_LOADER_DIR}/func_allocator.c
+    ${FUNC_LOADER_DIR}/fl.c
+    ${FUNC_LOADER_DIR}/fl_stream.c
+    ${FUNC_LOADER_DIR}/fl_log.c
+    ${FUNC_LOADER_DIR}/fl_allocator.c
     # File transfer (generic + FatFS backend)
-    ${FUNC_LOADER_DIR}/func_loader_file.c
-    ${FUNC_LOADER_DIR}/func_loader_file_fatfs.c
+    ${FUNC_LOADER_DIR}/fl_file.c
+    ${FUNC_LOADER_DIR}/fl_file_fatfs.c
     # Argparse library
     ${FUNC_LOADER_DIR}/argparse/argparse.c)
 

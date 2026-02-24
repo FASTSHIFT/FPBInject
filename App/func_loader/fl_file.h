@@ -22,12 +22,12 @@
  */
 
 /**
- * @file   func_loader_file.h
+ * @file   fl_file.h
  * @brief  File transfer module with filesystem abstraction
  */
 
-#ifndef __FUNC_LOADER_FILE_H
-#define __FUNC_LOADER_FILE_H
+#ifndef FL_FILE_H
+#define FL_FILE_H
 
 #ifndef FL_USE_FILE
 #define FL_USE_FILE 0
@@ -305,4 +305,4 @@ int fl_file_rename(fl_file_ctx_t* file_ctx, const char* oldpath, const char* new
 
 #endif /* FL_USE_FILE */
 
-#endif /* __FUNC_LOADER_FILE_H */
+#endif /* FL_FILE_H */

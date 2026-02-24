@@ -26,8 +26,8 @@
  * @brief  Function loader core implementation
  */
 
-#include "func_loader.h"
-#include "func_loader_log.h"
+#include "fl.h"
+#include "fl_log.h"
 #include "fpbinject_version.h"
 
 /* External argparse support */

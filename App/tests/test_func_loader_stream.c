@@ -8,8 +8,8 @@
 #include "test_framework.h"
 #include "mock_hardware.h"
 #include "fpb_mock_regs.h"
-#include "func_loader.h"
-#include "func_loader_stream.h"
+#include "fl.h"
+#include "fl_stream.h"
 
 /* Test context and stream */
 static fl_context_t test_ctx;

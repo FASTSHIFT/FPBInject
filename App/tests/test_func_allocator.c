@@ -7,7 +7,7 @@
 
 #include "test_framework.h"
 #include "mock_hardware.h"
-#include "func_allocator.h"
+#include "fl_allocator.h"
 #include <stdlib.h>
 
 /* Test buffer - large enough for multiple blocks */

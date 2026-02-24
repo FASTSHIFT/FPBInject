@@ -22,59 +22,59 @@
  */
 
 /**
- * @file   func_loader_log.h
- * @brief  Function loader logging utilities
+ * @file   fl_stream.h
+ * @brief  Serial stream processing for func_loader
  */
 
-#ifndef __FUNC_LOADER_LOG_H
-#define __FUNC_LOADER_LOG_H
+#ifndef FL_STREAM_H
+#define FL_STREAM_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
 
-/* Callback types */
-typedef void (*fl_output_cb_t)(void* user, const char* str);
+/* Serial callbacks */
+typedef int (*fl_serial_read_cb_t)(uint8_t* buf, size_t len);
+typedef int (*fl_serial_write_cb_t)(const uint8_t* buf, size_t len);
+typedef int (*fl_serial_available_cb_t)(void);
 
-/**
- * @brief Initialize logging with output callback
- * @param output_cb Output callback function
- * @param output_user User data for output callback
- */
-void fl_log_init(fl_output_cb_t output_cb, void* output_user);
+typedef struct {
+    fl_serial_read_cb_t read_cb;
+    fl_serial_write_cb_t write_cb;
+    fl_serial_available_cb_t available_cb;
+} fl_serial_t;
 
-/**
- * @brief Send a response with OK/ERR prefix
- * @param ok true for [FLOK], false for [FLERR]
- * @param fmt Printf-style format string
- * @param ... Format arguments
- */
-void fl_response(bool ok, const char* fmt, ...);
+struct fl_context_s;
 
-/**
- * @brief Print a message without OK/ERR prefix
- * @param fmt Printf-style format string
- * @param ... Format arguments
- */
-void fl_print(const char* fmt, ...);
+typedef struct {
+    struct fl_context_s* ctx;
+    const fl_serial_t* serial;
+    char* line_buf;
+    size_t line_size;
+    size_t line_pos;
+} fl_stream_t;
 
 /**
- * @brief Print a message with newline at the end
- * @param fmt Printf-style format string
- * @param ... Format arguments
+ * @brief Initialize stream processor
  */
-void fl_println(const char* fmt, ...);
+void fl_stream_init(fl_stream_t* s, struct fl_context_s* ctx, const fl_serial_t* serial, char* line_buf,
+                    size_t line_size);
 
 /**
- * @brief Print a raw string without formatting (no buffer limit)
- * @param str String to output
+ * @brief Process incoming serial data
  */
-void fl_print_raw(const char* str);
+void fl_stream_process(fl_stream_t* s);
+
+/**
+ * @brief Parse line and execute
+ */
+int fl_stream_exec_line(fl_stream_t* s, char* line);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __FUNC_LOADER_LOG_H */
+#endif /* FL_STREAM_H */

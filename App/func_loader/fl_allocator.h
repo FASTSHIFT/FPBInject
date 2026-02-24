@@ -22,7 +22,7 @@
  */
 
 /**
- * @file   func_allocator.h
+ * @file   fl_allocator.h
  * @brief  Safe fixed-block memory allocator for FL_ALLOC_STATIC mode
  *
  * Uses bitmap for allocation tracking, separating metadata from user data.
@@ -31,8 +31,8 @@
  *   [bitmap (ceil(n/8) bytes)] [size_table (n bytes)] [block0] [block1] ... [blockN-1]
  */
 
-#ifndef FUNC_ALLOCATOR_H
-#define FUNC_ALLOCATOR_H
+#ifndef FL_ALLOCATOR_H
+#define FL_ALLOCATOR_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -106,4 +106,4 @@ size_t func_alloc_size(const func_alloc_t* alloc, const void* ptr);
 } /* extern "C" */
 #endif
 
-#endif /* FUNC_ALLOCATOR_H */
+#endif /* FL_ALLOCATOR_H */

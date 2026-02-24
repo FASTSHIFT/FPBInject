@@ -26,7 +26,7 @@
  * @brief  Safe fixed-block memory allocator implementation
  */
 
-#include "func_allocator.h"
+#include "fl_allocator.h"
 #include <string.h>
 
 /* Magic number for validation */

@@ -34,12 +34,12 @@ if(NUTTX_APPS_DIR)
       MODULE
       ${CONFIG_FPBINJECT}
       SRCS
-      App/func_loader/func_loader_port_nuttx.c
-      App/func_loader/func_loader.c
-      App/func_loader/func_loader_log.c
-      App/func_loader/func_loader_file.c
-      App/func_loader/func_loader_file_posix.c
-      App/func_loader/func_loader_stream.c
+      App/func_loader/fl_port_nuttx.c
+      App/func_loader/fl.c
+      App/func_loader/fl_log.c
+      App/func_loader/fl_file.c
+      App/func_loader/fl_file_posix.c
+      App/func_loader/fl_stream.c
       App/func_loader/argparse/argparse.c
       Source/fpb_inject.c
       Source/fpb_trampoline.c

@@ -26,7 +26,7 @@
  * @brief  Function loader logging implementation
  */
 
-#include "func_loader_log.h"
+#include "fl_log.h"
 #include <stdarg.h>
 #include <stdio.h>
 

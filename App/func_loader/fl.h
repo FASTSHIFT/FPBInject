@@ -22,12 +22,12 @@
  */
 
 /**
- * @file   func_loader.h
+ * @file   fl.h
  * @brief  Function loader core API (minimal)
  */
 
-#ifndef __FUNC_LOADER_H
-#define __FUNC_LOADER_H
+#ifndef FL_H
+#define FL_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,7 +36,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "func_loader_file.h"
+#include "fl_file.h"
 
 /* Maximum slot count (FPB v1: 6, v2: 8) */
 #ifndef FL_MAX_SLOTS
@@ -121,4 +121,4 @@ void func_loader_run(void);
 }
 #endif
 
-#endif /* __FUNC_LOADER_H */
+#endif /* FL_H */

@@ -37,7 +37,7 @@
  * - stat() is not part of standard C, so fstat-like functionality is limited.
  */
 
-#include "func_loader_file.h"
+#include "fl_file.h"
 
 #if FL_FILE_USE_LIBC
 

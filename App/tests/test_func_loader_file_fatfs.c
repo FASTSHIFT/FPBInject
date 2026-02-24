@@ -8,8 +8,8 @@
 #include "test_framework.h"
 #include "mock_hardware.h"
 #include "mock_fatfs.h"
-#include "func_loader.h"
-#include "func_loader_file.h"
+#include "fl.h"
+#include "fl_file.h"
 
 #include <stdio.h>
 #include <string.h>

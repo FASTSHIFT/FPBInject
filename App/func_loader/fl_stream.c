@@ -26,8 +26,8 @@
  * @brief  Stream processing implementation
  */
 
-#include "func_loader_stream.h"
-#include "func_loader.h"
+#include "fl_stream.h"
+#include "fl.h"
 #include <string.h>
 
 #ifndef FL_MAX_ARGC

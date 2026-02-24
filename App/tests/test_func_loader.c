@@ -12,7 +12,7 @@
 #include "test_framework.h"
 #include "mock_hardware.h"
 #include "fpb_mock_regs.h"
-#include "func_loader.h"
+#include "fl.h"
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -373,7 +373,7 @@ void test_loader_max_slots(void) {
  * fl_exec_cmd Tests - File Commands
  * ============================================================================ */
 
-#include "func_loader_file.h"
+#include "fl_file.h"
 #include <unistd.h>
 
 static void setup_loader_with_file(void) {

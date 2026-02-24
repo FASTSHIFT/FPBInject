@@ -26,8 +26,8 @@
  * @brief  File transfer module implementation
  */
 
-#include "func_loader_file.h"
-#include "func_loader_log.h"
+#include "fl_file.h"
+#include "fl_log.h"
 
 #if FL_FILE_USE_POSIX
 

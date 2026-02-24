@@ -54,7 +54,7 @@
 #elif APP_SELECT == APP_TEST
 #include "test.h"
 #elif APP_SELECT == APP_FUNC_LOADER
-#include "func_loader.h"
+#include "fl.h"
 #endif
 
 /*===========================================================================

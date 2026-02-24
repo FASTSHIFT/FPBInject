@@ -50,7 +50,7 @@
 
 #ifdef __NuttX__
 
-#include "func_loader.h"
+#include "fl.h"
 #include <nuttx/config.h>
 #include <nuttx/cache.h>
 #include <stdio.h>
@@ -68,7 +68,7 @@
 
 /* Include func_allocator for static buffer mode */
 #if FL_NUTTX_BUF_SIZE > 0
-#include "func_allocator.h"
+#include "fl_allocator.h"
 #endif
 
 /* Output callback */

@@ -30,8 +30,8 @@
  *   - FL_ALLOC_LIBC:   Use standard libc malloc/free
  */
 
-#include "func_loader.h"
-#include "func_loader_stream.h"
+#include "fl.h"
+#include "fl_stream.h"
 #include "fpbinject_version.h"
 #include <Arduino.h>
 #include <stdio.h>
@@ -43,7 +43,7 @@
 
 /* Include func_allocator for FL_ALLOC_STATIC */
 #if defined(FL_ALLOC_STATIC)
-#include "func_allocator.h"
+#include "fl_allocator.h"
 #endif
 
 #define LED_PIN PC13
