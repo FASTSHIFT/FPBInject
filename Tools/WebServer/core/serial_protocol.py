@@ -39,6 +39,18 @@ class FPBProtocol:
         """Get detected platform type."""
         return self._platform
 
+    def try_enter_fl_mode(self, timeout: float = 0.5) -> bool:
+        """Try to enter fl interactive mode if not already in it."""
+        if self._in_fl_mode:
+            logger.debug("Already in fl mode, skipping enter_fl_mode")
+            return True
+
+        if self.get_platform() == "bare-metal":
+            logger.debug("Bare Metal platform, skipping enter_fl_mode")
+            return True
+
+        return self.enter_fl_mode(timeout)
+
     def enter_fl_mode(self, timeout: float = 0.5) -> bool:
         """Enter fl interactive mode by sending 'fl' command."""
         ser = self.device.ser
@@ -60,6 +72,7 @@ class FPBProtocol:
             start = time.time()
             response = ""
             while time.time() - start < timeout:
+                time.sleep(0.05)
                 if ser.in_waiting:
                     chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
                     response += chunk
@@ -69,7 +82,6 @@ class FPBProtocol:
                         or "[FLERR]" in response
                     ):
                         break
-                time.sleep(0.01)
 
             self._log_raw("RX", response.strip())
             logger.debug(f"Entered fl mode: {response.strip()}")
@@ -136,6 +148,8 @@ class FPBProtocol:
         ser = self.device.ser
         if not ser:
             raise FPBProtocolError("Serial port not connected")
+
+        self.try_enter_fl_mode()
 
         full_cmd = f"fl {cmd}" if not cmd.strip().startswith("fl ") else cmd
 
