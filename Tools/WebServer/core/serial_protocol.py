@@ -30,6 +30,13 @@ class Platform(Enum):
     BARE_METAL = "bare-metal"
 
 
+class LogDirection(Enum):
+    """Direction for serial log entries."""
+
+    TX = "TX"
+    RX = "RX"
+
+
 class FPBProtocolError(Exception):
     """Exception for FPB protocol operations."""
 
@@ -74,7 +81,7 @@ class FPBProtocol:
             return True
 
         try:
-            self._log_raw("TX", "fl")
+            self._log_raw(LogDirection.TX, "fl")
             ser.reset_input_buffer()
 
             # Let shell wake up
@@ -99,7 +106,7 @@ class FPBProtocol:
                     ):
                         break
 
-            self._log_raw("RX", response.strip())
+            self._log_raw(LogDirection.RX, response.strip())
             logger.debug(f"Entered fl mode: {response.strip()}")
 
             if "fl>" in response:
@@ -144,7 +151,7 @@ class FPBProtocol:
             return False
 
         try:
-            self._log_raw("TX", "exit")
+            self._log_raw(LogDirection.TX, "exit")
             ser.write(b"exit\n")
             ser.flush()
             self._in_fl_mode = False
@@ -183,7 +190,7 @@ class FPBProtocol:
                 time.sleep(0.05)
 
             logger.debug(f"TX: {full_cmd}")
-            self._log_raw("TX", full_cmd)
+            self._log_raw(LogDirection.TX, full_cmd)
 
             ser.reset_input_buffer()
 
@@ -217,7 +224,7 @@ class FPBProtocol:
             # Log raw response first (with [FLEND] marker)
             response = response.strip()
             logger.debug(f"RX: {response}")
-            self._log_raw("RX", response)
+            self._log_raw(LogDirection.RX, response)
 
             # Remove [FLEND] marker from response for processing
             response = response.replace("[FLEND]", "").strip()
@@ -282,7 +289,7 @@ class FPBProtocol:
                                 return False
         return True
 
-    def _log_raw(self, direction: str, data: str):
+    def _log_raw(self, direction: LogDirection, data: str):
         """Log raw serial communication.
 
         TX logs are only recorded when serial_echo_enabled is True.
@@ -292,7 +299,7 @@ class FPBProtocol:
             return
 
         # TX logs only when serial echo is enabled
-        if direction == "TX":
+        if direction == LogDirection.TX:
             if not getattr(self.device, "serial_echo_enabled", False):
                 return
 
@@ -300,7 +307,6 @@ class FPBProtocol:
             entry = {
                 "id": self.device.raw_log_next_id,
                 "time": time.time(),
-                "dir": direction,
                 "data": data,
             }
             self.device.raw_serial_log.append(entry)
