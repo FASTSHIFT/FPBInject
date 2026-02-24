@@ -471,7 +471,7 @@ module.exports = function (w) {
       w.FPBState.config = { transferMaxRetries: 2 };
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       browserGlobals.document.getElementById('portSelect').value =

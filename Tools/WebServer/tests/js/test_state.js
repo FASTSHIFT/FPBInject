@@ -16,8 +16,8 @@ module.exports = function (w) {
       assertEqual(w.FPBState.isConnected, false));
     it('selectedSlot defaults to 0', () =>
       assertEqual(w.FPBState.selectedSlot, 0));
-    it('slotStates has 6 slots', () =>
-      assertEqual(w.FPBState.slotStates.length, 6));
+    it('slotStates has 8 slots', () =>
+      assertEqual(w.FPBState.slotStates.length, 8));
     it('slotStates slots have correct structure', () => {
       const slot = w.FPBState.slotStates[0];
       assertEqual(slot.occupied, false);
@@ -41,6 +41,12 @@ module.exports = function (w) {
       w.FPBState.selectedSlot = 3;
       assertEqual(w.FPBState.selectedSlot, 3);
       w.FPBState.selectedSlot = 0;
+    });
+    it('fpbVersion defaults to 1', () => assertEqual(w.FPBState.fpbVersion, 1));
+    it('can set fpbVersion', () => {
+      w.FPBState.fpbVersion = 2;
+      assertEqual(w.FPBState.fpbVersion, 2);
+      w.FPBState.fpbVersion = 1;
     });
     it('can set currentTerminalTab', () => {
       w.FPBState.currentTerminalTab = 'raw';
@@ -144,7 +150,7 @@ module.exports = function (w) {
       ];
       w.FPBState.slotStates = newStates;
       assertEqual(w.FPBState.slotStates[0].occupied, true);
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({
           occupied: false,

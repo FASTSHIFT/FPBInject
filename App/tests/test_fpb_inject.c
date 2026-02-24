@@ -16,7 +16,12 @@
 
 static void setup_fpb(void) {
     fpb_deinit();             /* Ensure clean state */
-    fpb_mock_configure(6, 2); /* Configure 6 code + 2 literal comparators */
+    fpb_mock_configure(6, 2); /* Configure 6 code + 2 literal comparators (FPB v1) */
+}
+
+static void setup_fpb_v2(void) {
+    fpb_deinit();             /* Ensure clean state */
+    fpb_mock_configure(8, 0); /* Configure 8 code comparators (FPB v2) */
 }
 
 /* ============================================================================
@@ -219,6 +224,15 @@ void test_fpb_get_state_num_comp(void) {
     TEST_ASSERT_EQUAL(2, state->num_lit_comp);
 }
 
+void test_fpb_get_state_num_comp_v2(void) {
+    setup_fpb_v2();
+    fpb_init();
+
+    const fpb_state_t* state = fpb_get_state();
+    TEST_ASSERT_EQUAL(8, state->num_code_comp);
+    TEST_ASSERT_EQUAL(0, state->num_lit_comp);
+}
+
 void test_fpb_get_state_after_patch(void) {
     setup_fpb();
     fpb_init();
@@ -247,6 +261,12 @@ void test_fpb_get_num_code_comp(void) {
     setup_fpb();
     fpb_init();
     TEST_ASSERT_EQUAL(6, fpb_get_num_code_comp());
+}
+
+void test_fpb_get_num_code_comp_v2(void) {
+    setup_fpb_v2();
+    fpb_init();
+    TEST_ASSERT_EQUAL(8, fpb_get_num_code_comp());
 }
 
 /* ============================================================================
@@ -547,8 +567,11 @@ void test_fpb_remap_table_all_slots(void) {
     setup_fpb();
     fpb_init();
 
-    /* Set patches on all available slots (FPB_MAX_CODE_COMP) */
-    for (uint8_t i = 0; i < FPB_MAX_CODE_COMP; i++) {
+    /* Get actual number of code comparators from hardware */
+    uint8_t num_code_comp = fpb_get_num_code_comp();
+
+    /* Set patches on all available slots */
+    for (uint8_t i = 0; i < num_code_comp; i++) {
         uint32_t orig_addr = 0x08001000 + (i * 0x1000);
         uint32_t patch_addr = 0x20002000 + (i * 0x1000);
         int ret = fpb_set_patch(i, orig_addr, patch_addr);
@@ -557,7 +580,30 @@ void test_fpb_remap_table_all_slots(void) {
 
     /* Verify all entries are set and unique */
     const uint32_t* remap_table = fpb_test_get_remap_table();
-    for (uint8_t i = 0; i < FPB_MAX_CODE_COMP; i++) {
+    for (uint8_t i = 0; i < num_code_comp; i++) {
+        TEST_ASSERT(remap_table[i] != 0);
+    }
+}
+
+void test_fpb_remap_table_all_slots_v2(void) {
+    setup_fpb_v2();
+    fpb_init();
+
+    /* FPB v2: 8 code comparators */
+    uint8_t num_code_comp = fpb_get_num_code_comp();
+    TEST_ASSERT_EQUAL(8, num_code_comp);
+
+    /* Set patches on all 8 slots */
+    for (uint8_t i = 0; i < num_code_comp; i++) {
+        uint32_t orig_addr = 0x08001000 + (i * 0x1000);
+        uint32_t patch_addr = 0x20002000 + (i * 0x1000);
+        int ret = fpb_set_patch(i, orig_addr, patch_addr);
+        TEST_ASSERT_EQUAL(0, ret);
+    }
+
+    /* Verify all 8 entries are set */
+    const uint32_t* remap_table = fpb_test_get_remap_table();
+    for (uint8_t i = 0; i < num_code_comp; i++) {
         TEST_ASSERT(remap_table[i] != 0);
     }
 }
@@ -604,12 +650,14 @@ void run_fpb_tests(void) {
     TEST_SUITE_BEGIN("fpb_inject - State Query");
     RUN_TEST(test_fpb_get_state_basic);
     RUN_TEST(test_fpb_get_state_num_comp);
+    RUN_TEST(test_fpb_get_state_num_comp_v2);
     RUN_TEST(test_fpb_get_state_after_patch);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("fpb_inject - Support Query");
     RUN_TEST(test_fpb_is_supported_with_comps);
     RUN_TEST(test_fpb_get_num_code_comp);
+    RUN_TEST(test_fpb_get_num_code_comp_v2);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("fpb_inject - Device Info");
@@ -646,5 +694,6 @@ void run_fpb_tests(void) {
     RUN_TEST(test_fpb_remap_table_clear_slot);
     RUN_TEST(test_fpb_remap_table_no_overlap);
     RUN_TEST(test_fpb_remap_table_all_slots);
+    RUN_TEST(test_fpb_remap_table_all_slots_v2);
     TEST_SUITE_END();
 }

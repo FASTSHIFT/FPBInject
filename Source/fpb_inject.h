@@ -37,6 +37,10 @@
  * - 6 instruction comparators (FP_COMP0 - FP_COMP5) for code remapping
  * - 2 literal comparators (FP_COMP6 - FP_COMP7) for data remapping
  * - Supports Thumb instruction remapping
+ *
+ * FPB Versions:
+ * - FPB v1 (rev=0): 6 code comparators (Cortex-M3/M4)
+ * - FPB v2 (rev=1): up to 8 code comparators (newer Cortex-M4/M7)
  */
 
 #ifndef __FPB_INJECT_H
@@ -49,8 +53,8 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Maximum code comparator count (STM32F103 Cortex-M3) */
-#define FPB_MAX_CODE_COMP 6
+/* Maximum code comparator count (supports both FPB v1 and v2) */
+#define FPB_MAX_CODE_COMP 8
 
 /* Maximum literal comparator count */
 #define FPB_MAX_LIT_COMP 2

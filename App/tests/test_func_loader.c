@@ -366,7 +366,7 @@ void test_loader_slot_state_initial(void) {
 }
 
 void test_loader_max_slots(void) {
-    TEST_ASSERT_EQUAL(6, FL_MAX_SLOTS);
+    TEST_ASSERT_EQUAL(8, FL_MAX_SLOTS); /* FPB v2 supports 8 slots */
 }
 
 /* ============================================================================

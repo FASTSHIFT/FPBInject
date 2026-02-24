@@ -72,21 +72,27 @@ async function fetchLogs() {
       data.slot_update_id > state.slotUpdateId
     ) {
       state.slotUpdateId = data.slot_update_id;
-      if (data.slot_data && data.slot_data.slots) {
-        data.slot_data.slots.forEach((slot, i) => {
-          if (i < 6) {
-            state.slotStates[i] = {
-              occupied: slot.occupied || false,
-              func: slot.func || '',
-              orig_addr: slot.orig_addr || '',
-              target_addr: slot.target_addr || '',
-              code_size: slot.code_size || 0,
-            };
+      if (data.slot_data) {
+        if (data.slot_data.fpb_version !== undefined) {
+          state.fpbVersion = data.slot_data.fpb_version;
+        }
+        if (data.slot_data.slots) {
+          data.slot_data.slots.forEach((slot) => {
+            const slotId = slot.id !== undefined ? slot.id : 0;
+            if (slotId < 8) {
+              state.slotStates[slotId] = {
+                occupied: slot.occupied || false,
+                func: slot.func || '',
+                orig_addr: slot.orig_addr || '',
+                target_addr: slot.target_addr || '',
+                code_size: slot.code_size || 0,
+              };
+            }
+          });
+          updateSlotUI();
+          if (data.slot_data.memory) {
+            updateMemoryInfo(data.slot_data.memory);
           }
-        });
-        updateSlotUI();
-        if (data.slot_data.memory) {
-          updateMemoryInfo(data.slot_data.memory);
         }
       }
     }

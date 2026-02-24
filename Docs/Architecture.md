@@ -51,8 +51,8 @@ FPBInject repurposes FPB's REMAP feature for code injection.
 ### STM32F103 FPB Resources
 
 | Resource | Count | Range |
-|----------|-------|-------|
-| Code Comparators | 6 | 0x00000000 - 0x1FFFFFFF |
+|----------|-------|----- -|
+| Code Comparators | 6-8 (FPB v1: 6, v2: 8) | 0x00000000 - 0x1FFFFFFF |
 | Literal Comparators | 2 | 0x00000000 - 0x1FFFFFFF |
 | REMAP Table | 8 entries | SRAM |
 
@@ -62,8 +62,7 @@ FPBInject repurposes FPB's REMAP feature for code injection.
 |----------|---------|-------------|
 | FP_CTRL | 0xE0002000 | Control register |
 | FP_REMAP | 0xE0002004 | Remap table base |
-| FP_COMP0-5 | 0xE0002008-1C | Code comparators |
-| FP_COMP6-7 | 0xE0002020-24 | Literal comparators |
+| FP_COMP0-7 | 0xE0002008-24 | Code/Literal comparators |
 
 ## Patch Modes
 
@@ -265,7 +264,7 @@ void fpb_debugmon_clear_redirect(uint8_t comp);
 ## Limitations
 
 1. **Address Range**: Code region only (0x00000000 - 0x1FFFFFFF)
-2. **Hook Count**: 6 simultaneous patches (STM32F103)
+2. **Hook Count**: 6-8 simultaneous patches (FPB v1: 6, FPB v2: 8)
 3. **Instruction Set**: Thumb/Thumb-2 only
 4. **Debugger Conflict**: Debuggers may use FPB for breakpoints
 

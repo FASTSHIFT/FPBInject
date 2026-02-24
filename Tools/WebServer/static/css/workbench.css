@@ -650,6 +650,17 @@ body.resizing-panel .sash {
   border-left: 2px solid #4ec9b0;
 }
 
+.slot-item.slot-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.slot-item.slot-disabled .slot-func {
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+}
+
 .slot-header {
   display: flex;
   align-items: center;

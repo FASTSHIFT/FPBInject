@@ -134,10 +134,15 @@ async function fpbInfo() {
         );
       }
 
+      if (data.fpb_version !== undefined) {
+        state.fpbVersion = data.fpb_version;
+      }
+
       if (data.slots) {
-        data.slots.forEach((slot, i) => {
-          if (i < 6) {
-            state.slotStates[i] = {
+        data.slots.forEach((slot) => {
+          const slotId = slot.id !== undefined ? slot.id : 0;
+          if (slotId < 8) {
+            state.slotStates[slotId] = {
               occupied: slot.occupied || false,
               func: slot.func || '',
               orig_addr: slot.orig_addr || '',

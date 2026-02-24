@@ -619,7 +619,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: true, func: 'test' }));
       browserGlobals.confirm = () => false;
@@ -639,7 +639,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       w.FPBState.currentPatchTab = null;
@@ -658,7 +658,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
@@ -680,7 +680,7 @@ module.exports = function (w) {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.selectedSlot = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map((_, i) => ({
           occupied: i === 0,
@@ -708,7 +708,7 @@ module.exports = function (w) {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.selectedSlot = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
@@ -740,7 +740,7 @@ module.exports = function (w) {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.selectedSlot = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };

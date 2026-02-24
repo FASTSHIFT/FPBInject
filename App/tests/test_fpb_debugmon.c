@@ -121,8 +121,8 @@ static void test_debugmon_set_redirect_invalid_comp(void) {
     setup_debugmon();
     fpb_debugmon_init();
 
-    /* comp_id 6 is out of range (max is 5 for 6 comparators) */
-    int ret = fpb_debugmon_set_redirect(6, 0x08001000, 0x20001000);
+    /* comp_id 8 is out of range (max is 7 for FPB v2 with 8 comparators) */
+    int ret = fpb_debugmon_set_redirect(8, 0x08001000, 0x20001000);
     TEST_ASSERT_EQUAL(-1, ret);
 
     teardown_debugmon();
