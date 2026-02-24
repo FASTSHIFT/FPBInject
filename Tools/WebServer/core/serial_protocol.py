@@ -44,7 +44,6 @@ class FPBProtocol:
         ser = self.device.ser
         if not ser:
             self._in_fl_mode = False
-            self._platform = "unknown"
             return False
 
         # If already in fl mode, just return
@@ -76,12 +75,14 @@ class FPBProtocol:
 
             if "fl>" in response:
                 self._in_fl_mode = True
-                self._platform = "nuttx"
-                logger.info("Detected NuttX platform (fl interactive mode)")
+                if self._platform != "nuttx":
+                    self._platform = "nuttx"
+                    logger.info("Detected NuttX platform (fl interactive mode)")
                 return True
             elif "Enter" in response and "interactive mode" in response:
-                self._platform = "nuttx"
-                logger.info("Detected NuttX platform (requires interactive mode)")
+                if self._platform != "nuttx":
+                    self._platform = "nuttx"
+                    logger.info("Detected NuttX platform (requires interactive mode)")
                 start = time.time()
                 while time.time() - start < timeout:
                     if ser.in_waiting:
@@ -97,12 +98,12 @@ class FPBProtocol:
                 return False
             else:
                 self._in_fl_mode = False
-                self._platform = "bare-metal"
+                if self._platform == "unknown":
+                    self._platform = "bare-metal"
                 return False
         except Exception as e:
             logger.error(f"Error entering fl mode: {e}")
             self._in_fl_mode = False
-            self._platform = "unknown"
             return False
 
     def exit_fl_mode(self, timeout: float = 0.3) -> bool:
