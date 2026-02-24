@@ -75,6 +75,12 @@ class FPBProtocol:
         try:
             self._log_raw("TX", "fl")
             ser.reset_input_buffer()
+
+            # Let shell wake up
+            ser.write(b"\n\n")
+            ser.flush()
+
+            # Send 'fl' command to enter interactive mode
             ser.write(b"fl\n")
             ser.flush()
 
