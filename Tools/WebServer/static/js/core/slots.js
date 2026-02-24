@@ -8,24 +8,34 @@
 function updateSlotUI() {
   const state = window.FPBState;
   let activeCount = 0;
+  const maxSlots = state.fpbVersion >= 2 ? 8 : 6;
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     const slotItem = document.querySelector(`.slot-item[data-slot="${i}"]`);
     const funcSpan = document.getElementById(`slot${i}Func`);
     const slotState = state.slotStates[i];
+    const isDisabled = i >= maxSlots;
 
     if (slotItem) {
-      slotItem.classList.toggle('occupied', slotState.occupied);
-      slotItem.classList.toggle('active', i === state.selectedSlot);
+      slotItem.classList.toggle('occupied', slotState.occupied && !isDisabled);
+      slotItem.classList.toggle(
+        'active',
+        i === state.selectedSlot && !isDisabled,
+      );
+      slotItem.classList.toggle('slot-disabled', isDisabled);
 
       const actionsDiv = slotItem.querySelector('.slot-actions');
       if (actionsDiv) {
-        actionsDiv.style.display = slotState.occupied ? 'flex' : 'none';
+        actionsDiv.style.display =
+          slotState.occupied && !isDisabled ? 'flex' : 'none';
       }
     }
 
     if (funcSpan) {
-      if (slotState.occupied) {
+      if (isDisabled) {
+        funcSpan.textContent = 'FPB v2 only';
+        funcSpan.title = 'This slot requires FPB v2 hardware';
+      } else if (slotState.occupied) {
         const funcName = slotState.func ? ` (${slotState.func})` : '';
         const sizeInfo = slotState.code_size
           ? `, ${slotState.code_size} Bytes`
@@ -38,17 +48,35 @@ function updateSlotUI() {
       }
     }
 
-    if (slotState.occupied) activeCount++;
+    if (slotState.occupied && !isDisabled) activeCount++;
   }
 
-  document.getElementById('activeSlotCount').textContent = `${activeCount}/6`;
+  document.getElementById('activeSlotCount').textContent =
+    `${activeCount}/${maxSlots}`;
   document.getElementById('currentSlotDisplay').textContent =
     `Slot: ${state.selectedSlot}`;
-  document.getElementById('slotSelect').value = state.selectedSlot;
+
+  // Update slotSelect dropdown
+  const slotSelect = document.getElementById('slotSelect');
+  slotSelect.value = state.selectedSlot;
+
+  // Disable v2-only slots in dropdown
+  for (let i = 0; i < slotSelect.options.length; i++) {
+    const option = slotSelect.options[i];
+    const slotId = parseInt(option.value);
+    option.disabled = slotId >= maxSlots;
+  }
 }
 
 function selectSlot(slotId) {
   const state = window.FPBState;
+  const maxSlots = state.fpbVersion >= 2 ? 8 : 6;
+
+  if (slotId >= maxSlots) {
+    log.warn(`Slot ${slotId} requires FPB v2 hardware`);
+    return;
+  }
+
   state.selectedSlot = parseInt(slotId);
   updateSlotUI();
   log.info(`Selected Slot ${slotId}`);
@@ -131,7 +159,7 @@ async function fpbUnpatchAll() {
     const data = await res.json();
 
     if (data.success) {
-      state.slotStates = Array(6)
+      state.slotStates = Array(8)
         .fill()
         .map(() => ({
           occupied: false,

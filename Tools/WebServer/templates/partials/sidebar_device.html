@@ -35,14 +35,18 @@
       >
         <div style="font-size: 10px; color: var(--vscode-descriptionForeground)">Memory info not available</div>
       </div>
-      <!-- 6 FPB Slots -->
+      <!-- 8 FPB Slots (slots 6-7 disabled for FPB v1) -->
       <div class="slot-container" id="slotContainer">
-        {% for i in range(6) %}
-        <div class="slot-item" data-slot="{{ i }}" onclick="selectSlot({{ i }})">
+        {% for i in range(8) %}
+        <div
+          class="slot-item{% if i >= 6 %} slot-disabled{% endif %}"
+          data-slot="{{ i }}"
+          onclick="selectSlot({{ i }})"
+        >
           <div class="slot-header">
             <span class="slot-indicator"></span>
             <span class="slot-id">Slot {{ i }}</span>
-            <span class="slot-func" id="slot{{ i }}Func">Empty</span>
+            <span class="slot-func" id="slot{{ i }}Func">{% if i >= 6 %}v2 Only{% else %}Empty{% endif %}</span>
           </div>
           <div class="slot-actions">
             <button class="slot-btn" onclick="event.stopPropagation(); fpbUnpatch({{ i }});" title="Clear slot">

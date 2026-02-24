@@ -59,10 +59,6 @@
 /* CTRL Register Bits */
 #define FPB_CTRL_ENABLE (1UL << 0)
 #define FPB_CTRL_KEY (1UL << 1)
-#define FPB_CTRL_NUM_CODE_MASK (0xFUL << 4)
-#define FPB_CTRL_NUM_LIT_MASK (0xFUL << 8)
-#define FPB_CTRL_NUM_CODE_SHIFT 4
-#define FPB_CTRL_NUM_LIT_SHIFT 8
 
 /* COMP Register Bits */
 #define FPB_COMP_ENABLE (1UL << 0)
@@ -143,14 +139,14 @@ int fpb_init(void) {
     memset(&g_fpb_state, 0, sizeof(g_fpb_state));
     memset(g_fpb_remap_table, 0, sizeof(g_fpb_remap_table));
 
-    uint32_t ctrl = FPB_CTRL;
-
-    g_fpb_state.num_code_comp = (ctrl & FPB_CTRL_NUM_CODE_MASK) >> FPB_CTRL_NUM_CODE_SHIFT;
-    g_fpb_state.num_lit_comp = (ctrl & FPB_CTRL_NUM_LIT_MASK) >> FPB_CTRL_NUM_LIT_SHIFT;
-
-    if (g_fpb_state.num_code_comp == 0) {
+    /* Use fpb_get_info to parse FPB hardware configuration */
+    fpb_info_t info;
+    if (fpb_get_info(&info) != 0) {
         return -1;
     }
+
+    g_fpb_state.num_code_comp = info.num_code_comp;
+    g_fpb_state.num_lit_comp = info.num_lit_comp;
 
     if (g_fpb_state.num_code_comp > FPB_MAX_CODE_COMP) {
         g_fpb_state.num_code_comp = FPB_MAX_CODE_COMP;
@@ -328,10 +324,8 @@ const fpb_state_t* fpb_get_state(void) {
 }
 
 bool fpb_is_supported(void) {
-    uint32_t ctrl = FPB_CTRL;
-    uint8_t num_code = (ctrl & FPB_CTRL_NUM_CODE_MASK) >> FPB_CTRL_NUM_CODE_SHIFT;
-
-    return (num_code > 0);
+    fpb_info_t info;
+    return (fpb_get_info(&info) == 0 && info.num_code_comp > 0);
 }
 
 uint8_t fpb_get_num_code_comp(void) {

@@ -47,7 +47,10 @@ def build_slot_response(device, app_state, get_fpb_inject):
     # Build slot states from device info
     slots = []
     device_slots = info.get("slots", [])
-    for i in range(6):
+    # FPB v2 supports 8 slots, v1 supports 6
+    fpb_version = info.get("fpb_version", 1)
+    max_slots = 8 if fpb_version >= 2 else 6
+    for i in range(max_slots):
         slot_data = next((s for s in device_slots if s.get("id") == i), None)
         if slot_data and slot_data.get("occupied"):
             orig_addr = slot_data.get("orig_addr", 0)

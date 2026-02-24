@@ -16,7 +16,8 @@ let autoInjectPollInterval = null;
 let lastAutoInjectStatus = 'idle';
 let autoInjectProgressHideTimer = null;
 let selectedSlot = 0;
-let slotStates = Array(6)
+let fpbVersion = 1; // 1=FPB v1 (6 slots), 2=FPB v2 (8 slots)
+let slotStates = Array(8)
   .fill()
   .map(() => ({
     occupied: false,
@@ -120,6 +121,12 @@ window.FPBState = {
   },
   set selectedSlot(v) {
     selectedSlot = v;
+  },
+  get fpbVersion() {
+    return fpbVersion;
+  },
+  set fpbVersion(v) {
+    fpbVersion = v;
   },
   get slotStates() {
     return slotStates;

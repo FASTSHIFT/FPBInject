@@ -141,6 +141,105 @@ class TestBuildSlotResponse(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["memory"]["used"], 1024)
 
+    def test_fpb_v1_returns_6_slots(self):
+        """Test FPB v1 returns 6 slots"""
+        device = DeviceState()
+        device.device_info = {
+            "slots": [],
+            "fpb_version": 1,
+            "base": 0x20000000,
+            "size": 1024,
+        }
+        app_state = AppState()
+
+        mock_fpb = Mock()
+        mock_fpb.get_symbols.return_value = {}
+
+        result = build_slot_response(device, app_state, lambda: mock_fpb)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result["slots"]), 6)
+
+    def test_fpb_v2_returns_8_slots(self):
+        """Test FPB v2 returns 8 slots"""
+        device = DeviceState()
+        device.device_info = {
+            "slots": [],
+            "fpb_version": 2,
+            "base": 0x20000000,
+            "size": 1024,
+        }
+        app_state = AppState()
+
+        mock_fpb = Mock()
+        mock_fpb.get_symbols.return_value = {}
+
+        result = build_slot_response(device, app_state, lambda: mock_fpb)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result["slots"]), 8)
+
+    def test_fpb_v2_slot7_occupied(self):
+        """Test FPB v2 with slot 7 occupied (bug fix verification)"""
+        device = DeviceState()
+        device.device_info = {
+            "fpb_version": 2,
+            "slots": [
+                {"id": 0, "occupied": False},
+                {"id": 1, "occupied": False},
+                {"id": 2, "occupied": False},
+                {"id": 3, "occupied": False},
+                {"id": 4, "occupied": False},
+                {"id": 5, "occupied": False},
+                {"id": 6, "occupied": False},
+                {
+                    "id": 7,
+                    "occupied": True,
+                    "orig_addr": 0x2C9091DC,
+                    "target_addr": 0x3D0B4B91,
+                    "code_size": 65,
+                },
+            ],
+            "base": 0x20000000,
+            "size": 1024,
+        }
+        app_state = AppState()
+        app_state.symbols = {}
+        app_state.symbols_loaded = True
+
+        mock_fpb = Mock()
+
+        result = build_slot_response(device, app_state, lambda: mock_fpb)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result["slots"]), 8)
+        # Verify slot 7 is correctly populated
+        self.assertTrue(result["slots"][7]["occupied"])
+        self.assertEqual(result["slots"][7]["id"], 7)
+        self.assertEqual(result["slots"][7]["orig_addr"], "0x2C9091DC")
+        self.assertEqual(result["slots"][7]["target_addr"], "0x3D0B4B91")
+        self.assertEqual(result["slots"][7]["code_size"], 65)
+        # Verify other slots are empty
+        for i in range(7):
+            self.assertFalse(result["slots"][i]["occupied"])
+
+    def test_fpb_version_default_v1(self):
+        """Test default FPB version is v1 (6 slots)"""
+        device = DeviceState()
+        device.device_info = {
+            "slots": [],
+            # No fpb_version specified
+        }
+        app_state = AppState()
+
+        mock_fpb = Mock()
+        mock_fpb.get_symbols.return_value = {}
+
+        result = build_slot_response(device, app_state, lambda: mock_fpb)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result["slots"]), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

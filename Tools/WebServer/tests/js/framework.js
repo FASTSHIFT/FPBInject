@@ -46,7 +46,8 @@ function createFreshFPBState() {
   return {
     isConnected: false,
     selectedSlot: 0,
-    slotStates: Array(6)
+    fpbVersion: 1,
+    slotStates: Array(8)
       .fill()
       .map(() => ({
         occupied: false,

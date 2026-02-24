@@ -39,20 +39,20 @@
 extern "C" {
 #endif
 
-#define FPB_TRAMPOLINE_COUNT 6 /* Number of available trampolines (STM32F103) */
+#define FPB_TRAMPOLINE_COUNT 8 /* Number of available trampolines (FPB v1: 6, v2: 8) */
 
 #ifndef FPB_NO_TRAMPOLINE
 
 /**
  * @brief  Set trampoline target for a specific comparator
- * @param  comp: Comparator index (0-5)
+ * @param  comp: Comparator index (0-7)
  * @param  target: Target address (with Thumb bit set)
  */
 void fpb_trampoline_set_target(uint32_t comp, uint32_t target);
 
 /**
  * @brief  Clear trampoline target
- * @param  comp: Comparator index (0-5)
+ * @param  comp: Comparator index (0-7)
  */
 void fpb_trampoline_clear_target(uint32_t comp);
 

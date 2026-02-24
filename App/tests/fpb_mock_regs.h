@@ -21,7 +21,7 @@ extern "C" {
 extern uint32_t mock_fpb_ctrl_rw; /* R/W bits (enable, key, etc.) */
 extern uint32_t mock_fpb_ctrl_ro; /* R/O bits (num_code, num_lit) */
 extern uint32_t mock_fpb_remap;
-extern uint32_t mock_fpb_comp[8];
+extern uint32_t mock_fpb_comp[10]; /* 8 code + 2 literal comparators */
 
 /* FPB_CTRL mask for read-only bits (num_code at bits 7:4, num_lit at bits 11:8) */
 #define FPB_CTRL_RO_MASK 0x00000FF0

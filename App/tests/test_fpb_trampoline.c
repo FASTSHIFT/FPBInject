@@ -210,14 +210,14 @@ static void test_trampoline_boundary_comp_ids(void) {
 
     /* Test boundary comp_ids */
     fpb_trampoline_set_target(0, 0x20000000);
-    fpb_trampoline_set_target(5, 0x20005000); /* Last valid */
+    fpb_trampoline_set_target(7, 0x20007000); /* Last valid for FPB v2 */
 
     TEST_ASSERT_EQUAL(0x20000000, fpb_trampoline_get_target(0));
-    TEST_ASSERT_EQUAL(0x20005000, fpb_trampoline_get_target(5));
+    TEST_ASSERT_EQUAL(0x20007000, fpb_trampoline_get_target(7));
 
-    /* comp 6 is out of range */
-    fpb_trampoline_set_target(6, 0x20006000);
-    TEST_ASSERT_EQUAL(0, fpb_trampoline_get_target(6));
+    /* comp 8 is out of range */
+    fpb_trampoline_set_target(8, 0x20008000);
+    TEST_ASSERT_EQUAL(0, fpb_trampoline_get_target(8));
 }
 
 /* ============================================================================

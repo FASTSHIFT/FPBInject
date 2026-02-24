@@ -17,7 +17,7 @@
 uint32_t mock_fpb_ctrl_rw = 0; /* R/W bits written by code */
 uint32_t mock_fpb_ctrl_ro = 0; /* R/O bits (num_code, num_lit) - set by configure */
 uint32_t mock_fpb_remap = 0;
-uint32_t mock_fpb_comp[8] = {0};
+uint32_t mock_fpb_comp[10] = {0}; /* 8 code + 2 literal comparators (FPB_MAX_COMP) */
 
 /* Mock debug registers for debugmon testing */
 uint32_t mock_dhcsr = 0;

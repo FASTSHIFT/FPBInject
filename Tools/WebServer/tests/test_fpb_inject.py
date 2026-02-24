@@ -2071,6 +2071,32 @@ Slot[1]: 0x08002000 -> 0x20001080, 64 bytes
         self.assertEqual(info["used"], 256)
         self.assertEqual(len(info["slots"]), 2)
 
+    def test_info_fpb_v2_eight_slots(self):
+        """Test info with FPB v2 (8 slots support)"""
+        self.fpb._protocol.send_cmd = Mock(return_value="""FPBInject v2.0
+Build: Feb 24 2026 10:00:00
+Used: 512
+Slots: 4/8
+Slot[0]: 0x08001000 -> 0x20001000, 128 bytes
+Slot[1]: 0x08002000 -> 0x20001080, 64 bytes
+Slot[2]: 0x08003000 -> 0x200010C0, 256 bytes
+Slot[3]: 0x08004000 -> 0x200011C0, 64 bytes
+[FLOK] Info complete""")
+
+        info, error = self.fpb.info()
+
+        self.assertIsNotNone(info)
+        self.assertEqual(info.get("build_time"), "Feb 24 2026 10:00:00")
+        self.assertEqual(info["used"], 512)
+        self.assertEqual(info["active_slots"], 4)
+        self.assertEqual(info["total_slots"], 8)
+        self.assertEqual(len(info["slots"]), 4)
+        # Verify slot 3 (ID=3) is parsed correctly
+        slot3 = next((s for s in info["slots"] if s["id"] == 3), None)
+        self.assertIsNotNone(slot3)
+        self.assertEqual(slot3["orig_addr"], 0x08004000)
+        self.assertEqual(slot3["target_addr"], 0x200011C0)
+
     @patch("subprocess.run")
     def test_get_elf_build_time_found(self, mock_run):
         """Test getting build time from ELF file"""

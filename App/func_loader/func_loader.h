@@ -38,9 +38,9 @@ extern "C" {
 #include <stdint.h>
 #include "func_loader_file.h"
 
-/* Maximum slot count */
+/* Maximum slot count (FPB v1: 6, v2: 8) */
 #ifndef FL_MAX_SLOTS
-#define FL_MAX_SLOTS 6
+#define FL_MAX_SLOTS 8
 #endif
 
 /* Callback types */

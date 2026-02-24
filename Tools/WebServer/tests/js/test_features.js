@@ -178,7 +178,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/fpb/info', { success: true, slots: [] });
@@ -193,24 +193,25 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/fpb/info', {
         success: true,
         slots: [
           {
+            id: 0,
             occupied: true,
             func: 'test_func',
             orig_addr: '0x1000',
             target_addr: '0x2000',
             code_size: 100,
           },
-          { occupied: false },
-          { occupied: false },
-          { occupied: false },
-          { occupied: false },
-          { occupied: false },
+          { id: 1, occupied: false },
+          { id: 2, occupied: false },
+          { id: 3, occupied: false },
+          { id: 4, occupied: false },
+          { id: 5, occupied: false },
         ],
       });
       await w.fpbInfo();
@@ -224,7 +225,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/fpb/info', {
@@ -244,7 +245,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/fpb/info', {
@@ -267,7 +268,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/fpb/info', {
@@ -290,7 +291,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/fpb/info', {
@@ -347,7 +348,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       browserGlobals.document.getElementById('patchSource').value =
@@ -370,7 +371,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       browserGlobals.document.getElementById('patchSource').value =
@@ -638,7 +639,7 @@ module.exports = function (w) {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/watch/auto_inject_status', {
@@ -663,7 +664,7 @@ module.exports = function (w) {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/watch/auto_inject_status', {
@@ -1573,7 +1574,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       const origFetch = browserGlobals.fetch;
@@ -1596,7 +1597,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       let alertCalled = false;
@@ -1624,13 +1625,14 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/fpb/info', {
         success: true,
         slots: [
           {
+            id: 0,
             occupied: true,
             func: 'func0',
             orig_addr: '0x1000',
@@ -1638,22 +1640,24 @@ module.exports = function (w) {
             code_size: 100,
           },
           {
+            id: 1,
             occupied: true,
             func: 'func1',
             orig_addr: '0x1100',
             target_addr: '0x2100',
             code_size: 200,
           },
-          { occupied: false },
+          { id: 2, occupied: false },
           {
+            id: 3,
             occupied: true,
             func: 'func3',
             orig_addr: '0x1300',
             target_addr: '0x2300',
             code_size: 50,
           },
-          { occupied: false },
-          { occupied: false },
+          { id: 4, occupied: false },
+          { id: 5, occupied: false },
         ],
         memory: { used: 350 },
       });
@@ -1672,7 +1676,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: true }));
       setFetchResponse('/api/fpb/info', {
@@ -1715,7 +1719,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       browserGlobals.document.getElementById('patchSource').value =

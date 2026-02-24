@@ -65,7 +65,7 @@ static volatile uint32_t fpb_trampoline_targets[FPB_TRAMPOLINE_COUNT] = {0};
 
 /* Mock trampoline addresses (fake Flash addresses) */
 static const uint32_t fpb_trampoline_table[FPB_TRAMPOLINE_COUNT] = {
-    0x08001000, 0x08001010, 0x08001020, 0x08001030, 0x08001040, 0x08001050,
+    0x08001000, 0x08001010, 0x08001020, 0x08001030, 0x08001040, 0x08001050, 0x08001060, 0x08001070,
 };
 
 #elif !defined(FPB_TRAMPOLINE_NO_ASM)
@@ -96,13 +96,15 @@ static const uint32_t fpb_trampoline_table[FPB_TRAMPOLINE_COUNT] = {
         );                                                                               \
     }
 
-/* Generate all 6 trampolines */
+/* Generate all 8 trampolines (FPB v2 support) */
 DEFINE_TRAMPOLINE_ASM(0)
 DEFINE_TRAMPOLINE_ASM(1)
 DEFINE_TRAMPOLINE_ASM(2)
 DEFINE_TRAMPOLINE_ASM(3)
 DEFINE_TRAMPOLINE_ASM(4)
 DEFINE_TRAMPOLINE_ASM(5)
+DEFINE_TRAMPOLINE_ASM(6)
+DEFINE_TRAMPOLINE_ASM(7)
 
 #else /* FPB_TRAMPOLINE_NO_ASM */
 /*============================================================================
@@ -124,13 +126,15 @@ typedef void (*fpb_trampoline_func_t)(void);
         }                                                                   \
     }
 
-/* Generate all 6 trampolines */
+/* Generate all 8 trampolines (FPB v2 support) */
 DEFINE_TRAMPOLINE_C(0)
 DEFINE_TRAMPOLINE_C(1)
 DEFINE_TRAMPOLINE_C(2)
 DEFINE_TRAMPOLINE_C(3)
 DEFINE_TRAMPOLINE_C(4)
 DEFINE_TRAMPOLINE_C(5)
+DEFINE_TRAMPOLINE_C(6)
+DEFINE_TRAMPOLINE_C(7)
 
 #endif /* FPB_HOST_TESTING / FPB_TRAMPOLINE_NO_ASM */
 
@@ -138,7 +142,8 @@ DEFINE_TRAMPOLINE_C(5)
 
 /* Trampoline address table (in Flash, for lookup) */
 static void (*const fpb_trampoline_table[FPB_TRAMPOLINE_COUNT])(void) = {
-    fpb_trampoline_0, fpb_trampoline_1, fpb_trampoline_2, fpb_trampoline_3, fpb_trampoline_4, fpb_trampoline_5,
+    fpb_trampoline_0, fpb_trampoline_1, fpb_trampoline_2, fpb_trampoline_3,
+    fpb_trampoline_4, fpb_trampoline_5, fpb_trampoline_6, fpb_trampoline_7,
 };
 
 #endif /* !FPB_HOST_TESTING */

@@ -196,12 +196,16 @@ def api_fpb_info():
     if slot_response is None:
         return jsonify({"success": False, "error": "No device info available"})
 
+    # Get FPB version from info (default to v1)
+    fpb_version = info.get("fpb_version", 1) if info else 1
+
     return jsonify(
         {
             "success": True,
             "info": info,
             "slots": slot_response["slots"],
             "memory": slot_response["memory"],
+            "fpb_version": fpb_version,
             "build_time_mismatch": build_time_mismatch,
             "device_build_time": device_build_time,
             "elf_build_time": elf_build_time,

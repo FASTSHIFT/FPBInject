@@ -85,7 +85,7 @@ module.exports = function (w) {
       w.FPBState.slotUpdateId = 15;
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', { tool_next: 6, raw_next: 11 });
@@ -103,7 +103,7 @@ module.exports = function (w) {
       w.FPBState.slotUpdateId = 0;
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', { tool_next: 100, raw_next: 200 });
@@ -122,7 +122,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -144,7 +144,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -165,7 +165,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -175,17 +175,18 @@ module.exports = function (w) {
         slot_data: {
           slots: [
             {
+              id: 0,
               occupied: true,
               func: 'test_func',
               orig_addr: '0x1000',
               target_addr: '0x2000',
               code_size: 100,
             },
-            { occupied: false },
-            { occupied: false },
-            { occupied: false },
-            { occupied: false },
-            { occupied: false },
+            { id: 1, occupied: false },
+            { id: 2, occupied: false },
+            { id: 3, occupied: false },
+            { id: 4, occupied: false },
+            { id: 5, occupied: false },
           ],
           memory: { is_dynamic: true, used: 100 },
         },
@@ -201,7 +202,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', { _ok: false, _status: 500 });
@@ -218,7 +219,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -239,7 +240,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -260,7 +261,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 5;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -282,7 +283,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -290,7 +291,7 @@ module.exports = function (w) {
         raw_next: 0,
         slot_update_id: 1,
         slot_data: {
-          slots: Array(6)
+          slots: Array(8)
             .fill()
             .map(() => ({ occupied: false })),
           memory: {
@@ -312,7 +313,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       // Simulate empty response
@@ -335,7 +336,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       const origFetch = browserGlobals.fetch;
@@ -357,7 +358,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       const origFetch = browserGlobals.fetch;
@@ -379,7 +380,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       const origFetch = browserGlobals.fetch;
@@ -399,7 +400,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       const origFetch = browserGlobals.fetch;
@@ -421,7 +422,7 @@ module.exports = function (w) {
       resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       const origFetch = browserGlobals.fetch;
@@ -446,7 +447,7 @@ module.exports = function (w) {
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
-      w.FPBState.slotStates = Array(6)
+      w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       setFetchResponse('/api/logs', {
@@ -456,6 +457,7 @@ module.exports = function (w) {
         slot_data: {
           slots: [
             {
+              id: 0,
               occupied: true,
               func: 'func0',
               orig_addr: '0x1000',
@@ -463,16 +465,17 @@ module.exports = function (w) {
               code_size: 100,
             },
             {
+              id: 1,
               occupied: true,
               func: 'func1',
               orig_addr: '0x1100',
               target_addr: '0x2100',
               code_size: 200,
             },
-            { occupied: false },
-            { occupied: false },
-            { occupied: false },
-            { occupied: false },
+            { id: 2, occupied: false },
+            { id: 3, occupied: false },
+            { id: 4, occupied: false },
+            { id: 5, occupied: false },
           ],
         },
       });
@@ -481,6 +484,112 @@ module.exports = function (w) {
       assertTrue(w.FPBState.slotStates[1].occupied);
       assertEqual(w.FPBState.slotStates[0].func, 'func0');
       assertEqual(w.FPBState.slotStates[1].func, 'func1');
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('uses slot.id to correctly index slotStates (non-sequential)', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.toolLogNextId = 0;
+      w.FPBState.rawLogNextId = 0;
+      w.FPBState.slotUpdateId = 0;
+      w.FPBState.slotStates = Array(8)
+        .fill()
+        .map(() => ({ occupied: false }));
+      // Simulate device returning Slot[0] empty, Slot[7] occupied
+      setFetchResponse('/api/logs', {
+        tool_next: 0,
+        raw_next: 0,
+        slot_update_id: 1,
+        slot_data: {
+          fpb_version: 2,
+          slots: [
+            { id: 0, occupied: false },
+            { id: 1, occupied: false },
+            { id: 2, occupied: false },
+            { id: 3, occupied: false },
+            { id: 4, occupied: false },
+            { id: 5, occupied: false },
+            { id: 6, occupied: false },
+            {
+              id: 7,
+              occupied: true,
+              func: 'hook_func',
+              orig_addr: '0x2C9091DC',
+              target_addr: '0x3D0B4B91',
+              code_size: 65,
+            },
+          ],
+        },
+      });
+      await w.fetchLogs();
+      // Slot 7 should be occupied
+      assertTrue(w.FPBState.slotStates[7].occupied);
+      assertEqual(w.FPBState.slotStates[7].func, 'hook_func');
+      assertEqual(w.FPBState.slotStates[7].orig_addr, '0x2C9091DC');
+      assertEqual(w.FPBState.slotStates[7].code_size, 65);
+      // Other slots should remain empty
+      assertTrue(!w.FPBState.slotStates[0].occupied);
+      assertTrue(!w.FPBState.slotStates[6].occupied);
+      w.FPBState.toolTerminal = null;
+      w.FPBState.rawTerminal = null;
+    });
+
+    it('correctly handles sparse slot data (only occupied slots)', async () => {
+      resetMocks();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.rawTerminal = new MockTerminal();
+      w.FPBState.toolLogNextId = 0;
+      w.FPBState.rawLogNextId = 0;
+      w.FPBState.slotUpdateId = 0;
+      w.FPBState.slotStates = Array(8)
+        .fill()
+        .map(() => ({ occupied: false }));
+      // Device returns only Slot[2] and Slot[5] as occupied
+      setFetchResponse('/api/logs', {
+        tool_next: 0,
+        raw_next: 0,
+        slot_update_id: 1,
+        slot_data: {
+          slots: [
+            { id: 0, occupied: false },
+            { id: 1, occupied: false },
+            {
+              id: 2,
+              occupied: true,
+              func: 'slot2_func',
+              orig_addr: '0x08001000',
+              target_addr: '0x20001000',
+              code_size: 32,
+            },
+            { id: 3, occupied: false },
+            { id: 4, occupied: false },
+            {
+              id: 5,
+              occupied: true,
+              func: 'slot5_func',
+              orig_addr: '0x08002000',
+              target_addr: '0x20002000',
+              code_size: 48,
+            },
+            { id: 6, occupied: false },
+            { id: 7, occupied: false },
+          ],
+        },
+      });
+      await w.fetchLogs();
+      assertTrue(!w.FPBState.slotStates[0].occupied);
+      assertTrue(!w.FPBState.slotStates[1].occupied);
+      assertTrue(w.FPBState.slotStates[2].occupied);
+      assertEqual(w.FPBState.slotStates[2].func, 'slot2_func');
+      assertTrue(!w.FPBState.slotStates[3].occupied);
+      assertTrue(!w.FPBState.slotStates[4].occupied);
+      assertTrue(w.FPBState.slotStates[5].occupied);
+      assertEqual(w.FPBState.slotStates[5].func, 'slot5_func');
+      assertTrue(!w.FPBState.slotStates[6].occupied);
+      assertTrue(!w.FPBState.slotStates[7].occupied);
       w.FPBState.toolTerminal = null;
       w.FPBState.rawTerminal = null;
     });

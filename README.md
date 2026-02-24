@@ -13,7 +13,7 @@ Runtime function hooking for ARM Cortex-M3/M4 using the FPB hardware unit. Injec
 - ✅ **Zero Flash Modification** - Runtime injection to RAM
 - ✅ **Hardware Redirection** - FPB unit for zero-overhead patching
 - ✅ **Dual Modes** - REMAP (M3/M4) and DebugMonitor (ARMv8-M)
-- ✅ **6 Simultaneous Hooks** - Multiple active patches
+- ✅ **6-8 Simultaneous Hooks** - FPB v1: 6 slots, FPB v2: 8 slots
 - ✅ **Reversible** - Restore original behavior instantly
 
 ## Quick Start
@@ -109,7 +109,7 @@ FPBInject/
 ## Limitations
 
 - FPB patches Code region only (0x00000000 - 0x1FFFFFFF)
-- 6 comparators on STM32F103
+- FPB v1: 6 comparators (STM32F103, etc.), FPB v2: up to 8 comparators
 - Thumb/Thumb-2 instructions only
 - Debuggers may conflict with FPB
 
