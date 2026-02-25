@@ -497,6 +497,15 @@ const browserGlobals = {
   window: null,
   navigator: { clipboard: { writeText: () => Promise.resolve() } },
   console,
+  // i18n translation function mock - returns fallback or key
+  t: (key, fallbackOrOptions = {}, options = {}) => {
+    if (typeof fallbackOrOptions === 'string') {
+      return fallbackOrOptions;
+    }
+    return key;
+  },
+  // i18n ready check mock - always returns false in tests
+  isI18nReady: () => false,
   setTimeout: (fn, ms) => {
     fn();
     return 1;
@@ -569,6 +578,9 @@ browserGlobals.window = {
   innerWidth: 1200,
   FPBState: null,
   getComputedStyle: browserGlobals.getComputedStyle,
+  // i18n translation function mock
+  t: browserGlobals.t,
+  isI18nReady: () => false,
   // These will be populated when application code loads
   writeToOutput: null,
   writeToSerial: null,
