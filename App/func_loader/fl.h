@@ -112,11 +112,6 @@ bool fl_is_inited(fl_context_t* ctx);
  */
 int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv);
 
-/**
- * @brief Main entry (implemented in porting layer)
- */
-void func_loader_run(void);
-
 #ifdef __cplusplus
 }
 #endif
