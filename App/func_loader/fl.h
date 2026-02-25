@@ -39,9 +39,7 @@ extern "C" {
 #include "fl_file.h"
 
 /* Maximum slot count (FPB v1: 6, v2: 8) */
-#ifndef FL_MAX_SLOTS
 #define FL_MAX_SLOTS 8
-#endif
 
 /* Callback types */
 typedef void (*fl_output_cb_t)(void* user, const char* str);

@@ -66,9 +66,7 @@ extern "C" {
 #include <stdint.h>
 
 /* Maximum number of redirects (same as FPB code comparators) */
-#ifndef FPB_DEBUGMON_MAX_REDIRECTS
 #define FPB_DEBUGMON_MAX_REDIRECTS 8
-#endif
 
 /**
  * @brief  Initialize DebugMonitor-based redirection
