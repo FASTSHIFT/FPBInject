@@ -149,7 +149,11 @@ async function saveConfig(silent = false) {
     if (item.config_type === 'boolean') {
       config[item.key] = el.checked;
     } else if (item.config_type === 'number') {
-      let value = parseFloat(el.value) || item.default;
+      let value = parseFloat(el.value);
+      // Use default only if value is NaN (not for 0)
+      if (isNaN(value)) {
+        value = item.default;
+      }
       // Reverse UI multiplier
       if (item.ui_multiplier !== 1) {
         value = value / item.ui_multiplier;

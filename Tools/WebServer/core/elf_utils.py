@@ -521,6 +521,7 @@ decomp.dispose()
                 if not is_new_project:
                     clear_ghidra_cache()
                 return False, f"Ghidra analysis failed: {result.stderr[:200]}"
+
             return False, "Decompilation produced no output"
 
     except subprocess.TimeoutExpired:

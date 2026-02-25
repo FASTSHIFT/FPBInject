@@ -238,13 +238,26 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         order=40,
     ),
     ConfigItem(
+        key="wakeup_shell_cnt",
+        label="Wakeup Count",
+        group=ConfigGroup.TRANSFER,
+        config_type=ConfigType.NUMBER,
+        default=3,
+        tooltip="Number of newlines to send before entering fl mode to wake up shell.",
+        min_value=0,
+        max_value=10,
+        step=1,
+        unit="times",
+        order=50,
+    ),
+    ConfigItem(
         key="verify_crc",
         label="Verify CRC after Transfer",
         group=ConfigGroup.TRANSFER,
         config_type=ConfigType.BOOLEAN,
         default=True,
         tooltip="Verify file integrity with CRC after transfer",
-        order=50,
+        order=60,
     ),
     # === Logging Settings ===
     ConfigItem(

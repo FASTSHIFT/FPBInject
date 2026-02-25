@@ -68,6 +68,14 @@ class FPBProtocol:
 
         return self.enter_fl_mode(timeout)
 
+    def wakeup_shell(self, cnt: int):
+        """Wake up shell by sending newlines to trigger any pending output."""
+        newline = b"\n"
+        for _ in range(cnt):
+            self.device.ser.write(newline)
+            self.device.ser.flush()
+            time.sleep(0.05)
+
     def enter_fl_mode(self, timeout: float = 0.5) -> bool:
         """Enter fl interactive mode by sending 'fl' command."""
         ser = self.device.ser
@@ -84,9 +92,7 @@ class FPBProtocol:
             self._log_raw(LogDirection.TX, "fl")
             ser.reset_input_buffer()
 
-            # Let shell wake up
-            ser.write(b"\n\n")
-            ser.flush()
+            self.wakeup_shell(getattr(self.device, "wakeup_shell_cnt", 0))
 
             # Send 'fl' command to enter interactive mode
             ser.write(b"fl\n")
