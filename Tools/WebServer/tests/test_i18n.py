@@ -560,6 +560,10 @@ class TestDataI18nAttributesCoverage(unittest.TestCase):
         for line in lines:
             stripped = line.strip()
 
+            # Skip comments
+            if stripped.startswith("//"):
+                continue
+
             # Track opening braces with key names
             key_with_brace = re.match(r"(\w+)\s*:\s*\{", stripped)
             if key_with_brace:
@@ -573,7 +577,11 @@ class TestDataI18nAttributesCoverage(unittest.TestCase):
                 continue
 
             # Match leaf values: key: 'value' or key: "value"
+            # Also match keys that may have value on next line: key:
             leaf_match = re.match(r"(\w+)\s*:\s*['\"]", stripped)
+            if not leaf_match:
+                # Try matching key with value on next line (key:)
+                leaf_match = re.match(r"(\w+)\s*:$", stripped)
             if leaf_match and current_path:
                 key = leaf_match.group(1)
                 # Skip 'translation' as it's the root

@@ -46,8 +46,23 @@ def scan_directory(root_dir):
     """Scan directory recursively for .js and .html files."""
     results = {}
 
+    # Directories and files to exclude (i18n locale files are expected to have Chinese)
+    exclude_dirs = {"locales", "node_modules", "__pycache__", ".git"}
+    exclude_files = {
+        "zh-CN.js",
+        "zh-TW.js",
+        "config_schema.py",
+    }  # config_schema.py has language option labels
+
     for root, dirs, files in os.walk(root_dir):
+        # Skip excluded directories
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
         for file in files:
+            # Skip excluded files
+            if file in exclude_files:
+                continue
+
             if file.endswith((".js", ".html", ".py")):
                 file_path = os.path.join(root, file)
                 findings = scan_file(file_path)

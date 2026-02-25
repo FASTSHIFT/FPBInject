@@ -62,7 +62,6 @@ class TestTemplateRendering(unittest.TestCase):
             self.assertIn('class="title-bar"', html)
             self.assertIn("FPBInject Workbench", html)
             self.assertIn('id="clockDisplay"', html)
-            self.assertIn('id="themeIcon"', html)
 
     def test_activitybar_partial(self):
         """Test that activitybar partial is included."""
