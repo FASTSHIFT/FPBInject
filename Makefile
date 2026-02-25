@@ -15,7 +15,7 @@ STACKSIZE = $(CONFIG_FPBINJECT_STACKSIZE)
 MODULE    = $(CONFIG_FPBINJECT)
 
 # Source files
-MAINSRC = App/func_loader/func_loader_port_nuttx.c
+MAINSRC = App/func_loader/fl_port_nuttx.c
 CSRCS += $(filter-out ${MAINSRC}, $(wildcard App/func_loader/*.c))
 CSRCS += $(wildcard App/func_loader/argparse/*.c)
 CSRCS += $(wildcard Source/*.c)
