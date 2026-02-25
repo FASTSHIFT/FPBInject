@@ -1115,5 +1115,136 @@ class TestFeaturesConfigI18nIntegration(unittest.TestCase):
         self.assertIn("fpbinject_ui_language", self.content)
 
 
+class TestDevicePopupMessages(unittest.TestCase):
+    """Test device popup message translations for fpbPing and fpbInfo."""
+
+    SUPPORTED_LANGUAGES = ["en", "zh-CN", "zh-TW"]
+
+    # Required message keys for device popup feedback
+    REQUIRED_MESSAGE_KEYS = [
+        "not_connected",
+        "ping_success",
+        "device_responding",
+        "ping_failed",
+        "device_not_responding",
+        "error",
+        "device_info_success",
+        "device_info_failed",
+        "fpb_version",
+        "build_time",
+        "memory_used",
+        "slots_used",
+        "unknown_error",
+        "build_time_mismatch",
+        "build_time_mismatch_desc",
+        "build_time_mismatch_warn",
+        "device_firmware",
+        "elf_file",
+        "build_time_mismatch_hint",
+    ]
+
+    def test_all_device_message_keys_exist(self):
+        """Test that all device popup message keys exist in all locale files."""
+        for lang in self.SUPPORTED_LANGUAGES:
+            filepath = os.path.join(LOCALES_DIR, f"{lang}.js")
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            for key in self.REQUIRED_MESSAGE_KEYS:
+                self.assertIn(
+                    f"{key}:",
+                    content,
+                    f"{lang}.js missing message key: {key}",
+                )
+
+    def test_fpb_js_uses_t_function_for_popups(self):
+        """Test that fpb.js uses t() function for popup messages."""
+        filepath = os.path.join(BASE_DIR, "static", "js", "features", "fpb.js")
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Check that fpbPing uses t() for messages
+        self.assertIn("t('messages.not_connected'", content)
+        self.assertIn("t('messages.ping_success'", content)
+        self.assertIn("t('messages.ping_failed'", content)
+
+        # Check that fpbInfo uses t() for messages
+        self.assertIn("t('messages.device_info_success'", content)
+        self.assertIn("t('messages.device_info_failed'", content)
+        self.assertIn("t('messages.fpb_version'", content)
+        self.assertIn("t('messages.build_time'", content)
+        self.assertIn("t('messages.memory_used'", content)
+        self.assertIn("t('messages.slots_used'", content)
+
+    def test_fpb_ping_has_alert_popup(self):
+        """Test that fpbPing function has alert popup for feedback."""
+        filepath = os.path.join(BASE_DIR, "static", "js", "features", "fpb.js")
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Find fpbPing function and check it has alert calls
+        fpb_ping_match = re.search(
+            r"async function fpbPing\(\).*?^}",
+            content,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(fpb_ping_match, "fpbPing function not found")
+
+        fpb_ping_content = fpb_ping_match.group(0)
+        # Should have alert for success, failure, and error cases
+        alert_count = fpb_ping_content.count("alert(")
+        self.assertGreaterEqual(
+            alert_count, 3, "fpbPing should have at least 3 alert popups"
+        )
+
+    def test_fpb_info_has_alert_popup(self):
+        """Test that fpbInfo function has alert popup for feedback."""
+        filepath = os.path.join(BASE_DIR, "static", "js", "features", "fpb.js")
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Find fpbInfo function and check it has alert calls
+        fpb_info_match = re.search(
+            r"async function fpbInfo\(\).*?^}",
+            content,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(fpb_info_match, "fpbInfo function not found")
+
+        fpb_info_content = fpb_info_match.group(0)
+        # Should have alert for success, failure, and error cases
+        alert_count = fpb_info_content.count("alert(")
+        self.assertGreaterEqual(
+            alert_count, 3, "fpbInfo should have at least 3 alert popups"
+        )
+
+    def test_chinese_translations_for_device_messages(self):
+        """Test that Chinese locale files have proper translations for device messages."""
+        chinese_pattern = re.compile(r"[\u4e00-\u9fff]")
+
+        for lang in ["zh-CN", "zh-TW"]:
+            filepath = os.path.join(LOCALES_DIR, f"{lang}.js")
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Check that key device messages have Chinese translations
+            for key in [
+                "not_connected",
+                "ping_success",
+                "ping_failed",
+                "device_info_success",
+            ]:
+                # Find the translation value for this key
+                pattern = rf"{key}:\s*['\"]([^'\"]+)['\"]"
+                match = re.search(pattern, content)
+                self.assertIsNotNone(match, f"{lang}.js missing translation for {key}")
+                if match:
+                    value = match.group(1)
+                    self.assertTrue(
+                        chinese_pattern.search(value),
+                        f"{lang}.js: {key} should have Chinese translation, got: {value}",
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()

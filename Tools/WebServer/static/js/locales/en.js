@@ -125,6 +125,31 @@ window.i18nResources['en'] = {
       inject_failed: 'Injection failed',
       compile_success: 'Compilation successful',
       compile_failed: 'Compilation failed',
+      // Device detection messages
+      not_connected: 'Not connected to device',
+      ping_success: 'Device Detected',
+      device_responding: 'Device is responding',
+      ping_failed: 'Device Detection Failed',
+      device_not_responding: 'Device is not responding',
+      error: 'Error',
+      // Device info messages
+      device_info_success: 'Device Info Retrieved',
+      device_info_failed: 'Failed to Get Device Info',
+      fpb_version: 'FPB Version',
+      build_time: 'Build Time',
+      memory_used: 'Memory Used',
+      slots_used: 'Slots Used',
+      unknown_error: 'Unknown error',
+      // Build time mismatch
+      build_time_mismatch: 'Build Time Mismatch',
+      build_time_mismatch_desc:
+        'The device firmware and ELF file have different build times.',
+      build_time_mismatch_warn:
+        'This may cause injection to fail or behave unexpectedly.',
+      device_firmware: 'Device firmware',
+      elf_file: 'ELF file',
+      build_time_mismatch_hint:
+        'Please ensure the ELF file matches the firmware running on the device.',
     },
 
     // Modals

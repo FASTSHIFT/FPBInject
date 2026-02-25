@@ -127,6 +127,28 @@ window.i18nResources['zh-CN'] = {
       inject_failed: '注入失败',
       compile_success: '编译成功',
       compile_failed: '编译失败',
+      // 设备探测消息
+      not_connected: '未连接到设备',
+      ping_success: '设备已探测到',
+      device_responding: '设备正在响应',
+      ping_failed: '设备探测失败',
+      device_not_responding: '设备无响应',
+      error: '错误',
+      // 设备信息消息
+      device_info_success: '设备信息已获取',
+      device_info_failed: '获取设备信息失败',
+      fpb_version: 'FPB 版本',
+      build_time: '构建时间',
+      memory_used: '已用内存',
+      slots_used: '已用槽位',
+      unknown_error: '未知错误',
+      // 构建时间不匹配
+      build_time_mismatch: '构建时间不匹配',
+      build_time_mismatch_desc: '设备固件和 ELF 文件的构建时间不同。',
+      build_time_mismatch_warn: '这可能导致注入失败或行为异常。',
+      device_firmware: '设备固件',
+      elf_file: 'ELF 文件',
+      build_time_mismatch_hint: '请确保 ELF 文件与设备上运行的固件匹配。',
     },
 
     // 模态框

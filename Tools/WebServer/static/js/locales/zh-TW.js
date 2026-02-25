@@ -127,6 +127,28 @@ window.i18nResources['zh-TW'] = {
       inject_failed: '注入失敗',
       compile_success: '編譯成功',
       compile_failed: '編譯失敗',
+      // 裝置探測訊息
+      not_connected: '未連線到裝置',
+      ping_success: '裝置已探測到',
+      device_responding: '裝置正在回應',
+      ping_failed: '裝置探測失敗',
+      device_not_responding: '裝置無回應',
+      error: '錯誤',
+      // 裝置資訊訊息
+      device_info_success: '裝置資訊已取得',
+      device_info_failed: '取得裝置資訊失敗',
+      fpb_version: 'FPB 版本',
+      build_time: '建置時間',
+      memory_used: '已用記憶體',
+      slots_used: '已用槽位',
+      unknown_error: '未知錯誤',
+      // 建置時間不符
+      build_time_mismatch: '建置時間不符',
+      build_time_mismatch_desc: '裝置韌體和 ELF 檔案的建置時間不同。',
+      build_time_mismatch_warn: '這可能導致注入失敗或行為異常。',
+      device_firmware: '裝置韌體',
+      elf_file: 'ELF 檔案',
+      build_time_mismatch_hint: '請確保 ELF 檔案與裝置上執行的韌體相符。',
     },
 
     // 模態框

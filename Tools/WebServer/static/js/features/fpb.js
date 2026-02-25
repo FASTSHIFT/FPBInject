@@ -9,6 +9,7 @@ async function fpbPing() {
   const state = window.FPBState;
   if (!state.isConnected) {
     log.error('Not connected');
+    alert(t('messages.not_connected', 'Not connected to device'));
     return;
   }
 
@@ -17,11 +18,23 @@ async function fpbPing() {
     const data = await res.json();
     if (data.success) {
       log.success(data.message);
+      alert(
+        `✅ ${t('messages.ping_success', 'Device Detected')}\n\n` +
+          `${data.message || t('messages.device_responding', 'Device is responding')}`,
+      );
     } else {
       log.error(data.message);
+      alert(
+        `❌ ${t('messages.ping_failed', 'Device Detection Failed')}\n\n` +
+          `${data.message || t('messages.device_not_responding', 'Device is not responding')}`,
+      );
     }
   } catch (e) {
     log.error(`Ping failed: ${e}`);
+    alert(
+      `❌ ${t('messages.ping_failed', 'Device Detection Failed')}\n\n` +
+        `${t('messages.error', 'Error')}: ${e}`,
+    );
   }
 }
 
@@ -108,6 +121,7 @@ async function fpbInfo() {
   const state = window.FPBState;
   if (!state.isConnected) {
     log.error('Not connected');
+    alert(t('messages.not_connected', 'Not connected to device'));
     return;
   }
 
@@ -125,12 +139,12 @@ async function fpbInfo() {
         writeToOutput(`  ELF file: ${elfTime}`, 'error');
 
         alert(
-          `⚠️ Build Time Mismatch!\n\n` +
-            `The device firmware and ELF file have different build times.\n` +
-            `This may cause injection to fail or behave unexpectedly.\n\n` +
-            `Device firmware: ${deviceTime}\n` +
-            `ELF file: ${elfTime}\n\n` +
-            `Please ensure the ELF file matches the firmware running on the device.`,
+          `⚠️ ${t('messages.build_time_mismatch', 'Build Time Mismatch')}!\n\n` +
+            `${t('messages.build_time_mismatch_desc', 'The device firmware and ELF file have different build times.')}\n` +
+            `${t('messages.build_time_mismatch_warn', 'This may cause injection to fail or behave unexpectedly.')}\n\n` +
+            `${t('messages.device_firmware', 'Device firmware')}: ${deviceTime}\n` +
+            `${t('messages.elf_file', 'ELF file')}: ${elfTime}\n\n` +
+            `${t('messages.build_time_mismatch_hint', 'Please ensure the ELF file matches the firmware running on the device.')}`,
         );
       }
 
@@ -163,11 +177,63 @@ async function fpbInfo() {
       }
 
       log.success('Device info updated');
+
+      // Build device info popup message
+      const infoLines = [];
+      infoLines.push(
+        `✅ ${t('messages.device_info_success', 'Device Info Retrieved')}`,
+      );
+      infoLines.push('');
+
+      if (data.fpb_version !== undefined) {
+        infoLines.push(
+          `${t('messages.fpb_version', 'FPB Version')}: ${data.fpb_version}`,
+        );
+      }
+
+      if (data.device_build_time) {
+        infoLines.push(
+          `${t('messages.build_time', 'Build Time')}: ${data.device_build_time}`,
+        );
+      }
+
+      if (data.memory) {
+        infoLines.push(
+          `${t('messages.memory_used', 'Memory Used')}: ${data.memory.used || 0} ${t('device.bytes', 'Bytes')}`,
+        );
+      }
+
+      if (data.slots) {
+        const occupiedSlots = data.slots.filter((s) => s.occupied).length;
+        const totalSlots = data.slots.length;
+        infoLines.push(
+          `${t('messages.slots_used', 'Slots Used')}: ${occupiedSlots}/${totalSlots}`,
+        );
+
+        // List occupied slots
+        data.slots.forEach((slot) => {
+          if (slot.occupied && slot.func) {
+            infoLines.push(
+              `  ${t('device.slot_n', 'Slot {{n}}', { n: slot.id })}: ${slot.func}`,
+            );
+          }
+        });
+      }
+
+      alert(infoLines.join('\n'));
     } else {
       log.error(data.error || 'Failed to get device info');
+      alert(
+        `❌ ${t('messages.device_info_failed', 'Failed to Get Device Info')}\n\n` +
+          `${data.error || t('messages.unknown_error', 'Unknown error')}`,
+      );
     }
   } catch (e) {
     log.error(`Info failed: ${e}`);
+    alert(
+      `❌ ${t('messages.device_info_failed', 'Failed to Get Device Info')}\n\n` +
+        `${t('messages.error', 'Error')}: ${e}`,
+    );
   }
 }
 
