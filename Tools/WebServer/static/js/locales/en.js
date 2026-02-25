@@ -10,7 +10,10 @@ window.i18nResources['en'] = {
       connection: 'CONNECTION',
       config: 'CONFIG',
       explorer: 'EXPLORER',
-      file_transfer: 'FILE TRANSFER',
+      device: 'DEVICE',
+      transfer: 'TRANSFER',
+      symbols: 'SYMBOLS',
+      file_transfer: 'FILE TRANSFER'
     },
 
     // Config groups
@@ -22,7 +25,7 @@ window.i18nResources['en'] = {
         transfer: 'Transfer',
         logging: 'Logging',
         tools: 'Analysis Tools',
-        ui: 'User Interface',
+        ui: 'User Interface'
       },
       // Config item labels
       labels: {
@@ -44,13 +47,13 @@ window.i18nResources['en'] = {
         ghidra_path: 'Ghidra Path',
         enable_decompile: 'Enable Decompilation',
         ui_theme: 'Theme',
-        ui_language: 'Language',
+        ui_language: 'Language'
       },
       // Config option values
       options: {
         dark: 'Dark',
-        light: 'Light',
-      },
+        light: 'Light'
+      }
     },
 
     // Connection panel
@@ -63,8 +66,8 @@ window.i18nResources['en'] = {
       refresh: 'Refresh',
       status: {
         connected: 'Connected',
-        disconnected: 'Disconnected',
-      },
+        disconnected: 'Disconnected'
+      }
     },
 
     // Buttons
@@ -79,7 +82,7 @@ window.i18nResources['en'] = {
       add: 'Add',
       remove: 'Remove',
       start: 'Start',
-      stop: 'Stop',
+      stop: 'Stop'
     },
 
     // Tabs
@@ -88,7 +91,7 @@ window.i18nResources['en'] = {
       symbols: 'SYMBOLS',
       output: 'OUTPUT',
       serial: 'SERIAL',
-      problems: 'PROBLEMS',
+      problems: 'PROBLEMS'
     },
 
     // Panels
@@ -100,7 +103,7 @@ window.i18nResources['en'] = {
       no_symbols: 'No symbols loaded',
       memory_not_available: 'Memory info not available',
       click_refresh: "Click 'Refresh' to load files",
-      search_placeholder: 'Search by name or address',
+      search_placeholder: 'Search by name or address'
     },
 
     // Status bar
@@ -113,7 +116,7 @@ window.i18nResources['en'] = {
       disconnected: 'Disconnected',
       watcher_off: 'Watcher: Off',
       watcher_on: 'Watcher: On',
-      slot: 'Slot: {{slot}}',
+      slot: 'Slot: {{slot}}'
     },
 
     // Messages
@@ -142,14 +145,11 @@ window.i18nResources['en'] = {
       unknown_error: 'Unknown error',
       // Build time mismatch
       build_time_mismatch: 'Build Time Mismatch',
-      build_time_mismatch_desc:
-        'The device firmware and ELF file have different build times.',
-      build_time_mismatch_warn:
-        'This may cause injection to fail or behave unexpectedly.',
+      build_time_mismatch_desc: 'The device firmware and ELF file have different build times.',
+      build_time_mismatch_warn: 'This may cause injection to fail or behave unexpectedly.',
       device_firmware: 'Device firmware',
       elf_file: 'ELF file',
-      build_time_mismatch_hint:
-        'Please ensure the ELF file matches the firmware running on the device.',
+      build_time_mismatch_hint: 'Please ensure the ELF file matches the firmware running on the device.',
       // Backend disconnection
       backend_disconnected: 'Backend server has disconnected.',
       backend_restart_hint: 'Please restart the server and refresh the page.',
@@ -171,14 +171,12 @@ window.i18nResources['en'] = {
       injection_failed_count: '{{count}} injection(s) failed!',
       failed_functions: 'Failed functions',
       slots_full_hint: 'This may be due to FPB Slots being full.',
-      clear_slots_hint:
-        'Please clear some Slots in DEVICE INFO panel and try again.',
+      clear_slots_hint: 'Please clear some Slots in DEVICE INFO panel and try again.',
       // Serial test
       serial_test_complete: 'Serial Throughput Test Complete!',
       current_chunk_size: 'Current chunk size',
       recommended_chunk_size: 'Recommended chunk size',
-      apply_recommended_size:
-        'Do you want to apply the recommended chunk size?',
+      apply_recommended_size: 'Do you want to apply the recommended chunk size?',
       // ELF watcher
       elf_file_changed: 'ELF file "{{fileName}}" has changed.',
       reload_symbols_now: 'Reload symbols now?',
@@ -186,27 +184,26 @@ window.i18nResources['en'] = {
       all_slots_occupied: 'All {{count}} FPB Slots are occupied!',
       current_slots: 'Current slots',
       clear_slots_before_inject: 'Please clear some slots before injecting.',
-      use_clear_all_hint:
-        'Use "Clear All" button or click ✕ on individual slots.',
+      use_clear_all_hint: 'Use "Clear All" button or click ✕ on individual slots.',
       click_ok_to_open_device: 'Click OK to open Device Info panel.',
       slot_occupied_by: 'Slot {{slot}} is already occupied by "{{func}}".',
       overwrite_slot: 'Do you want to overwrite it?',
       // Clear all slots
       confirm_clear_all_slots: 'Are you sure you want to clear all FPB slots?',
-      unpatch_all_warning: 'This will unpatch all injected functions.',
+      unpatch_all_warning: 'This will unpatch all injected functions.'
     },
 
     // Modals
     modals: {
       file_browser: 'File Browser',
       go: 'Go',
-      select: 'Select',
+      select: 'Select'
     },
 
     // Editor
     editor: {
       slot: 'SLOT',
-      no_file_open: 'No file open',
+      no_file_open: 'No file open'
     },
 
     // Transfer
@@ -215,7 +212,7 @@ window.i18nResources['en'] = {
       folder: 'Folder',
       download: 'Download',
       upload: 'Upload',
-      cancel: 'Cancel',
+      cancel: 'Cancel'
     },
 
     // Device
@@ -228,7 +225,7 @@ window.i18nResources['en'] = {
       fpb_v2_only: 'FPB v2 only',
       fpb_v2_required: 'This slot requires FPB v2 hardware',
       bytes: 'Bytes',
-      used: 'Used',
+      used: 'Used'
     },
 
     // Tooltips
@@ -243,8 +240,7 @@ window.i18nResources['en'] = {
       test_serial: 'Test serial throughput to find max transfer size',
       clear_slot: 'Clear slot',
       // Symbols
-      symbols_hint:
-        'Single-click: view disassembly; Double-click: create patch',
+      symbols_hint: 'Single-click: view disassembly; Double-click: create patch',
       // Transfer
       upload_file: 'Upload files to device',
       upload_folder: 'Upload folder to device',
@@ -256,34 +252,25 @@ window.i18nResources['en'] = {
       // Theme
       toggle_theme: 'Toggle Theme',
       // Config items
-      elf_path:
-        'Path to the compiled ELF file for symbol lookup and disassembly',
-      compile_commands_path:
-        'Path to compile_commands.json for accurate compile flags',
+      elf_path: 'Path to the compiled ELF file for symbol lookup and disassembly',
+      compile_commands_path: 'Path to compile_commands.json for accurate compile flags',
       toolchain_path: 'Path to cross-compiler toolchain bin directory',
-      patch_mode:
-        'Trampoline: Use code trampoline (default)\nDebugMonitor: Use DebugMonitor exception\nDirect: Direct code replacement',
-      auto_compile:
-        'Automatically compile and inject when source files are saved',
+      patch_mode: 'Trampoline: Use code trampoline (default)\nDebugMonitor: Use DebugMonitor exception\nDirect: Direct code replacement',
+      auto_compile: 'Automatically compile and inject when source files are saved',
       watch_dirs: 'Directories to watch for file changes',
-      chunk_size:
-        'Size of each uploaded data block. Smaller values are more stable but slower.',
-      tx_chunk_size:
-        'TX chunk size for serial commands (bytes). 0 = disabled. Workaround for slow serial drivers.',
+      chunk_size: 'Size of each uploaded data block. Smaller values are more stable but slower.',
+      tx_chunk_size: 'TX chunk size for serial commands (bytes). 0 = disabled. Workaround for slow serial drivers.',
       tx_chunk_delay: 'Delay between TX chunks. Only used when TX Chunk > 0.',
-      transfer_max_retries:
-        'Maximum retry attempts for file transfer when CRC mismatch occurs.',
-      wakeup_shell_cnt:
-        'Number of newlines to send before entering fl mode to wake up shell.',
+      transfer_max_retries: 'Maximum retry attempts for file transfer when CRC mismatch occurs.',
+      wakeup_shell_cnt: 'Number of newlines to send before entering fl mode to wake up shell.',
       verify_crc: 'Verify file integrity with CRC after transfer',
       log_file_path: 'Path to save serial logs',
       log_file_enabled: 'Record serial communication logs to file',
       serial_echo_enabled: 'Echo TX commands to SERIAL panel (for debugging)',
-      ghidra_path:
-        'Path to Ghidra installation directory (containing support/analyzeHeadless)',
-      enable_decompile:
-        'Enable decompilation when creating patch templates (requires Ghidra)',
-      ui_language: 'UI display language',
-    },
-  },
+      ghidra_path: 'Path to Ghidra installation directory (containing support/analyzeHeadless)',
+      enable_decompile: 'Enable decompilation when creating patch templates (requires Ghidra)',
+      ui_theme: 'UI color theme',
+      ui_language: 'UI display language'
+    }
+  }
 };
