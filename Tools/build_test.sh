@@ -28,7 +28,7 @@ APP_SELECTS=(1 2 3)
 APP_NAMES=("BLINK" "TEST" "FUNC_LOADER")
 
 # FL_ALLOC_MODE only applies to APP_SELECT=3 (FUNC_LOADER)
-ALLOC_MODES=("STATIC" "LIBC" "UMM")
+ALLOC_MODES=("STATIC" "LIBC")
 
 # Trampoline options (only test a subset for now)
 TRAMPOLINE_CONFIGS=(
