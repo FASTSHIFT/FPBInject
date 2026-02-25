@@ -41,7 +41,8 @@ window.i18nResources['en'] = {
         log_file_path: 'Log Path',
         log_file_enabled: 'Record Serial Logs',
         serial_echo_enabled: 'Serial TX Echo',
-        ghidra_path: 'Ghidra Path',
+        ghidra_path:
+          '<a href="https://github.com/NationalSecurityAgency/ghidra" target="_blank" style="color: var(--vscode-textLink-foreground); text-decoration: underline;">Ghidra <i class="codicon codicon-link-external" style="font-size: 10px;"></i></a> Path',
         enable_decompile: 'Enable Decompilation',
         ui_theme: 'Theme',
         ui_language: 'Language',

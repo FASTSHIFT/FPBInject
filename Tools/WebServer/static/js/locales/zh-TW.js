@@ -44,7 +44,8 @@ window.i18nResources['zh-TW'] = {
         log_file_path: '日誌路徑',
         log_file_enabled: '記錄串列埠日誌',
         serial_echo_enabled: '串列埠傳送回顯',
-        ghidra_path: 'Ghidra 路徑',
+        ghidra_path:
+          '<a href="https://github.com/NationalSecurityAgency/ghidra" target="_blank" style="color: var(--vscode-textLink-foreground); text-decoration: underline;">Ghidra <i class="codicon codicon-link-external" style="font-size: 10px;"></i></a> 路徑',
         enable_decompile: '啟用反編譯',
         ui_theme: '主題',
         ui_language: '語言',
