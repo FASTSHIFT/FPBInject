@@ -71,6 +71,63 @@ class TestScanSerialPorts(unittest.TestCase):
 
         self.assertEqual(result, [])
 
+    @patch("utils.serial.serial.tools.list_ports.comports")
+    @patch("utils.serial.glob.glob")
+    def test_scan_ports_filters_ttyS_devices(self, mock_glob, mock_comports):
+        """Test that /dev/ttyS* devices are filtered out"""
+        mock_port_usb = Mock()
+        mock_port_usb.device = "/dev/ttyUSB0"
+        mock_port_usb.description = "USB Serial"
+
+        mock_port_ttyS0 = Mock()
+        mock_port_ttyS0.device = "/dev/ttyS0"
+        mock_port_ttyS0.description = "Serial Port 0"
+
+        mock_port_ttyS1 = Mock()
+        mock_port_ttyS1.device = "/dev/ttyS1"
+        mock_port_ttyS1.description = "Serial Port 1"
+
+        mock_port_acm = Mock()
+        mock_port_acm.device = "/dev/ttyACM0"
+        mock_port_acm.description = "ACM Device"
+
+        mock_comports.return_value = [
+            mock_port_usb,
+            mock_port_ttyS0,
+            mock_port_ttyS1,
+            mock_port_acm,
+        ]
+        mock_glob.return_value = []
+
+        result = serial_utils.scan_serial_ports()
+
+        # Should only have USB and ACM devices, not ttyS*
+        self.assertEqual(len(result), 2)
+        devices = [r["device"] for r in result]
+        self.assertIn("/dev/ttyUSB0", devices)
+        self.assertIn("/dev/ttyACM0", devices)
+        self.assertNotIn("/dev/ttyS0", devices)
+        self.assertNotIn("/dev/ttyS1", devices)
+
+    @patch("utils.serial.serial.tools.list_ports.comports")
+    @patch("utils.serial.glob.glob")
+    def test_scan_ports_only_ttyS_returns_empty(self, mock_glob, mock_comports):
+        """Test that when only /dev/ttyS* devices exist, result is empty"""
+        mock_port_ttyS0 = Mock()
+        mock_port_ttyS0.device = "/dev/ttyS0"
+        mock_port_ttyS0.description = "Serial Port 0"
+
+        mock_port_ttyS1 = Mock()
+        mock_port_ttyS1.device = "/dev/ttyS1"
+        mock_port_ttyS1.description = "Serial Port 1"
+
+        mock_comports.return_value = [mock_port_ttyS0, mock_port_ttyS1]
+        mock_glob.return_value = []
+
+        result = serial_utils.scan_serial_ports()
+
+        self.assertEqual(result, [])
+
 
 class TestSerialOpen(unittest.TestCase):
     """serial_open test"""

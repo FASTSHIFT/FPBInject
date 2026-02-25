@@ -21,8 +21,11 @@ from services.device_worker import start_worker, stop_worker
 def scan_serial_ports():
     """Scan for available serial ports."""
     ports = serial.tools.list_ports.comports()
+    # Filter out /dev/ttyS* devices (legacy serial ports, usually virtual or unused)
     result = [
-        {"device": port.device, "description": port.description} for port in ports
+        {"device": port.device, "description": port.description}
+        for port in ports
+        if not port.device.startswith("/dev/ttyS")
     ]
 
     # Also scan for CH341 USB serial devices which may not be detected by pyserial

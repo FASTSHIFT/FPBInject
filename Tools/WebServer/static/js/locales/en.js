@@ -64,6 +64,7 @@ window.i18nResources['en'] = {
       disconnect: 'Disconnect',
       connecting: 'Connecting...',
       refresh: 'Refresh',
+      no_ports: '-- No ports available --',
       status: {
         connected: 'Connected',
         disconnected: 'Disconnected',
@@ -124,6 +125,9 @@ window.i18nResources['en'] = {
       config_saved: 'Configuration saved',
       connect_success: 'Connected successfully',
       connect_failed: 'Connection failed',
+      no_port_selected: 'Please select a serial port first.',
+      check_port_hint:
+        'Please check if the device is connected and the port is correct.',
       inject_success: 'Injection successful',
       inject_failed: 'Injection failed',
       compile_success: 'Compilation successful',

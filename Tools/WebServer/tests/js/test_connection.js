@@ -238,13 +238,17 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
 
-    it('handles empty ports array', async () => {
+    it('shows placeholder when no ports available', async () => {
       resetMocks();
       setFetchResponse('/api/ports', { ports: [] });
       w.FPBState.toolTerminal = new MockTerminal();
-      await w.refreshPorts();
       const sel = browserGlobals.document.getElementById('portSelect');
-      assertEqual(sel._children.length, 0);
+      await w.refreshPorts();
+      // Should have exactly one disabled placeholder option
+      assertEqual(sel._children.length, 1);
+      const placeholder = sel._children[0];
+      assertEqual(placeholder.value, '');
+      assertTrue(placeholder.disabled);
       w.FPBState.toolTerminal = null;
     });
 
@@ -270,6 +274,31 @@ module.exports = function (w) {
       assertTrue(w.toggleConnect.constructor.name === 'AsyncFunction');
     });
 
+    it('shows alert when no port selected', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      browserGlobals.document.getElementById('portSelect').value = '';
+      browserGlobals.document.getElementById('baudrate').value = '115200';
+
+      let alertCalled = false;
+      let alertMessage = '';
+      const origAlert = global.alert;
+      global.alert = (msg) => {
+        alertCalled = true;
+        alertMessage = msg;
+      };
+
+      await w.toggleConnect();
+
+      assertTrue(alertCalled);
+      assertTrue(alertMessage.includes('select a serial port'));
+      assertTrue(!w.FPBState.isConnected);
+
+      global.alert = origAlert;
+      w.FPBState.toolTerminal = null;
+    });
+
     it('connects when not connected', async () => {
       resetMocks();
       w.FPBState.isConnected = false;
@@ -292,6 +321,39 @@ module.exports = function (w) {
       await w.toggleConnect();
       assertTrue(!w.FPBState.isConnected);
       w.FPBState.toolTerminal = null;
+    });
+
+    it('shows alert on connection failure', async () => {
+      resetMocks();
+      w.FPBState.isConnected = false;
+      w.FPBState.config = { transferMaxRetries: 0 }; // No retries for faster test
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      setFetchResponse('/api/connect', {
+        success: false,
+        message: 'Port busy',
+      });
+      browserGlobals.document.getElementById('portSelect').value =
+        '/dev/ttyUSB0';
+      browserGlobals.document.getElementById('baudrate').value = '115200';
+
+      let alertCalled = false;
+      let alertMessage = '';
+      const origAlert = global.alert;
+      global.alert = (msg) => {
+        alertCalled = true;
+        alertMessage = msg;
+      };
+
+      await w.toggleConnect();
+
+      assertTrue(alertCalled);
+      assertTrue(alertMessage.includes('Connection failed'));
+      assertTrue(alertMessage.includes('Port busy'));
+
+      global.alert = origAlert;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.config = null;
     });
 
     it('handles connection failure', async () => {

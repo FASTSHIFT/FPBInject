@@ -64,6 +64,7 @@ window.i18nResources['zh-CN'] = {
       disconnect: '断开',
       connecting: '连接中...',
       refresh: '刷新',
+      no_ports: '-- 没有可用的端口 --',
       status: {
         connected: '已连接',
         disconnected: '未连接',
@@ -123,6 +124,8 @@ window.i18nResources['zh-CN'] = {
       config_saved: '配置已保存',
       connect_success: '连接成功',
       connect_failed: '连接失败',
+      no_port_selected: '请先选择一个串口。',
+      check_port_hint: '请检查设备是否已连接以及端口是否正确。',
       inject_success: '注入成功',
       inject_failed: '注入失败',
       compile_success: '编译成功',

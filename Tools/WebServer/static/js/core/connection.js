@@ -39,6 +39,17 @@ async function refreshPorts() {
     sel.innerHTML = '';
 
     const ports = data.ports || [];
+
+    // Show placeholder if no ports available
+    if (ports.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = t('connection.no_ports', '-- No ports available --');
+      opt.disabled = true;
+      sel.appendChild(opt);
+      return;
+    }
+
     ports.forEach((p) => {
       const opt = document.createElement('option');
       const portName =
@@ -107,6 +118,14 @@ async function toggleConnect() {
     const baud = document.getElementById('baudrate').value;
     const maxRetries = getConnectionMaxRetries();
 
+    // Check if port is selected
+    if (!port) {
+      alert(
+        t('messages.no_port_selected', 'Please select a serial port first.'),
+      );
+      return;
+    }
+
     btn.disabled = true;
     btn.textContent = t('connection.connecting', 'Connecting...');
 
@@ -138,8 +157,16 @@ async function toggleConnect() {
       }
     }
 
-    // All retries failed
-    log.error(`Connection failed after ${maxRetries} retries: ${lastError}`);
+    // All retries failed - show alert
+    const errorMsg = lastError ? lastError.message : 'Unknown error';
+    log.error(`Connection failed after ${maxRetries} retries: ${errorMsg}`);
+    alert(
+      `${t('messages.connection_failed', 'Connection failed')}: ${errorMsg}\n\n` +
+        t(
+          'messages.check_port_hint',
+          'Please check if the device is connected and the port is correct.',
+        ),
+    );
     btn.textContent = t('connection.connect', 'Connect');
     btn.disabled = false;
   } else {

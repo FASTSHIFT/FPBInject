@@ -64,6 +64,7 @@ window.i18nResources['zh-TW'] = {
       disconnect: '斷開',
       connecting: '連線中...',
       refresh: '重新整理',
+      no_ports: '-- 沒有可用的連接埠 --',
       status: {
         connected: '已連線',
         disconnected: '未連線',
@@ -123,6 +124,8 @@ window.i18nResources['zh-TW'] = {
       config_saved: '設定已儲存',
       connect_success: '連線成功',
       connect_failed: '連線失敗',
+      no_port_selected: '請先選擇一個連接埠。',
+      check_port_hint: '請檢查裝置是否已連線以及連接埠是否正確。',
       inject_success: '注入成功',
       inject_failed: '注入失敗',
       compile_success: '編譯成功',
