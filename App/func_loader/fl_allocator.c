@@ -30,7 +30,7 @@
 #include <string.h>
 
 /* Magic number for validation */
-#define FUNC_ALLOC_MAGIC 0xFA110CA7
+#define FL_ALLOC_MAGIC 0xFA110CA7
 
 /* Helper: set bit in bitmap */
 static inline void set_bit(uint8_t* bitmap, size_t idx) {
@@ -47,7 +47,7 @@ static inline bool test_bit(const uint8_t* bitmap, size_t idx) {
     return (bitmap[idx / 8] & (1U << (idx % 8))) != 0;
 }
 
-void func_alloc_init(func_alloc_t* alloc, void* buf, size_t size) {
+void fl_alloc_init(fl_alloc_t* alloc, void* buf, size_t size) {
     if (alloc == NULL || buf == NULL || size == 0) {
         if (alloc) {
             alloc->magic = 0;
@@ -63,14 +63,14 @@ void func_alloc_init(func_alloc_t* alloc, void* buf, size_t size) {
      * Let n = block_count
      * bitmap_size = ceil(n/8)
      * size_table_size = n
-     * blocks_size = n * FUNC_ALLOC_BLOCK_SIZE
+     * blocks_size = n * FL_ALLOC_BLOCK_SIZE
      *
      * Total overhead = bitmap_size + size_table_size = ceil(n/8) + n
      *
      * We need: ceil(n/8) + n + n * BLOCK_SIZE <= size
      */
     size_t overhead_per_block = 1; /* size_table: 1 byte per block */
-    size_t total_per_block = FUNC_ALLOC_BLOCK_SIZE + overhead_per_block;
+    size_t total_per_block = FL_ALLOC_BLOCK_SIZE + overhead_per_block;
 
     /* Initial estimate (ignoring bitmap for now) */
     size_t n = size / (total_per_block + 1); /* +1 for bitmap overhead estimate */
@@ -78,7 +78,7 @@ void func_alloc_init(func_alloc_t* alloc, void* buf, size_t size) {
     /* Refine: account for actual bitmap size */
     while (n > 0) {
         size_t bitmap_sz = (n + 7) / 8;
-        size_t needed = bitmap_sz + n + n * FUNC_ALLOC_BLOCK_SIZE;
+        size_t needed = bitmap_sz + n + n * FL_ALLOC_BLOCK_SIZE;
         if (needed <= size) {
             break;
         }
@@ -97,20 +97,20 @@ void func_alloc_init(func_alloc_t* alloc, void* buf, size_t size) {
     alloc->size_table = ptr + alloc->bitmap_size;
     alloc->blocks = alloc->size_table + n;
     alloc->block_count = n;
-    alloc->magic = FUNC_ALLOC_MAGIC;
+    alloc->magic = FL_ALLOC_MAGIC;
 
     /* Clear metadata */
     memset(alloc->bitmap, 0, alloc->bitmap_size);
     memset(alloc->size_table, 0, n);
 }
 
-void* func_malloc(func_alloc_t* alloc, size_t size) {
-    if (alloc == NULL || alloc->magic != FUNC_ALLOC_MAGIC || size == 0 || alloc->block_count == 0) {
+void* fl_malloc(fl_alloc_t* alloc, size_t size) {
+    if (alloc == NULL || alloc->magic != FL_ALLOC_MAGIC || size == 0 || alloc->block_count == 0) {
         return NULL;
     }
 
     /* Calculate blocks needed */
-    size_t blocks_needed = (size + FUNC_ALLOC_BLOCK_SIZE - 1) / FUNC_ALLOC_BLOCK_SIZE;
+    size_t blocks_needed = (size + FL_ALLOC_BLOCK_SIZE - 1) / FL_ALLOC_BLOCK_SIZE;
     if (blocks_needed > alloc->block_count || blocks_needed > 255) {
         return NULL; /* size_table uses uint8_t, max 255 blocks per alloc */
     }
@@ -138,15 +138,15 @@ void* func_malloc(func_alloc_t* alloc, size_t size) {
             /* Store allocation size in size_table */
             alloc->size_table[i] = (uint8_t)blocks_needed;
 
-            return alloc->blocks + i * FUNC_ALLOC_BLOCK_SIZE;
+            return alloc->blocks + i * FL_ALLOC_BLOCK_SIZE;
         }
     }
 
     return NULL;
 }
 
-void func_free(func_alloc_t* alloc, void* ptr) {
-    if (alloc == NULL || alloc->magic != FUNC_ALLOC_MAGIC || ptr == NULL || alloc->block_count == 0) {
+void fl_free(fl_alloc_t* alloc, void* ptr) {
+    if (alloc == NULL || alloc->magic != FL_ALLOC_MAGIC || ptr == NULL || alloc->block_count == 0) {
         return;
     }
 
@@ -160,11 +160,11 @@ void func_free(func_alloc_t* alloc, void* ptr) {
     size_t offset = (size_t)(p - alloc->blocks);
 
     /* Check alignment to block boundary */
-    if (offset % FUNC_ALLOC_BLOCK_SIZE != 0) {
+    if (offset % FL_ALLOC_BLOCK_SIZE != 0) {
         return;
     }
 
-    size_t idx = offset / FUNC_ALLOC_BLOCK_SIZE;
+    size_t idx = offset / FL_ALLOC_BLOCK_SIZE;
     if (idx >= alloc->block_count) {
         return;
     }
@@ -189,8 +189,8 @@ void func_free(func_alloc_t* alloc, void* ptr) {
     alloc->size_table[idx] = 0;
 }
 
-void func_alloc_stats(const func_alloc_t* alloc, size_t* total_blocks, size_t* used_blocks, size_t* free_blocks) {
-    if (alloc == NULL || alloc->magic != FUNC_ALLOC_MAGIC) {
+void fl_alloc_stats(const fl_alloc_t* alloc, size_t* total_blocks, size_t* used_blocks, size_t* free_blocks) {
+    if (alloc == NULL || alloc->magic != FL_ALLOC_MAGIC) {
         if (total_blocks)
             *total_blocks = 0;
         if (used_blocks)
@@ -215,12 +215,12 @@ void func_alloc_stats(const func_alloc_t* alloc, size_t* total_blocks, size_t* u
         *free_blocks = alloc->block_count - used;
 }
 
-bool func_alloc_is_valid(const func_alloc_t* alloc) {
-    return alloc != NULL && alloc->magic == FUNC_ALLOC_MAGIC && alloc->block_count > 0;
+bool fl_alloc_is_valid(const fl_alloc_t* alloc) {
+    return alloc != NULL && alloc->magic == FL_ALLOC_MAGIC && alloc->block_count > 0;
 }
 
-size_t func_alloc_size(const func_alloc_t* alloc, const void* ptr) {
-    if (alloc == NULL || alloc->magic != FUNC_ALLOC_MAGIC || ptr == NULL || alloc->block_count == 0) {
+size_t fl_alloc_size(const fl_alloc_t* alloc, const void* ptr) {
+    if (alloc == NULL || alloc->magic != FL_ALLOC_MAGIC || ptr == NULL || alloc->block_count == 0) {
         return 0;
     }
 
@@ -231,11 +231,11 @@ size_t func_alloc_size(const func_alloc_t* alloc, const void* ptr) {
     }
 
     size_t offset = (size_t)(p - alloc->blocks);
-    if (offset % FUNC_ALLOC_BLOCK_SIZE != 0) {
+    if (offset % FL_ALLOC_BLOCK_SIZE != 0) {
         return 0;
     }
 
-    size_t idx = offset / FUNC_ALLOC_BLOCK_SIZE;
+    size_t idx = offset / FL_ALLOC_BLOCK_SIZE;
     if (idx >= alloc->block_count) {
         return 0;
     }
@@ -245,5 +245,5 @@ size_t func_alloc_size(const func_alloc_t* alloc, const void* ptr) {
         return 0;
     }
 
-    return (size_t)blocks_used * FUNC_ALLOC_BLOCK_SIZE;
+    return (size_t)blocks_used * FL_ALLOC_BLOCK_SIZE;
 }

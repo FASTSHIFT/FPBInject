@@ -42,8 +42,8 @@ extern "C" {
 #include <stddef.h>
 #include <stdbool.h>
 
-#ifndef FUNC_ALLOC_BLOCK_SIZE
-#define FUNC_ALLOC_BLOCK_SIZE 64
+#ifndef FL_ALLOC_BLOCK_SIZE
+#define FL_ALLOC_BLOCK_SIZE 64
 #endif
 
 typedef struct {
@@ -53,7 +53,7 @@ typedef struct {
     uint8_t* blocks;     /* Actual data blocks */
     size_t block_count;  /* Total number of blocks */
     size_t bitmap_size;  /* Size of bitmap in bytes */
-} func_alloc_t;
+} fl_alloc_t;
 
 /**
  * @brief Initialize the allocator with a buffer
@@ -61,7 +61,7 @@ typedef struct {
  * @param buf Buffer to use for allocation
  * @param size Size of buffer in bytes
  */
-void func_alloc_init(func_alloc_t* alloc, void* buf, size_t size);
+void fl_alloc_init(fl_alloc_t* alloc, void* buf, size_t size);
 
 /**
  * @brief Allocate memory from the pool
@@ -69,14 +69,14 @@ void func_alloc_init(func_alloc_t* alloc, void* buf, size_t size);
  * @param size Size in bytes to allocate
  * @return Pointer to allocated memory, or NULL on failure
  */
-void* func_malloc(func_alloc_t* alloc, size_t size);
+void* fl_malloc(fl_alloc_t* alloc, size_t size);
 
 /**
  * @brief Free previously allocated memory
  * @param alloc Allocator context
- * @param ptr Pointer returned by func_malloc
+ * @param ptr Pointer returned by fl_malloc
  */
-void func_free(func_alloc_t* alloc, void* ptr);
+void fl_free(fl_alloc_t* alloc, void* ptr);
 
 /**
  * @brief Get allocation statistics
@@ -85,22 +85,22 @@ void func_free(func_alloc_t* alloc, void* ptr);
  * @param used_blocks Output: blocks currently in use
  * @param free_blocks Output: blocks currently free
  */
-void func_alloc_stats(const func_alloc_t* alloc, size_t* total_blocks, size_t* used_blocks, size_t* free_blocks);
+void fl_alloc_stats(const fl_alloc_t* alloc, size_t* total_blocks, size_t* used_blocks, size_t* free_blocks);
 
 /**
  * @brief Check if allocator is valid and initialized
  * @param alloc Allocator context
  * @return true if valid, false otherwise
  */
-bool func_alloc_is_valid(const func_alloc_t* alloc);
+bool fl_alloc_is_valid(const fl_alloc_t* alloc);
 
 /**
  * @brief Get the size of an allocation in bytes
  * @param alloc Allocator context
- * @param ptr Pointer returned by func_malloc
+ * @param ptr Pointer returned by fl_malloc
  * @return Size in bytes (block-aligned), or 0 if invalid
  */
-size_t func_alloc_size(const func_alloc_t* alloc, const void* ptr);
+size_t fl_alloc_size(const fl_alloc_t* alloc, const void* ptr);
 
 #ifdef __cplusplus
 } /* extern "C" */

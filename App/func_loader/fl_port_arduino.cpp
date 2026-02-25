@@ -59,18 +59,18 @@
 #define ALLOC_MODE_NAME "STATIC"
 
 static uint8_t s_code_buf[1024] __attribute__((aligned(4), section(".ram_code")));
-static func_alloc_t s_alloc;
+static fl_alloc_t s_alloc;
 
 static void* malloc_cb(size_t size) {
-    return func_malloc(&s_alloc, size);
+    return fl_malloc(&s_alloc, size);
 }
 
 static void free_cb(void* ptr) {
-    func_free(&s_alloc, ptr);
+    fl_free(&s_alloc, ptr);
 }
 
 static void alloc_init(void) {
-    func_alloc_init(&s_alloc, s_code_buf, sizeof(s_code_buf));
+    fl_alloc_init(&s_alloc, s_code_buf, sizeof(s_code_buf));
 }
 
 static void print_alloc_info(void) {
