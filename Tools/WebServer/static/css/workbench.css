@@ -1472,6 +1472,21 @@ input[type="checkbox"] {
   flex-shrink: 0;
 }
 
+/* Config label with external link */
+.config-label-link {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.config-label-link:hover {
+  text-decoration: underline;
+}
+
+.config-label-link .codicon {
+  font-size: 10px;
+  margin-left: 2px;
+}
+
 .config-item .vscode-input,
 .config-item .vscode-select {
   flex: 1;

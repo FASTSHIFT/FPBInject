@@ -75,6 +75,8 @@ class ConfigItem:
     order: int = 0  # Sort order within group
     # Value transformation
     ui_multiplier: float = 1.0  # Multiply by this when displaying in UI
+    # External link for label (e.g., project homepage)
+    link: str = ""  # URL to link the label to
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -297,6 +299,7 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         config_type=ConfigType.DIR_PATH,
         default="",
         tooltip="Path to Ghidra installation directory (containing support/analyzeHeadless)",
+        link="https://github.com/NationalSecurityAgency/ghidra",
         order=10,
     ),
     ConfigItem(

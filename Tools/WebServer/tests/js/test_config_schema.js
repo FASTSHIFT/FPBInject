@@ -984,4 +984,122 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
   });
+
+  describe('getConfigLabel Function', () => {
+    it('is a function', () =>
+      assertTrue(typeof w.getConfigLabel === 'function'));
+
+    it('returns label when no i18n', () => {
+      resetMocks();
+      const item = { key: 'test_key', label: 'Test Label' };
+      const result = w.getConfigLabel(item);
+      assertEqual(result, 'Test Label');
+    });
+
+    it('returns label without link by default', () => {
+      resetMocks();
+      const item = {
+        key: 'ghidra_path',
+        label: 'Ghidra Path',
+        link: 'https://github.com/NationalSecurityAgency/ghidra',
+      };
+      const result = w.getConfigLabel(item);
+      assertEqual(result, 'Ghidra Path');
+      assertTrue(!result.includes('<a'));
+    });
+
+    it('returns label with link when withLink=true', () => {
+      resetMocks();
+      const item = {
+        key: 'ghidra_path',
+        label: 'Ghidra Path',
+        link: 'https://github.com/NationalSecurityAgency/ghidra',
+      };
+      const result = w.getConfigLabel(item, true);
+      assertContains(result, '<a');
+      assertContains(
+        result,
+        'href="https://github.com/NationalSecurityAgency/ghidra"',
+      );
+      assertContains(result, 'target="_blank"');
+      assertContains(result, 'config-label-link');
+      assertContains(result, 'Ghidra Path');
+    });
+
+    it('returns plain label when withLink=true but no link defined', () => {
+      resetMocks();
+      const item = { key: 'elf_path', label: 'ELF Path', link: '' };
+      const result = w.getConfigLabel(item, true);
+      assertEqual(result, 'ELF Path');
+      assertTrue(!result.includes('<a'));
+    });
+
+    it('escapes HTML in link URL', () => {
+      resetMocks();
+      const item = {
+        key: 'test_path',
+        label: 'Test',
+        link: 'https://example.com?a=1&b=2',
+      };
+      const result = w.getConfigLabel(item, true);
+      assertContains(result, '&amp;');
+    });
+  });
+
+  describe('renderPathInput with link', () => {
+    it('renders path input without for attribute when link exists', async () => {
+      resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
+      const container =
+        browserGlobals.document.getElementById('configContainer');
+      container.innerHTML = '';
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          {
+            key: 'ghidra_path',
+            config_type: 'dir_path',
+            label: 'Ghidra Path',
+            group: 'tools',
+            order: 1,
+            default: '',
+            link: 'https://github.com/NationalSecurityAgency/ghidra',
+          },
+        ],
+        groups: { tools: 'Tools' },
+        group_order: ['tools'],
+      });
+      await w.renderConfigPanel('configContainer');
+      // Label should NOT have for attribute when link exists (so link is clickable)
+      assertTrue(!container.innerHTML.includes('for="ghidraPath"'));
+      // But should still have the link
+      assertContains(container.innerHTML, 'config-label-link');
+      assertContains(container.innerHTML, 'href=');
+    });
+
+    it('renders path input with for attribute when no link', async () => {
+      resetMocks();
+      if (w.resetConfigSchema) w.resetConfigSchema();
+      const container =
+        browserGlobals.document.getElementById('configContainer');
+      container.innerHTML = '';
+      setFetchResponse('/api/config/schema', {
+        schema: [
+          {
+            key: 'elf_path',
+            config_type: 'file_path',
+            label: 'ELF Path',
+            group: 'project',
+            order: 1,
+            default: '',
+            link: '',
+          },
+        ],
+        groups: { project: 'Project' },
+        group_order: ['project'],
+      });
+      await w.renderConfigPanel('configContainer');
+      // Label should have for attribute when no link
+      assertContains(container.innerHTML, 'for="elfPath"');
+    });
+  });
 };

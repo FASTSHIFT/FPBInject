@@ -56,15 +56,24 @@ function keyToElementId(key) {
 /**
  * Get translated label for a config item.
  * @param {Object} item - Config item from schema
+ * @param {boolean} withLink - Whether to include external link if available
  * @returns {string} Translated label or original label
  */
-function getConfigLabel(item) {
+function getConfigLabel(item, withLink = false) {
+  let label;
   if (typeof t === 'function' && isI18nReady()) {
     const key = `config.labels.${item.key}`;
     const translated = t(key);
-    if (translated !== key) return translated;
+    label = translated !== key ? translated : item.label;
+  } else {
+    label = item.label;
   }
-  return item.label;
+
+  // Add external link if available
+  if (withLink && item.link) {
+    return `<a href="${escapeHtml(item.link)}" target="_blank" class="config-label-link">${label} <i class="codicon codicon-link-external"></i></a>`;
+  }
+  return label;
 }
 
 /**
@@ -121,14 +130,15 @@ function renderPathInput(item, elementId, tooltip) {
           : `browseDir('${elementId}')`;
 
   const browseBtnId = isLogPath ? ' id="browseLogFileBtn"' : '';
-  const label = getConfigLabel(item);
+  const label = getConfigLabel(item, true); // withLink=true for path inputs
   const tooltipText = getConfigTooltip(item);
-  const i18nLabel = `data-i18n="config.labels.${item.key}"`;
+  const i18nLabel = item.link ? '' : `data-i18n="config.labels.${item.key}"`;
+  const forAttr = item.link ? '' : `for="${elementId}"`;
   const i18nPlaceholder = `data-i18n="[placeholder]tooltips.${item.key}"`;
 
   return `
     <div class="config-item config-item-path"${tooltip}>
-      <label for="${elementId}" ${i18nLabel}>${label}</label>
+      <label ${forAttr} ${i18nLabel}>${label}</label>
       <input type="text" id="${elementId}" class="vscode-input" 
              placeholder="${tooltipText}" ${i18nPlaceholder}
              onchange="onConfigItemChange('${item.key}')" />
@@ -609,3 +619,4 @@ window.addPathListItemElement = addPathListItemElement;
 window.browsePathListItem = browsePathListItem;
 window.removePathListItem = removePathListItem;
 window.keyToElementId = keyToElementId;
+window.getConfigLabel = getConfigLabel;

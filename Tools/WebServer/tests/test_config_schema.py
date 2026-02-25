@@ -131,6 +131,31 @@ class TestConfigItem(unittest.TestCase):
             result["options"], [("opt1", "Option 1"), ("opt2", "Option 2")]
         )
 
+    def test_to_dict_with_link(self):
+        """Test ConfigItem.to_dict() with external link."""
+        item = ConfigItem(
+            key="tool_path",
+            label="Tool Path",
+            group=ConfigGroup.TOOLS,
+            config_type=ConfigType.DIR_PATH,
+            default="",
+            link="https://github.com/example/tool",
+        )
+        result = item.to_dict()
+
+        self.assertEqual(result["link"], "https://github.com/example/tool")
+
+    def test_link_field_default_empty(self):
+        """Test ConfigItem link field defaults to empty string."""
+        item = ConfigItem(
+            key="test_key",
+            label="Test",
+            group=ConfigGroup.PROJECT,
+            config_type=ConfigType.STRING,
+            default="",
+        )
+        self.assertEqual(item.link, "")
+
 
 class TestHelperFunctions(unittest.TestCase):
     """Test helper functions."""
@@ -285,6 +310,14 @@ class TestKnownConfigItems(unittest.TestCase):
         self.assertEqual(item.group, ConfigGroup.TOOLS)
         self.assertEqual(item.config_type, ConfigType.DIR_PATH)
         self.assertEqual(item.default, "")
+
+    def test_ghidra_path_has_link(self):
+        """Test ghidra_path has external link configured."""
+        item = get_schema_by_key("ghidra_path")
+        self.assertIsNotNone(item)
+        self.assertIsNotNone(item.link)
+        self.assertIn("github.com", item.link)
+        self.assertIn("ghidra", item.link.lower())
 
     def test_watch_dirs_config(self):
         """Test watch_dirs configuration."""
