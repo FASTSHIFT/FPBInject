@@ -33,17 +33,20 @@ function updateSlotUI() {
 
     if (funcSpan) {
       if (isDisabled) {
-        funcSpan.textContent = 'FPB v2 only';
-        funcSpan.title = 'This slot requires FPB v2 hardware';
+        funcSpan.textContent = t('device.fpb_v2_only', 'FPB v2 only');
+        funcSpan.title = t(
+          'device.fpb_v2_required',
+          'This slot requires FPB v2 hardware',
+        );
       } else if (slotState.occupied) {
         const funcName = slotState.func ? ` (${slotState.func})` : '';
         const sizeInfo = slotState.code_size
-          ? `, ${slotState.code_size} Bytes`
+          ? `, ${slotState.code_size} ${t('device.bytes', 'Bytes')}`
           : '';
         funcSpan.textContent = `${slotState.orig_addr}${funcName} → ${slotState.target_addr}${sizeInfo}`;
-        funcSpan.title = `Original: ${slotState.orig_addr}${funcName}\nTarget: ${slotState.target_addr}\nCode size: ${slotState.code_size || 0} Bytes`;
+        funcSpan.title = `Original: ${slotState.orig_addr}${funcName}\nTarget: ${slotState.target_addr}\nCode size: ${slotState.code_size || 0} ${t('device.bytes', 'Bytes')}`;
       } else {
-        funcSpan.textContent = 'Empty';
+        funcSpan.textContent = t('panels.slot_empty', 'Empty');
         funcSpan.title = '';
       }
     }
@@ -184,10 +187,12 @@ function updateMemoryInfo(memory) {
   if (!memoryEl) return;
 
   const used = memory.used || 0;
+  const usedLabel = t('device.used', 'Used');
+  const bytesLabel = t('device.bytes', 'Bytes');
 
   memoryEl.innerHTML = `
     <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-      <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">Used: ${used} Bytes</span>
+      <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">${usedLabel}: ${used} ${bytesLabel}</span>
     </div>
   `;
 }

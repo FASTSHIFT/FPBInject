@@ -2,7 +2,7 @@
 <div class="modal-overlay" id="fileBrowserModal">
   <div class="modal">
     <div class="modal-header">
-      <h3 style="margin: 0">File Browser</h3>
+      <h3 style="margin: 0" data-i18n="modals.file_browser">File Browser</h3>
       <button class="vscode-btn icon-only secondary" onclick="closeFileBrowser()">
         <i class="codicon codicon-close"></i>
       </button>
@@ -10,15 +10,19 @@
     <div class="modal-body">
       <div class="flex-row" style="margin-bottom: 10px">
         <input type="text" id="browserPath" class="vscode-input" onkeyup="onBrowserPathKeyup(event)" />
-        <button class="vscode-btn secondary" onclick="navigateTo(document.getElementById('browserPath').value)">
+        <button
+          class="vscode-btn secondary"
+          onclick="navigateTo(document.getElementById('browserPath').value)"
+          data-i18n="modals.go"
+        >
           Go
         </button>
       </div>
       <div class="file-list" id="fileList"></div>
     </div>
     <div class="modal-footer">
-      <button class="vscode-btn secondary" onclick="closeFileBrowser()">Cancel</button>
-      <button class="vscode-btn" onclick="selectBrowserItem()">Select</button>
+      <button class="vscode-btn secondary" onclick="closeFileBrowser()" data-i18n="buttons.cancel">Cancel</button>
+      <button class="vscode-btn" onclick="selectBrowserItem()" data-i18n="modals.select">Select</button>
     </div>
   </div>
 </div>

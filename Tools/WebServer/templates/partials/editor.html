@@ -6,29 +6,29 @@
 
   <div class="editor-toolbar" style="display: none">
     <div class="flex-col" style="gap: 2px">
-      <label style="font-size: 0.7rem; opacity: 0.7">SLOT</label>
+      <label style="font-size: 0.7rem; opacity: 0.7" data-i18n="editor.slot">SLOT</label>
       <select id="slotSelect" class="vscode-select" style="width: 80px" onchange="onSlotSelectChange()">
-        <option value="0">Slot 0</option>
-        <option value="1">Slot 1</option>
-        <option value="2">Slot 2</option>
-        <option value="3">Slot 3</option>
-        <option value="4">Slot 4</option>
-        <option value="5">Slot 5</option>
-        <option value="6" class="slot-v2-only">Slot 6</option>
-        <option value="7" class="slot-v2-only">Slot 7</option>
+        <option value="0" data-i18n="device.slot_n" data-i18n-options='{"n": 0}'>Slot 0</option>
+        <option value="1" data-i18n="device.slot_n" data-i18n-options='{"n": 1}'>Slot 1</option>
+        <option value="2" data-i18n="device.slot_n" data-i18n-options='{"n": 2}'>Slot 2</option>
+        <option value="3" data-i18n="device.slot_n" data-i18n-options='{"n": 3}'>Slot 3</option>
+        <option value="4" data-i18n="device.slot_n" data-i18n-options='{"n": 4}'>Slot 4</option>
+        <option value="5" data-i18n="device.slot_n" data-i18n-options='{"n": 5}'>Slot 5</option>
+        <option value="6" class="slot-v2-only" data-i18n="device.slot_n" data-i18n-options='{"n": 6}'>Slot 6</option>
+        <option value="7" class="slot-v2-only" data-i18n="device.slot_n" data-i18n-options='{"n": 7}'>Slot 7</option>
       </select>
     </div>
 
     <div class="spacer"></div>
 
     <button class="vscode-btn secondary" onclick="savePatchFile()">
-      <i class="codicon codicon-save" style="margin-right: 4px"></i> Save
+      <i class="codicon codicon-save" style="margin-right: 4px"></i> <span data-i18n="buttons.save">Save</span>
     </button>
 
     <div style="width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 4px"></div>
 
     <button id="injectBtn" onclick="performInject()" class="vscode-btn">
-      <i class="codicon codicon-play" style="margin-right: 4px"></i> Inject
+      <i class="codicon codicon-play" style="margin-right: 4px"></i> <span data-i18n="buttons.inject">Inject</span>
     </button>
   </div>
 
@@ -46,14 +46,14 @@
         "
       >
         <i class="codicon codicon-code" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.3"></i>
-        <div style="font-size: 0.9rem; margin-bottom: 8px">No file open</div>
+        <div style="font-size: 0.9rem; margin-bottom: 8px" data-i18n="editor.no_file_open">No file open</div>
       </div>
     </div>
   </div>
 
   <!-- Global progress indicator -->
   <div id="injectProgress" class="inject-progress" style="display: none">
-    <span id="injectProgressText">Injecting...</span>
+    <span id="injectProgressText" data-i18n="statusbar.injecting">Injecting...</span>
     <div id="injectProgressFill" class="progress-fill"></div>
   </div>
 </div>

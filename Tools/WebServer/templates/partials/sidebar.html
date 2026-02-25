@@ -5,13 +5,23 @@
     <details id="details-connection" open>
       <summary class="sidebar-header">
         <i class="codicon codicon-chevron-right"></i>
-        <span>CONNECTION</span>
+        <span data-i18n="sidebar.connection">CONNECTION</span>
       </summary>
       <div class="sidebar-content">
         <div class="flex-col">
           <div class="flex-row">
-            <select id="portSelect" class="vscode-select" title="Serial Port"></select>
-            <button class="vscode-btn icon-only secondary" onclick="refreshPorts()" title="Refresh Ports">
+            <select
+              id="portSelect"
+              class="vscode-select"
+              title="Serial Port"
+              data-i18n="[title]connection.port"
+            ></select>
+            <button
+              class="vscode-btn icon-only secondary"
+              onclick="refreshPorts()"
+              title="Refresh Ports"
+              data-i18n="[title]buttons.refresh"
+            >
               <i class="codicon codicon-refresh"></i>
             </button>
           </div>
@@ -23,6 +33,7 @@
               value="115200"
               placeholder="Baudrate"
               list="baudrateList"
+              data-i18n="[placeholder]connection.baudrate"
             />
             <datalist id="baudrateList">
               <option value="9600"></option>
@@ -37,7 +48,15 @@
               <option value="1500000"></option>
               <option value="2000000"></option>
             </datalist>
-            <button id="connectBtn" class="vscode-btn" onclick="toggleConnect()" style="flex: 1">Connect</button>
+            <button
+              id="connectBtn"
+              class="vscode-btn"
+              onclick="toggleConnect()"
+              style="flex: 1"
+              data-i18n="connection.connect"
+            >
+              Connect
+            </button>
           </div>
         </div>
       </div>
@@ -54,9 +73,13 @@
   <!-- Symbols Section -->
   <div class="sidebar-section" data-section-id="symbols">
     <details id="details-symbols">
-      <summary class="sidebar-header" title="Single-click: view disassembly; Double-click: create patch">
+      <summary
+        class="sidebar-header"
+        title="Single-click: view disassembly; Double-click: create patch"
+        data-i18n="[title]tooltips.symbols_hint"
+      >
         <i class="codicon codicon-chevron-right"></i>
-        <span>SYMBOLS</span>
+        <span data-i18n="tabs.symbols">SYMBOLS</span>
       </summary>
       <div class="sidebar-content" style="display: flex; flex-direction: column; padding: 0">
         <div style="padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border)">
@@ -65,12 +88,13 @@
             id="symbolSearch"
             class="vscode-input"
             placeholder="Search by name or address"
+            data-i18n="[placeholder]panels.search_placeholder"
             oninput="searchSymbols()"
             style="height: 22px; font-size: 11px"
           />
         </div>
         <div id="symbolList" class="symbol-list">
-          <div style="padding: 8px; font-size: 11px; opacity: 0.7">No symbols loaded</div>
+          <div style="padding: 8px; font-size: 11px; opacity: 0.7" data-i18n="panels.no_symbols">No symbols loaded</div>
         </div>
       </div>
       <div class="sidebar-section-resize-handle"></div>

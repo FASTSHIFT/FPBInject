@@ -3,40 +3,72 @@
   <details id="details-transfer">
     <summary class="sidebar-header">
       <i class="codicon codicon-chevron-right"></i>
-      <span>FILE TRANSFER</span>
+      <span data-i18n="sidebar.file_transfer">FILE TRANSFER</span>
     </summary>
     <div class="sidebar-content" style="display: flex; flex-direction: column; padding: 8px">
       <!-- Device path input -->
       <div class="flex-row" style="margin-bottom: 8px">
         <input type="text" id="devicePath" value="/" placeholder="/data" class="vscode-input" style="flex: 1" />
-        <button onclick="refreshDeviceFiles()" title="Refresh" class="vscode-btn icon-only secondary">
+        <button
+          onclick="refreshDeviceFiles()"
+          class="vscode-btn icon-only secondary"
+          data-i18n="[title]buttons.refresh"
+          title="Refresh"
+        >
           <i class="codicon codicon-refresh"></i>
         </button>
       </div>
 
       <!-- Device file list -->
       <div id="deviceFileList" class="device-file-list">
-        <div class="empty clickable" onclick="refreshDeviceFiles()">Click 'Refresh' to load files</div>
+        <div class="empty clickable" onclick="refreshDeviceFiles()" data-i18n="panels.click_refresh">
+          Click 'Refresh' to load files
+        </div>
       </div>
 
       <!-- Action buttons -->
       <div class="flex-row" style="margin-top: 8px; gap: 4px; flex-wrap: wrap">
-        <button onclick="uploadToDevice()" title="Upload files to device" class="small-btn">
-          <i class="codicon codicon-cloud-upload"></i> File
+        <button
+          onclick="uploadToDevice()"
+          title="Upload files to device"
+          data-i18n="[title]tooltips.upload_file"
+          class="small-btn"
+        >
+          <i class="codicon codicon-cloud-upload"></i> <span data-i18n="transfer.file">File</span>
         </button>
-        <button onclick="uploadFolderToDevice()" title="Upload folder to device" class="small-btn">
-          <i class="codicon codicon-folder-opened"></i> Folder
+        <button
+          onclick="uploadFolderToDevice()"
+          title="Upload folder to device"
+          data-i18n="[title]tooltips.upload_folder"
+          class="small-btn"
+        >
+          <i class="codicon codicon-folder-opened"></i> <span data-i18n="transfer.folder">Folder</span>
         </button>
-        <button onclick="downloadFromDevice()" title="Download selected file" class="small-btn">
-          <i class="codicon codicon-cloud-download"></i> Download
+        <button
+          onclick="downloadFromDevice()"
+          title="Download selected file"
+          data-i18n="[title]tooltips.download_file"
+          class="small-btn"
+        >
+          <i class="codicon codicon-cloud-download"></i> <span data-i18n="transfer.download">Download</span>
         </button>
-        <button onclick="renameOnDevice()" title="Rename selected file" class="small-btn">
+        <button
+          onclick="renameOnDevice()"
+          title="Rename selected file"
+          data-i18n="[title]tooltips.rename_file"
+          class="small-btn"
+        >
           <i class="codicon codicon-edit"></i>
         </button>
-        <button onclick="deleteFromDevice()" title="Delete selected file" class="small-btn">
+        <button
+          onclick="deleteFromDevice()"
+          title="Delete selected file"
+          class="small-btn"
+          data-i18n="[title]buttons.remove"
+        >
           <i class="codicon codicon-trash"></i>
         </button>
-        <button onclick="createDeviceDir()" title="Create directory" class="small-btn">
+        <button onclick="createDeviceDir()" title="Create directory" class="small-btn" data-i18n="[title]buttons.add">
           <i class="codicon codicon-new-folder"></i>
         </button>
       </div>
@@ -62,10 +94,11 @@
           id="transferCancelBtn"
           onclick="cancelTransfer()"
           title="Cancel transfer"
+          data-i18n="[title]tooltips.cancel_transfer"
           class="small-btn"
           style="display: none"
         >
-          <i class="codicon codicon-close"></i> Cancel
+          <i class="codicon codicon-close"></i> <span data-i18n="buttons.cancel">Cancel</span>
         </button>
       </div>
     </div>

@@ -65,7 +65,7 @@ function handleConnected(port, message = null) {
   const state = window.FPBState;
 
   state.isConnected = true;
-  btn.textContent = 'Disconnect';
+  btn.textContent = t('connection.disconnect', 'Disconnect');
   btn.classList.add('connected');
   statusEl.textContent = port;
   log.success(message || `Connected to ${port}`);
@@ -85,9 +85,9 @@ function handleDisconnected() {
   const state = window.FPBState;
 
   state.isConnected = false;
-  btn.textContent = 'Connect';
+  btn.textContent = t('connection.connect', 'Connect');
   btn.classList.remove('connected');
-  statusEl.textContent = 'Disconnected';
+  statusEl.textContent = t('connection.status.disconnected', 'Disconnected');
   log.warn('Disconnected');
   stopLogPolling();
   updateDisabledState();
@@ -108,7 +108,7 @@ async function toggleConnect() {
     const maxRetries = getConnectionMaxRetries();
 
     btn.disabled = true;
-    btn.textContent = 'Connecting...';
+    btn.textContent = t('connection.connecting', 'Connecting...');
 
     let lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -140,7 +140,7 @@ async function toggleConnect() {
 
     // All retries failed
     log.error(`Connection failed after ${maxRetries} retries: ${lastError}`);
-    btn.textContent = 'Connect';
+    btn.textContent = t('connection.connect', 'Connect');
     btn.disabled = false;
   } else {
     try {
@@ -197,11 +197,14 @@ async function checkBackendHealth() {
         const btn = document.getElementById('connectBtn');
         const statusEl = document.getElementById('connectionStatus');
         if (btn) {
-          btn.textContent = 'Connect';
+          btn.textContent = t('connection.connect', 'Connect');
           btn.classList.remove('connected');
         }
         if (statusEl) {
-          statusEl.textContent = 'Disconnected';
+          statusEl.textContent = t(
+            'connection.status.disconnected',
+            'Disconnected',
+          );
         }
         updateDisabledState();
       }

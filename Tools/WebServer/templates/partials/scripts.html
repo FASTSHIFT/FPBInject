@@ -1,4 +1,10 @@
 <!-- Scripts - Modular JS -->
+<!-- i18n -->
+<script src="/static/js/lib/i18next.min.js"></script>
+<script src="/static/js/locales/en.js"></script>
+<script src="/static/js/locales/zh-CN.js"></script>
+<script src="/static/js/locales/zh-TW.js"></script>
+<script src="/static/js/core/i18n.js"></script>
 <!-- Core Modules -->
 <script src="/static/js/core/version.js"></script>
 <script src="/static/js/core/state.js"></script>
@@ -42,6 +48,10 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    // Initialize i18n first (async, will translate page when ready)
+    const savedLang = localStorage.getItem("fpbinject_ui_language") || "en";
+    initI18n(savedLang);
+
     setInterval(updateClock, 1000);
     updateClock();
     initSashResize();

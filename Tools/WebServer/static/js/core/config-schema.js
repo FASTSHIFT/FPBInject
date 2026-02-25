@@ -54,13 +54,42 @@ function keyToElementId(key) {
 }
 
 /**
+ * Get translated label for a config item.
+ * @param {Object} item - Config item from schema
+ * @returns {string} Translated label or original label
+ */
+function getConfigLabel(item) {
+  if (typeof t === 'function' && isI18nReady()) {
+    const key = `config.labels.${item.key}`;
+    const translated = t(key);
+    if (translated !== key) return translated;
+  }
+  return item.label;
+}
+
+/**
+ * Get translated tooltip for a config item.
+ * @param {Object} item - Config item from schema
+ * @returns {string} Translated tooltip or original tooltip
+ */
+function getConfigTooltip(item) {
+  if (typeof t === 'function' && isI18nReady()) {
+    const key = `tooltips.${item.key}`;
+    const translated = t(key);
+    if (translated !== key) return translated;
+  }
+  return item.tooltip || '';
+}
+
+/**
  * Render a single config item as HTML.
  * @param {Object} item - Config item from schema
  * @returns {string} HTML string
  */
 function renderConfigItem(item) {
   const elementId = keyToElementId(item.key);
-  const tooltip = item.tooltip ? ` title="${escapeHtml(item.tooltip)}"` : '';
+  const tooltipText = getConfigTooltip(item);
+  const tooltip = tooltipText ? ` title="${escapeHtml(tooltipText)}"` : '';
 
   switch (item.config_type) {
     case 'file_path':
@@ -92,12 +121,16 @@ function renderPathInput(item, elementId, tooltip) {
           : `browseDir('${elementId}')`;
 
   const browseBtnId = isLogPath ? ' id="browseLogFileBtn"' : '';
+  const label = getConfigLabel(item);
+  const tooltipText = getConfigTooltip(item);
+  const i18nLabel = `data-i18n="config.labels.${item.key}"`;
+  const i18nPlaceholder = `data-i18n="[placeholder]tooltips.${item.key}"`;
 
   return `
     <div class="config-item config-item-path"${tooltip}>
-      <label for="${elementId}">${item.label}</label>
+      <label for="${elementId}" ${i18nLabel}>${label}</label>
       <input type="text" id="${elementId}" class="vscode-input" 
-             placeholder="${item.tooltip || ''}"
+             placeholder="${tooltipText}" ${i18nPlaceholder}
              onchange="onConfigItemChange('${item.key}')" />
       <button class="vscode-btn icon-only secondary"${browseBtnId} onclick="${browseFunc}">
         <i class="codicon codicon-folder-opened"></i>
@@ -111,10 +144,12 @@ function renderNumberInput(item, elementId, tooltip) {
   const max = item.max_value !== null ? ` max="${item.max_value}"` : '';
   const step = item.step !== null ? ` step="${item.step}"` : '';
   const unit = item.unit ? `<span class="config-unit">${item.unit}</span>` : '';
+  const label = getConfigLabel(item);
+  const i18nLabel = `data-i18n="config.labels.${item.key}"`;
 
   return `
     <div class="config-item config-item-number"${tooltip}>
-      <label for="${elementId}">${item.label}</label>
+      <label for="${elementId}" ${i18nLabel}>${label}</label>
       <input type="number" id="${elementId}" class="vscode-input"
              value="${item.default}"${min}${max}${step}
              onchange="onConfigItemChange('${item.key}')" />
@@ -125,12 +160,14 @@ function renderNumberInput(item, elementId, tooltip) {
 
 function renderCheckbox(item, elementId, tooltip) {
   const checked = item.default ? ' checked' : '';
+  const label = getConfigLabel(item);
+  const i18nLabel = `data-i18n="config.labels.${item.key}"`;
 
   return `
     <div class="config-item config-item-checkbox"${tooltip}>
       <input type="checkbox" id="${elementId}"${checked}
              onchange="onConfigItemChange('${item.key}')" />
-      <label for="${elementId}">${item.label}</label>
+      <label for="${elementId}" ${i18nLabel}>${label}</label>
     </div>
   `;
 }
@@ -142,10 +179,12 @@ function renderSelect(item, elementId, tooltip) {
       return `<option value="${value}"${selected}>${label}</option>`;
     })
     .join('');
+  const label = getConfigLabel(item);
+  const i18nLabel = `data-i18n="config.labels.${item.key}"`;
 
   return `
     <div class="config-item config-item-select"${tooltip}>
-      <label for="${elementId}">${item.label}</label>
+      <label for="${elementId}" ${i18nLabel}>${label}</label>
       <select id="${elementId}" class="vscode-select"
               onchange="onConfigItemChange('${item.key}')">
         ${options}
@@ -158,11 +197,13 @@ function renderPathList(item, elementId, tooltip) {
   const dependsAttr = item.depends_on
     ? ` data-depends-on="${item.depends_on}"`
     : '';
+  const label = getConfigLabel(item);
+  const i18nLabel = `data-i18n="config.labels.${item.key}"`;
 
   return `
     <div class="config-item config-item-path-list" id="${elementId}Section"${dependsAttr}${tooltip}>
       <div class="config-path-list-header">
-        <span>${item.label}</span>
+        <span ${i18nLabel}>${label}</span>
         <button class="vscode-btn icon-only secondary" onclick="addPathListItem('${item.key}')" title="Add">
           <i class="codicon codicon-add"></i>
         </button>
@@ -175,14 +216,31 @@ function renderPathList(item, elementId, tooltip) {
 }
 
 function renderTextInput(item, elementId, tooltip) {
+  const label = getConfigLabel(item);
+
   return `
     <div class="config-item config-item-text"${tooltip}>
-      <label for="${elementId}">${item.label}</label>
+      <label for="${elementId}">${label}</label>
       <input type="text" id="${elementId}" class="vscode-input"
              value="${item.default || ''}"
              onchange="onConfigItemChange('${item.key}')" />
     </div>
   `;
+}
+
+/**
+ * Get translated group label.
+ * @param {string} groupId - Group ID
+ * @param {string} defaultLabel - Default label from schema
+ * @returns {string} Translated label or default
+ */
+function getGroupLabel(groupId, defaultLabel) {
+  if (typeof t === 'function' && isI18nReady()) {
+    const key = `config.groups.${groupId}`;
+    const translated = t(key);
+    if (translated !== key) return translated;
+  }
+  return defaultLabel;
 }
 
 /**
@@ -206,7 +264,7 @@ async function renderConfigPanel(containerId) {
 
   // Render groups in order
   for (const groupId of schema.group_order) {
-    const groupLabel = schema.groups[groupId];
+    const groupLabel = getGroupLabel(groupId, schema.groups[groupId]);
     const groupItems = schema.schema
       .filter((item) => item.group === groupId)
       .sort((a, b) => a.order - b.order);
@@ -215,7 +273,7 @@ async function renderConfigPanel(containerId) {
 
     html += `
       <div class="config-group" data-group="${groupId}">
-        <div class="config-group-header">${groupLabel}</div>
+        <div class="config-group-header" data-group="${groupId}">${groupLabel}</div>
         <div class="config-group-content">
     `;
 

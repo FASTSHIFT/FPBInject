@@ -1,18 +1,26 @@
 <!-- TERMINAL PANEL -->
 <div class="panel-container" id="panelContainer">
   <div class="panel-header">
-    <div class="panel-tab active" onclick="switchTerminalTab('tool')" id="tabBtnTool">OUTPUT</div>
-    <div class="panel-tab" onclick="switchTerminalTab('raw')" id="tabBtnRaw">SERIAL PORT</div>
+    <div class="panel-tab active" onclick="switchTerminalTab('tool')" id="tabBtnTool" data-i18n="tabs.output">
+      OUTPUT
+    </div>
+    <div class="panel-tab" onclick="switchTerminalTab('raw')" id="tabBtnRaw" data-i18n="tabs.serial">SERIAL PORT</div>
     <div class="panel-actions">
       <button
         class="vscode-btn icon-only secondary"
         onclick="toggleTerminalPause()"
         id="btnTerminalPause"
         title="Pause"
+        data-i18n="[title]tooltips.pause"
       >
         <i class="codicon codicon-debug-pause"></i>
       </button>
-      <button class="vscode-btn icon-only secondary" onclick="clearCurrentTerminal()" title="Clear">
+      <button
+        class="vscode-btn icon-only secondary"
+        onclick="clearCurrentTerminal()"
+        title="Clear"
+        data-i18n="[title]buttons.clear"
+      >
         <i class="codicon codicon-clear-all"></i>
       </button>
     </div>

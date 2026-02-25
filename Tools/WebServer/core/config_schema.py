@@ -37,6 +37,7 @@ class ConfigGroup(Enum):
     TRANSFER = "transfer"  # Transfer parameters
     LOGGING = "logging"  # Logging settings
     TOOLS = "tools"  # Analysis tools
+    UI = "ui"  # User interface settings
 
 
 # Group display labels
@@ -47,6 +48,7 @@ GROUP_LABELS = {
     ConfigGroup.TRANSFER: "Transfer",
     ConfigGroup.LOGGING: "Logging",
     ConfigGroup.TOOLS: "Analysis Tools",
+    ConfigGroup.UI: "User Interface",
 }
 
 
@@ -248,7 +250,7 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         max_value=10,
         step=1,
         unit="times",
-        order=50,
+        order=45,
     ),
     ConfigItem(
         key="verify_crc",
@@ -257,7 +259,7 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         config_type=ConfigType.BOOLEAN,
         default=True,
         tooltip="Verify file integrity with CRC after transfer",
-        order=60,
+        order=50,
     ),
     # === Logging Settings ===
     ConfigItem(
@@ -305,6 +307,17 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         default=False,
         tooltip="Enable decompilation when creating patch templates (requires Ghidra)",
         order=20,
+    ),
+    # === User Interface ===
+    ConfigItem(
+        key="ui_language",
+        label="Language",
+        group=ConfigGroup.UI,
+        config_type=ConfigType.SELECT,
+        default="en",
+        options=[("en", "English"), ("zh-CN", "简体中文"), ("zh-TW", "繁體中文")],
+        tooltip="Interface display language",
+        order=10,
     ),
 ]
 

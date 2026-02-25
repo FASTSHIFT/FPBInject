@@ -50,6 +50,14 @@ async function loadConfig() {
     // Load all config values using schema
     await loadConfigValuesFromData(data);
 
+    // Sync language from server config if different from localStorage
+    if (data.ui_language && typeof changeLanguage === 'function') {
+      const currentLang = localStorage.getItem('fpbinject_ui_language') || 'en';
+      if (data.ui_language !== currentLang) {
+        changeLanguage(data.ui_language);
+      }
+    }
+
     // Update path input state based on recording status
     updateLogFilePathState(data.log_file_enabled || false);
 
@@ -161,6 +169,14 @@ async function saveConfig(silent = false) {
       config[item.key] = value;
     } else {
       config[item.key] = el.value;
+    }
+  }
+
+  // Handle language change
+  if (config.ui_language && typeof changeLanguage === 'function') {
+    const currentLang = localStorage.getItem('fpbinject_ui_language') || 'en';
+    if (config.ui_language !== currentLang) {
+      changeLanguage(config.ui_language);
     }
   }
 
