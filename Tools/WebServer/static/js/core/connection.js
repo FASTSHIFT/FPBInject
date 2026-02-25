@@ -211,7 +211,11 @@ async function checkBackendHealth() {
 
       // Show alert to user
       alert(
-        'Backend server has disconnected.\n\nPlease restart the server and refresh the page.',
+        `${t('messages.backend_disconnected', 'Backend server has disconnected.')}\n\n` +
+          t(
+            'messages.backend_restart_hint',
+            'Please restart the server and refresh the page.',
+          ),
       );
     }
   }

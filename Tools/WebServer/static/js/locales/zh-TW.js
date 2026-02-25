@@ -149,6 +149,47 @@ window.i18nResources['zh-TW'] = {
       device_firmware: '裝置韌體',
       elf_file: 'ELF 檔案',
       build_time_mismatch_hint: '請確保 ELF 檔案與裝置上執行的韌體相符。',
+      // 後端斷開連線
+      backend_disconnected: '後端伺服器已斷開連線。',
+      backend_restart_hint: '請重新啟動伺服器並重新整理頁面。',
+      // CRC 錯誤
+      crc_verification_failed: 'CRC 校驗失敗！',
+      file_may_be_corrupted: '傳輸的檔案可能已損壞。',
+      // 傳輸錯誤
+      upload_failed: '上傳失敗',
+      download_failed: '下載失敗',
+      transfer_stats: '傳輸統計',
+      retries: '重試次數',
+      crc_errors: 'CRC 錯誤',
+      timeout_errors: '逾時錯誤',
+      packet_loss: '封包遺失率',
+      // 刪除確認
+      confirm_delete: '確定要刪除',
+      directory: '目錄',
+      // 注入失敗
+      injection_failed_count: '{{count}} 個注入失敗！',
+      failed_functions: '失敗的函式',
+      slots_full_hint: '這可能是因為 FPB 槽位已滿。',
+      clear_slots_hint: '請在裝置資訊面板中清除一些槽位後重試。',
+      // 序列埠測試
+      serial_test_complete: '序列埠吞吐測試完成！',
+      current_chunk_size: '目前區塊大小',
+      recommended_chunk_size: '建議區塊大小',
+      apply_recommended_size: '是否套用建議的區塊大小？',
+      // ELF 監視器
+      elf_file_changed: 'ELF 檔案 "{{fileName}}" 已變更。',
+      reload_symbols_now: '立即重新載入符號？',
+      // 槽位警告
+      all_slots_occupied: '所有 {{count}} 個 FPB 槽位都已佔用！',
+      current_slots: '目前槽位',
+      clear_slots_before_inject: '請在注入前清除一些槽位。',
+      use_clear_all_hint: '使用「清除所有」按鈕或點擊單個槽位上的 ✕。',
+      click_ok_to_open_device: '點擊確定開啟裝置資訊面板。',
+      slot_occupied_by: '槽位 {{slot}} 已被 "{{func}}" 佔用。',
+      overwrite_slot: '是否覆蓋？',
+      // 清除所有槽位
+      confirm_clear_all_slots: '確定要清除所有 FPB 槽位嗎？',
+      unpatch_all_warning: '這將取消所有已注入的函式。',
     },
 
     // 模態框

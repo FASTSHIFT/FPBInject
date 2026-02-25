@@ -284,14 +284,20 @@ async function performInject() {
 
   if (occupiedSlots >= totalSlots) {
     const shouldContinue = confirm(
-      `⚠️ All ${totalSlots} FPB Slots are occupied!\n\n` +
-        `Current slots:\n` +
+      `⚠️ ${t('messages.all_slots_occupied', 'All {{count}} FPB Slots are occupied!', { count: totalSlots })}\n\n` +
+        `${t('messages.current_slots', 'Current slots')}:\n` +
         state.slotStates
-          .map((s, i) => `  Slot ${i}: ${s.func || 'Empty'}`)
+          .map(
+            (s, i) =>
+              `  ${t('device.slot_n', 'Slot {{n}}', { n: i })}: ${s.func || t('panels.slot_empty', 'Empty')}`,
+          )
           .join('\n') +
-        `\n\nPlease clear some slots before injecting.\n` +
-        `Use "Clear All" button or click ✕ on individual slots.\n\n` +
-        `Click OK to open Device Info panel.`,
+        `\n\n${t('messages.clear_slots_before_inject', 'Please clear some slots before injecting.')}\n` +
+        `${t('messages.use_clear_all_hint', 'Use "Clear All" button or click ✕ on individual slots.')}\n\n` +
+        t(
+          'messages.click_ok_to_open_device',
+          'Click OK to open Device Info panel.',
+        ),
     );
 
     if (shouldContinue) {
@@ -311,8 +317,8 @@ async function performInject() {
   if (state.slotStates[state.selectedSlot].occupied) {
     const slotFunc = state.slotStates[state.selectedSlot].func;
     const overwrite = confirm(
-      `⚠️ Slot ${state.selectedSlot} is already occupied by "${slotFunc}".\n\n` +
-        `Do you want to overwrite it?`,
+      `⚠️ ${t('messages.slot_occupied_by', 'Slot {{slot}} is already occupied by "{{func}}".', { slot: state.selectedSlot, func: slotFunc })}\n\n` +
+        t('messages.overwrite_slot', 'Do you want to overwrite it?'),
     );
 
     if (!overwrite) {

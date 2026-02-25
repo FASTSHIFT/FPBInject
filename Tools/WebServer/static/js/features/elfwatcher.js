@@ -76,7 +76,8 @@ function showElfChangeDialog(elfPath) {
   log.warn(`ELF file changed: ${fileName}`);
 
   const userChoice = confirm(
-    `ELF file "${fileName}" has changed.\n\nReload symbols now?`,
+    `${t('messages.elf_file_changed', 'ELF file "{{fileName}}" has changed.', { fileName })}\n\n` +
+      t('messages.reload_symbols_now', 'Reload symbols now?'),
   );
 
   if (userChoice) {

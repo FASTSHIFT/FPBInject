@@ -376,13 +376,14 @@ class TestTranslationConsistency(unittest.TestCase):
                 content = f.read()
 
             # Extract top-level keys under translation:
+            # Handle both with and without trailing commas (formatter may add them)
             translation_match = re.search(
-                r"translation:\s*\{(.+)\}\s*\};", content, re.DOTALL
+                r"translation:\s*\{(.+)\},?\s*\};", content, re.DOTALL
             )
             if translation_match:
                 translation_content = translation_match.group(1)
-                # Get first-level keys
-                keys = re.findall(r"^\s{4}(\w+):", translation_content, re.MULTILINE)
+                # Get first-level keys (handle both 2 and 4 space indentation)
+                keys = re.findall(r"^\s{2,4}(\w+):", translation_content, re.MULTILINE)
                 all_keys[lang] = set(keys)
 
         # Compare keys across languages
@@ -1141,6 +1142,47 @@ class TestDevicePopupMessages(unittest.TestCase):
         "device_firmware",
         "elf_file",
         "build_time_mismatch_hint",
+        # Backend disconnection
+        "backend_disconnected",
+        "backend_restart_hint",
+        # CRC errors
+        "crc_verification_failed",
+        "file_may_be_corrupted",
+        # Transfer errors
+        "upload_failed",
+        "download_failed",
+        "transfer_stats",
+        "retries",
+        "crc_errors",
+        "timeout_errors",
+        "packet_loss",
+        # Delete confirmation
+        "confirm_delete",
+        "directory",
+        # Injection failures
+        "injection_failed_count",
+        "failed_functions",
+        "slots_full_hint",
+        "clear_slots_hint",
+        # Serial test
+        "serial_test_complete",
+        "current_chunk_size",
+        "recommended_chunk_size",
+        "apply_recommended_size",
+        # ELF watcher
+        "elf_file_changed",
+        "reload_symbols_now",
+        # Slot warnings
+        "all_slots_occupied",
+        "current_slots",
+        "clear_slots_before_inject",
+        "use_clear_all_hint",
+        "click_ok_to_open_device",
+        "slot_occupied_by",
+        "overwrite_slot",
+        # Clear all slots
+        "confirm_clear_all_slots",
+        "unpatch_all_warning",
     ]
 
     def test_all_device_message_keys_exist(self):
@@ -1244,6 +1286,131 @@ class TestDevicePopupMessages(unittest.TestCase):
                         chinese_pattern.search(value),
                         f"{lang}.js: {key} should have Chinese translation, got: {value}",
                     )
+
+
+class TestHardcodedTextInPopups(unittest.TestCase):
+    """Test that JS files don't have hardcoded English text in alert/confirm popups."""
+
+    JS_FILES_TO_CHECK = [
+        "static/js/core/connection.js",
+        "static/js/core/slots.js",
+        "static/js/features/fpb.js",
+        "static/js/features/transfer.js",
+        "static/js/features/patch.js",
+        "static/js/features/elfwatcher.js",
+        "static/js/features/autoinject.js",
+    ]
+
+    # Patterns that indicate hardcoded English text (should use t() instead)
+    HARDCODED_PATTERNS = [
+        # alert/confirm with plain English strings (not using t())
+        r"alert\(\s*['\"][A-Z][a-z]",  # alert('Something...
+        r"confirm\(\s*['\"][A-Z][a-z]",  # confirm('Something...
+        r"alert\(\s*`[A-Z][a-z]",  # alert(`Something...
+        r"confirm\(\s*`[A-Z][a-z]",  # confirm(`Something...
+    ]
+
+    # Exceptions - patterns that are allowed (e.g., already using t())
+    ALLOWED_PATTERNS = [
+        r"alert\(\s*`?\$\{t\(",  # alert(`${t(...
+        r"confirm\(\s*`?\$\{t\(",  # confirm(`${t(...
+        r"alert\(\s*t\(",  # alert(t(...
+        r"confirm\(\s*t\(",  # confirm(t(...
+        r"alert\(\s*message",  # alert(message) - variable
+        r"alert\(\s*infoLines",  # alert(infoLines...) - variable
+    ]
+
+    def test_no_hardcoded_english_in_alerts(self):
+        """Test that alert() calls use t() for translations."""
+        for js_file in self.JS_FILES_TO_CHECK:
+            filepath = os.path.join(BASE_DIR, js_file)
+            if not os.path.exists(filepath):
+                continue
+
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Find all alert( calls
+            alert_matches = list(re.finditer(r"alert\([^)]+\)", content, re.DOTALL))
+
+            for match in alert_matches:
+                alert_text = match.group(0)
+                line_num = content[: match.start()].count("\n") + 1
+
+                # Check if it's using t() function
+                uses_t_function = (
+                    "t('" in alert_text
+                    or 't("' in alert_text
+                    or "${t(" in alert_text
+                    or "alert(message" in alert_text
+                    or "alert(infoLines" in alert_text
+                )
+
+                # Check for hardcoded English (starts with capital letter after quote)
+                has_hardcoded = bool(
+                    re.search(r"alert\(\s*['\"`][A-Z][a-z]", alert_text)
+                )
+
+                if has_hardcoded and not uses_t_function:
+                    self.fail(
+                        f"{js_file}:{line_num} has hardcoded English in alert(): "
+                        f"{alert_text[:80]}..."
+                    )
+
+    def test_no_hardcoded_english_in_confirms(self):
+        """Test that confirm() calls use t() for translations."""
+        for js_file in self.JS_FILES_TO_CHECK:
+            filepath = os.path.join(BASE_DIR, js_file)
+            if not os.path.exists(filepath):
+                continue
+
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Find all confirm( calls
+            confirm_matches = list(re.finditer(r"confirm\([^;]+\)", content, re.DOTALL))
+
+            for match in confirm_matches:
+                confirm_text = match.group(0)
+                line_num = content[: match.start()].count("\n") + 1
+
+                # Check if it's using t() function
+                uses_t_function = (
+                    "t('" in confirm_text
+                    or 't("' in confirm_text
+                    or "${t(" in confirm_text
+                )
+
+                # Check for hardcoded English (starts with capital letter after quote)
+                has_hardcoded = bool(
+                    re.search(r"confirm\(\s*['\"`][A-Z][a-z]", confirm_text)
+                )
+
+                if has_hardcoded and not uses_t_function:
+                    self.fail(
+                        f"{js_file}:{line_num} has hardcoded English in confirm(): "
+                        f"{confirm_text[:80]}..."
+                    )
+
+    def test_popup_messages_use_t_function(self):
+        """Test that all popup-related JS files use t() for user-facing messages."""
+        for js_file in self.JS_FILES_TO_CHECK:
+            filepath = os.path.join(BASE_DIR, js_file)
+            if not os.path.exists(filepath):
+                continue
+
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # File should import/use t() function if it has alert/confirm
+            has_popups = "alert(" in content or "confirm(" in content
+            uses_t = "t('" in content or 't("' in content
+
+            if has_popups:
+                self.assertTrue(
+                    uses_t,
+                    f"{js_file} has alert/confirm but doesn't use t() for i18n",
+                )
 
 
 if __name__ == "__main__":

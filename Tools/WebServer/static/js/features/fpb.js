@@ -93,10 +93,13 @@ async function fpbTestSerial() {
         parseInt(document.getElementById('chunkSize')?.value) || 128;
 
       const apply = confirm(
-        `Serial Throughput Test Complete!\n\n` +
-          `Current chunk size: ${currentSize} bytes\n` +
-          `Recommended chunk size: ${recommendedSize} bytes\n\n` +
-          `Do you want to apply the recommended chunk size?`,
+        `${t('messages.serial_test_complete', 'Serial Throughput Test Complete!')}\n\n` +
+          `${t('messages.current_chunk_size', 'Current chunk size')}: ${currentSize} ${t('device.bytes', 'bytes')}\n` +
+          `${t('messages.recommended_chunk_size', 'Recommended chunk size')}: ${recommendedSize} ${t('device.bytes', 'bytes')}\n\n` +
+          t(
+            'messages.apply_recommended_size',
+            'Do you want to apply the recommended chunk size?',
+          ),
       );
 
       if (apply) {

@@ -35,7 +35,11 @@ function showCrcError(message) {
   log.error(message);
   // Use blocking alert for critical CRC errors
   alert(
-    `CRC Verification Failed!\n\n${message}\n\nThe transferred file may be corrupted.`,
+    `${t('messages.crc_verification_failed', 'CRC Verification Failed!')}\n\n${message}\n\n` +
+      t(
+        'messages.file_may_be_corrupted',
+        'The transferred file may be corrupted.',
+      ),
   );
 }
 
@@ -968,17 +972,31 @@ function formatTransferStats(stats) {
  * @param {object} stats - Transfer statistics (optional)
  */
 function showTransferErrorAlert(operation, fileName, error, stats) {
-  let message = `${operation} failed for "${fileName}":\n\n${error}`;
+  const opText =
+    operation === 'Upload'
+      ? t('messages.upload_failed', 'Upload failed')
+      : t('messages.download_failed', 'Download failed');
+  let message = `${opText} "${fileName}":\n\n${error}`;
   if (stats) {
     const statParts = [];
-    if (stats.retry_count > 0) statParts.push(`Retries: ${stats.retry_count}`);
-    if (stats.crc_errors > 0) statParts.push(`CRC errors: ${stats.crc_errors}`);
+    if (stats.retry_count > 0)
+      statParts.push(
+        `${t('messages.retries', 'Retries')}: ${stats.retry_count}`,
+      );
+    if (stats.crc_errors > 0)
+      statParts.push(
+        `${t('messages.crc_errors', 'CRC errors')}: ${stats.crc_errors}`,
+      );
     if (stats.timeout_errors > 0)
-      statParts.push(`Timeout errors: ${stats.timeout_errors}`);
+      statParts.push(
+        `${t('messages.timeout_errors', 'Timeout errors')}: ${stats.timeout_errors}`,
+      );
     if (stats.packet_loss_rate > 0)
-      statParts.push(`Packet loss: ${stats.packet_loss_rate}%`);
+      statParts.push(
+        `${t('messages.packet_loss', 'Packet loss')}: ${stats.packet_loss_rate}%`,
+      );
     if (statParts.length > 0) {
-      message += `\n\nTransfer Statistics:\n${statParts.join('\n')}`;
+      message += `\n\n${t('messages.transfer_stats', 'Transfer Statistics')}:\n${statParts.join('\n')}`;
     }
   }
   alert(message);
@@ -1191,9 +1209,16 @@ async function deleteFromDevice() {
   }
 
   const path = transferSelectedFile.path;
-  const typeStr = transferSelectedFile.type === 'dir' ? 'directory' : 'file';
+  const typeStr =
+    transferSelectedFile.type === 'dir'
+      ? t('messages.directory', 'directory')
+      : t('transfer.file', 'file');
 
-  if (!confirm(`Are you sure you want to delete ${typeStr}: ${path}?`)) {
+  if (
+    !confirm(
+      `${t('messages.confirm_delete', 'Are you sure you want to delete')} ${typeStr}: ${path}?`,
+    )
+  ) {
     return;
   }
 

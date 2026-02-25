@@ -141,13 +141,16 @@ function displayAutoInjectStats(result, targetFunc) {
         .join('\n');
 
       let message =
-        `⚠️ ${failedInjections.length} injection(s) failed!\n\n` +
-        `Failed functions:\n${failedList}\n\n`;
+        `⚠️ ${t('messages.injection_failed_count', '{{count}} injection(s) failed!', { count: failedInjections.length })}\n\n` +
+        `${t('messages.failed_functions', 'Failed functions')}:\n${failedList}\n\n`;
 
       if (isSlotFull) {
         message +=
-          `This may be due to FPB Slots being full.\n` +
-          `Please clear some Slots in DEVICE INFO panel and try again.`;
+          `${t('messages.slots_full_hint', 'This may be due to FPB Slots being full.')}\n` +
+          t(
+            'messages.clear_slots_hint',
+            'Please clear some Slots in DEVICE INFO panel and try again.',
+          );
       }
 
       setTimeout(() => {

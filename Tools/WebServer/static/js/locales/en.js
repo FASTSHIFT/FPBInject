@@ -41,8 +41,7 @@ window.i18nResources['en'] = {
         log_file_path: 'Log Path',
         log_file_enabled: 'Record Serial Logs',
         serial_echo_enabled: 'Serial TX Echo',
-        ghidra_path:
-          '<a href="https://github.com/NationalSecurityAgency/ghidra" target="_blank" style="color: var(--vscode-textLink-foreground); text-decoration: underline;">Ghidra <i class="codicon codicon-link-external" style="font-size: 10px;"></i></a> Path',
+        ghidra_path: 'Ghidra Path',
         enable_decompile: 'Enable Decompilation',
         ui_theme: 'Theme',
         ui_language: 'Language',
@@ -151,6 +150,50 @@ window.i18nResources['en'] = {
       elf_file: 'ELF file',
       build_time_mismatch_hint:
         'Please ensure the ELF file matches the firmware running on the device.',
+      // Backend disconnection
+      backend_disconnected: 'Backend server has disconnected.',
+      backend_restart_hint: 'Please restart the server and refresh the page.',
+      // CRC errors
+      crc_verification_failed: 'CRC Verification Failed!',
+      file_may_be_corrupted: 'The transferred file may be corrupted.',
+      // Transfer errors
+      upload_failed: 'Upload failed',
+      download_failed: 'Download failed',
+      transfer_stats: 'Transfer Statistics',
+      retries: 'Retries',
+      crc_errors: 'CRC errors',
+      timeout_errors: 'Timeout errors',
+      packet_loss: 'Packet loss',
+      // Delete confirmation
+      confirm_delete: 'Are you sure you want to delete',
+      directory: 'directory',
+      // Injection failures
+      injection_failed_count: '{{count}} injection(s) failed!',
+      failed_functions: 'Failed functions',
+      slots_full_hint: 'This may be due to FPB Slots being full.',
+      clear_slots_hint:
+        'Please clear some Slots in DEVICE INFO panel and try again.',
+      // Serial test
+      serial_test_complete: 'Serial Throughput Test Complete!',
+      current_chunk_size: 'Current chunk size',
+      recommended_chunk_size: 'Recommended chunk size',
+      apply_recommended_size:
+        'Do you want to apply the recommended chunk size?',
+      // ELF watcher
+      elf_file_changed: 'ELF file "{{fileName}}" has changed.',
+      reload_symbols_now: 'Reload symbols now?',
+      // Slot warnings
+      all_slots_occupied: 'All {{count}} FPB Slots are occupied!',
+      current_slots: 'Current slots',
+      clear_slots_before_inject: 'Please clear some slots before injecting.',
+      use_clear_all_hint:
+        'Use "Clear All" button or click ✕ on individual slots.',
+      click_ok_to_open_device: 'Click OK to open Device Info panel.',
+      slot_occupied_by: 'Slot {{slot}} is already occupied by "{{func}}".',
+      overwrite_slot: 'Do you want to overwrite it?',
+      // Clear all slots
+      confirm_clear_all_slots: 'Are you sure you want to clear all FPB slots?',
+      unpatch_all_warning: 'This will unpatch all injected functions.',
     },
 
     // Modals

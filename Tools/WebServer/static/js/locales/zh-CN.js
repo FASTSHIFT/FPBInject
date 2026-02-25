@@ -149,6 +149,47 @@ window.i18nResources['zh-CN'] = {
       device_firmware: '设备固件',
       elf_file: 'ELF 文件',
       build_time_mismatch_hint: '请确保 ELF 文件与设备上运行的固件匹配。',
+      // 后端断开连接
+      backend_disconnected: '后端服务器已断开连接。',
+      backend_restart_hint: '请重启服务器并刷新页面。',
+      // CRC 错误
+      crc_verification_failed: 'CRC 校验失败！',
+      file_may_be_corrupted: '传输的文件可能已损坏。',
+      // 传输错误
+      upload_failed: '上传失败',
+      download_failed: '下载失败',
+      transfer_stats: '传输统计',
+      retries: '重试次数',
+      crc_errors: 'CRC 错误',
+      timeout_errors: '超时错误',
+      packet_loss: '丢包率',
+      // 删除确认
+      confirm_delete: '确定要删除',
+      directory: '目录',
+      // 注入失败
+      injection_failed_count: '{{count}} 个注入失败！',
+      failed_functions: '失败的函数',
+      slots_full_hint: '这可能是因为 FPB 槽位已满。',
+      clear_slots_hint: '请在设备信息面板中清除一些槽位后重试。',
+      // 串口测试
+      serial_test_complete: '串口吞吐测试完成！',
+      current_chunk_size: '当前块大小',
+      recommended_chunk_size: '推荐块大小',
+      apply_recommended_size: '是否应用推荐的块大小？',
+      // ELF 监视器
+      elf_file_changed: 'ELF 文件 "{{fileName}}" 已更改。',
+      reload_symbols_now: '立即重新加载符号？',
+      // 槽位警告
+      all_slots_occupied: '所有 {{count}} 个 FPB 槽位都已占用！',
+      current_slots: '当前槽位',
+      clear_slots_before_inject: '请在注入前清除一些槽位。',
+      use_clear_all_hint: '使用"清除所有"按钮或点击单个槽位上的 ✕。',
+      click_ok_to_open_device: '点击确定打开设备信息面板。',
+      slot_occupied_by: '槽位 {{slot}} 已被 "{{func}}" 占用。',
+      overwrite_slot: '是否覆盖？',
+      // 清除所有槽位
+      confirm_clear_all_slots: '确定要清除所有 FPB 槽位吗？',
+      unpatch_all_warning: '这将取消所有已注入的函数。',
     },
 
     // 模态框

@@ -147,7 +147,11 @@ async function fpbUnpatchAll() {
 
   if (
     !confirm(
-      'Are you sure you want to clear all FPB slots? This will unpatch all injected functions.',
+      `${t('messages.confirm_clear_all_slots', 'Are you sure you want to clear all FPB slots?')}\n\n` +
+        t(
+          'messages.unpatch_all_warning',
+          'This will unpatch all injected functions.',
+        ),
     )
   ) {
     return;
