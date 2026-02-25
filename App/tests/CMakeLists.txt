@@ -120,17 +120,17 @@ set(TEST_FRAMEWORK_SOURCES test_framework.c)
 # ============================================================================
 set(TEST_SOURCES_MAIN
     test_main.c
-    test_func_allocator.c
-    test_func_loader.c
-    test_func_loader_stream.c
-    test_func_loader_file.c
+    test_fl_allocator.c
+    test_fl.c
+    test_fl_stream.c
+    test_fl_file.c
     test_fpb_inject.c
     test_fpb_debugmon.c
     test_fpb_trampoline.c)
 
 set(TEST_SOURCES_NUTTX test_fpb_debugmon_nuttx.c)
 
-set(TEST_SOURCES_FATFS test_main_fatfs.c test_func_loader_file_fatfs.c)
+set(TEST_SOURCES_FATFS test_main_fatfs.c test_fl_file_fatfs.c)
 
 # ============================================================================
 # Main test executable (standard debugmon)

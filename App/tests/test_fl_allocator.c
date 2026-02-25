@@ -796,7 +796,7 @@ void test_allocator_stress_boundary_sizes(void) {
 
     /* Test sizes at block boundaries */
     size_t boundary_sizes[] = {
-        1,                             /* Minimum */
+        1,                           /* Minimum */
         FL_ALLOC_BLOCK_SIZE - 1,     /* Just under 1 block */
         FL_ALLOC_BLOCK_SIZE,         /* Exactly 1 block */
         FL_ALLOC_BLOCK_SIZE + 1,     /* Just over 1 block */
