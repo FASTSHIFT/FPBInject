@@ -310,6 +310,16 @@ CONFIG_SCHEMA: List[ConfigItem] = [
     ),
     # === User Interface ===
     ConfigItem(
+        key="ui_theme",
+        label="Theme",
+        group=ConfigGroup.UI,
+        config_type=ConfigType.SELECT,
+        default="dark",
+        options=[("dark", "Dark"), ("light", "Light")],
+        tooltip="Interface color theme",
+        order=5,
+    ),
+    ConfigItem(
         key="ui_language",
         label="Language",
         group=ConfigGroup.UI,

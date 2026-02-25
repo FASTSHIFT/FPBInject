@@ -58,6 +58,14 @@ async function loadConfig() {
       }
     }
 
+    // Sync theme from server config if different from localStorage
+    if (data.ui_theme && typeof setTheme === 'function') {
+      const currentTheme = localStorage.getItem('fpbinject-theme') || 'dark';
+      if (data.ui_theme !== currentTheme) {
+        setTheme(data.ui_theme);
+      }
+    }
+
     // Update path input state based on recording status
     updateLogFilePathState(data.log_file_enabled || false);
 
@@ -177,6 +185,14 @@ async function saveConfig(silent = false) {
     const currentLang = localStorage.getItem('fpbinject_ui_language') || 'en';
     if (config.ui_language !== currentLang) {
       changeLanguage(config.ui_language);
+    }
+  }
+
+  // Handle theme change
+  if (config.ui_theme && typeof setTheme === 'function') {
+    const currentTheme = localStorage.getItem('fpbinject-theme') || 'dark';
+    if (config.ui_theme !== currentTheme) {
+      setTheme(config.ui_theme);
     }
   }
 

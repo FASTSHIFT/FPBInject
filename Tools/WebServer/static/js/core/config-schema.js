@@ -176,7 +176,11 @@ function renderSelect(item, elementId, tooltip) {
   const options = item.options
     .map(([value, label]) => {
       const selected = value === item.default ? ' selected' : '';
-      return `<option value="${value}"${selected}>${label}</option>`;
+      // Try to get translated label for option
+      const i18nKey = `config.options.${value}`;
+      const translatedLabel =
+        typeof t === 'function' && isI18nReady() ? t(i18nKey, label) : label;
+      return `<option value="${value}"${selected} data-i18n="config.options.${value}">${translatedLabel}</option>`;
     })
     .join('');
   const label = getConfigLabel(item);

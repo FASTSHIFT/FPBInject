@@ -46,7 +46,13 @@ window.i18nResources['zh-CN'] = {
         serial_echo_enabled: '串口发送回显',
         ghidra_path: 'Ghidra 路径',
         enable_decompile: '启用反编译',
+        ui_theme: '主题',
         ui_language: '语言',
+      },
+      // 配置选项值
+      options: {
+        dark: '深色',
+        light: '浅色',
       },
     },
 
@@ -202,6 +208,7 @@ window.i18nResources['zh-CN'] = {
       serial_echo_enabled: '在串口面板回显发送的命令（用于调试）',
       ghidra_path: 'Ghidra 安装目录路径（包含 support/analyzeHeadless）',
       enable_decompile: '创建补丁模板时启用反编译（需要 Ghidra）',
+      ui_theme: '界面颜色主题',
       ui_language: '界面显示语言',
     },
   },

@@ -552,55 +552,35 @@ class TestDataI18nAttributesCoverage(unittest.TestCase):
 
         keys = set()
 
-        def find_matching_brace(text, start):
-            """Find the position of matching closing brace."""
-            depth = 1
-            pos = start
-            while depth > 0 and pos < len(text):
-                if text[pos] == "{":
-                    depth += 1
-                elif text[pos] == "}":
-                    depth -= 1
-                pos += 1
-            return pos - 1
+        # Simpler approach: find all nested key paths by analyzing the structure
+        # Match patterns like: section: { key: 'value' } or section: { nested: { key: 'value' } }
+        lines = content.split("\n")
+        current_path = []
 
-        def extract_keys_recursive(text, prefix=""):
-            """Recursively extract keys from nested structure."""
-            # Find all key: patterns
-            pattern = r"(\w+)\s*:\s*"
-            pos = 0
-            while pos < len(text):
-                match = re.search(pattern, text[pos:])
-                if not match:
-                    break
+        for line in lines:
+            stripped = line.strip()
 
-                key = match.group(1)
-                match_end = pos + match.end()
+            # Track opening braces with key names
+            key_with_brace = re.match(r"(\w+)\s*:\s*\{", stripped)
+            if key_with_brace:
+                current_path.append(key_with_brace.group(1))
+                continue
 
-                # Check what follows the key
-                rest = text[match_end:].lstrip()
-                if rest.startswith("{"):
-                    # Nested object
-                    brace_start = text.index("{", match_end)
-                    brace_end = find_matching_brace(text, brace_start + 1)
-                    nested_content = text[brace_start + 1 : brace_end]
-                    new_prefix = f"{prefix}.{key}" if prefix else key
-                    extract_keys_recursive(nested_content, new_prefix)
-                    pos = brace_end + 1
-                elif rest.startswith("'") or rest.startswith('"'):
-                    # Leaf value
-                    full_key = f"{prefix}.{key}" if prefix else key
+            # Track closing braces
+            if stripped.startswith("}"):
+                if current_path:
+                    current_path.pop()
+                continue
+
+            # Match leaf values: key: 'value' or key: "value"
+            leaf_match = re.match(r"(\w+)\s*:\s*['\"]", stripped)
+            if leaf_match and current_path:
+                key = leaf_match.group(1)
+                # Skip 'translation' as it's the root
+                path = [p for p in current_path if p != "translation"]
+                if path:
+                    full_key = ".".join(path) + "." + key
                     keys.add(full_key)
-                    pos = match_end
-                else:
-                    pos = match_end
-
-        # Find translation content
-        translation_match = re.search(
-            r"translation:\s*\{(.+)\}\s*\};", content, re.DOTALL
-        )
-        if translation_match:
-            extract_keys_recursive(translation_match.group(1))
 
         return keys
 

@@ -43,7 +43,13 @@ window.i18nResources['en'] = {
         serial_echo_enabled: 'Serial TX Echo',
         ghidra_path: 'Ghidra Path',
         enable_decompile: 'Enable Decompilation',
+        ui_theme: 'Theme',
         ui_language: 'Language',
+      },
+      // Config option values
+      options: {
+        dark: 'Dark',
+        light: 'Light',
       },
     },
 

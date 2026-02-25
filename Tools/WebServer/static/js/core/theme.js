@@ -26,32 +26,28 @@ const lightTerminalTheme = {
 /* ===========================
    THEME FUNCTIONS
    =========================== */
+function setTheme(theme) {
+  const html = document.documentElement;
+  html.setAttribute('data-theme', theme);
+  localStorage.setItem('fpbinject-theme', theme);
+  updateTerminalTheme();
+  updateAceEditorsTheme(theme === 'dark');
+}
+
 function toggleTheme() {
   const html = document.documentElement;
   const currentTheme = html.getAttribute('data-theme');
   const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-  html.setAttribute('data-theme', newTheme);
-  localStorage.setItem('fpbinject-theme', newTheme);
-  updateThemeIcon();
-  updateTerminalTheme();
-  updateAceEditorsTheme(newTheme === 'dark');
+  setTheme(newTheme);
 }
 
 function loadThemePreference() {
   const savedTheme = localStorage.getItem('fpbinject-theme') || 'dark';
   document.documentElement.setAttribute('data-theme', savedTheme);
-  updateThemeIcon();
 }
 
 function updateThemeIcon() {
-  const themeIcon = document.getElementById('themeIcon');
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  if (themeIcon) {
-    themeIcon.className =
-      currentTheme === 'light'
-        ? 'codicon codicon-lightbulb'
-        : 'codicon codicon-lightbulb-autofix';
-  }
+  // Deprecated - theme icon removed from titlebar
 }
 
 function updateTerminalTheme() {
@@ -83,6 +79,7 @@ function updateAceEditorsTheme(isDark) {
 }
 
 // Export for global access
+window.setTheme = setTheme;
 window.toggleTheme = toggleTheme;
 window.loadThemePreference = loadThemePreference;
 window.updateThemeIcon = updateThemeIcon;
