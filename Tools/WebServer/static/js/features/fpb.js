@@ -120,7 +120,7 @@ async function fpbTestSerial() {
   }
 }
 
-async function fpbInfo() {
+async function fpbInfo(showPopup = false) {
   const state = window.FPBState;
   if (!state.isConnected) {
     log.error('Not connected');
@@ -181,49 +181,51 @@ async function fpbInfo() {
 
       log.success('Device info updated');
 
-      // Build device info popup message
-      const infoLines = [];
-      infoLines.push(
-        `✅ ${t('messages.device_info_success', 'Device Info Retrieved')}`,
-      );
-      infoLines.push('');
-
-      if (data.fpb_version !== undefined) {
+      // Only show success popup when manually triggered
+      if (showPopup) {
+        const infoLines = [];
         infoLines.push(
-          `${t('messages.fpb_version', 'FPB Version')}: ${data.fpb_version}`,
+          `✅ ${t('messages.device_info_success', 'Device Info Retrieved')}`,
         );
+        infoLines.push('');
+
+        if (data.fpb_version !== undefined) {
+          infoLines.push(
+            `${t('messages.fpb_version', 'FPB Version')}: ${data.fpb_version}`,
+          );
+        }
+
+        if (data.device_build_time) {
+          infoLines.push(
+            `${t('messages.build_time', 'Build Time')}: ${data.device_build_time}`,
+          );
+        }
+
+        if (data.memory) {
+          infoLines.push(
+            `${t('messages.memory_used', 'Memory Used')}: ${data.memory.used || 0} ${t('device.bytes', 'Bytes')}`,
+          );
+        }
+
+        if (data.slots) {
+          const occupiedSlots = data.slots.filter((s) => s.occupied).length;
+          const totalSlots = data.slots.length;
+          infoLines.push(
+            `${t('messages.slots_used', 'Slots Used')}: ${occupiedSlots}/${totalSlots}`,
+          );
+
+          // List occupied slots
+          data.slots.forEach((slot) => {
+            if (slot.occupied && slot.func) {
+              infoLines.push(
+                `  ${t('device.slot_n', 'Slot {{n}}', { n: slot.id })}: ${slot.func}`,
+              );
+            }
+          });
+        }
+
+        alert(infoLines.join('\n'));
       }
-
-      if (data.device_build_time) {
-        infoLines.push(
-          `${t('messages.build_time', 'Build Time')}: ${data.device_build_time}`,
-        );
-      }
-
-      if (data.memory) {
-        infoLines.push(
-          `${t('messages.memory_used', 'Memory Used')}: ${data.memory.used || 0} ${t('device.bytes', 'Bytes')}`,
-        );
-      }
-
-      if (data.slots) {
-        const occupiedSlots = data.slots.filter((s) => s.occupied).length;
-        const totalSlots = data.slots.length;
-        infoLines.push(
-          `${t('messages.slots_used', 'Slots Used')}: ${occupiedSlots}/${totalSlots}`,
-        );
-
-        // List occupied slots
-        data.slots.forEach((slot) => {
-          if (slot.occupied && slot.func) {
-            infoLines.push(
-              `  ${t('device.slot_n', 'Slot {{n}}', { n: slot.id })}: ${slot.func}`,
-            );
-          }
-        });
-      }
-
-      alert(infoLines.join('\n'));
     } else {
       log.error(data.error || 'Failed to get device info');
       alert(

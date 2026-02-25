@@ -1246,8 +1246,9 @@ class TestDevicePopupMessages(unittest.TestCase):
             content = f.read()
 
         # Find fpbInfo function and check it has alert calls
+        # Function signature may have optional parameter: fpbInfo(showPopup = false)
         fpb_info_match = re.search(
-            r"async function fpbInfo\(\).*?^}",
+            r"async function fpbInfo\([^)]*\).*?^}",
             content,
             re.MULTILINE | re.DOTALL,
         )
