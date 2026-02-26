@@ -405,6 +405,156 @@ module.exports = function (w) {
       w.selectDeviceFile(item, { ctrlKey: true });
       assertTrue(!item.classList.contains('selected'));
     });
+
+    it('supports Shift+click range selection', () => {
+      resetMocks();
+      const fileList = browserGlobals.document.createElement('div');
+      fileList.id = 'deviceFileList';
+
+      const items = [];
+      for (let i = 0; i < 5; i++) {
+        const item = browserGlobals.document.createElement('div');
+        item.className = 'device-file-item';
+        item.dataset = { path: `/file${i}.txt`, type: 'file' };
+        items.push(item);
+        fileList.appendChild(item);
+      }
+
+      // Mock querySelectorAll to return items
+      fileList.querySelectorAll = (sel) => {
+        if (sel === '.device-file-item') return items;
+        return [];
+      };
+
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return fileList;
+        return null;
+      };
+      browserGlobals.document.querySelectorAll = () => [];
+
+      // First click to set anchor
+      w.selectDeviceFile(items[1], {});
+      assertTrue(items[1].classList.contains('selected'));
+
+      // Shift+click to select range [1, 3]
+      w.selectDeviceFile(items[3], { shiftKey: true });
+      assertTrue(!items[0].classList.contains('selected'));
+      assertTrue(items[1].classList.contains('selected'));
+      assertTrue(items[2].classList.contains('selected'));
+      assertTrue(items[3].classList.contains('selected'));
+      assertTrue(!items[4].classList.contains('selected'));
+    });
+
+    it('supports Shift+click reverse range selection', () => {
+      resetMocks();
+      const fileList = browserGlobals.document.createElement('div');
+      fileList.id = 'deviceFileList';
+
+      const items = [];
+      for (let i = 0; i < 5; i++) {
+        const item = browserGlobals.document.createElement('div');
+        item.className = 'device-file-item';
+        item.dataset = { path: `/file${i}.txt`, type: 'file' };
+        items.push(item);
+        fileList.appendChild(item);
+      }
+
+      // Mock querySelectorAll to return items
+      fileList.querySelectorAll = (sel) => {
+        if (sel === '.device-file-item') return items;
+        return [];
+      };
+
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return fileList;
+        return null;
+      };
+      browserGlobals.document.querySelectorAll = () => [];
+
+      // First click at index 3
+      w.selectDeviceFile(items[3], {});
+
+      // Shift+click at index 1 (reverse direction)
+      w.selectDeviceFile(items[1], { shiftKey: true });
+      assertTrue(!items[0].classList.contains('selected'));
+      assertTrue(items[1].classList.contains('selected'));
+      assertTrue(items[2].classList.contains('selected'));
+      assertTrue(items[3].classList.contains('selected'));
+      assertTrue(!items[4].classList.contains('selected'));
+    });
+
+    it('supports Shift+Ctrl+click to add range to selection', () => {
+      resetMocks();
+      const fileList = browserGlobals.document.createElement('div');
+      fileList.id = 'deviceFileList';
+
+      const items = [];
+      for (let i = 0; i < 6; i++) {
+        const item = browserGlobals.document.createElement('div');
+        item.className = 'device-file-item';
+        item.dataset = { path: `/file${i}.txt`, type: 'file' };
+        items.push(item);
+        fileList.appendChild(item);
+      }
+
+      // Mock querySelectorAll to return items
+      fileList.querySelectorAll = (sel) => {
+        if (sel === '.device-file-item') return items;
+        return [];
+      };
+
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return fileList;
+        return null;
+      };
+      browserGlobals.document.querySelectorAll = () => [];
+
+      // Select first item
+      w.selectDeviceFile(items[0], {});
+
+      // Ctrl+click to add item 5
+      w.selectDeviceFile(items[5], { ctrlKey: true });
+      assertTrue(items[0].classList.contains('selected'));
+      assertTrue(items[5].classList.contains('selected'));
+
+      // Shift+Ctrl+click to add range [5, 3] to existing selection
+      w.selectDeviceFile(items[3], { shiftKey: true, ctrlKey: true });
+      assertTrue(items[0].classList.contains('selected')); // Still selected
+      assertTrue(items[3].classList.contains('selected'));
+      assertTrue(items[4].classList.contains('selected'));
+      assertTrue(items[5].classList.contains('selected'));
+    });
+
+    it('treats Shift+click as normal click when no anchor exists', () => {
+      resetMocks();
+      // Reset the anchor by simulating fresh state
+      w.transferLastSelectedItem = null;
+
+      const fileList = browserGlobals.document.createElement('div');
+      fileList.id = 'deviceFileList';
+
+      const item = browserGlobals.document.createElement('div');
+      item.className = 'device-file-item';
+      item.dataset = { path: '/file.txt', type: 'file' };
+      fileList.appendChild(item);
+
+      // Mock querySelectorAll to return items
+      fileList.querySelectorAll = (sel) => {
+        if (sel === '.device-file-item') return [item];
+        return [];
+      };
+
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'deviceFileList') return fileList;
+        return null;
+      };
+      browserGlobals.document.querySelectorAll = () => [];
+
+      // Shift+click without anchor should act as normal click
+      w.selectDeviceFile(item, { shiftKey: true });
+      // Item should be selected (falls back to normal click behavior)
+      assertTrue(item.classList.contains('selected'));
+    });
   });
 
   describe('formatSpeed Function', () => {

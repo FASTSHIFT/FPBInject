@@ -7,6 +7,7 @@
    =========================== */
 let transferCurrentPath = '/';
 let transferSelectedFiles = []; // Support multi-select
+let transferLastSelectedItem = null; // Anchor for Shift multi-select
 let transferAbortController = null;
 
 /* ===========================
@@ -422,6 +423,7 @@ async function refreshDeviceFiles() {
 
   fileList.innerHTML = '';
   transferSelectedFiles = [];
+  transferLastSelectedItem = null;
 
   // Add parent directory entry if not at root
   if (path !== '/') {
@@ -485,7 +487,7 @@ async function refreshDeviceFiles() {
 }
 
 /**
- * Select a device file item (supports Ctrl multi-select)
+ * Select a device file item (supports Ctrl and Shift multi-select)
  * @param {HTMLElement} item - The file item element
  * @param {MouseEvent} event - The click event
  */
@@ -493,8 +495,40 @@ function selectDeviceFile(item, event) {
   const path = item.dataset.path;
   const type = item.dataset.type;
   const isCtrlPressed = event && (event.ctrlKey || event.metaKey);
+  const isShiftPressed = event && event.shiftKey;
 
-  if (isCtrlPressed) {
+  if (isShiftPressed && transferLastSelectedItem) {
+    // Shift+click: range selection
+    const fileList = document.getElementById('deviceFileList');
+    const allItems = Array.from(fileList.querySelectorAll('.device-file-item'));
+    const anchorIndex = allItems.indexOf(transferLastSelectedItem);
+    const currentIndex = allItems.indexOf(item);
+
+    if (anchorIndex >= 0 && currentIndex >= 0) {
+      const startIndex = Math.min(anchorIndex, currentIndex);
+      const endIndex = Math.max(anchorIndex, currentIndex);
+
+      // Clear previous selection if not holding Ctrl
+      if (!isCtrlPressed) {
+        allItems.forEach((el) => el.classList.remove('selected'));
+        transferSelectedFiles = [];
+      }
+
+      // Select range
+      for (let i = startIndex; i <= endIndex; i++) {
+        const rangeItem = allItems[i];
+        const rangePath = rangeItem.dataset.path;
+        const rangeType = rangeItem.dataset.type;
+
+        // Add if not already selected
+        if (!transferSelectedFiles.some((f) => f.path === rangePath)) {
+          transferSelectedFiles.push({ path: rangePath, type: rangeType });
+          rangeItem.classList.add('selected');
+        }
+      }
+    }
+    // Don't update anchor on Shift+click
+  } else if (isCtrlPressed) {
     // Ctrl+click: toggle selection
     const existingIndex = transferSelectedFiles.findIndex(
       (f) => f.path === path,
@@ -508,12 +542,16 @@ function selectDeviceFile(item, event) {
       transferSelectedFiles.push({ path, type });
       item.classList.add('selected');
     }
+    // Update anchor
+    transferLastSelectedItem = item;
   } else {
     // Normal click: single select
     const prevItems = document.querySelectorAll('.device-file-item.selected');
     prevItems.forEach((el) => el.classList.remove('selected'));
     transferSelectedFiles = [{ path, type }];
     item.classList.add('selected');
+    // Update anchor
+    transferLastSelectedItem = item;
   }
 }
 
@@ -1384,3 +1422,11 @@ window.readDirectoryEntries = readDirectoryEntries;
 window.collectFilesFromEntry = collectFilesFromEntry;
 window.uploadFolderEntry = uploadFolderEntry;
 window.uploadFolderFiles = uploadFolderFiles;
+// Shift multi-select anchor
+window.transferLastSelectedItem = null;
+Object.defineProperty(window, 'transferLastSelectedItem', {
+  get: () => transferLastSelectedItem,
+  set: (v) => {
+    transferLastSelectedItem = v;
+  },
+});

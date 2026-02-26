@@ -405,6 +405,7 @@ const mockDocument = {
 const originalQuerySelector = mockDocument.querySelector.bind(mockDocument);
 const originalQuerySelectorAll =
   mockDocument.querySelectorAll.bind(mockDocument);
+const originalGetElementById = mockDocument.getElementById.bind(mockDocument);
 
 // Terminal mock with recording
 class MockTerminal {
@@ -625,6 +626,7 @@ function resetMocks() {
   // Restore original document methods that might have been overwritten
   mockDocument.querySelector = originalQuerySelector;
   mockDocument.querySelectorAll = originalQuerySelectorAll;
+  mockDocument.getElementById = originalGetElementById;
 }
 
 function getDocumentEventListeners() {
