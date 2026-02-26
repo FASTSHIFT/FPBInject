@@ -256,6 +256,12 @@ window.i18nResources['en'] = {
       clear_all: 'Clear all FPB slots',
       clear_slot: 'Clear slot',
       reinject_all: 'Re-inject all ({{count}} files)',
+      slot_original: 'Original',
+      slot_target: 'Target',
+      slot_code_size: 'Code size',
+      // Terminal
+      pause: 'Pause',
+      resume: 'Resume',
       // Symbols
       symbols_hint:
         'Single-click: view disassembly; Double-click: create patch',

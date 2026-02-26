@@ -746,6 +746,8 @@ class TestHardcodedTextDetection(unittest.TestCase):
             (r"\.innerText\s*=\s*['\"]([A-Z][a-zA-Z\s\.]+)['\"]", "innerText"),
             # innerHTML with simple text (not HTML)
             (r"\.innerHTML\s*=\s*['\"]([A-Z][a-zA-Z\s]+)['\"]", "innerHTML"),
+            # title attribute assignments (tooltips)
+            (r"\.title\s*=\s*['\"`]([A-Z][a-zA-Z\s:\.]+)['\"`]", "title"),
         ]
 
         # Whitelist for JS - technical terms and acceptable hardcoded text

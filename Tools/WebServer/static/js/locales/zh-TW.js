@@ -249,6 +249,12 @@ window.i18nResources['zh-TW'] = {
       clear_all: '清除所有 FPB 槽位',
       clear_slot: '清除槽位',
       reinject_all: '重新注入全部 ({{count}} 個檔案)',
+      slot_original: '劫持地址',
+      slot_target: '跳轉地址',
+      slot_code_size: '程式碼大小',
+      // 終端
+      pause: '暫停',
+      resume: '繼續',
       // 符號
       symbols_hint: '單擊：查看反組譯；雙擊：建立補丁',
       // 傳輸

@@ -249,6 +249,12 @@ window.i18nResources['zh-CN'] = {
       clear_all: '清除所有 FPB 槽位',
       clear_slot: '清除槽位',
       reinject_all: '重新注入全部 ({{count}} 个文件)',
+      slot_original: '劫持地址',
+      slot_target: '跳转地址',
+      slot_code_size: '代码大小',
+      // 终端
+      pause: '暂停',
+      resume: '继续',
       // 符号
       symbols_hint: '单击：查看反汇编；双击：创建补丁',
       // 传输

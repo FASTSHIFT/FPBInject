@@ -289,14 +289,14 @@ function toggleTerminalPause() {
   if (btn) {
     const icon = btn.querySelector('i');
     if (state.terminalPaused) {
-      btn.title = 'Resume';
+      btn.title = t('tooltips.resume', 'Resume');
       btn.classList.add('active');
       if (icon) {
         icon.classList.remove('codicon-debug-pause');
         icon.classList.add('codicon-debug-start');
       }
     } else {
-      btn.title = 'Pause';
+      btn.title = t('tooltips.pause', 'Pause');
       btn.classList.remove('active');
       if (icon) {
         icon.classList.remove('codicon-debug-start');
