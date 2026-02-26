@@ -191,7 +191,7 @@ class FPBProtocol:
                 tool_log(
                     self.device,
                     "WARN",
-                    f"Retry attempt {attempt + 1}/{max_retries + 1}",
+                    f"Retry attempt {attempt}/{max_retries}",
                 )
                 time.sleep(0.05)
 
