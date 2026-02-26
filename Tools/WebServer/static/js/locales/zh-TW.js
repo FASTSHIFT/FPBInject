@@ -242,7 +242,11 @@ window.i18nResources['zh-TW'] = {
       activity_symbols: '符號',
       activity_config: '設定',
       // 裝置
+      ping: '檢測裝置是否已連線並回應',
+      info: '取得裝置 FPB 硬體資訊',
       test_serial: '測試串列埠吞吐量以找到最大傳輸大小',
+      reinject: '重新注入所有快取的檔案',
+      clear_all: '清除所有 FPB 槽位',
       clear_slot: '清除槽位',
       reinject_all: '重新注入全部 ({{count}} 個檔案)',
       // 符號

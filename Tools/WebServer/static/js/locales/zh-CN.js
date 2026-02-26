@@ -242,7 +242,11 @@ window.i18nResources['zh-CN'] = {
       activity_symbols: '符号',
       activity_config: '配置',
       // 设备
+      ping: '检测设备是否已连接并响应',
+      info: '获取设备 FPB 硬件信息',
       test_serial: '测试串口吞吐量以找到最大传输大小',
+      reinject: '重新注入所有缓存的文件',
+      clear_all: '清除所有 FPB 槽位',
       clear_slot: '清除槽位',
       reinject_all: '重新注入全部 ({{count}} 个文件)',
       // 符号

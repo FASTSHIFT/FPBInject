@@ -249,7 +249,11 @@ window.i18nResources['en'] = {
       activity_symbols: 'Symbols',
       activity_config: 'Configuration',
       // Device
+      ping: 'Detect if device is connected and responsive',
+      info: 'Get device FPB hardware information',
       test_serial: 'Test serial throughput to find max transfer size',
+      reinject: 'Re-inject all cached files',
+      clear_all: 'Clear all FPB slots',
       clear_slot: 'Clear slot',
       reinject_all: 'Re-inject all ({{count}} files)',
       // Symbols
