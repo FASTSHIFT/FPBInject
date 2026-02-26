@@ -50,7 +50,6 @@ module.exports = function (w) {
     });
 
     it('fetches /api/watch/elf_status', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.resetElfWatcherState();
       setFetchResponse('/api/watch/elf_status', {
@@ -67,7 +66,6 @@ module.exports = function (w) {
     });
 
     it('does nothing when changed is false', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.resetElfWatcherState();
@@ -89,7 +87,6 @@ module.exports = function (w) {
     });
 
     it('shows dialog when changed is true', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.resetElfWatcherState();
@@ -118,7 +115,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch error gracefully', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.resetElfWatcherState();
 
@@ -141,7 +137,6 @@ module.exports = function (w) {
     });
 
     it('calls acknowledge and config APIs', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       setFetchResponse('/api/watch/elf_acknowledge', { success: true });
@@ -158,7 +153,6 @@ module.exports = function (w) {
     });
 
     it('writes success message', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       setFetchResponse('/api/watch/elf_acknowledge', { success: true });
@@ -175,7 +169,6 @@ module.exports = function (w) {
     });
 
     it('handles error gracefully', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
 
@@ -200,7 +193,6 @@ module.exports = function (w) {
     });
 
     it('calls /api/watch/elf_acknowledge', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       setFetchResponse('/api/watch/elf_acknowledge', { success: true });
@@ -215,7 +207,6 @@ module.exports = function (w) {
     });
 
     it('writes info message', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       setFetchResponse('/api/watch/elf_acknowledge', { success: true });
@@ -233,7 +224,6 @@ module.exports = function (w) {
 
   describe('showElfChangeDialog Function', () => {
     it('writes warning message', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.resetElfWatcherState();
@@ -256,7 +246,6 @@ module.exports = function (w) {
     });
 
     it('calls reloadElfSymbols when user confirms', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.resetElfWatcherState();
@@ -280,7 +269,6 @@ module.exports = function (w) {
     });
 
     it('calls acknowledgeElfChange when user cancels', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.resetElfWatcherState();
@@ -304,7 +292,6 @@ module.exports = function (w) {
     });
 
     it('prevents duplicate dialogs while one is shown', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.resetElfWatcherState();
@@ -353,7 +340,6 @@ module.exports = function (w) {
 
   describe('Integration with Connection Module', () => {
     it('handleConnected starts ELF watcher', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.isConnected = false;
       setFetchResponse('/api/fpb/info', { success: true });
@@ -370,7 +356,6 @@ module.exports = function (w) {
     });
 
     it('handleDisconnected stops ELF watcher', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
 
       // Note: In real environment, handleDisconnected would stop the watcher

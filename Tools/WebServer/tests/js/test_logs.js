@@ -28,7 +28,6 @@ module.exports = function (w) {
 
   describe('startLogPolling Function', () => {
     it('resets log IDs', () => {
-      resetMocks();
       w.FPBState.toolLogNextId = 100;
       w.FPBState.rawLogNextId = 200;
       w.FPBState.slotUpdateId = 300;
@@ -40,7 +39,6 @@ module.exports = function (w) {
     });
 
     it('sets logPollInterval', () => {
-      resetMocks();
       w.FPBState.logPollInterval = null;
       w.startLogPolling();
       assertTrue(w.FPBState.logPollInterval !== null);
@@ -48,7 +46,6 @@ module.exports = function (w) {
     });
 
     it('stops existing polling before starting', () => {
-      resetMocks();
       w.startLogPolling();
       const firstInterval = w.FPBState.logPollInterval;
       w.startLogPolling();
@@ -59,14 +56,12 @@ module.exports = function (w) {
 
   describe('stopLogPolling Function', () => {
     it('clears logPollInterval', () => {
-      resetMocks();
       w.startLogPolling();
       w.stopLogPolling();
       assertEqual(w.FPBState.logPollInterval, null);
     });
 
     it('handles null interval gracefully', () => {
-      resetMocks();
       w.FPBState.logPollInterval = null;
       w.stopLogPolling();
       assertEqual(w.FPBState.logPollInterval, null);
@@ -79,7 +74,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/logs with correct params', async () => {
-      resetMocks();
       w.FPBState.toolLogNextId = 5;
       w.FPBState.rawLogNextId = 10;
       w.FPBState.slotUpdateId = 15;
@@ -97,7 +91,6 @@ module.exports = function (w) {
     });
 
     it('updates toolLogNextId from response', async () => {
-      resetMocks();
       w.FPBState.toolLogNextId = 0;
       w.FPBState.rawLogNextId = 0;
       w.FPBState.slotUpdateId = 0;
@@ -115,7 +108,6 @@ module.exports = function (w) {
     });
 
     it('writes tool_logs to output', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.rawTerminal = new MockTerminal();
@@ -137,7 +129,6 @@ module.exports = function (w) {
     });
 
     it('writes raw_data to serial terminal', async () => {
-      resetMocks();
       const mockRawTerm = new MockTerminal();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = mockRawTerm;
@@ -159,7 +150,6 @@ module.exports = function (w) {
     });
 
     it('updates slot states from slot_data', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;
@@ -199,7 +189,6 @@ module.exports = function (w) {
     });
 
     it('handles non-ok response gracefully', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -213,7 +202,6 @@ module.exports = function (w) {
     });
 
     it('handles empty tool_logs array', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;
@@ -234,7 +222,6 @@ module.exports = function (w) {
     });
 
     it('handles missing slot_data gracefully', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;
@@ -255,7 +242,6 @@ module.exports = function (w) {
     });
 
     it('does not update slots if slot_update_id not increased', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;
@@ -277,7 +263,6 @@ module.exports = function (w) {
     });
 
     it('handles slot_data with memory info', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;
@@ -310,7 +295,6 @@ module.exports = function (w) {
     });
 
     it('handles empty response text', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -333,7 +317,6 @@ module.exports = function (w) {
     });
 
     it('handles invalid JSON response', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -355,7 +338,6 @@ module.exports = function (w) {
     });
 
     it('handles non-json content type', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -377,7 +359,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -397,7 +378,6 @@ module.exports = function (w) {
     });
 
     it('handles whitespace-only response', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -419,7 +399,6 @@ module.exports = function (w) {
     });
 
     it('handles null content-type header', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -441,7 +420,6 @@ module.exports = function (w) {
     });
 
     it('updates all slot states from response', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;
@@ -489,7 +467,6 @@ module.exports = function (w) {
     });
 
     it('uses slot.id to correctly index slotStates (non-sequential)', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;
@@ -538,7 +515,6 @@ module.exports = function (w) {
     });
 
     it('correctly handles sparse slot data (only occupied slots)', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.rawTerminal = new MockTerminal();
       w.FPBState.toolLogNextId = 0;

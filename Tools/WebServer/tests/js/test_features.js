@@ -34,7 +34,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -48,7 +47,6 @@ module.exports = function (w) {
     });
 
     it('sends POST to /api/fpb/ping', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -61,7 +59,6 @@ module.exports = function (w) {
     });
 
     it('writes success message on success', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -81,7 +78,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -95,7 +91,6 @@ module.exports = function (w) {
     });
 
     it('sends POST to /api/fpb/test-serial', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -113,7 +108,6 @@ module.exports = function (w) {
     });
 
     it('displays test results', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -138,7 +132,6 @@ module.exports = function (w) {
     });
 
     it('handles test failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -160,7 +153,6 @@ module.exports = function (w) {
       assertTrue(w.fpbInfo.constructor.name === 'AsyncFunction'));
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -174,7 +166,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/fpb/info', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -190,7 +181,6 @@ module.exports = function (w) {
     });
 
     it('updates slot states from response', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -222,7 +212,6 @@ module.exports = function (w) {
     });
 
     it('updates memory info from response', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -241,7 +230,6 @@ module.exports = function (w) {
     });
 
     it('handles build time mismatch warning', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -264,7 +252,6 @@ module.exports = function (w) {
     });
 
     it('displays device build time', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -287,7 +274,6 @@ module.exports = function (w) {
     });
 
     it('handles error response', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -314,7 +300,6 @@ module.exports = function (w) {
       assertTrue(w.fpbInjectMulti.constructor.name === 'AsyncFunction'));
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -328,7 +313,6 @@ module.exports = function (w) {
     });
 
     it('returns error if no patch source', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -344,7 +328,6 @@ module.exports = function (w) {
     });
 
     it('sends POST to /api/fpb/inject/multi', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -367,7 +350,6 @@ module.exports = function (w) {
     });
 
     it('displays success message', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -394,7 +376,6 @@ module.exports = function (w) {
     });
 
     it('handles injection failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -427,7 +408,6 @@ module.exports = function (w) {
       assertTrue(w.searchSymbols.constructor.name === 'AsyncFunction'));
 
     it('returns early if query too short', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value = 'a';
       await w.searchSymbols();
       const list = browserGlobals.document.getElementById('symbolList');
@@ -435,7 +415,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/symbols/search', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value = 'test';
       setFetchResponse('/api/symbols/search', { symbols: [] });
       await w.searchSymbols();
@@ -445,7 +424,6 @@ module.exports = function (w) {
     });
 
     it('displays found symbols', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value = 'test';
       setFetchResponse('/api/symbols/search', {
         symbols: [{ name: 'test_func', addr: '0x1000' }],
@@ -456,7 +434,6 @@ module.exports = function (w) {
     });
 
     it('displays no symbols found message', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value =
         'nonexistent';
       setFetchResponse('/api/symbols/search', { symbols: [] });
@@ -466,7 +443,6 @@ module.exports = function (w) {
     });
 
     it('displays error message from API', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value = 'test';
       setFetchResponse('/api/symbols/search', { error: 'ELF not loaded' });
       await w.searchSymbols();
@@ -475,7 +451,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value = 'test';
       const origFetch = browserGlobals.fetch;
       browserGlobals.fetch = async () => {
@@ -490,7 +465,6 @@ module.exports = function (w) {
     });
 
     it('handles address search format', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value = '0x1000';
       setFetchResponse('/api/symbols/search', { symbols: [] });
       await w.searchSymbols();
@@ -499,7 +473,6 @@ module.exports = function (w) {
     });
 
     it('handles hex address without 0x prefix', async () => {
-      resetMocks();
       browserGlobals.document.getElementById('symbolSearch').value = '1234abcd';
       setFetchResponse('/api/symbols/search', { symbols: [] });
       await w.searchSymbols();
@@ -510,7 +483,6 @@ module.exports = function (w) {
 
   describe('selectSymbol Function', () => {
     it('writes info message', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.selectSymbol('test_func');
@@ -553,7 +525,6 @@ module.exports = function (w) {
 
   describe('Reinject Cache Functions', () => {
     it('onAutoInjectSuccess adds path to cache', () => {
-      resetMocks();
       w.clearInjectedPaths();
       assertEqual(w.getInjectedPathCount(), 0);
       w.onAutoInjectSuccess('/path/to/file.c');
@@ -562,7 +533,6 @@ module.exports = function (w) {
     });
 
     it('onAutoInjectSuccess deduplicates paths', () => {
-      resetMocks();
       w.clearInjectedPaths();
       w.onAutoInjectSuccess('/path/to/file.c');
       w.onAutoInjectSuccess('/path/to/file.c');
@@ -571,7 +541,6 @@ module.exports = function (w) {
     });
 
     it('onAutoInjectSuccess ignores null/undefined', () => {
-      resetMocks();
       w.clearInjectedPaths();
       w.onAutoInjectSuccess(null);
       w.onAutoInjectSuccess(undefined);
@@ -579,7 +548,6 @@ module.exports = function (w) {
     });
 
     it('clearInjectedPaths clears all cached paths', () => {
-      resetMocks();
       w.onAutoInjectSuccess('/path/to/file1.c');
       w.onAutoInjectSuccess('/path/to/file2.c');
       assertTrue(w.getInjectedPathCount() > 0);
@@ -588,7 +556,6 @@ module.exports = function (w) {
     });
 
     it('getInjectedPathCount returns correct count', () => {
-      resetMocks();
       w.clearInjectedPaths();
       assertEqual(w.getInjectedPathCount(), 0);
       w.onAutoInjectSuccess('/path/a.c');
@@ -607,7 +574,6 @@ module.exports = function (w) {
     });
 
     it('triggerAutoInject calls /api/autoinject/trigger', async () => {
-      resetMocks();
       setFetchResponse('/api/autoinject/trigger', { success: true });
       await w.triggerAutoInject('/path/to/file.c');
       const calls = getFetchCalls();
@@ -615,7 +581,6 @@ module.exports = function (w) {
     });
 
     it('triggerAutoInject throws on failure', async () => {
-      resetMocks();
       setFetchResponse('/api/autoinject/trigger', {
         success: false,
         error: 'File not found',
@@ -631,7 +596,6 @@ module.exports = function (w) {
     });
 
     it('reinjectAll shows alert when cache is empty', async () => {
-      resetMocks();
       w.clearInjectedPaths();
       let alertCalled = false;
       const origAlert = global.alert;
@@ -644,7 +608,6 @@ module.exports = function (w) {
     });
 
     it('reinjectAll returns early when user cancels confirm', async () => {
-      resetMocks();
       w.clearInjectedPaths();
       w.onAutoInjectSuccess('/path/a.c');
       const origConfirm = global.confirm;
@@ -658,7 +621,6 @@ module.exports = function (w) {
     });
 
     it('reinjectAll triggers inject for all cached files', async () => {
-      resetMocks();
       w.clearInjectedPaths();
       w.onAutoInjectSuccess('/path/a.c');
       w.onAutoInjectSuccess('/path/b.c');
@@ -679,7 +641,6 @@ module.exports = function (w) {
     });
 
     it('reinjectAll shows alert on partial failure', async () => {
-      resetMocks();
       w.clearInjectedPaths();
       w.onAutoInjectSuccess('/path/a.c');
       w.onAutoInjectSuccess('/path/b.c');
@@ -712,7 +673,6 @@ module.exports = function (w) {
 
   describe('startAutoInjectPolling Function', () => {
     it('sets autoInjectPollInterval', () => {
-      resetMocks();
       w.FPBState.autoInjectPollInterval = null;
       w.FPBState.toolTerminal = new MockTerminal();
       w.startAutoInjectPolling();
@@ -722,7 +682,6 @@ module.exports = function (w) {
     });
 
     it('writes system message', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.autoInjectPollInterval = null;
@@ -739,7 +698,6 @@ module.exports = function (w) {
 
   describe('stopAutoInjectPolling Function', () => {
     it('clears autoInjectPollInterval', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.startAutoInjectPolling();
       w.stopAutoInjectPolling();
@@ -748,7 +706,6 @@ module.exports = function (w) {
     });
 
     it('writes system message when stopping', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.autoInjectPollInterval = 1;
@@ -762,7 +719,6 @@ module.exports = function (w) {
     });
 
     it('does nothing if not polling', () => {
-      resetMocks();
       w.FPBState.autoInjectPollInterval = null;
       w.stopAutoInjectPolling();
       assertEqual(w.FPBState.autoInjectPollInterval, null);
@@ -775,7 +731,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/watch/auto_inject_status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
@@ -790,7 +745,6 @@ module.exports = function (w) {
     });
 
     it('handles detecting status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
@@ -807,7 +761,6 @@ module.exports = function (w) {
     });
 
     it('handles generating status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
@@ -832,7 +785,6 @@ module.exports = function (w) {
     });
 
     it('handles success status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
@@ -858,7 +810,6 @@ module.exports = function (w) {
     });
 
     it('handles failed status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
@@ -877,7 +828,6 @@ module.exports = function (w) {
 
   describe('displayAutoInjectStats Function', () => {
     it('displays compile time', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -891,7 +841,6 @@ module.exports = function (w) {
     });
 
     it('displays upload speed', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -905,7 +854,6 @@ module.exports = function (w) {
     });
 
     it('displays code size', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -919,7 +867,6 @@ module.exports = function (w) {
     });
 
     it('displays total time', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -938,7 +885,6 @@ module.exports = function (w) {
     });
 
     it('displays patch mode', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -957,7 +903,6 @@ module.exports = function (w) {
     });
 
     it('handles injections array', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -987,7 +932,6 @@ module.exports = function (w) {
     });
 
     it('handles failed injections', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -1018,7 +962,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/patch/source', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/patch/source', {
         success: true,
@@ -1031,7 +974,6 @@ module.exports = function (w) {
     });
 
     it('returns content on success', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/patch/source', {
         success: true,
@@ -1043,7 +985,6 @@ module.exports = function (w) {
     });
 
     it('returns null on failure', async () => {
-      resetMocks();
       setFetchResponse('/api/patch/source', { success: false });
       const result = await w.loadPatchSourceFromBackend();
       assertEqual(result, null);
@@ -1052,26 +993,22 @@ module.exports = function (w) {
 
   describe('updateAutoInjectProgress Function', () => {
     it('handles idle status', () => {
-      resetMocks();
       w.updateAutoInjectProgress(0, 'idle');
       assertTrue(true);
     });
 
     it('handles compiling status', () => {
-      resetMocks();
       w.updateAutoInjectProgress(50, 'compiling');
       assertTrue(true);
     });
 
     it('handles success status', () => {
-      resetMocks();
       w.FPBState.autoInjectProgressHideTimer = null;
       w.updateAutoInjectProgress(100, 'success', true);
       assertTrue(true);
     });
 
     it('handles failed status', () => {
-      resetMocks();
       w.FPBState.autoInjectProgressHideTimer = null;
       w.updateAutoInjectProgress(100, 'failed', true);
       assertTrue(true);
@@ -1104,7 +1041,6 @@ module.exports = function (w) {
 
   describe('browseFile Function', () => {
     it('sets fileBrowserCallback', () => {
-      resetMocks();
       w.FPBState.fileBrowserCallback = null;
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.browseFile('elfPath', '.elf');
@@ -1112,21 +1048,18 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserFilter', () => {
-      resetMocks();
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.browseFile('elfPath', '.elf');
       assertEqual(w.FPBState.fileBrowserFilter, '.elf');
     });
 
     it('sets fileBrowserMode to file', () => {
-      resetMocks();
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.browseFile('elfPath', '.elf');
       assertEqual(w.FPBState.fileBrowserMode, 'file');
     });
 
     it('callback updates input value', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       setFetchResponse('/api/config', { success: true });
@@ -1141,7 +1074,6 @@ module.exports = function (w) {
 
   describe('browseDir Function', () => {
     it('sets fileBrowserCallback', () => {
-      resetMocks();
       w.FPBState.fileBrowserCallback = null;
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.browseDir('toolchainPath');
@@ -1149,14 +1081,12 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserMode to dir', () => {
-      resetMocks();
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.browseDir('toolchainPath');
       assertEqual(w.FPBState.fileBrowserMode, 'dir');
     });
 
     it('clears fileBrowserFilter', () => {
-      resetMocks();
       w.FPBState.fileBrowserFilter = '.elf';
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.browseDir('toolchainPath');
@@ -1164,7 +1094,6 @@ module.exports = function (w) {
     });
 
     it('callback updates input value', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       setFetchResponse('/api/config', { success: true });
@@ -1183,7 +1112,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/browse', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/browse', { items: [], current_path: '/home' });
       await w.openFileBrowser('/home');
@@ -1193,7 +1121,6 @@ module.exports = function (w) {
     });
 
     it('sets currentBrowserPath', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/browse', {
         items: [],
@@ -1205,7 +1132,6 @@ module.exports = function (w) {
     });
 
     it('shows modal', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const modal = browserGlobals.document.getElementById('fileBrowserModal');
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
@@ -1215,7 +1141,6 @@ module.exports = function (w) {
     });
 
     it('clears selectedBrowserItem', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.selectedBrowserItem = '/some/path';
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
@@ -1225,7 +1150,6 @@ module.exports = function (w) {
     });
 
     it('handles items in response', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.fileBrowserMode = 'file';
       w.FPBState.fileBrowserFilter = '';
@@ -1242,7 +1166,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = browserGlobals.fetch;
@@ -1260,7 +1183,6 @@ module.exports = function (w) {
     });
 
     it('filters files by extension in file mode', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.fileBrowserMode = 'file';
       w.FPBState.fileBrowserFilter = '.elf';
@@ -1278,7 +1200,6 @@ module.exports = function (w) {
     });
 
     it('adds parent directory navigation for non-root paths', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/browse', {
         items: [],
@@ -1290,7 +1211,6 @@ module.exports = function (w) {
     });
 
     it('handles root path without parent navigation', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/browse', {
         items: [],
@@ -1304,7 +1224,6 @@ module.exports = function (w) {
 
   describe('closeFileBrowser Function', () => {
     it('removes show class from modal', () => {
-      resetMocks();
       const modal = browserGlobals.document.getElementById('fileBrowserModal');
       modal.classList.add('show');
       w.closeFileBrowser();
@@ -1312,7 +1231,6 @@ module.exports = function (w) {
     });
 
     it('clears selectedBrowserItem', () => {
-      resetMocks();
       w.FPBState.selectedBrowserItem = '/some/path';
       w.closeFileBrowser();
       assertEqual(w.FPBState.selectedBrowserItem, null);
@@ -1321,7 +1239,6 @@ module.exports = function (w) {
 
   describe('navigateTo Function', () => {
     it('calls openFileBrowser', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/browse', { items: [], current_path: '/new/path' });
       await w.navigateTo('/new/path');
@@ -1332,14 +1249,12 @@ module.exports = function (w) {
 
   describe('selectFileBrowserItem Function', () => {
     it('sets selectedBrowserItem', () => {
-      resetMocks();
       const mockElement = browserGlobals.document.createElement('div');
       w.selectFileBrowserItem(mockElement, '/test/path');
       assertEqual(w.FPBState.selectedBrowserItem, '/test/path');
     });
 
     it('adds selected class to element', () => {
-      resetMocks();
       const mockElement = browserGlobals.document.createElement('div');
       w.selectFileBrowserItem(mockElement, '/test/path');
       assertTrue(mockElement.classList._classes.has('selected'));
@@ -1348,7 +1263,6 @@ module.exports = function (w) {
 
   describe('selectBrowserItem Function', () => {
     it('calls callback with selected item in file mode', () => {
-      resetMocks();
       let callbackPath = null;
       w.FPBState.fileBrowserMode = 'file';
       w.FPBState.selectedBrowserItem = '/test/file.txt';
@@ -1360,7 +1274,6 @@ module.exports = function (w) {
     });
 
     it('calls callback with current path in dir mode', () => {
-      resetMocks();
       let callbackPath = null;
       w.FPBState.fileBrowserMode = 'dir';
       w.FPBState.selectedBrowserItem = null;
@@ -1373,7 +1286,6 @@ module.exports = function (w) {
     });
 
     it('uses selectedBrowserItem in dir mode if set', () => {
-      resetMocks();
       let callbackPath = null;
       w.FPBState.fileBrowserMode = 'dir';
       w.FPBState.selectedBrowserItem = '/selected/dir';
@@ -1386,7 +1298,6 @@ module.exports = function (w) {
     });
 
     it('closes file browser after selection', () => {
-      resetMocks();
       const modal = browserGlobals.document.getElementById('fileBrowserModal');
       modal.classList.add('show');
       w.FPBState.fileBrowserMode = 'file';
@@ -1399,7 +1310,6 @@ module.exports = function (w) {
 
   describe('onBrowserPathKeyup Function', () => {
     it('navigates on Enter key', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('browserPath').value = '/new/path';
       setFetchResponse('/api/browse', { items: [], current_path: '/new/path' });
@@ -1409,7 +1319,6 @@ module.exports = function (w) {
     });
 
     it('does nothing on other keys', () => {
-      resetMocks();
       w.onBrowserPathKeyup({ key: 'a' });
       assertTrue(true);
     });
@@ -1421,7 +1330,6 @@ module.exports = function (w) {
     });
 
     it('sends config update', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { success: true });
       await w.refreshSymbolsFromELF('/path/to/file.elf');
@@ -1431,7 +1339,6 @@ module.exports = function (w) {
     });
 
     it('writes success message', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       setFetchResponse('/api/config', { success: true });
@@ -1448,7 +1355,6 @@ module.exports = function (w) {
       assertTrue(w.sendTerminalCommand.constructor.name === 'AsyncFunction'));
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       await w.sendTerminalCommand('test');
       // Should not throw, just return early
@@ -1456,7 +1362,6 @@ module.exports = function (w) {
     });
 
     it('sends POST to /api/serial/send when connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       setFetchResponse('/api/serial/send', { success: true });
       await w.sendTerminalCommand('test command');
@@ -1472,7 +1377,6 @@ module.exports = function (w) {
     });
 
     it('creates new preview tab', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/patch/source', {
@@ -1488,7 +1392,6 @@ module.exports = function (w) {
     });
 
     it('updates existing tab content', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [
         { id: 'patch_existing', title: 'patch_existing.c', type: 'preview' },
       ];
@@ -1504,7 +1407,6 @@ module.exports = function (w) {
     });
 
     it('handles source file parameter', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/patch/source', {
@@ -1518,7 +1420,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch failure', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/patch/source', { success: false });
@@ -1531,7 +1432,6 @@ module.exports = function (w) {
 
   describe('fpbTestSerial Function - Extended', () => {
     it('sends correct test parameters', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1549,7 +1449,6 @@ module.exports = function (w) {
     });
 
     it('displays failed test results', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1572,7 +1471,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1592,7 +1490,6 @@ module.exports = function (w) {
     });
 
     it('displays all test result fields', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1621,7 +1518,6 @@ module.exports = function (w) {
     });
 
     it('handles test with no failed_size', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1641,7 +1537,6 @@ module.exports = function (w) {
     });
 
     it('applies recommended chunk size when user confirms', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1671,7 +1566,6 @@ module.exports = function (w) {
     });
 
     it('keeps current chunk size when user cancels', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1701,7 +1595,6 @@ module.exports = function (w) {
 
   describe('fpbPing Function - Extended', () => {
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1721,7 +1614,6 @@ module.exports = function (w) {
     });
 
     it('displays error message on failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1742,7 +1634,6 @@ module.exports = function (w) {
 
   describe('fpbInfo Function - Extended', () => {
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1765,7 +1656,6 @@ module.exports = function (w) {
     });
 
     it('shows alert on build time mismatch', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1794,7 +1684,6 @@ module.exports = function (w) {
     });
 
     it('updates all slot states correctly', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -1845,7 +1734,6 @@ module.exports = function (w) {
     });
 
     it('handles empty slots array', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
@@ -1865,7 +1753,6 @@ module.exports = function (w) {
 
   describe('fpbInjectMulti Function - Extended', () => {
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1887,7 +1774,6 @@ module.exports = function (w) {
     });
 
     it('displays injection statistics on success', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1917,7 +1803,6 @@ module.exports = function (w) {
 
   describe('pollAutoInjectStatus Function - Extended', () => {
     it('handles compiling status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
@@ -1941,7 +1826,6 @@ module.exports = function (w) {
     });
 
     it('handles injecting status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = null;
@@ -1958,7 +1842,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.lastAutoInjectStatus = null;
       const origFetch = browserGlobals.fetch;
@@ -1974,7 +1857,6 @@ module.exports = function (w) {
     });
 
     it('does not update on same status', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.lastAutoInjectStatus = 'idle';
@@ -1990,7 +1872,6 @@ module.exports = function (w) {
 
   describe('displayAutoInjectStats Function - Extended', () => {
     it('handles injections with slot info', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -2020,7 +1901,6 @@ module.exports = function (w) {
     });
 
     it('handles single injection without injections array', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayAutoInjectStats(
@@ -2042,7 +1922,6 @@ module.exports = function (w) {
     });
 
     it('shows alert for slot full errors', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       // Note: alert is called via setTimeout, so we just verify the function runs

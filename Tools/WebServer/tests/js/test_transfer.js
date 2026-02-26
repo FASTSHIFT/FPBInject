@@ -148,7 +148,6 @@ module.exports = function (w) {
     });
 
     it('fetches directory contents', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/transfer/list', {
         success: true,
@@ -164,7 +163,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = browserGlobals.fetch;
@@ -186,7 +184,6 @@ module.exports = function (w) {
     });
 
     it('fetches file stats', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/transfer/stat', {
         success: true,
@@ -198,7 +195,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = browserGlobals.fetch;
@@ -220,7 +216,6 @@ module.exports = function (w) {
     });
 
     it('creates directory on success', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/transfer/mkdir', { success: true });
       const result = await w.createDeviceDirectory('/newdir');
@@ -229,7 +224,6 @@ module.exports = function (w) {
     });
 
     it('handles creation failure', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       setFetchResponse('/api/transfer/mkdir', {
@@ -245,7 +239,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = browserGlobals.fetch;
@@ -267,7 +260,6 @@ module.exports = function (w) {
     });
 
     it('deletes file on success', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/transfer/delete', { success: true });
       const result = await w.deleteDeviceFile('/test.txt');
@@ -276,7 +268,6 @@ module.exports = function (w) {
     });
 
     it('handles deletion failure', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       setFetchResponse('/api/transfer/delete', {
@@ -289,7 +280,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = browserGlobals.fetch;
@@ -323,7 +313,6 @@ module.exports = function (w) {
     });
 
     it('handles missing fileList element', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'deviceFileList') return null;
@@ -337,7 +326,6 @@ module.exports = function (w) {
 
   describe('selectDeviceFile Function', () => {
     it('adds selected class to item', () => {
-      resetMocks();
       const item = browserGlobals.document.createElement('div');
       item.className = 'device-file-item';
       item.dataset = { path: '/test.txt', type: 'file' };
@@ -347,7 +335,6 @@ module.exports = function (w) {
     });
 
     it('removes selected class from previous item', () => {
-      resetMocks();
       const item1 = browserGlobals.document.createElement('div');
       item1.className = 'device-file-item';
       item1.classList.add('selected');
@@ -368,7 +355,6 @@ module.exports = function (w) {
     });
 
     it('supports Ctrl+click multi-select', () => {
-      resetMocks();
       const item1 = browserGlobals.document.createElement('div');
       item1.className = 'device-file-item';
       item1.dataset = { path: '/test1.txt', type: 'file' };
@@ -390,7 +376,6 @@ module.exports = function (w) {
     });
 
     it('toggles selection on Ctrl+click same item', () => {
-      resetMocks();
       const item = browserGlobals.document.createElement('div');
       item.className = 'device-file-item';
       item.dataset = { path: '/test.txt', type: 'file' };
@@ -407,7 +392,6 @@ module.exports = function (w) {
     });
 
     it('supports Shift+click range selection', () => {
-      resetMocks();
       const fileList = browserGlobals.document.createElement('div');
       fileList.id = 'deviceFileList';
 
@@ -446,7 +430,6 @@ module.exports = function (w) {
     });
 
     it('supports Shift+click reverse range selection', () => {
-      resetMocks();
       const fileList = browserGlobals.document.createElement('div');
       fileList.id = 'deviceFileList';
 
@@ -484,7 +467,6 @@ module.exports = function (w) {
     });
 
     it('supports Shift+Ctrl+click to add range to selection', () => {
-      resetMocks();
       const fileList = browserGlobals.document.createElement('div');
       fileList.id = 'deviceFileList';
 
@@ -526,7 +508,6 @@ module.exports = function (w) {
     });
 
     it('treats Shift+click as normal click when no anchor exists', () => {
-      resetMocks();
       // Reset the anchor by simulating fresh state
       w.transferLastSelectedItem = null;
 
@@ -601,7 +582,6 @@ module.exports = function (w) {
 
   describe('CRC Verification Functions', () => {
     it('showCrcWarning writes to output', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.showCrcWarning('Test CRC warning');
       assertTrue(
@@ -613,7 +593,6 @@ module.exports = function (w) {
     });
 
     it('showCrcError writes to output', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       // Mock alert to prevent blocking
       const originalAlert = browserGlobals.alert;
@@ -639,7 +618,6 @@ module.exports = function (w) {
 
   describe('updateTransferProgress Function', () => {
     it('updates progress bar display', () => {
-      resetMocks();
       w.updateTransferProgress(50, '50%');
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
@@ -647,7 +625,6 @@ module.exports = function (w) {
     });
 
     it('updates progress fill width', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressFill = browserGlobals.document.createElement('div');
@@ -662,7 +639,6 @@ module.exports = function (w) {
     });
 
     it('updates progress text', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressText = browserGlobals.document.createElement('span');
@@ -677,7 +653,6 @@ module.exports = function (w) {
     });
 
     it('uses default text when not provided', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressText = browserGlobals.document.createElement('span');
@@ -690,7 +665,6 @@ module.exports = function (w) {
     });
 
     it('handles missing progress bar', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'transferProgress') return null;
@@ -702,7 +676,6 @@ module.exports = function (w) {
     });
 
     it('updates speed and ETA', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressSpeed = browserGlobals.document.createElement('span');
@@ -719,7 +692,6 @@ module.exports = function (w) {
     });
 
     it('updates packet loss stats when provided', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressStats = browserGlobals.document.createElement('div');
@@ -741,7 +713,6 @@ module.exports = function (w) {
     });
 
     it('shows stats even when loss rate and retries are zero', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressStats = browserGlobals.document.createElement('div');
@@ -762,7 +733,6 @@ module.exports = function (w) {
     });
 
     it('shows stats with only loss rate (no retries text)', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressStats = browserGlobals.document.createElement('div');
@@ -784,7 +754,6 @@ module.exports = function (w) {
     });
 
     it('shows stats with retries (includes loss rate)', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressStats = browserGlobals.document.createElement('div');
@@ -808,7 +777,6 @@ module.exports = function (w) {
 
   describe('hideTransferProgress Function', () => {
     it('hides progress bar', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       progressBar.style.display = 'block';
@@ -817,7 +785,6 @@ module.exports = function (w) {
     });
 
     it('hides stats display', () => {
-      resetMocks();
       const progressBar =
         browserGlobals.document.getElementById('transferProgress');
       const progressStats = browserGlobals.document.createElement('div');
@@ -832,7 +799,6 @@ module.exports = function (w) {
     });
 
     it('handles missing progress bar', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'transferProgress') return null;
@@ -850,7 +816,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -864,7 +829,6 @@ module.exports = function (w) {
     });
 
     it('creates file input element', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
 
@@ -898,7 +862,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -912,7 +875,6 @@ module.exports = function (w) {
     });
 
     it('shows alert if directory selected', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.querySelectorAll = () => [];
@@ -940,7 +902,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -954,7 +915,6 @@ module.exports = function (w) {
     });
 
     it('cancels on confirm rejection', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       const item = browserGlobals.document.createElement('div');
@@ -976,7 +936,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -990,7 +949,6 @@ module.exports = function (w) {
     });
 
     it('returns early if prompt cancelled', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.prompt = () => null;
@@ -1012,7 +970,6 @@ module.exports = function (w) {
 
   describe('cancelTransfer Function', () => {
     it('does nothing when no transfer active', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       // Should not throw
       w.cancelTransfer();
@@ -1022,7 +979,6 @@ module.exports = function (w) {
 
   describe('updateTransferControls Function', () => {
     it('shows cancel button when transfer active', () => {
-      resetMocks();
       const cancelBtn = browserGlobals.document.createElement('button');
       cancelBtn.id = 'transferCancelBtn';
       cancelBtn.style.display = 'none';
@@ -1040,7 +996,6 @@ module.exports = function (w) {
     });
 
     it('hides cancel button when show is false', () => {
-      resetMocks();
       const cancelBtn = browserGlobals.document.createElement('button');
       cancelBtn.id = 'transferCancelBtn';
       cancelBtn.style.display = 'flex';
@@ -1058,7 +1013,6 @@ module.exports = function (w) {
     });
 
     it('handles missing cancel button gracefully', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'transferCancelBtn') return null;
@@ -1073,7 +1027,6 @@ module.exports = function (w) {
 
   describe('initTransferDragDrop Function', () => {
     it('handles missing drop zone', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'deviceFileList') return null;
@@ -1086,7 +1039,6 @@ module.exports = function (w) {
     });
 
     it('adds event listeners to drop zone', () => {
-      resetMocks();
       const dropZone = browserGlobals.document.createElement('div');
       dropZone.id = 'deviceFileList';
       const listeners = {};
@@ -1114,7 +1066,6 @@ module.exports = function (w) {
 
   describe('handleDragEnter Function', () => {
     it('increments drag count and highlights', () => {
-      resetMocks();
       w.resetDragState();
       const dropZone = browserGlobals.document.createElement('div');
       dropZone.id = 'deviceFileList';
@@ -1134,7 +1085,6 @@ module.exports = function (w) {
 
   describe('handleDragLeave Function', () => {
     it('decrements drag count and removes highlight when zero', () => {
-      resetMocks();
       w.resetDragState();
       const dropZone = browserGlobals.document.createElement('div');
       dropZone.id = 'deviceFileList';
@@ -1155,7 +1105,6 @@ module.exports = function (w) {
     });
 
     it('keeps highlight when nested elements involved', () => {
-      resetMocks();
       w.resetDragState();
       const dropZone = browserGlobals.document.createElement('div');
       dropZone.id = 'deviceFileList';
@@ -1182,7 +1131,6 @@ module.exports = function (w) {
 
   describe('handleDragOver Function', () => {
     it('keeps highlight active', () => {
-      resetMocks();
       w.resetDragState();
       const dropZone = browserGlobals.document.createElement('div');
       dropZone.id = 'deviceFileList';
@@ -1221,7 +1169,6 @@ module.exports = function (w) {
 
   describe('highlightDropZone Function', () => {
     it('adds drag-over class when highlight is true', () => {
-      resetMocks();
       const dropZone = browserGlobals.document.createElement('div');
       dropZone.id = 'deviceFileList';
 
@@ -1238,7 +1185,6 @@ module.exports = function (w) {
     });
 
     it('removes drag-over class when highlight is false', () => {
-      resetMocks();
       const dropZone = browserGlobals.document.createElement('div');
       dropZone.id = 'deviceFileList';
       dropZone.classList.add('drag-over');
@@ -1256,7 +1202,6 @@ module.exports = function (w) {
     });
 
     it('handles missing drop zone', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'deviceFileList') return null;
@@ -1271,7 +1216,6 @@ module.exports = function (w) {
 
   describe('handleDrop Function', () => {
     it('resets drag state and shows error if not connected', () => {
-      resetMocks();
       w.resetDragState();
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = new MockTerminal();
@@ -1306,7 +1250,6 @@ module.exports = function (w) {
     });
 
     it('returns early if no files dropped', () => {
-      resetMocks();
       w.resetDragState();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
@@ -1333,7 +1276,6 @@ module.exports = function (w) {
     });
 
     it('handles folder drop with webkitGetAsEntry', async () => {
-      resetMocks();
       w.resetDragState();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
@@ -1376,7 +1318,6 @@ module.exports = function (w) {
     });
 
     it('handles file drop with webkitGetAsEntry', async () => {
-      resetMocks();
       w.resetDragState();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
@@ -1424,7 +1365,6 @@ module.exports = function (w) {
     });
 
     it('handles null entry from webkitGetAsEntry', async () => {
-      resetMocks();
       w.resetDragState();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
@@ -1470,7 +1410,6 @@ module.exports = function (w) {
     });
 
     it('shows alert with operation and filename', () => {
-      resetMocks();
       let alertMessage = null;
       const origAlert = global.alert;
       global.alert = (msg) => {
@@ -1487,7 +1426,6 @@ module.exports = function (w) {
     });
 
     it('includes stats in alert message when provided', () => {
-      resetMocks();
       let alertMessage = null;
       const origAlert = global.alert;
       global.alert = (msg) => {
@@ -1518,7 +1456,6 @@ module.exports = function (w) {
     });
 
     it('handles stats with zero values', () => {
-      resetMocks();
       let alertMessage = null;
       const origAlert = global.alert;
       global.alert = (msg) => {
@@ -1540,7 +1477,6 @@ module.exports = function (w) {
     });
 
     it('handles null stats', () => {
-      resetMocks();
       let alertMessage = null;
       const origAlert = global.alert;
       global.alert = (msg) => {
@@ -1709,7 +1645,6 @@ module.exports = function (w) {
     });
 
     it('uploadFolderToDevice returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1731,7 +1666,6 @@ module.exports = function (w) {
     });
 
     it('uploadFolderEntry collects files without duplicating folder name', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
 
@@ -1781,7 +1715,6 @@ module.exports = function (w) {
     });
 
     it('uploadFolderEntry handles nested subdirectories correctly', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
 
@@ -1861,7 +1794,6 @@ module.exports = function (w) {
     });
 
     it('renameOnDevice returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1875,7 +1807,6 @@ module.exports = function (w) {
     });
 
     it('renameOnDevice returns early if no file selected', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -1892,7 +1823,6 @@ module.exports = function (w) {
     });
 
     it('renameOnDevice returns early if prompt cancelled', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       // Select a file first
@@ -1910,7 +1840,6 @@ module.exports = function (w) {
     });
 
     it('renameOnDevice returns early if same name entered', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       // Select a file first
@@ -1928,7 +1857,6 @@ module.exports = function (w) {
     });
 
     it('renameOnDevice handles nested path correctly', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       // Select a file in nested path
@@ -1952,7 +1880,6 @@ module.exports = function (w) {
     });
 
     it('renameOnDevice handles root path correctly', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       // Select a file at root
@@ -1976,7 +1903,6 @@ module.exports = function (w) {
     });
 
     it('renameDeviceFile handles success response', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const origFetch = browserGlobals.fetch;
       browserGlobals.fetch = async () => ({
@@ -1990,7 +1916,6 @@ module.exports = function (w) {
     });
 
     it('renameDeviceFile handles error response', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/transfer/rename', {
         success: false,
@@ -2002,7 +1927,6 @@ module.exports = function (w) {
     });
 
     it('renameDeviceFile handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const origFetch = global.fetch;
       global.fetch = async () => {

@@ -34,7 +34,6 @@ module.exports = function (w) {
 
   describe('getConnectionMaxRetries Function', () => {
     it('returns default value when no config', () => {
-      resetMocks();
       const origConfig = w.FPBState.config;
       w.FPBState.config = null;
       const result = w.getConnectionMaxRetries();
@@ -43,7 +42,6 @@ module.exports = function (w) {
     });
 
     it('returns default value when config has no transferMaxRetries', () => {
-      resetMocks();
       const origConfig = w.FPBState.config;
       w.FPBState.config = {};
       const result = w.getConnectionMaxRetries();
@@ -52,7 +50,6 @@ module.exports = function (w) {
     });
 
     it('returns config value when set', () => {
-      resetMocks();
       const origConfig = w.FPBState.config;
       w.FPBState.config = { transferMaxRetries: 5 };
       const result = w.getConnectionMaxRetries();
@@ -61,7 +58,6 @@ module.exports = function (w) {
     });
 
     it('returns default when transferMaxRetries is not a number', () => {
-      resetMocks();
       const origConfig = w.FPBState.config;
       w.FPBState.config = { transferMaxRetries: 'invalid' };
       const result = w.getConnectionMaxRetries();
@@ -72,7 +68,6 @@ module.exports = function (w) {
 
   describe('handleConnected Function', () => {
     it('sets isConnected to true', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = new MockTerminal();
       w.handleConnected('/dev/ttyUSB0');
@@ -81,7 +76,6 @@ module.exports = function (w) {
     });
 
     it('updates button text to Disconnect', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const btn = browserGlobals.document.getElementById('connectBtn');
       w.handleConnected('/dev/ttyUSB0');
@@ -90,7 +84,6 @@ module.exports = function (w) {
     });
 
     it('adds connected class to button', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const btn = browserGlobals.document.getElementById('connectBtn');
       w.handleConnected('/dev/ttyUSB0');
@@ -99,7 +92,6 @@ module.exports = function (w) {
     });
 
     it('updates connection status text', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const statusEl =
         browserGlobals.document.getElementById('connectionStatus');
@@ -109,7 +101,6 @@ module.exports = function (w) {
     });
 
     it('writes success message to output', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.handleConnected('/dev/ttyUSB0');
@@ -122,7 +113,6 @@ module.exports = function (w) {
     });
 
     it('uses custom message if provided', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.handleConnected('/dev/ttyUSB0', 'Custom connect message');
@@ -137,7 +127,6 @@ module.exports = function (w) {
 
   describe('handleDisconnected Function', () => {
     it('sets isConnected to false', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       w.handleDisconnected();
@@ -146,7 +135,6 @@ module.exports = function (w) {
     });
 
     it('updates button text to Connect', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const btn = browserGlobals.document.getElementById('connectBtn');
       btn.textContent = 'Disconnect';
@@ -156,7 +144,6 @@ module.exports = function (w) {
     });
 
     it('removes connected class from button', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const btn = browserGlobals.document.getElementById('connectBtn');
       btn.classList.add('connected');
@@ -166,7 +153,6 @@ module.exports = function (w) {
     });
 
     it('updates connection status to Disconnected', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const statusEl =
         browserGlobals.document.getElementById('connectionStatus');
@@ -176,7 +162,6 @@ module.exports = function (w) {
     });
 
     it('writes warning message to output', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.handleDisconnected();
@@ -195,7 +180,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/ports', async () => {
-      resetMocks();
       setFetchResponse('/api/ports', {
         ports: ['/dev/ttyUSB0', '/dev/ttyUSB1'],
       });
@@ -207,7 +191,6 @@ module.exports = function (w) {
     });
 
     it('populates port select with ports', async () => {
-      resetMocks();
       setFetchResponse('/api/ports', {
         ports: ['/dev/ttyUSB0', '/dev/ttyUSB1'],
       });
@@ -219,7 +202,6 @@ module.exports = function (w) {
     });
 
     it('handles port objects with port property', async () => {
-      resetMocks();
       setFetchResponse('/api/ports', { ports: [{ port: '/dev/ttyUSB0' }] });
       w.FPBState.toolTerminal = new MockTerminal();
       await w.refreshPorts();
@@ -229,7 +211,6 @@ module.exports = function (w) {
     });
 
     it('handles port objects with device property', async () => {
-      resetMocks();
       setFetchResponse('/api/ports', { ports: [{ device: '/dev/ttyUSB0' }] });
       w.FPBState.toolTerminal = new MockTerminal();
       await w.refreshPorts();
@@ -239,7 +220,6 @@ module.exports = function (w) {
     });
 
     it('shows placeholder when no ports available', async () => {
-      resetMocks();
       setFetchResponse('/api/ports', { ports: [] });
       w.FPBState.toolTerminal = new MockTerminal();
       const sel = browserGlobals.document.getElementById('portSelect');
@@ -253,7 +233,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch error gracefully', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = global.fetch;
@@ -275,7 +254,6 @@ module.exports = function (w) {
     });
 
     it('shows alert when no port selected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('portSelect').value = '';
@@ -300,7 +278,6 @@ module.exports = function (w) {
     });
 
     it('connects when not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/connect', { success: true });
@@ -314,7 +291,6 @@ module.exports = function (w) {
     });
 
     it('disconnects when connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/disconnect', { success: true });
@@ -324,7 +300,6 @@ module.exports = function (w) {
     });
 
     it('shows alert on connection failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.FPBState.config = { transferMaxRetries: 0 }; // No retries for faster test
       const mockTerm = new MockTerminal();
@@ -357,7 +332,6 @@ module.exports = function (w) {
     });
 
     it('handles connection failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -382,7 +356,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/status', async () => {
-      resetMocks();
       setFetchResponse('/api/status', { connected: false });
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.isConnected = true;
@@ -393,7 +366,6 @@ module.exports = function (w) {
     });
 
     it('calls handleConnected if already connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/status', {
@@ -408,7 +380,6 @@ module.exports = function (w) {
     });
 
     it('handles status check failure gracefully', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = global.fetch;
@@ -428,7 +399,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = global.fetch;
@@ -450,7 +420,6 @@ module.exports = function (w) {
 
   describe('toggleConnect Function - Extended', () => {
     it('handles disconnect failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -470,7 +439,6 @@ module.exports = function (w) {
     });
 
     it('handles connect fetch exception', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -492,7 +460,6 @@ module.exports = function (w) {
     });
 
     it('retries connection on failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.FPBState.config = { transferMaxRetries: 1 };
       const mockTerm = new MockTerminal();
@@ -528,7 +495,6 @@ module.exports = function (w) {
     });
 
     it('succeeds on retry after initial failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.FPBState.config = { transferMaxRetries: 2 };
       const mockTerm = new MockTerminal();
@@ -574,7 +540,6 @@ module.exports = function (w) {
 
   describe('refreshPorts Function - Extended', () => {
     it('preserves previous port selection', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const sel = browserGlobals.document.getElementById('portSelect');
       sel.value = '/dev/ttyUSB0';
@@ -587,7 +552,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       const origFetch = browserGlobals.fetch;
@@ -618,7 +582,6 @@ module.exports = function (w) {
     });
 
     it('checkBackendHealth does nothing when backend is alive', async () => {
-      resetMocks();
       setFetchResponse('/api/status', { connected: false });
       let alertCalled = false;
       const origAlert = browserGlobals.alert;
@@ -633,7 +596,6 @@ module.exports = function (w) {
     });
 
     it('checkBackendHealth shows alert when backend is down', async () => {
-      resetMocks();
       if (w.resetBackendAlertState) w.resetBackendAlertState();
       w.FPBState.isConnected = true;
       let alertCalled = false;
@@ -656,7 +618,6 @@ module.exports = function (w) {
     });
 
     it('checkBackendHealth only shows alert once', async () => {
-      resetMocks();
       if (w.resetBackendAlertState) w.resetBackendAlertState();
       let alertCount = 0;
       const origAlert = global.alert;
@@ -676,7 +637,6 @@ module.exports = function (w) {
     });
 
     it('startBackendHealthCheck starts interval', () => {
-      resetMocks();
       w.stopBackendHealthCheck(); // Ensure clean state
       w.startBackendHealthCheck();
       // Just verify it doesn't throw
@@ -685,7 +645,6 @@ module.exports = function (w) {
     });
 
     it('stopBackendHealthCheck stops interval', () => {
-      resetMocks();
       w.startBackendHealthCheck();
       w.stopBackendHealthCheck();
       // Just verify it doesn't throw
@@ -693,7 +652,6 @@ module.exports = function (w) {
     });
 
     it('startBackendHealthCheck does nothing if already running', () => {
-      resetMocks();
       w.startBackendHealthCheck();
       w.startBackendHealthCheck(); // Should not create another interval
       assertTrue(true);
@@ -701,7 +659,6 @@ module.exports = function (w) {
     });
 
     it('checkBackendHealth updates UI when backend disconnects', async () => {
-      resetMocks();
       if (w.resetBackendAlertState) w.resetBackendAlertState();
       w.FPBState.isConnected = true;
       const btn = browserGlobals.document.getElementById('connectBtn');

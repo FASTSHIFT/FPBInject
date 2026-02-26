@@ -49,7 +49,6 @@ module.exports = function (w) {
     });
 
     it('returns empty array when no items', () => {
-      resetMocks();
       const dirs = w.getWatchDirs();
       assertEqual(dirs.length, 0);
     });
@@ -77,7 +76,6 @@ module.exports = function (w) {
     });
 
     it('clears list before adding items', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       w.updateWatchDirsList(['/path1']);
       w.updateWatchDirsList(['/path2']);
@@ -87,13 +85,11 @@ module.exports = function (w) {
 
   describe('addWatchDirItem Function', () => {
     it('creates watch dir item element', () => {
-      resetMocks();
       w.addWatchDirItem('/test/path');
       assertEqual(typeof w.loadConfig, 'function');
     });
 
     it('accepts optional index parameter', () => {
-      resetMocks();
       w.addWatchDirItem('/test/path', 0);
       assertEqual(typeof w.loadConfig, 'function');
     });
@@ -105,7 +101,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { success: true });
       setFetchResponse('/api/status', { connected: false });
@@ -116,7 +111,6 @@ module.exports = function (w) {
     });
 
     it('sets port value from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const portSelect = browserGlobals.document.getElementById('portSelect');
       setFetchResponse('/api/config', { port: '/dev/ttyUSB0' });
@@ -127,7 +121,6 @@ module.exports = function (w) {
     });
 
     it('sets baudrate from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { baudrate: '921600' });
       setFetchResponse('/api/status', { connected: false });
@@ -138,7 +131,6 @@ module.exports = function (w) {
     });
 
     it('sets elf_path from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { elf_path: '/path/to/file.elf' });
       setFetchResponse('/api/status', { connected: false });
@@ -148,7 +140,6 @@ module.exports = function (w) {
     });
 
     it('sets compile_commands_path from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', {
         compile_commands_path: '/path/to/compile_commands.json',
@@ -160,7 +151,6 @@ module.exports = function (w) {
     });
 
     it('sets toolchain_path from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { toolchain_path: '/opt/toolchain' });
       setFetchResponse('/api/status', { connected: false });
@@ -170,7 +160,6 @@ module.exports = function (w) {
     });
 
     it('sets patch_mode from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { patch_mode: 'direct' });
       setFetchResponse('/api/status', { connected: false });
@@ -180,7 +169,6 @@ module.exports = function (w) {
     });
 
     it('sets chunk_size from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { chunk_size: 256 });
       setFetchResponse('/api/status', { connected: false });
@@ -190,7 +178,6 @@ module.exports = function (w) {
     });
 
     it('sets tx_chunk_size from config', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { tx_chunk_size: 64 });
       setFetchResponse('/api/status', { connected: false });
@@ -200,7 +187,6 @@ module.exports = function (w) {
     });
 
     it('converts tx_chunk_delay to milliseconds', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { tx_chunk_delay: 0.01 });
       setFetchResponse('/api/status', { connected: false });
@@ -210,7 +196,6 @@ module.exports = function (w) {
     });
 
     it('sets auto_compile checkbox', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;
@@ -233,7 +218,6 @@ module.exports = function (w) {
     });
 
     it('sets enable_decompile checkbox', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       // Mock schema endpoint
@@ -253,7 +237,6 @@ module.exports = function (w) {
     });
 
     it('handles non-ok response gracefully', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { _ok: false, _status: 500 });
       await w.loadConfig();
@@ -268,7 +251,6 @@ module.exports = function (w) {
     });
 
     it('sends POST to /api/config', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       // Mock schema endpoint for schema-based saveConfig
@@ -293,7 +275,6 @@ module.exports = function (w) {
     });
 
     it('writes success message when not silent', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -311,7 +292,6 @@ module.exports = function (w) {
     });
 
     it('does not write message when silent', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -328,7 +308,6 @@ module.exports = function (w) {
     });
 
     it('handles save failure', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -349,7 +328,6 @@ module.exports = function (w) {
     });
 
     it('collects config from form elements', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('elfPath').value =
@@ -378,7 +356,6 @@ module.exports = function (w) {
     it('saves path_list config items (watch_dirs) correctly', async () => {
       // Bug fix test: path_list items like watch_dirs should be saved
       // even though they don't have an element with id="watchDirs"
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
 
@@ -438,13 +415,11 @@ module.exports = function (w) {
     // Note: setupAutoSave is now a no-op since auto-save is handled by
     // onConfigItemChange in config-schema.js. These tests verify backward compatibility.
     it('is callable without error', () => {
-      resetMocks();
       w.setupAutoSave();
       assertEqual(typeof w.setupAutoSave, 'function');
     });
 
     it('does not throw when called multiple times', () => {
-      resetMocks();
       w.setupAutoSave();
       w.setupAutoSave();
       assertEqual(typeof w.setupAutoSave, 'function');
@@ -453,7 +428,6 @@ module.exports = function (w) {
 
   describe('onAutoCompileChange Function', () => {
     it('triggers config update', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.autoInjectPollInterval = null;
@@ -467,7 +441,6 @@ module.exports = function (w) {
     });
 
     it('writes info message', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.autoInjectPollInterval = null;
@@ -483,7 +456,6 @@ module.exports = function (w) {
 
   describe('onEnableDecompileChange Function', () => {
     it('triggers saveConfig', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { success: true });
       w.onEnableDecompileChange();
@@ -498,7 +470,6 @@ module.exports = function (w) {
       assertTrue(typeof w.onVerifyCrcChange === 'function'));
 
     it('triggers config update when enabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('verifyCrc').checked = true;
       setFetchResponse('/api/config', { success: true });
@@ -512,7 +483,6 @@ module.exports = function (w) {
     });
 
     it('triggers config update when disabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('verifyCrc').checked = false;
       setFetchResponse('/api/config', { success: true });
@@ -528,7 +498,6 @@ module.exports = function (w) {
 
   describe('addWatchDir Function', () => {
     it('sets fileBrowserCallback', () => {
-      resetMocks();
       w.FPBState.fileBrowserCallback = null;
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.addWatchDir();
@@ -536,14 +505,12 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserMode to dir', () => {
-      resetMocks();
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.addWatchDir();
       assertEqual(w.FPBState.fileBrowserMode, 'dir');
     });
 
     it('clears fileBrowserFilter', () => {
-      resetMocks();
       w.FPBState.fileBrowserFilter = '.elf';
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.addWatchDir();
@@ -553,7 +520,6 @@ module.exports = function (w) {
 
   describe('browseWatchDir Function', () => {
     it('sets fileBrowserCallback', () => {
-      resetMocks();
       w.FPBState.fileBrowserCallback = null;
       const mockBtn = browserGlobals.document.createElement('button');
       const mockItem = browserGlobals.document.createElement('div');
@@ -574,7 +540,6 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserMode to dir', () => {
-      resetMocks();
       const mockBtn = browserGlobals.document.createElement('button');
       const mockItem = browserGlobals.document.createElement('div');
       const mockInput = browserGlobals.document.createElement('input');
@@ -595,7 +560,6 @@ module.exports = function (w) {
 
   describe('removeWatchDir Function', () => {
     it('removes watch dir item', () => {
-      resetMocks();
       let removed = false;
       const mockBtn = browserGlobals.document.createElement('button');
       const mockItem = browserGlobals.document.createElement('div');
@@ -612,7 +576,6 @@ module.exports = function (w) {
     });
 
     it('triggers saveConfig after removal', () => {
-      resetMocks();
       const mockBtn = browserGlobals.document.createElement('button');
       const mockItem = browserGlobals.document.createElement('div');
       mockItem.remove = () => {};
@@ -629,7 +592,6 @@ module.exports = function (w) {
 
   describe('loadConfig Function - Extended', () => {
     it('shows watchDirsSection when auto_compile enabled', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;
       const watchDirsSection =
@@ -650,7 +612,6 @@ module.exports = function (w) {
     });
 
     it('hides watchDirsSection when auto_compile disabled', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const watchDirsSection =
         browserGlobals.document.getElementById('watchDirsSection');
@@ -670,7 +631,6 @@ module.exports = function (w) {
     });
 
     it('calls updateWatchDirsList with watch_dirs', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config/schema', {
         schema: [{ key: 'watch_dirs', config_type: 'path_list', default: [] }],
@@ -685,7 +645,6 @@ module.exports = function (w) {
     });
 
     it('adds port option if not exists', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const portSelect = browserGlobals.document.getElementById('portSelect');
       portSelect.options = [];
@@ -702,7 +661,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception gracefully', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       // Simulate network error
       const origFetch = browserGlobals.fetch;
@@ -720,7 +678,6 @@ module.exports = function (w) {
 
   describe('saveConfig Function - Extended', () => {
     it('includes watch_dirs in config', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config/schema', {
@@ -736,7 +693,6 @@ module.exports = function (w) {
     });
 
     it('includes auto_compile in config', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('autoCompile').checked = true;
@@ -755,7 +711,6 @@ module.exports = function (w) {
     });
 
     it('includes enable_decompile in config', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('enableDecompile').checked = true;
@@ -774,7 +729,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -811,7 +765,6 @@ module.exports = function (w) {
 
   describe('onAutoCompileChange Function - Extended', () => {
     it('shows watchDirsSection when enabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;
       const watchDirsSection =
@@ -825,7 +778,6 @@ module.exports = function (w) {
     });
 
     it('hides watchDirsSection when disabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const watchDirsSection =
         browserGlobals.document.getElementById('watchDirsSection');
@@ -838,7 +790,6 @@ module.exports = function (w) {
     });
 
     it('starts polling when enabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;
       browserGlobals.document.getElementById('autoCompile').checked = true;
@@ -850,7 +801,6 @@ module.exports = function (w) {
     });
 
     it('stops polling when disabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.startAutoInjectPolling();
       browserGlobals.document.getElementById('autoCompile').checked = false;
@@ -861,7 +811,6 @@ module.exports = function (w) {
     });
 
     it('updates watcherStatus to On when enabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;
       const watcherStatus =
@@ -875,7 +824,6 @@ module.exports = function (w) {
     });
 
     it('updates watcherStatus to Off when disabled', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const watcherStatus =
         browserGlobals.document.getElementById('watcherStatus');
@@ -893,7 +841,6 @@ module.exports = function (w) {
       assertTrue(typeof w.updateWatcherStatus === 'function'));
 
     it('sets watcherStatus to On when enabled', () => {
-      resetMocks();
       const watcherStatus =
         browserGlobals.document.getElementById('watcherStatus');
       w.updateWatcherStatus(true);
@@ -901,7 +848,6 @@ module.exports = function (w) {
     });
 
     it('sets watcherStatus to Off when disabled', () => {
-      resetMocks();
       const watcherStatus =
         browserGlobals.document.getElementById('watcherStatus');
       watcherStatus.textContent = 'Watcher: On';
@@ -910,14 +856,12 @@ module.exports = function (w) {
     });
 
     it('sets watcherIcon to eye when enabled', () => {
-      resetMocks();
       const watcherIcon = browserGlobals.document.getElementById('watcherIcon');
       w.updateWatcherStatus(true);
       assertEqual(watcherIcon.className, 'codicon codicon-eye');
     });
 
     it('sets watcherIcon to eye-closed when disabled', () => {
-      resetMocks();
       const watcherIcon = browserGlobals.document.getElementById('watcherIcon');
       watcherIcon.className = 'codicon codicon-eye';
       w.updateWatcherStatus(false);
@@ -925,7 +869,6 @@ module.exports = function (w) {
     });
 
     it('handles missing watcherStatus element gracefully', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'watcherStatus') return null;
@@ -938,7 +881,6 @@ module.exports = function (w) {
     });
 
     it('handles missing watcherIcon element gracefully', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'watcherIcon') return null;
@@ -953,7 +895,6 @@ module.exports = function (w) {
 
   describe('loadConfig Function - Watcher Status', () => {
     it('updates watcherStatus to On when auto_compile is true', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;
       const watcherStatus =
@@ -974,7 +915,6 @@ module.exports = function (w) {
     });
 
     it('updates watcherStatus to Off when auto_compile is false', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       const watcherStatus =
         browserGlobals.document.getElementById('watcherStatus');

@@ -68,7 +68,6 @@ module.exports = function (w) {
 
   describe('resetConfigSchema Function', () => {
     it('clears cached schema', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [{ key: 'test', config_type: 'text', default: '' }],
@@ -88,7 +87,6 @@ module.exports = function (w) {
     });
 
     it('fetches from /api/config/schema', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [],
@@ -101,7 +99,6 @@ module.exports = function (w) {
     });
 
     it('returns cached schema on subsequent calls', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const schema = {
         schema: [{ key: 'test', config_type: 'text', default: 'val' }],
@@ -115,7 +112,6 @@ module.exports = function (w) {
     });
 
     it('returns null on fetch error', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', { _ok: false, _status: 500 });
       const result = await w.loadConfigSchema();
@@ -123,7 +119,6 @@ module.exports = function (w) {
     });
 
     it('returns null on network error', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const origFetch = browserGlobals.fetch;
       browserGlobals.fetch = async () => {
@@ -139,13 +134,11 @@ module.exports = function (w) {
 
   describe('getConfigSchema Function', () => {
     it('returns null when not loaded', () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       assertEqual(w.getConfigSchema(), null);
     });
 
     it('returns schema after loading', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const schema = {
         schema: [{ key: 'test', config_type: 'text', default: '' }],
@@ -164,7 +157,6 @@ module.exports = function (w) {
     });
 
     it('returns early if schema load fails', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', { _ok: false, _status: 500 });
       await w.renderConfigPanel('configContainer');
@@ -172,7 +164,6 @@ module.exports = function (w) {
     });
 
     it('returns early if container not found', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [],
@@ -184,7 +175,6 @@ module.exports = function (w) {
     });
 
     it('renders config groups', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -208,7 +198,6 @@ module.exports = function (w) {
     });
 
     it('renders file_path input', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -234,7 +223,6 @@ module.exports = function (w) {
     });
 
     it('renders dir_path input', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -259,7 +247,6 @@ module.exports = function (w) {
     });
 
     it('renders number input', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -289,7 +276,6 @@ module.exports = function (w) {
     });
 
     it('renders boolean checkbox', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -314,7 +300,6 @@ module.exports = function (w) {
     });
 
     it('renders select dropdown', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -344,7 +329,6 @@ module.exports = function (w) {
     });
 
     it('renders path_list', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -370,7 +354,6 @@ module.exports = function (w) {
     });
 
     it('renders text input for unknown type', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -395,7 +378,6 @@ module.exports = function (w) {
     });
 
     it('renders log_file_path with special browse button', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -419,7 +401,6 @@ module.exports = function (w) {
     });
 
     it('skips empty groups', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -444,7 +425,6 @@ module.exports = function (w) {
     });
 
     it('includes tooltip when provided', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -475,7 +455,6 @@ module.exports = function (w) {
     });
 
     it('returns early if schema not loaded', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', { _ok: false, _status: 500 });
       await w.loadConfigValues();
@@ -483,7 +462,6 @@ module.exports = function (w) {
     });
 
     it('loads boolean values', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [
@@ -500,7 +478,6 @@ module.exports = function (w) {
     });
 
     it('loads number values with ui_multiplier', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [
@@ -521,7 +498,6 @@ module.exports = function (w) {
     });
 
     it('loads text values', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [{ key: 'elf_path', config_type: 'file_path', default: '' }],
@@ -535,7 +511,6 @@ module.exports = function (w) {
     });
 
     it('uses default when value is null', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [
@@ -556,7 +531,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch error gracefully', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [{ key: 'test', config_type: 'text', default: '' }],
@@ -575,14 +549,12 @@ module.exports = function (w) {
     });
 
     it('returns early if schema not loaded', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       await w.saveConfigValues();
       assertEqual(typeof w.saveConfigValues, 'function');
     });
 
     it('saves boolean values', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [
@@ -603,7 +575,6 @@ module.exports = function (w) {
     });
 
     it('saves number values with ui_multiplier', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [
@@ -625,7 +596,6 @@ module.exports = function (w) {
     });
 
     it('writes success message when not silent', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -644,7 +614,6 @@ module.exports = function (w) {
     });
 
     it('handles save failure', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -663,7 +632,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -698,7 +666,6 @@ module.exports = function (w) {
       // (like watch_dirs) were not being saved because they don't have
       // an element with id="watchDirs", only id="watchDirsSection" and
       // id="watchDirsList"
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       setFetchResponse('/api/config/schema', {
         schema: [
@@ -773,7 +740,6 @@ module.exports = function (w) {
 
   describe('onConfigItemChange Function', () => {
     it('calls onAutoCompileChange for auto_compile', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;
       browserGlobals.document.getElementById('autoCompile').checked = true;
@@ -789,7 +755,6 @@ module.exports = function (w) {
     });
 
     it('calls onVerifyCrcChange for verify_crc', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       browserGlobals.document.getElementById('verifyCrc').checked = true;
       setFetchResponse('/api/config', { success: true });
@@ -803,7 +768,6 @@ module.exports = function (w) {
     });
 
     it('calls onEnableDecompileChange for enable_decompile', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config', { success: true });
       w.onConfigItemChange('enable_decompile');
@@ -812,7 +776,6 @@ module.exports = function (w) {
     });
 
     it('calls saveConfig for other keys', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config/schema', {
@@ -830,7 +793,6 @@ module.exports = function (w) {
 
   describe('updatePathList Function', () => {
     it('updates list with paths', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       list.innerHTML = '';
       w.updatePathList('watch_dirs', ['/path1', '/path2']);
@@ -838,13 +800,11 @@ module.exports = function (w) {
     });
 
     it('handles missing list element', () => {
-      resetMocks();
       w.updatePathList('nonexistent_key', ['/path']);
       assertEqual(typeof w.updatePathList, 'function');
     });
 
     it('clears list before adding', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       list.innerHTML = '<div>old</div>';
       w.updatePathList('watch_dirs', []);
@@ -854,7 +814,6 @@ module.exports = function (w) {
 
   describe('getPathListValues Function', () => {
     it('returns array of values', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       list.innerHTML = '';
       w.addPathListItemElement('watch_dirs', '/path1');
@@ -864,13 +823,11 @@ module.exports = function (w) {
     });
 
     it('returns empty array for missing element', () => {
-      resetMocks();
       const values = w.getPathListValues('nonexistent');
       assertEqual(values.length, 0);
     });
 
     it('filters empty values', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       list.innerHTML = '';
       w.addPathListItemElement('watch_dirs', '/path1');
@@ -882,7 +839,6 @@ module.exports = function (w) {
 
   describe('addPathListItem Function', () => {
     it('sets fileBrowserCallback', () => {
-      resetMocks();
       w.FPBState.fileBrowserCallback = null;
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.addPathListItem('watch_dirs');
@@ -890,7 +846,6 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserMode to dir', () => {
-      resetMocks();
       setFetchResponse('/api/browse', { items: [], current_path: '~' });
       w.addPathListItem('watch_dirs');
       assertEqual(w.FPBState.fileBrowserMode, 'dir');
@@ -899,7 +854,6 @@ module.exports = function (w) {
 
   describe('addPathListItemElement Function', () => {
     it('adds item to list', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       list.innerHTML = '';
       w.addPathListItemElement('watch_dirs', '/test/path');
@@ -907,13 +861,11 @@ module.exports = function (w) {
     });
 
     it('handles missing list element', () => {
-      resetMocks();
       w.addPathListItemElement('nonexistent', '/path');
       assertEqual(typeof w.addPathListItemElement, 'function');
     });
 
     it('escapes HTML in path', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       list.innerHTML = '';
       w.addPathListItemElement('watch_dirs', '<script>alert(1)</script>');
@@ -923,7 +875,6 @@ module.exports = function (w) {
 
   describe('browsePathListItem Function', () => {
     it('sets fileBrowserCallback', () => {
-      resetMocks();
       w.FPBState.fileBrowserCallback = null;
       // Create a proper DOM structure
       const list = browserGlobals.document.getElementById('watchDirsList');
@@ -945,7 +896,6 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserMode to dir', () => {
-      resetMocks();
       const list = browserGlobals.document.getElementById('watchDirsList');
       list.innerHTML = '';
       w.addPathListItemElement('watch_dirs', '/test');
@@ -962,7 +912,6 @@ module.exports = function (w) {
 
   describe('removePathListItem Function', () => {
     it('removes item from DOM', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config/schema', {
@@ -990,14 +939,12 @@ module.exports = function (w) {
       assertTrue(typeof w.getConfigLabel === 'function'));
 
     it('returns label when no i18n', () => {
-      resetMocks();
       const item = { key: 'test_key', label: 'Test Label' };
       const result = w.getConfigLabel(item);
       assertEqual(result, 'Test Label');
     });
 
     it('returns label without link by default', () => {
-      resetMocks();
       const item = {
         key: 'ghidra_path',
         label: 'Ghidra Path',
@@ -1009,7 +956,6 @@ module.exports = function (w) {
     });
 
     it('returns label with link when withLink=true', () => {
-      resetMocks();
       const item = {
         key: 'ghidra_path',
         label: 'Ghidra Path',
@@ -1027,7 +973,6 @@ module.exports = function (w) {
     });
 
     it('returns plain label when withLink=true but no link defined', () => {
-      resetMocks();
       const item = { key: 'elf_path', label: 'ELF Path', link: '' };
       const result = w.getConfigLabel(item, true);
       assertEqual(result, 'ELF Path');
@@ -1035,7 +980,6 @@ module.exports = function (w) {
     });
 
     it('escapes HTML in link URL', () => {
-      resetMocks();
       const item = {
         key: 'test_path',
         label: 'Test',
@@ -1048,7 +992,6 @@ module.exports = function (w) {
 
   describe('renderPathInput with link', () => {
     it('renders path input without for attribute when link exists', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');
@@ -1077,7 +1020,6 @@ module.exports = function (w) {
     });
 
     it('renders path input with for attribute when no link', async () => {
-      resetMocks();
       if (w.resetConfigSchema) w.resetConfigSchema();
       const container =
         browserGlobals.document.getElementById('configContainer');

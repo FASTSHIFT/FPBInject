@@ -48,7 +48,6 @@ module.exports = function (w) {
     it('toggleTheme is a function', () =>
       assertTrue(typeof w.toggleTheme === 'function'));
     it('toggleTheme switches from dark to light', () => {
-      resetMocks();
       browserGlobals.document.documentElement._theme = 'dark';
       w.toggleTheme();
       assertEqual(browserGlobals.document.documentElement._theme, 'light');
@@ -60,7 +59,6 @@ module.exports = function (w) {
       assertEqual(browserGlobals.document.documentElement._theme, 'dark');
     });
     it('toggleTheme saves preference to localStorage', () => {
-      resetMocks();
       browserGlobals.document.documentElement._theme = 'dark';
       w.toggleTheme();
       assertEqual(mockLocalStorage.getItem('fpbinject-theme'), 'light');

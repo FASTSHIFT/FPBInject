@@ -36,7 +36,6 @@ module.exports = function (w) {
 
   describe('updateSlotUI Function', () => {
     it('updates activeSlotCount element', () => {
-      resetMocks();
       w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
@@ -46,7 +45,6 @@ module.exports = function (w) {
     });
 
     it('counts occupied slots correctly', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 1;
       w.FPBState.slotStates = [
         {
@@ -74,7 +72,6 @@ module.exports = function (w) {
     });
 
     it('updates currentSlotDisplay', () => {
-      resetMocks();
       w.FPBState.selectedSlot = 3;
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -86,7 +83,6 @@ module.exports = function (w) {
     });
 
     it('updates slotSelect value', () => {
-      resetMocks();
       w.FPBState.selectedSlot = 2;
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -99,7 +95,6 @@ module.exports = function (w) {
 
   describe('selectSlot Function', () => {
     it('updates selectedSlot in state', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -110,7 +105,6 @@ module.exports = function (w) {
     });
 
     it('writes info message', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.slotStates = Array(8)
@@ -126,7 +120,6 @@ module.exports = function (w) {
     });
 
     it('parses string slotId to int', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -137,7 +130,6 @@ module.exports = function (w) {
     });
 
     it('calls updateSlotUI', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -153,7 +145,6 @@ module.exports = function (w) {
 
   describe('onSlotSelectChange Function', () => {
     it('reads value from slotSelect element', () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -167,7 +158,6 @@ module.exports = function (w) {
 
   describe('initSlotSelectListener Function', () => {
     it('adds event listener to slotSelect', () => {
-      resetMocks();
       const selectEl = browserGlobals.document.getElementById('slotSelect');
       w.initSlotSelectListener();
       assertTrue(
@@ -213,7 +203,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -227,7 +216,6 @@ module.exports = function (w) {
     });
 
     it('sends POST to /api/fpb/unpatch', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -245,7 +233,6 @@ module.exports = function (w) {
     });
 
     it('updates slot state on success', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.slotStates = [
@@ -271,7 +258,6 @@ module.exports = function (w) {
     });
 
     it('handles unpatch failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -291,7 +277,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -317,7 +302,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -331,7 +315,6 @@ module.exports = function (w) {
     });
 
     it('sends POST with all flag', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -353,7 +336,6 @@ module.exports = function (w) {
     });
 
     it('cancels on confirm rejection', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -370,7 +352,6 @@ module.exports = function (w) {
     });
 
     it('handles unpatch all failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -393,7 +374,6 @@ module.exports = function (w) {
     });
 
     it('handles fetch exception', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -416,7 +396,6 @@ module.exports = function (w) {
 
   describe('selectSlot Function - Extended', () => {
     it('opens disassembly for occupied slot', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.editorTabs = [];
@@ -447,7 +426,6 @@ module.exports = function (w) {
 
   describe('updateSlotUI Function - Extended', () => {
     it('updates slot function display with code size', () => {
-      resetMocks();
       w.FPBState.slotStates = [
         {
           occupied: true,
@@ -470,7 +448,6 @@ module.exports = function (w) {
     });
 
     it('sets empty text for unoccupied slots', () => {
-      resetMocks();
       w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
@@ -480,7 +457,6 @@ module.exports = function (w) {
     });
 
     it('toggles occupied class on slot items', () => {
-      resetMocks();
       // Create slot item with proper structure
       const slotItem = browserGlobals.document.getElementById('slotItem0');
       slotItem.classList.add('slot-item');
@@ -515,7 +491,6 @@ module.exports = function (w) {
     });
 
     it('hides actions div for unoccupied slots', () => {
-      resetMocks();
       const slotItem = browserGlobals.document.getElementById('slotItem1');
       slotItem.classList.add('slot-item');
       slotItem.dataset.slot = '1';
@@ -533,7 +508,6 @@ module.exports = function (w) {
     });
 
     it('sets title for occupied slots', () => {
-      resetMocks();
       w.FPBState.slotStates = [
         {
           occupied: true,
@@ -558,7 +532,6 @@ module.exports = function (w) {
     });
 
     it('clears title for unoccupied slots', () => {
-      resetMocks();
       const funcSpan = browserGlobals.document.getElementById('slot0Func');
       funcSpan.title = 'Previous title';
       w.FPBState.slotStates = Array(8)
@@ -569,7 +542,6 @@ module.exports = function (w) {
     });
 
     it('handles slot without func name', () => {
-      resetMocks();
       w.FPBState.slotStates = [
         {
           occupied: true,
@@ -595,7 +567,6 @@ module.exports = function (w) {
 
   describe('FPB v2 8-Slot Support', () => {
     it('fpbVersion getter/setter works', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 1;
       assertEqual(w.FPBState.fpbVersion, 1);
       w.FPBState.fpbVersion = 2;
@@ -603,7 +574,6 @@ module.exports = function (w) {
     });
 
     it('slotStates supports 8 slots', () => {
-      resetMocks();
       w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
@@ -611,7 +581,6 @@ module.exports = function (w) {
     });
 
     it('updateSlotUI shows 6 slots for v1', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 1;
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -622,7 +591,6 @@ module.exports = function (w) {
     });
 
     it('updateSlotUI shows 8 slots for v2', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 2;
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -633,7 +601,6 @@ module.exports = function (w) {
     });
 
     it('updateSlotUI counts all 8 occupied slots for v2', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 2;
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -649,7 +616,6 @@ module.exports = function (w) {
     });
 
     it('updateSlotUI only counts 6 occupied slots for v1', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 1;
       w.FPBState.slotStates = Array(8)
         .fill()
@@ -665,7 +631,6 @@ module.exports = function (w) {
     });
 
     it('selectSlot blocks slots 6-7 for v1', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 1;
       w.FPBState.selectedSlot = 0;
       w.FPBState.toolTerminal = new MockTerminal();
@@ -678,7 +643,6 @@ module.exports = function (w) {
     });
 
     it('selectSlot allows slots 6-7 for v2', () => {
-      resetMocks();
       w.FPBState.fpbVersion = 2;
       w.FPBState.selectedSlot = 0;
       w.FPBState.toolTerminal = new MockTerminal();
@@ -693,7 +657,6 @@ module.exports = function (w) {
     });
 
     it('fpbUnpatchAll resets to 8 slots', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.fpbVersion = 2;
       w.FPBState.toolTerminal = new MockTerminal();

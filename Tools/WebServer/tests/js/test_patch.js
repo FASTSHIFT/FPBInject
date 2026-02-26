@@ -459,7 +459,6 @@ module.exports = function (w) {
     });
 
     it('displays compile time', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats(
@@ -473,7 +472,6 @@ module.exports = function (w) {
     });
 
     it('displays upload speed', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats(
@@ -487,7 +485,6 @@ module.exports = function (w) {
     });
 
     it('displays code size', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats(
@@ -501,7 +498,6 @@ module.exports = function (w) {
     });
 
     it('displays total time', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats(
@@ -520,7 +516,6 @@ module.exports = function (w) {
     });
 
     it('displays patch mode', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       browserGlobals.document.getElementById('patchMode').value = 'trampoline';
@@ -535,7 +530,6 @@ module.exports = function (w) {
     });
 
     it('displays target address', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats(
@@ -554,7 +548,6 @@ module.exports = function (w) {
     });
 
     it('displays inject function address', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats(
@@ -574,7 +567,6 @@ module.exports = function (w) {
     });
 
     it('handles zero upload time', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats(
@@ -586,7 +578,6 @@ module.exports = function (w) {
     });
 
     it('handles missing optional fields', () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.displayInjectionStats({}, 'test_func');
@@ -601,7 +592,6 @@ module.exports = function (w) {
     });
 
     it('returns early if not connected', async () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -615,7 +605,6 @@ module.exports = function (w) {
     });
 
     it('returns error if all slots occupied', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -635,7 +624,6 @@ module.exports = function (w) {
     });
 
     it('returns error if no patch tab selected', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -654,7 +642,6 @@ module.exports = function (w) {
     });
 
     it('returns error if no source code', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -675,7 +662,6 @@ module.exports = function (w) {
     });
 
     it('prompts for overwrite if slot occupied', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -703,7 +689,6 @@ module.exports = function (w) {
     });
 
     it('sends POST to /api/fpb/inject/stream', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -735,7 +720,6 @@ module.exports = function (w) {
     });
 
     it('handles injection failure', async () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;

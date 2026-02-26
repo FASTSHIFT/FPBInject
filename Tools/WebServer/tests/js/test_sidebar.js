@@ -33,7 +33,6 @@ module.exports = function (w) {
 
   describe('loadSidebarState Function', () => {
     it('loads state from localStorage', () => {
-      resetMocks();
       browserGlobals.localStorage.setItem(
         'fpbinject-sidebar-state',
         JSON.stringify({
@@ -46,14 +45,12 @@ module.exports = function (w) {
     });
 
     it('handles missing localStorage data', () => {
-      resetMocks();
       browserGlobals.localStorage.clear();
       w.loadSidebarState();
       assertTrue(true);
     });
 
     it('handles invalid JSON gracefully', () => {
-      resetMocks();
       browserGlobals.localStorage.setItem(
         'fpbinject-sidebar-state',
         'invalid json',
@@ -63,7 +60,6 @@ module.exports = function (w) {
     });
 
     it('applies state to details elements', () => {
-      resetMocks();
       const deviceSection =
         browserGlobals.document.getElementById('details-device');
       deviceSection.open = false;
@@ -78,7 +74,6 @@ module.exports = function (w) {
     });
 
     it('skips non-DETAILS elements', () => {
-      resetMocks();
       const regularDiv = browserGlobals.document.getElementById('sidebar');
       regularDiv.tagName = 'DIV';
       browserGlobals.localStorage.setItem(
@@ -92,7 +87,6 @@ module.exports = function (w) {
     });
 
     it('handles error when loading state', () => {
-      resetMocks();
       const originalGetItem = browserGlobals.localStorage.getItem;
       browserGlobals.localStorage.getItem = () => {
         throw new Error('Storage error');
@@ -105,7 +99,6 @@ module.exports = function (w) {
 
   describe('saveSidebarState Function', () => {
     it('saves state to localStorage', () => {
-      resetMocks();
       w.saveSidebarState();
       const saved = browserGlobals.localStorage.getItem(
         'fpbinject-sidebar-state',
@@ -114,7 +107,6 @@ module.exports = function (w) {
     });
 
     it('saves valid JSON', () => {
-      resetMocks();
       w.saveSidebarState();
       const saved = browserGlobals.localStorage.getItem(
         'fpbinject-sidebar-state',
@@ -124,7 +116,6 @@ module.exports = function (w) {
     });
 
     it('handles error when saving state', () => {
-      resetMocks();
       const originalSetItem = browserGlobals.localStorage.setItem;
       browserGlobals.localStorage.setItem = () => {
         throw new Error('Storage error');
@@ -137,7 +128,6 @@ module.exports = function (w) {
 
   describe('setupSidebarStateListeners Function', () => {
     it('sets up listeners without error', () => {
-      resetMocks();
       w.setupSidebarStateListeners();
       assertTrue(true);
     });
@@ -145,7 +135,6 @@ module.exports = function (w) {
 
   describe('updateDisabledState Function', () => {
     it('disables elements when not connected', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.updateDisabledState();
       const slotSelect = browserGlobals.document.getElementById('slotSelect');
@@ -153,7 +142,6 @@ module.exports = function (w) {
     });
 
     it('enables elements when connected', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.updateDisabledState();
       const slotSelect = browserGlobals.document.getElementById('slotSelect');
@@ -162,7 +150,6 @@ module.exports = function (w) {
     });
 
     it('updates opacity for editor container', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.updateDisabledState();
       const editorContainer =
@@ -172,7 +159,6 @@ module.exports = function (w) {
     });
 
     it('updates opacity when disconnected', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       w.updateDisabledState();
       const editorContainer =
@@ -181,7 +167,6 @@ module.exports = function (w) {
     });
 
     it('updates deviceInfoContent opacity', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       w.updateDisabledState();
       const deviceInfoContent =
@@ -193,7 +178,6 @@ module.exports = function (w) {
 
   describe('activateSection Function', () => {
     it('opens target section', () => {
-      resetMocks();
       const targetSection =
         browserGlobals.document.getElementById('details-device');
       targetSection.open = false;
@@ -202,7 +186,6 @@ module.exports = function (w) {
     });
 
     it('closes other sections', () => {
-      resetMocks();
       const connectionSection =
         browserGlobals.document.getElementById('details-connection');
       const deviceSection =
@@ -215,7 +198,6 @@ module.exports = function (w) {
     });
 
     it('updates activity bar active state', () => {
-      resetMocks();
       w.activateSection('details-device');
       const activeItems = browserGlobals.document.querySelectorAll(
         '.activity-item.active',
@@ -224,13 +206,11 @@ module.exports = function (w) {
     });
 
     it('handles non-existent section gracefully', () => {
-      resetMocks();
       w.activateSection('details-nonexistent');
       assertTrue(true);
     });
 
     it('saves sidebar state after activation', () => {
-      resetMocks();
       browserGlobals.localStorage.clear();
       w.activateSection('details-config');
       const saved = browserGlobals.localStorage.getItem(
@@ -242,13 +222,11 @@ module.exports = function (w) {
 
   describe('syncActivityBarState Function', () => {
     it('syncs activity bar state without error', () => {
-      resetMocks();
       w.syncActivityBarState();
       assertTrue(true);
     });
 
     it('handles no open sections', () => {
-      resetMocks();
       browserGlobals.document
         .querySelectorAll('details[id^="details-"]')
         .forEach((d) => {
@@ -259,7 +237,6 @@ module.exports = function (w) {
     });
 
     it('handles open section', () => {
-      resetMocks();
       const deviceSection =
         browserGlobals.document.getElementById('details-device');
       deviceSection.open = true;
@@ -277,7 +254,6 @@ module.exports = function (w) {
       assertTrue(typeof w.setupSidebarSectionResize === 'function'));
 
     it('loads saved section heights from localStorage', () => {
-      resetMocks();
       browserGlobals.localStorage.setItem(
         'fpbinject-sidebar-section-heights',
         JSON.stringify({ device: '400px', transfer: '300px' }),
@@ -287,14 +263,12 @@ module.exports = function (w) {
     });
 
     it('handles missing saved heights gracefully', () => {
-      resetMocks();
       browserGlobals.localStorage.clear();
       w.loadSidebarSectionHeights();
       assertTrue(true);
     });
 
     it('saves section height to localStorage', () => {
-      resetMocks();
       browserGlobals.localStorage.clear();
       w.saveSidebarSectionHeight('device', '500px');
       const saved = browserGlobals.localStorage.getItem(
@@ -305,19 +279,16 @@ module.exports = function (w) {
     });
 
     it('setupSidebarSectionResize adds event listeners', () => {
-      resetMocks();
       w.setupSidebarSectionResize();
       assertTrue(true);
     });
 
     it('handles missing resize handles gracefully', () => {
-      resetMocks();
       w.setupSidebarSectionResize();
       assertTrue(true);
     });
 
     it('saves multiple section heights', () => {
-      resetMocks();
       browserGlobals.localStorage.clear();
       w.saveSidebarSectionHeight('device', '400px');
       w.saveSidebarSectionHeight('transfer', '300px');
@@ -330,7 +301,6 @@ module.exports = function (w) {
     });
 
     it('handles invalid JSON in localStorage gracefully', () => {
-      resetMocks();
       browserGlobals.localStorage.setItem(
         'fpbinject-sidebar-section-heights',
         'invalid',
@@ -340,7 +310,6 @@ module.exports = function (w) {
     });
 
     it('updates existing section height', () => {
-      resetMocks();
       w.saveSidebarSectionHeight('device', '400px');
       w.saveSidebarSectionHeight('device', '600px');
       const saved = browserGlobals.localStorage.getItem(
@@ -351,7 +320,6 @@ module.exports = function (w) {
     });
 
     it('loads and applies section heights to DOM', () => {
-      resetMocks();
       // Create mock section elements
       const deviceSection = browserGlobals.document.createElement('div');
       deviceSection.classList.add('sidebar-section');
@@ -369,7 +337,6 @@ module.exports = function (w) {
     });
 
     it('handles error when saving section height', () => {
-      resetMocks();
       // Force an error by making localStorage throw
       const originalSetItem = browserGlobals.localStorage.setItem;
       browserGlobals.localStorage.setItem = () => {
@@ -381,7 +348,6 @@ module.exports = function (w) {
     });
 
     it('handles error when loading section heights', () => {
-      resetMocks();
       const originalGetItem = browserGlobals.localStorage.getItem;
       browserGlobals.localStorage.getItem = () => {
         throw new Error('Storage error');
@@ -392,7 +358,6 @@ module.exports = function (w) {
     });
 
     it('registers mousemove and mouseup event listeners on document', () => {
-      resetMocks();
       w.setupSidebarSectionResize();
       const listeners = getDocumentEventListeners();
       assertTrue(listeners.mousemove && listeners.mousemove.length > 0);
@@ -400,7 +365,6 @@ module.exports = function (w) {
     });
 
     it('mousemove does nothing when not resizing', () => {
-      resetMocks();
       w.setupSidebarSectionResize();
       const listeners = getDocumentEventListeners();
       // Trigger mousemove without starting resize
@@ -411,7 +375,6 @@ module.exports = function (w) {
     });
 
     it('mouseup does nothing when not resizing', () => {
-      resetMocks();
       w.setupSidebarSectionResize();
       const listeners = getDocumentEventListeners();
       // Trigger mouseup without starting resize

@@ -211,7 +211,6 @@ module.exports = function (w) {
     });
 
     it('switches to existing tab if already open', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [
         { id: 'disasm_test_func', title: 'test_func.asm' },
       ];
@@ -223,7 +222,6 @@ module.exports = function (w) {
     });
 
     it('fetches disassembly from API', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -245,7 +243,6 @@ module.exports = function (w) {
     });
 
     it('switches to existing tab if already open', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [
         {
           id: 'patch_test_func',
@@ -268,14 +265,12 @@ module.exports = function (w) {
     });
 
     it('returns editor object when element exists', () => {
-      resetMocks();
       // initAceEditor returns an editor object when ace is available
       const result = w.initAceEditor('test_tab', 'content', 'c_cpp');
       assertTrue(result !== null);
     });
 
     it('returns null when element not found', () => {
-      resetMocks();
       // Override getElementById to return null for specific id
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
@@ -288,7 +283,6 @@ module.exports = function (w) {
     });
 
     it('sets editor theme based on current theme', () => {
-      resetMocks();
       browserGlobals.document.documentElement._theme = 'light';
       const result = w.initAceEditor('light_tab', 'content', 'c_cpp');
       assertTrue(result !== null);
@@ -296,7 +290,6 @@ module.exports = function (w) {
     });
 
     it('sets readOnly option when specified', () => {
-      resetMocks();
       const result = w.initAceEditor(
         'readonly_tab',
         'content',
@@ -307,7 +300,6 @@ module.exports = function (w) {
     });
 
     it('stores editor in aceEditors map', () => {
-      resetMocks();
       w.FPBState.aceEditors.clear();
       w.initAceEditor('stored_tab', 'content', 'c_cpp');
       assertTrue(w.FPBState.aceEditors.has('stored_tab'));
@@ -325,7 +317,6 @@ module.exports = function (w) {
     });
 
     it('returns error if no patch tab selected', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.currentPatchTab = null;
@@ -339,7 +330,6 @@ module.exports = function (w) {
     });
 
     it('returns error if editor not found', async () => {
-      resetMocks();
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.currentPatchTab = {
@@ -357,7 +347,6 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserCallback', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.currentPatchTab = { id: 'save_tab', funcName: 'test_func' };
       w.FPBState.aceEditors.set('save_tab', {
@@ -372,7 +361,6 @@ module.exports = function (w) {
     });
 
     it('sets fileBrowserMode to dir', async () => {
-      resetMocks();
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.currentPatchTab = { id: 'save_tab2', funcName: 'test_func' };
       w.FPBState.aceEditors.set('save_tab2', {
@@ -388,7 +376,6 @@ module.exports = function (w) {
 
   describe('openManualPatchTab Function - Extended', () => {
     it('creates new tab with correct structure', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.aceEditors = new Map();
@@ -406,7 +393,6 @@ module.exports = function (w) {
     });
 
     it('sets currentPatchTab', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.aceEditors = new Map();
@@ -419,7 +405,6 @@ module.exports = function (w) {
     });
 
     it('handles decompilation when enabled', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -441,7 +426,6 @@ module.exports = function (w) {
     });
 
     it('handles Ghidra not configured', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
@@ -466,7 +450,6 @@ module.exports = function (w) {
 
   describe('openDisassembly Function - Extended', () => {
     it('creates tab with correct type', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.aceEditors = new Map();
@@ -481,7 +464,6 @@ module.exports = function (w) {
     });
 
     it('handles API error', async () => {
-      resetMocks();
       w.FPBState.editorTabs = [];
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;

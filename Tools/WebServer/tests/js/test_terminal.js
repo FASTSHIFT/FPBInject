@@ -138,7 +138,6 @@ module.exports = function (w) {
 
   describe('switchTerminalTab Function', () => {
     it('updates currentTerminalTab to raw', () => {
-      resetMocks();
       w.FPBState.currentTerminalTab = 'tool';
       w.switchTerminalTab('raw');
       assertEqual(w.FPBState.currentTerminalTab, 'raw');
@@ -235,7 +234,6 @@ module.exports = function (w) {
     });
 
     it('initializes terminals when containers exist', () => {
-      resetMocks();
       w.initTerminals();
       // After init, terminals should be set
       assertTrue(

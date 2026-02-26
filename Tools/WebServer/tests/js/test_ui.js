@@ -24,28 +24,24 @@ module.exports = function (w) {
 
   describe('loadLayoutPreferences Function', () => {
     it('loads sidebar width from localStorage', () => {
-      resetMocks();
       w.localStorage.setItem('fpbinject-sidebar-width', '350px');
       w.loadLayoutPreferences();
       assertEqual(w.localStorage.getItem('fpbinject-sidebar-width'), '350px');
     });
 
     it('loads panel height from localStorage', () => {
-      resetMocks();
       w.localStorage.setItem('fpbinject-panel-height', '250px');
       w.loadLayoutPreferences();
       assertEqual(w.localStorage.getItem('fpbinject-panel-height'), '250px');
     });
 
     it('handles missing preferences gracefully', () => {
-      resetMocks();
       w.localStorage.clear();
       w.loadLayoutPreferences();
       assertEqual(typeof w.loadLayoutPreferences, 'function');
     });
 
     it('sets CSS custom properties', () => {
-      resetMocks();
       w.localStorage.setItem('fpbinject-sidebar-width', '400px');
       w.localStorage.setItem('fpbinject-panel-height', '300px');
       w.loadLayoutPreferences();
@@ -55,21 +51,18 @@ module.exports = function (w) {
 
   describe('saveLayoutPreferences Function', () => {
     it('saves sidebar width to localStorage', () => {
-      resetMocks();
       w.saveLayoutPreferences();
       const saved = w.localStorage.getItem('fpbinject-sidebar-width');
       assertTrue(saved !== undefined);
     });
 
     it('saves panel height to localStorage', () => {
-      resetMocks();
       w.saveLayoutPreferences();
       const saved = w.localStorage.getItem('fpbinject-panel-height');
       assertTrue(saved !== undefined);
     });
 
     it('reads from computed style', () => {
-      resetMocks();
       w.saveLayoutPreferences();
       const savedWidth = w.localStorage.getItem('fpbinject-sidebar-width');
       assertTrue(savedWidth !== undefined);
@@ -78,13 +71,11 @@ module.exports = function (w) {
 
   describe('updateCornerSashPosition Function', () => {
     it('is callable', () => {
-      resetMocks();
       w.updateCornerSashPosition();
       assertEqual(typeof w.updateCornerSashPosition, 'function');
     });
 
     it('handles missing elements gracefully', () => {
-      resetMocks();
       w.updateCornerSashPosition();
       assertEqual(typeof w.updateCornerSashPosition, 'function');
     });
@@ -92,13 +83,11 @@ module.exports = function (w) {
 
   describe('initSashResize Function', () => {
     it('is callable', () => {
-      resetMocks();
       w.initSashResize();
       assertEqual(typeof w.initSashResize, 'function');
     });
 
     it('sets up event listeners', () => {
-      resetMocks();
       w.initSashResize();
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
       assertTrue(sashSidebar._eventListeners['mousedown'] !== undefined);
@@ -118,7 +107,6 @@ module.exports = function (w) {
 
   describe('loadSidebarState Function', () => {
     it('loads state from localStorage', () => {
-      resetMocks();
       w.localStorage.setItem(
         'fpbinject-sidebar-state',
         JSON.stringify({ 'details-device': true }),
@@ -128,7 +116,6 @@ module.exports = function (w) {
     });
 
     it('handles invalid JSON gracefully', () => {
-      resetMocks();
       w.localStorage.setItem('fpbinject-sidebar-state', 'invalid json');
       w.loadSidebarState();
       // Should not throw
@@ -136,7 +123,6 @@ module.exports = function (w) {
     });
 
     it('handles missing state gracefully', () => {
-      resetMocks();
       w.localStorage.clear();
       w.loadSidebarState();
       assertEqual(typeof w.loadSidebarState, 'function');
@@ -145,7 +131,6 @@ module.exports = function (w) {
 
   describe('saveSidebarState Function', () => {
     it('saves state to localStorage', () => {
-      resetMocks();
       w.saveSidebarState();
       assertEqual(typeof w.saveSidebarState, 'function');
     });
@@ -153,7 +138,6 @@ module.exports = function (w) {
 
   describe('setupSidebarStateListeners Function', () => {
     it('is callable', () => {
-      resetMocks();
       w.setupSidebarStateListeners();
       assertEqual(typeof w.setupSidebarStateListeners, 'function');
     });
@@ -161,7 +145,6 @@ module.exports = function (w) {
 
   describe('updateDisabledState Function', () => {
     it('disables elements when not connected', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const slotSelect = browserGlobals.document.getElementById('slotSelect');
       w.updateDisabledState();
@@ -169,7 +152,6 @@ module.exports = function (w) {
     });
 
     it('enables elements when connected', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const slotSelect = browserGlobals.document.getElementById('slotSelect');
       w.updateDisabledState();
@@ -178,7 +160,6 @@ module.exports = function (w) {
     });
 
     it('updates opacity for disabled elements', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const slotSelect = browserGlobals.document.getElementById('slotSelect');
       w.updateDisabledState();
@@ -186,7 +167,6 @@ module.exports = function (w) {
     });
 
     it('updates opacity for enabled elements', () => {
-      resetMocks();
       w.FPBState.isConnected = true;
       const slotSelect = browserGlobals.document.getElementById('slotSelect');
       w.updateDisabledState();
@@ -195,7 +175,6 @@ module.exports = function (w) {
     });
 
     it('updates editorContainer opacity', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const editorContainer =
         browserGlobals.document.getElementById('editorContainer');
@@ -204,7 +183,6 @@ module.exports = function (w) {
     });
 
     it('updates slotContainer opacity', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const slotContainer =
         browserGlobals.document.getElementById('slotContainer');
@@ -213,7 +191,6 @@ module.exports = function (w) {
     });
 
     it('updates deviceInfoContent opacity', () => {
-      resetMocks();
       w.FPBState.isConnected = false;
       const deviceInfoContent =
         browserGlobals.document.getElementById('deviceInfoContent');

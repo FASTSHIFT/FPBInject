@@ -28,7 +28,6 @@ module.exports = function (w) {
 
   describe('updateCornerSashPosition Function', () => {
     it('updates sashCorner position', () => {
-      resetMocks();
       const sashCorner = browserGlobals.document.getElementById('sashCorner');
       w.updateCornerSashPosition();
       // Function should complete without error
@@ -36,7 +35,6 @@ module.exports = function (w) {
     });
 
     it('handles missing sashCorner element gracefully', () => {
-      resetMocks();
       const origGetById = browserGlobals.document.getElementById;
       browserGlobals.document.getElementById = (id) => {
         if (id === 'sashCorner') return null;
@@ -51,7 +49,6 @@ module.exports = function (w) {
 
   describe('initSashResize Function', () => {
     it('initializes without error', () => {
-      resetMocks();
       w.initSashResize();
       // Verify sash elements have event listeners
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
@@ -59,7 +56,6 @@ module.exports = function (w) {
     });
 
     it('adds mousedown listener to sashSidebar', () => {
-      resetMocks();
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
       w.initSashResize();
       assertTrue(
@@ -69,7 +65,6 @@ module.exports = function (w) {
     });
 
     it('adds mousedown listener to sashPanel', () => {
-      resetMocks();
       const sashPanel = browserGlobals.document.getElementById('sashPanel');
       w.initSashResize();
       assertTrue(
@@ -79,7 +74,6 @@ module.exports = function (w) {
     });
 
     it('adds mousedown listener to sashCorner', () => {
-      resetMocks();
       const sashCorner = browserGlobals.document.getElementById('sashCorner');
       w.initSashResize();
       assertTrue(
@@ -89,7 +83,6 @@ module.exports = function (w) {
     });
 
     it('handles sidebar resize on mousedown', () => {
-      resetMocks();
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
       w.initSashResize();
       const handler = sashSidebar._eventListeners['mousedown'][0];
@@ -98,7 +91,6 @@ module.exports = function (w) {
     });
 
     it('handles panel resize on mousedown', () => {
-      resetMocks();
       const sashPanel = browserGlobals.document.getElementById('sashPanel');
       w.initSashResize();
       const handler = sashPanel._eventListeners['mousedown'][0];
@@ -107,7 +99,6 @@ module.exports = function (w) {
     });
 
     it('handles corner resize on mousedown', () => {
-      resetMocks();
       const sashCorner = browserGlobals.document.getElementById('sashCorner');
       w.initSashResize();
       const handler = sashCorner._eventListeners['mousedown'][0];
@@ -118,7 +109,6 @@ module.exports = function (w) {
 
   describe('loadLayoutPreferences Function', () => {
     it('loads sidebar width from localStorage', () => {
-      resetMocks();
       browserGlobals.localStorage.setItem('fpbinject-sidebar-width', '350px');
       w.loadLayoutPreferences();
       // Function should complete and use the stored value
@@ -129,7 +119,6 @@ module.exports = function (w) {
     });
 
     it('loads panel height from localStorage', () => {
-      resetMocks();
       browserGlobals.localStorage.setItem('fpbinject-panel-height', '250px');
       w.loadLayoutPreferences();
       assertEqual(
@@ -139,7 +128,6 @@ module.exports = function (w) {
     });
 
     it('handles missing localStorage values gracefully', () => {
-      resetMocks();
       browserGlobals.localStorage.clear();
       w.loadLayoutPreferences();
       // Should not throw
@@ -147,7 +135,6 @@ module.exports = function (w) {
     });
 
     it('calls updateCornerSashPosition', () => {
-      resetMocks();
       w.loadLayoutPreferences();
       // Function should complete
       assertEqual(typeof w.updateCornerSashPosition, 'function');
@@ -156,7 +143,6 @@ module.exports = function (w) {
 
   describe('saveLayoutPreferences Function', () => {
     it('saves sidebar width to localStorage', () => {
-      resetMocks();
       w.saveLayoutPreferences();
       const saved = browserGlobals.localStorage.getItem(
         'fpbinject-sidebar-width',
@@ -165,7 +151,6 @@ module.exports = function (w) {
     });
 
     it('saves panel height to localStorage', () => {
-      resetMocks();
       w.saveLayoutPreferences();
       const saved = browserGlobals.localStorage.getItem(
         'fpbinject-panel-height',
@@ -174,7 +159,6 @@ module.exports = function (w) {
     });
 
     it('trims whitespace from values', () => {
-      resetMocks();
       w.saveLayoutPreferences();
       const saved = browserGlobals.localStorage.getItem(
         'fpbinject-sidebar-width',
@@ -185,7 +169,6 @@ module.exports = function (w) {
 
   describe('Sash Resize Integration', () => {
     it('sidebar resize respects minimum width', () => {
-      resetMocks();
       w.initSashResize();
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
       const handler = sashSidebar._eventListeners['mousedown'][0];
@@ -194,7 +177,6 @@ module.exports = function (w) {
     });
 
     it('panel resize respects minimum height', () => {
-      resetMocks();
       w.initSashResize();
       const sashPanel = browserGlobals.document.getElementById('sashPanel');
       const handler = sashPanel._eventListeners['mousedown'][0];
@@ -203,7 +185,6 @@ module.exports = function (w) {
     });
 
     it('corner resize handles both dimensions', () => {
-      resetMocks();
       w.initSashResize();
       const sashCorner = browserGlobals.document.getElementById('sashCorner');
       const handler = sashCorner._eventListeners['mousedown'][0];
@@ -212,7 +193,6 @@ module.exports = function (w) {
     });
 
     it('mousemove updates sidebar width during resize', () => {
-      resetMocks();
       w.initSashResize();
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
       const mousedownHandler = sashSidebar._eventListeners['mousedown'][0];
@@ -226,7 +206,6 @@ module.exports = function (w) {
     });
 
     it('mousemove updates panel height during resize', () => {
-      resetMocks();
       w.initSashResize();
       const sashPanel = browserGlobals.document.getElementById('sashPanel');
       const mousedownHandler = sashPanel._eventListeners['mousedown'][0];
@@ -240,7 +219,6 @@ module.exports = function (w) {
     });
 
     it('mousemove updates both dimensions during corner resize', () => {
-      resetMocks();
       w.initSashResize();
       const sashCorner = browserGlobals.document.getElementById('sashCorner');
       const mousedownHandler = sashCorner._eventListeners['mousedown'][0];
@@ -258,7 +236,6 @@ module.exports = function (w) {
     });
 
     it('mouseup ends sidebar resize', () => {
-      resetMocks();
       w.initSashResize();
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
       const mousedownHandler = sashSidebar._eventListeners['mousedown'][0];
@@ -273,7 +250,6 @@ module.exports = function (w) {
     });
 
     it('mouseup ends panel resize', () => {
-      resetMocks();
       w.initSashResize();
       const sashPanel = browserGlobals.document.getElementById('sashPanel');
       const mousedownHandler = sashPanel._eventListeners['mousedown'][0];
@@ -288,7 +264,6 @@ module.exports = function (w) {
     });
 
     it('mouseup ends corner resize', () => {
-      resetMocks();
       w.initSashResize();
       const sashCorner = browserGlobals.document.getElementById('sashCorner');
       const mousedownHandler = sashCorner._eventListeners['mousedown'][0];
@@ -307,7 +282,6 @@ module.exports = function (w) {
     });
 
     it('sidebar resize enforces minimum width', () => {
-      resetMocks();
       w.initSashResize();
       const sashSidebar = browserGlobals.document.getElementById('sashSidebar');
       const mousedownHandler = sashSidebar._eventListeners['mousedown'][0];
@@ -321,7 +295,6 @@ module.exports = function (w) {
     });
 
     it('panel resize enforces minimum height', () => {
-      resetMocks();
       w.initSashResize();
       const sashPanel = browserGlobals.document.getElementById('sashPanel');
       const mousedownHandler = sashPanel._eventListeners['mousedown'][0];
