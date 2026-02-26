@@ -536,6 +536,99 @@ module.exports = function (w) {
       assertTrue(typeof w.updateAutoInjectProgress === 'function'));
     it('loadPatchSourceFromBackend is a function', () =>
       assertTrue(typeof w.loadPatchSourceFromBackend === 'function'));
+    // Reinject functions
+    it('onAutoInjectSuccess is a function', () =>
+      assertTrue(typeof w.onAutoInjectSuccess === 'function'));
+    it('clearInjectedPaths is a function', () =>
+      assertTrue(typeof w.clearInjectedPaths === 'function'));
+    it('getInjectedPathCount is a function', () =>
+      assertTrue(typeof w.getInjectedPathCount === 'function'));
+    it('updateReinjectButton is a function', () =>
+      assertTrue(typeof w.updateReinjectButton === 'function'));
+    it('reinjectAll is a function', () =>
+      assertTrue(typeof w.reinjectAll === 'function'));
+    it('triggerAutoInject is a function', () =>
+      assertTrue(typeof w.triggerAutoInject === 'function'));
+  });
+
+  describe('Reinject Cache Functions', () => {
+    it('onAutoInjectSuccess adds path to cache', () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      assertEqual(w.getInjectedPathCount(), 0);
+      w.onAutoInjectSuccess('/path/to/file.c');
+      assertEqual(w.getInjectedPathCount(), 1);
+      w.clearInjectedPaths();
+    });
+
+    it('onAutoInjectSuccess deduplicates paths', () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      w.onAutoInjectSuccess('/path/to/file.c');
+      w.onAutoInjectSuccess('/path/to/file.c');
+      assertEqual(w.getInjectedPathCount(), 1);
+      w.clearInjectedPaths();
+    });
+
+    it('onAutoInjectSuccess ignores null/undefined', () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      w.onAutoInjectSuccess(null);
+      w.onAutoInjectSuccess(undefined);
+      assertEqual(w.getInjectedPathCount(), 0);
+    });
+
+    it('clearInjectedPaths clears all cached paths', () => {
+      resetMocks();
+      w.onAutoInjectSuccess('/path/to/file1.c');
+      w.onAutoInjectSuccess('/path/to/file2.c');
+      assertTrue(w.getInjectedPathCount() > 0);
+      w.clearInjectedPaths();
+      assertEqual(w.getInjectedPathCount(), 0);
+    });
+
+    it('getInjectedPathCount returns correct count', () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      assertEqual(w.getInjectedPathCount(), 0);
+      w.onAutoInjectSuccess('/path/a.c');
+      assertEqual(w.getInjectedPathCount(), 1);
+      w.onAutoInjectSuccess('/path/b.c');
+      assertEqual(w.getInjectedPathCount(), 2);
+      w.clearInjectedPaths();
+    });
+
+    it('reinjectAll is async function', () => {
+      assertTrue(w.reinjectAll.constructor.name === 'AsyncFunction');
+    });
+
+    it('triggerAutoInject is async function', () => {
+      assertTrue(w.triggerAutoInject.constructor.name === 'AsyncFunction');
+    });
+
+    it('triggerAutoInject calls /api/autoinject/trigger', async () => {
+      resetMocks();
+      setFetchResponse('/api/autoinject/trigger', { success: true });
+      await w.triggerAutoInject('/path/to/file.c');
+      const calls = getFetchCalls();
+      assertTrue(calls.some((c) => c.url.includes('/api/autoinject/trigger')));
+    });
+
+    it('triggerAutoInject throws on failure', async () => {
+      resetMocks();
+      setFetchResponse('/api/autoinject/trigger', {
+        success: false,
+        error: 'File not found',
+      });
+      let threw = false;
+      try {
+        await w.triggerAutoInject('/nonexistent.c');
+      } catch (e) {
+        threw = true;
+        assertTrue(e.message.includes('File not found'));
+      }
+      assertTrue(threw);
+    });
   });
 
   describe('startAutoInjectPolling Function', () => {

@@ -103,6 +103,36 @@ def api_auto_inject_reset():
     return jsonify({"success": True})
 
 
+@bp.route("/autoinject/trigger", methods=["POST"])
+def api_autoinject_trigger():
+    """
+    Manually trigger auto-inject for a specific file.
+
+    Used by reinject feature to re-trigger injection for cached files.
+    """
+    import os
+
+    data = request.json or {}
+    file_path = data.get("file_path")
+
+    if not file_path:
+        return jsonify({"success": False, "error": "file_path is required"})
+
+    if not os.path.exists(file_path):
+        return jsonify({"success": False, "error": f"File not found: {file_path}"})
+
+    # Import and call the internal trigger function
+    from services.file_watcher_manager import _trigger_auto_inject
+
+    try:
+        _trigger_auto_inject(file_path)
+        return jsonify(
+            {"success": True, "message": f"Auto-inject triggered for {file_path}"}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
 # =============================================================================
 # ELF File Watcher API
 # =============================================================================

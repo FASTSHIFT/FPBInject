@@ -64,7 +64,6 @@ window.i18nResources['en'] = {
       disconnect: 'Disconnect',
       connecting: 'Connecting...',
       refresh: 'Refresh',
-      no_ports: '-- No ports available --',
       status: {
         connected: 'Connected',
         disconnected: 'Disconnected',
@@ -125,9 +124,6 @@ window.i18nResources['en'] = {
       config_saved: 'Configuration saved',
       connect_success: 'Connected successfully',
       connect_failed: 'Connection failed',
-      no_port_selected: 'Please select a serial port first.',
-      check_port_hint:
-        'Please check if the device is connected and the port is correct.',
       inject_success: 'Injection successful',
       inject_failed: 'Injection failed',
       compile_success: 'Compilation successful',
@@ -201,6 +197,11 @@ window.i18nResources['en'] = {
       // Clear all slots
       confirm_clear_all_slots: 'Are you sure you want to clear all FPB slots?',
       unpatch_all_warning: 'This will unpatch all injected functions.',
+      // Reinject
+      no_inject_cache: 'No injection cache available',
+      confirm_reinject: 'Re-inject {{count}} file(s)?',
+      reinject_success: 'Re-injection complete: {{count}} succeeded',
+      reinject_partial: 'Re-injection: {{success}} succeeded, {{fail}} failed',
     },
 
     // Modals
@@ -231,6 +232,7 @@ window.i18nResources['en'] = {
       info: 'Get Info',
       test: 'Throughput Test',
       clear_all: 'Clear All',
+      reinject: 'Re-inject',
       slot_n: 'Slot {{n}}',
       fpb_v2_only: 'FPB v2 only',
       fpb_v2_required: 'This slot requires FPB v2 hardware',
@@ -249,6 +251,7 @@ window.i18nResources['en'] = {
       // Device
       test_serial: 'Test serial throughput to find max transfer size',
       clear_slot: 'Clear slot',
+      reinject_all: 'Re-inject all ({{count}} files)',
       // Symbols
       symbols_hint:
         'Single-click: view disassembly; Double-click: create patch',

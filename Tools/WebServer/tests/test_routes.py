@@ -2311,6 +2311,42 @@ class TestWatchAPI(TestRoutesBase):
         self.assertEqual(state.device.auto_inject_status, "idle")
         self.assertEqual(state.device.auto_inject_progress, 0)
 
+    def test_autoinject_trigger_no_file_path(self):
+        """Test autoinject trigger without file path"""
+        response = self.client.post("/api/autoinject/trigger", json={})
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("required", data["error"])
+
+    def test_autoinject_trigger_file_not_found(self):
+        """Test autoinject trigger with nonexistent file"""
+        response = self.client.post(
+            "/api/autoinject/trigger", json={"file_path": "/nonexistent/file.c"}
+        )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"])
+
+    @patch("services.file_watcher_manager._trigger_auto_inject")
+    def test_autoinject_trigger_success(self, mock_trigger):
+        """Test autoinject trigger success"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("/* FPB_INJECT */ void test() {}")
+            file_path = f.name
+
+        try:
+            response = self.client.post(
+                "/api/autoinject/trigger", json={"file_path": file_path}
+            )
+            data = json.loads(response.data)
+
+            self.assertTrue(data["success"])
+            mock_trigger.assert_called_once_with(file_path)
+        finally:
+            os.unlink(file_path)
+
 
 class TestPatchRoutesExtended(TestRoutesBase):
     """Extended patch routes tests"""

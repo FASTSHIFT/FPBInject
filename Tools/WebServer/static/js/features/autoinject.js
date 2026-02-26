@@ -3,6 +3,98 @@
   ========================================*/
 
 /* ===========================
+   REINJECT CACHE
+   =========================== */
+
+// Cache of successfully injected file paths (Set for auto-dedup)
+let injectedFilePaths = new Set();
+
+// Called when auto-inject succeeds - cache the file path
+function onAutoInjectSuccess(filePath) {
+  if (filePath) {
+    injectedFilePaths.add(filePath);
+    updateReinjectButton();
+  }
+}
+
+// Clear the inject cache
+function clearInjectedPaths() {
+  injectedFilePaths.clear();
+  updateReinjectButton();
+}
+
+// Get count of cached paths
+function getInjectedPathCount() {
+  return injectedFilePaths.size;
+}
+
+// Update reinject button visibility and tooltip
+function updateReinjectButton() {
+  const btn = document.getElementById('btn-reinject');
+  if (!btn) return;
+
+  const count = injectedFilePaths.size;
+  btn.disabled = count === 0;
+  btn.title = t('tooltips.reinject_all', { count });
+}
+
+// Re-inject all cached files
+async function reinjectAll() {
+  const paths = Array.from(injectedFilePaths);
+
+  if (paths.length === 0) {
+    alert(t('messages.no_inject_cache'));
+    return;
+  }
+
+  // Confirm with user
+  const confirmMsg = t('messages.confirm_reinject', { count: paths.length });
+  if (!confirm(confirmMsg)) {
+    return;
+  }
+
+  log.info(`Re-injecting ${paths.length} file(s)...`);
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const filePath of paths) {
+    try {
+      await triggerAutoInject(filePath);
+      successCount++;
+    } catch (e) {
+      log.error(`Re-inject failed: ${filePath} - ${e.message}`);
+      failCount++;
+    }
+  }
+
+  // Show result only if there are failures
+  if (failCount > 0) {
+    alert(
+      t('messages.reinject_partial', {
+        success: successCount,
+        fail: failCount,
+      }),
+    );
+  }
+}
+
+// Trigger auto-inject for a specific file (reuse existing backend flow)
+async function triggerAutoInject(filePath) {
+  const response = await fetch('/api/autoinject/trigger', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_path: filePath }),
+  });
+
+  const result = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Unknown error');
+  }
+  return result;
+}
+
+/* ===========================
    AUTO-INJECT STATUS POLLING
    =========================== */
 function startAutoInjectPolling() {
@@ -68,6 +160,10 @@ async function pollAutoInjectStatus() {
           }
           if (modifiedFuncs.length > 0) {
             createPatchPreviewTab(modifiedFuncs[0], sourceFile);
+          }
+          // Cache the successfully injected file path
+          if (sourceFile) {
+            onAutoInjectSuccess(sourceFile);
           }
           updateSlotUI();
           fpbInfo();
@@ -362,3 +458,9 @@ window.displayAutoInjectStats = displayAutoInjectStats;
 window.loadPatchSourceFromBackend = loadPatchSourceFromBackend;
 window.createPatchPreviewTab = createPatchPreviewTab;
 window.updateAutoInjectProgress = updateAutoInjectProgress;
+window.onAutoInjectSuccess = onAutoInjectSuccess;
+window.clearInjectedPaths = clearInjectedPaths;
+window.getInjectedPathCount = getInjectedPathCount;
+window.updateReinjectButton = updateReinjectButton;
+window.reinjectAll = reinjectAll;
+window.triggerAutoInject = triggerAutoInject;

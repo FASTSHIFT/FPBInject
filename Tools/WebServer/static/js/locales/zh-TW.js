@@ -64,7 +64,6 @@ window.i18nResources['zh-TW'] = {
       disconnect: '斷開',
       connecting: '連線中...',
       refresh: '重新整理',
-      no_ports: '-- 沒有可用的連接埠 --',
       status: {
         connected: '已連線',
         disconnected: '未連線',
@@ -124,8 +123,6 @@ window.i18nResources['zh-TW'] = {
       config_saved: '設定已儲存',
       connect_success: '連線成功',
       connect_failed: '連線失敗',
-      no_port_selected: '請先選擇一個連接埠。',
-      check_port_hint: '請檢查裝置是否已連線以及連接埠是否正確。',
       inject_success: '注入成功',
       inject_failed: '注入失敗',
       compile_success: '編譯成功',
@@ -193,6 +190,11 @@ window.i18nResources['zh-TW'] = {
       // 清除所有槽位
       confirm_clear_all_slots: '確定要清除所有 FPB 槽位嗎？',
       unpatch_all_warning: '這將取消所有已注入的函式。',
+      // 重新注入
+      no_inject_cache: '沒有可重新注入的快取',
+      confirm_reinject: '確定重新注入 {{count}} 個檔案？',
+      reinject_success: '重新注入完成：{{count}} 個成功',
+      reinject_partial: '重新注入：{{success}} 個成功，{{fail}} 個失敗',
     },
 
     // 模態框
@@ -223,6 +225,7 @@ window.i18nResources['zh-TW'] = {
       info: '取得資訊',
       test: '吞吐測試',
       clear_all: '清除所有',
+      reinject: '重新注入',
       slot_n: '槽位 {{n}}',
       fpb_v2_only: '僅 FPB v2',
       fpb_v2_required: '此補丁需要 FPB v2 硬體',
@@ -241,6 +244,7 @@ window.i18nResources['zh-TW'] = {
       // 裝置
       test_serial: '測試串列埠吞吐量以找到最大傳輸大小',
       clear_slot: '清除槽位',
+      reinject_all: '重新注入全部 ({{count}} 個檔案)',
       // 符號
       symbols_hint: '單擊：查看反組譯；雙擊：建立補丁',
       // 傳輸

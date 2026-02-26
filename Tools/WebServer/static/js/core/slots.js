@@ -195,9 +195,7 @@ function updateMemoryInfo(memory) {
   const bytesLabel = t('device.bytes', 'Bytes');
 
   memoryEl.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-      <span style="font-size: 10px; color: var(--vscode-descriptionForeground);">${usedLabel}: ${used} ${bytesLabel}</span>
-    </div>
+    <div style="font-size: 10px; color: var(--vscode-descriptionForeground);">${usedLabel}: ${used} ${bytesLabel}</div>
   `;
 }
 
