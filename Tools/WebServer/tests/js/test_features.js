@@ -629,6 +629,85 @@ module.exports = function (w) {
       }
       assertTrue(threw);
     });
+
+    it('reinjectAll shows alert when cache is empty', async () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      let alertCalled = false;
+      const origAlert = global.alert;
+      global.alert = () => {
+        alertCalled = true;
+      };
+      await w.reinjectAll();
+      assertTrue(alertCalled);
+      global.alert = origAlert;
+    });
+
+    it('reinjectAll returns early when user cancels confirm', async () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      w.onAutoInjectSuccess('/path/a.c');
+      const origConfirm = global.confirm;
+      global.confirm = () => false;
+      setFetchResponse('/api/autoinject/trigger', { success: true });
+      await w.reinjectAll();
+      const calls = getFetchCalls();
+      assertTrue(!calls.some((c) => c.url.includes('/api/autoinject/trigger')));
+      global.confirm = origConfirm;
+      w.clearInjectedPaths();
+    });
+
+    it('reinjectAll triggers inject for all cached files', async () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      w.onAutoInjectSuccess('/path/a.c');
+      w.onAutoInjectSuccess('/path/b.c');
+      const origConfirm = global.confirm;
+      global.confirm = () => true;
+      setFetchResponse('/api/autoinject/trigger', { success: true });
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.reinjectAll();
+      const calls = getFetchCalls();
+      const triggerCalls = calls.filter((c) =>
+        c.url.includes('/api/autoinject/trigger'),
+      );
+      assertEqual(triggerCalls.length, 2);
+      global.confirm = origConfirm;
+      w.FPBState.toolTerminal = null;
+      w.clearInjectedPaths();
+    });
+
+    it('reinjectAll shows alert on partial failure', async () => {
+      resetMocks();
+      w.clearInjectedPaths();
+      w.onAutoInjectSuccess('/path/a.c');
+      w.onAutoInjectSuccess('/path/b.c');
+      const origConfirm = global.confirm;
+      global.confirm = () => true;
+      let alertCalled = false;
+      const origAlert = global.alert;
+      global.alert = () => {
+        alertCalled = true;
+      };
+      // First call succeeds, second fails
+      let callCount = 0;
+      global.fetch = async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { json: async () => ({ success: true }) };
+        }
+        return { json: async () => ({ success: false, error: 'Failed' }) };
+      };
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      await w.reinjectAll();
+      assertTrue(alertCalled);
+      global.confirm = origConfirm;
+      global.alert = origAlert;
+      w.FPBState.toolTerminal = null;
+      w.clearInjectedPaths();
+    });
   });
 
   describe('startAutoInjectPolling Function', () => {
