@@ -341,7 +341,8 @@ module.exports = function (w) {
       const item = browserGlobals.document.createElement('div');
       item.className = 'device-file-item';
       item.dataset = { path: '/test.txt', type: 'file' };
-      w.selectDeviceFile(item);
+      browserGlobals.document.querySelectorAll = () => [];
+      w.selectDeviceFile(item, {});
       assertTrue(item.classList.contains('selected'));
     });
 
@@ -352,18 +353,57 @@ module.exports = function (w) {
       item1.classList.add('selected');
       item1.dataset = { path: '/test1.txt', type: 'file' };
 
-      browserGlobals.document.querySelector = (sel) => {
-        if (sel === '.device-file-item.selected') return item1;
-        return null;
+      browserGlobals.document.querySelectorAll = (sel) => {
+        if (sel === '.device-file-item.selected') return [item1];
+        return [];
       };
 
       const item2 = browserGlobals.document.createElement('div');
       item2.className = 'device-file-item';
       item2.dataset = { path: '/test2.txt', type: 'file' };
 
-      w.selectDeviceFile(item2);
+      w.selectDeviceFile(item2, {});
       assertTrue(!item1.classList.contains('selected'));
       assertTrue(item2.classList.contains('selected'));
+    });
+
+    it('supports Ctrl+click multi-select', () => {
+      resetMocks();
+      const item1 = browserGlobals.document.createElement('div');
+      item1.className = 'device-file-item';
+      item1.dataset = { path: '/test1.txt', type: 'file' };
+
+      const item2 = browserGlobals.document.createElement('div');
+      item2.className = 'device-file-item';
+      item2.dataset = { path: '/test2.txt', type: 'file' };
+
+      browserGlobals.document.querySelectorAll = () => [];
+
+      // First select
+      w.selectDeviceFile(item1, {});
+      assertTrue(item1.classList.contains('selected'));
+
+      // Ctrl+click second item
+      w.selectDeviceFile(item2, { ctrlKey: true });
+      assertTrue(item1.classList.contains('selected'));
+      assertTrue(item2.classList.contains('selected'));
+    });
+
+    it('toggles selection on Ctrl+click same item', () => {
+      resetMocks();
+      const item = browserGlobals.document.createElement('div');
+      item.className = 'device-file-item';
+      item.dataset = { path: '/test.txt', type: 'file' };
+
+      browserGlobals.document.querySelectorAll = () => [];
+
+      // First select
+      w.selectDeviceFile(item, {});
+      assertTrue(item.classList.contains('selected'));
+
+      // Ctrl+click same item to deselect
+      w.selectDeviceFile(item, { ctrlKey: true });
+      assertTrue(!item.classList.contains('selected'));
     });
   });
 
@@ -721,21 +761,24 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
 
-    it('returns early if directory selected', () => {
+    it('shows alert if directory selected', () => {
       resetMocks();
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
+      browserGlobals.document.querySelectorAll = () => [];
       // Select a directory
       const item = browserGlobals.document.createElement('div');
       item.className = 'device-file-item';
       item.dataset = { path: '/testdir', type: 'dir' };
-      w.selectDeviceFile(item);
+      w.selectDeviceFile(item, {});
+      let alertCalled = false;
+      const origAlert = global.alert;
+      global.alert = () => {
+        alertCalled = true;
+      };
       w.downloadFromDevice();
-      assertTrue(
-        w.FPBState.toolTerminal._writes.some(
-          (wr) => wr.msg && wr.msg.includes('select a file'),
-        ),
-      );
+      assertTrue(alertCalled);
+      global.alert = origAlert;
       w.FPBState.toolTerminal = null;
       w.FPBState.isConnected = false;
     });

@@ -158,6 +158,8 @@ window.i18nResources['zh-CN'] = {
       // 传输错误
       upload_failed: '上传失败',
       download_failed: '下载失败',
+      folder_download_not_supported:
+        '不支持文件夹下载，请只选择文件，或者将文件夹打包后下载。',
       transfer_stats: '传输统计',
       retries: '重试次数',
       crc_errors: 'CRC 错误',

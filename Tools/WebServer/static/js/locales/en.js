@@ -162,6 +162,8 @@ window.i18nResources['en'] = {
       // Transfer errors
       upload_failed: 'Upload failed',
       download_failed: 'Download failed',
+      folder_download_not_supported:
+        'Folder download is not supported. Please select files only, or package the folder before downloading.',
       transfer_stats: 'Transfer Statistics',
       retries: 'Retries',
       crc_errors: 'CRC errors',

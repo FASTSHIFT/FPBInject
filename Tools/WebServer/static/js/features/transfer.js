@@ -6,7 +6,7 @@
    FILE TRANSFER STATE
    =========================== */
 let transferCurrentPath = '/';
-let transferSelectedFile = null;
+let transferSelectedFiles = []; // Support multi-select
 let transferAbortController = null;
 
 /* ===========================
@@ -421,7 +421,7 @@ async function refreshDeviceFiles() {
   }
 
   fileList.innerHTML = '';
-  transferSelectedFile = null;
+  transferSelectedFiles = [];
 
   // Add parent directory entry if not at root
   if (path !== '/') {
@@ -433,7 +433,7 @@ async function refreshDeviceFiles() {
       <i class="codicon codicon-folder"></i>
       <span class="file-name">..</span>
     `;
-    parentItem.onclick = () => selectDeviceFile(parentItem);
+    parentItem.onclick = (e) => selectDeviceFile(parentItem, e);
     parentItem.ondblclick = () => {
       pathInput.value = parentItem.dataset.path;
       refreshDeviceFiles();
@@ -468,7 +468,7 @@ async function refreshDeviceFiles() {
       ${sizeStr}
     `;
 
-    item.onclick = () => selectDeviceFile(item);
+    item.onclick = (e) => selectDeviceFile(item, e);
     item.ondblclick = () => {
       if (entry.type === 'dir') {
         pathInput.value = item.dataset.path;
@@ -485,18 +485,36 @@ async function refreshDeviceFiles() {
 }
 
 /**
- * Select a device file item
+ * Select a device file item (supports Ctrl multi-select)
+ * @param {HTMLElement} item - The file item element
+ * @param {MouseEvent} event - The click event
  */
-function selectDeviceFile(item) {
-  // Deselect previous
-  const prev = document.querySelector('.device-file-item.selected');
-  if (prev) prev.classList.remove('selected');
+function selectDeviceFile(item, event) {
+  const path = item.dataset.path;
+  const type = item.dataset.type;
+  const isCtrlPressed = event && (event.ctrlKey || event.metaKey);
 
-  item.classList.add('selected');
-  transferSelectedFile = {
-    path: item.dataset.path,
-    type: item.dataset.type,
-  };
+  if (isCtrlPressed) {
+    // Ctrl+click: toggle selection
+    const existingIndex = transferSelectedFiles.findIndex(
+      (f) => f.path === path,
+    );
+    if (existingIndex >= 0) {
+      // Deselect
+      transferSelectedFiles.splice(existingIndex, 1);
+      item.classList.remove('selected');
+    } else {
+      // Add to selection
+      transferSelectedFiles.push({ path, type });
+      item.classList.add('selected');
+    }
+  } else {
+    // Normal click: single select
+    const prevItems = document.querySelectorAll('.device-file-item.selected');
+    prevItems.forEach((el) => el.classList.remove('selected'));
+    transferSelectedFiles = [{ path, type }];
+    item.classList.add('selected');
+  }
 }
 
 /**
@@ -1129,7 +1147,8 @@ async function uploadFolderToDevice() {
 }
 
 /**
- * Download file from device (UI handler)
+ * Download file(s) from device (UI handler)
+ * Supports multi-select with Ctrl+click
  */
 async function downloadFromDevice() {
   const state = window.FPBState;
@@ -1138,59 +1157,88 @@ async function downloadFromDevice() {
     return;
   }
 
-  if (!transferSelectedFile || transferSelectedFile.type === 'dir') {
-    log.error('Please select a file to download');
+  // Check if any directories are selected
+  const selectedDirs = transferSelectedFiles.filter((f) => f.type === 'dir');
+  if (selectedDirs.length > 0) {
+    alert(
+      t(
+        'messages.folder_download_not_supported',
+        'Folder download is not supported. Please select files only.',
+      ),
+    );
     return;
   }
 
-  const remotePath = transferSelectedFile.path;
-  const fileName = remotePath.split('/').pop();
+  // Filter out directories, only download files
+  const filesToDownload = transferSelectedFiles.filter((f) => f.type !== 'dir');
 
-  log.info(`Starting download: ${remotePath}`);
-  updateTransferProgress(0, 'Downloading...');
-  updateTransferControls(true);
-
-  try {
-    const result = await downloadFileFromDevice(
-      remotePath,
-      (downloaded, total, percent, speed, eta, stats) => {
-        updateTransferProgress(
-          percent,
-          `${percent.toFixed(1)}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
-          speed,
-          eta,
-          stats,
-        );
-      },
-    );
-
-    hideTransferProgress();
-
-    if (result.cancelled) {
-      log.warn(`Download cancelled: ${fileName}`);
-    } else if (result.success && result.blob) {
-      // Trigger browser download
-      const url = URL.createObjectURL(result.blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      const speedStr = result.avg_speed
-        ? ` (${formatSpeed(result.avg_speed)})`
-        : '';
-      const statsStr = formatTransferStats(result.stats);
-      log.success(`Download complete: ${fileName}${speedStr}${statsStr}`);
-    } else {
-      log.error(`Download failed: ${result.error}`);
-      showTransferErrorAlert('Download', fileName, result.error, result.stats);
-    }
-  } catch (e) {
-    hideTransferProgress();
-    log.error(`Download error: ${e}`);
-    showTransferErrorAlert('Download', fileName, e.message || String(e));
+  if (filesToDownload.length === 0) {
+    log.error('Please select file(s) to download');
+    return;
   }
+
+  // Download files one by one
+  for (let i = 0; i < filesToDownload.length; i++) {
+    const file = filesToDownload[i];
+    const remotePath = file.path;
+    const fileName = remotePath.split('/').pop();
+    const progressPrefix =
+      filesToDownload.length > 1 ? `[${i + 1}/${filesToDownload.length}] ` : '';
+
+    log.info(`${progressPrefix}Starting download: ${remotePath}`);
+    updateTransferProgress(0, `${progressPrefix}Downloading ${fileName}...`);
+    updateTransferControls(true);
+
+    try {
+      const result = await downloadFileFromDevice(
+        remotePath,
+        (downloaded, total, percent, speed, eta, stats) => {
+          updateTransferProgress(
+            percent,
+            `${progressPrefix}${percent.toFixed(1)}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
+            speed,
+            eta,
+            stats,
+          );
+        },
+      );
+
+      if (result.cancelled) {
+        log.warn(`Download cancelled: ${fileName}`);
+        break; // Stop downloading remaining files
+      } else if (result.success && result.blob) {
+        // Trigger browser download
+        const url = URL.createObjectURL(result.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        const speedStr = result.avg_speed
+          ? ` (${formatSpeed(result.avg_speed)})`
+          : '';
+        const statsStr = formatTransferStats(result.stats);
+        log.success(
+          `${progressPrefix}Download complete: ${fileName}${speedStr}${statsStr}`,
+        );
+      } else {
+        log.error(`${progressPrefix}Download failed: ${result.error}`);
+        showTransferErrorAlert(
+          'Download',
+          fileName,
+          result.error,
+          result.stats,
+        );
+      }
+    } catch (e) {
+      log.error(`${progressPrefix}Download error: ${e}`);
+      showTransferErrorAlert('Download', fileName, e.message || String(e));
+    }
+  }
+
+  hideTransferProgress();
+  updateTransferControls(false);
 }
 
 /**
@@ -1203,14 +1251,16 @@ async function deleteFromDevice() {
     return;
   }
 
-  if (!transferSelectedFile) {
+  if (transferSelectedFiles.length === 0) {
     log.error('Please select a file to delete');
     return;
   }
 
-  const path = transferSelectedFile.path;
+  // Use first selected item for delete
+  const selectedFile = transferSelectedFiles[0];
+  const path = selectedFile.path;
   const typeStr =
-    transferSelectedFile.type === 'dir'
+    selectedFile.type === 'dir'
       ? t('messages.directory', 'directory')
       : t('transfer.file', 'file');
 
@@ -1264,12 +1314,14 @@ async function renameOnDevice() {
     return;
   }
 
-  if (!transferSelectedFile) {
+  if (transferSelectedFiles.length === 0) {
     log.error('Please select a file or directory to rename');
     return;
   }
 
-  const oldPath = transferSelectedFile.path;
+  // Use first selected item for rename
+  const selectedFile = transferSelectedFiles[0];
+  const oldPath = selectedFile.path;
   const oldName = oldPath.split('/').pop();
   const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || '/';
 

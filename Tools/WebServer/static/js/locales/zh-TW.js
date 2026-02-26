@@ -158,6 +158,8 @@ window.i18nResources['zh-TW'] = {
       // 傳輸錯誤
       upload_failed: '上傳失敗',
       download_failed: '下載失敗',
+      folder_download_not_supported:
+        '不支援資料夾下載，請只選擇檔案，或者將資料夾打包後下載。',
       transfer_stats: '傳輸統計',
       retries: '重試次數',
       crc_errors: 'CRC 錯誤',
