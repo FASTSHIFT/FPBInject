@@ -591,45 +591,6 @@ module.exports = function (w) {
   });
 
   describe('loadConfig Function - Extended', () => {
-    it('shows watchDirsSection when auto_compile enabled', async () => {
-      w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.autoInjectPollInterval = null;
-      const watchDirsSection =
-        browserGlobals.document.getElementById('watchDirsSection');
-      setFetchResponse('/api/config/schema', {
-        schema: [
-          { key: 'auto_compile', config_type: 'boolean', default: false },
-        ],
-        groups: {},
-        group_order: [],
-      });
-      setFetchResponse('/api/config', { auto_compile: true });
-      setFetchResponse('/api/status', { connected: false });
-      await w.loadConfig();
-      assertEqual(watchDirsSection.style.display, 'block');
-      w.stopAutoInjectPolling();
-      w.FPBState.toolTerminal = null;
-    });
-
-    it('hides watchDirsSection when auto_compile disabled', async () => {
-      w.FPBState.toolTerminal = new MockTerminal();
-      const watchDirsSection =
-        browserGlobals.document.getElementById('watchDirsSection');
-      watchDirsSection.style.display = 'block';
-      setFetchResponse('/api/config/schema', {
-        schema: [
-          { key: 'auto_compile', config_type: 'boolean', default: false },
-        ],
-        groups: {},
-        group_order: [],
-      });
-      setFetchResponse('/api/config', { auto_compile: false });
-      setFetchResponse('/api/status', { connected: false });
-      await w.loadConfig();
-      assertEqual(typeof w.loadConfig, 'function');
-      w.FPBState.toolTerminal = null;
-    });
-
     it('calls updateWatchDirsList with watch_dirs', async () => {
       w.FPBState.toolTerminal = new MockTerminal();
       setFetchResponse('/api/config/schema', {
@@ -764,31 +725,6 @@ module.exports = function (w) {
   });
 
   describe('onAutoCompileChange Function - Extended', () => {
-    it('shows watchDirsSection when enabled', () => {
-      w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.autoInjectPollInterval = null;
-      const watchDirsSection =
-        browserGlobals.document.getElementById('watchDirsSection');
-      browserGlobals.document.getElementById('autoCompile').checked = true;
-      setFetchResponse('/api/config', { success: true });
-      w.onAutoCompileChange();
-      assertEqual(watchDirsSection.style.display, 'block');
-      w.stopAutoInjectPolling();
-      w.FPBState.toolTerminal = null;
-    });
-
-    it('hides watchDirsSection when disabled', () => {
-      w.FPBState.toolTerminal = new MockTerminal();
-      const watchDirsSection =
-        browserGlobals.document.getElementById('watchDirsSection');
-      watchDirsSection.style.display = 'block';
-      browserGlobals.document.getElementById('autoCompile').checked = false;
-      setFetchResponse('/api/config', { success: true });
-      w.onAutoCompileChange();
-      assertEqual(watchDirsSection.style.display, 'none');
-      w.FPBState.toolTerminal = null;
-    });
-
     it('starts polling when enabled', () => {
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.autoInjectPollInterval = null;

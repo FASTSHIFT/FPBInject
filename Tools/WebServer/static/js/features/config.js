@@ -69,12 +69,6 @@ async function loadConfig() {
     // Update path input state based on recording status
     updateLogFilePathState(data.log_file_enabled || false);
 
-    // Update watch dirs section visibility
-    const watchDirsSection = document.getElementById('watchDirsSection');
-    if (watchDirsSection) {
-      watchDirsSection.style.display = data.auto_compile ? 'block' : 'none';
-    }
-
     updateWatcherStatus(data.auto_compile);
 
     if (data.auto_compile) {
@@ -97,6 +91,17 @@ async function loadConfigValuesFromData(data) {
 
   for (const item of schema.schema) {
     const elementId = keyToElementId(item.key);
+
+    // Handle path_list separately (no direct element with elementId)
+    if (item.config_type === 'path_list') {
+      let value = data[item.key];
+      if (value === undefined || value === null) {
+        value = item.default;
+      }
+      updatePathList(item.key, value || []);
+      continue;
+    }
+
     const el = document.getElementById(elementId);
     if (!el) continue;
 
@@ -110,9 +115,6 @@ async function loadConfigValuesFromData(data) {
     } else if (item.config_type === 'number' && item.ui_multiplier !== 1) {
       // Apply UI multiplier (e.g., seconds to ms)
       el.value = Math.round(value * item.ui_multiplier);
-    } else if (item.config_type === 'path_list') {
-      // Handle path list separately
-      updatePathList(item.key, value || []);
     } else {
       el.value = value || '';
     }
@@ -370,12 +372,6 @@ function removeWatchDir(btn) {
 
 function onAutoCompileChange() {
   const enabled = document.getElementById('autoCompile')?.checked || false;
-
-  // Update watch dirs section visibility
-  const watchDirsSection = document.getElementById('watchDirsSection');
-  if (watchDirsSection) {
-    watchDirsSection.style.display = enabled ? 'block' : 'none';
-  }
 
   updateWatcherStatus(enabled);
 
