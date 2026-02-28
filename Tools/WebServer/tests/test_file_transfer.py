@@ -384,7 +384,7 @@ class TestFileTransferRemoveMkdir(unittest.TestCase):
         success, msg = self.ft.frename("/old.txt", "/new.txt")
         self.assertTrue(success)
         self.mock_fpb.send_fl_cmd.assert_called_with(
-            "fl -c frename --path /old.txt --newpath /new.txt",
+            'fl -c frename --path "/old.txt" --newpath "/new.txt"',
             timeout=2.0,
             max_retries=3,
         )
@@ -1437,6 +1437,66 @@ class TestFileTransferLogCallback(unittest.TestCase):
         self.assertTrue(callback.called)
         log_messages = [call[0][0] for call in callback.call_args_list]
         self.assertTrue(any("timeout" in msg.lower() for msg in log_messages))
+
+
+class TestPathSanitization(unittest.TestCase):
+    """Tests for path sanitization to prevent command injection."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_fpb = Mock()
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK]")
+
+    def test_path_with_newline_rejected(self):
+        """Test path with newline is rejected."""
+        ft = FileTransfer(self.mock_fpb)
+        with self.assertRaises(ValueError) as ctx:
+            ft.fopen("/path\nwith\nnewline", "r")
+        self.assertIn("control characters", str(ctx.exception))
+
+    def test_path_with_carriage_return_rejected(self):
+        """Test path with carriage return is rejected."""
+        ft = FileTransfer(self.mock_fpb)
+        with self.assertRaises(ValueError) as ctx:
+            ft.fstat("/path\rwith\rcarriage")
+        self.assertIn("control characters", str(ctx.exception))
+
+    def test_path_with_quotes_escaped(self):
+        """Test path with quotes is properly escaped."""
+        ft = FileTransfer(self.mock_fpb)
+        ft.flist('/path/with"quotes"')
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        # Verify quotes are escaped
+        self.assertIn('\\"', call_args)
+        # Verify the path is properly quoted
+        self.assertIn('--path "/path/with', call_args)
+
+    def test_normal_path_unchanged(self):
+        """Test normal path works correctly."""
+        ft = FileTransfer(self.mock_fpb)
+        ft.fopen("/normal/path/file.txt", "r")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn('"/normal/path/file.txt"', call_args)
+
+    def test_fmkdir_sanitizes_path(self):
+        """Test fmkdir sanitizes path."""
+        ft = FileTransfer(self.mock_fpb)
+        with self.assertRaises(ValueError):
+            ft.fmkdir("/dir\nname")
+
+    def test_fremove_sanitizes_path(self):
+        """Test fremove sanitizes path."""
+        ft = FileTransfer(self.mock_fpb)
+        with self.assertRaises(ValueError):
+            ft.fremove("/file\rname")
+
+    def test_frename_sanitizes_both_paths(self):
+        """Test frename sanitizes both old and new paths."""
+        ft = FileTransfer(self.mock_fpb)
+        with self.assertRaises(ValueError):
+            ft.frename("/old\npath", "/new/path")
+        with self.assertRaises(ValueError):
+            ft.frename("/old/path", "/new\npath")
 
 
 if __name__ == "__main__":
