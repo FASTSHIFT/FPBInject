@@ -326,7 +326,8 @@ class TestKnownConfigItems(unittest.TestCase):
         self.assertEqual(item.group, ConfigGroup.INJECT)
         self.assertEqual(item.config_type, ConfigType.PATH_LIST)
         self.assertEqual(item.default, [])
-        self.assertEqual(item.depends_on, "auto_compile")
+        # watch_dirs is now independent of auto_compile (no depends_on)
+        self.assertIsNone(item.depends_on)
 
     def test_tx_chunk_delay_ui_multiplier(self):
         """Test tx_chunk_delay has UI multiplier for ms display."""
