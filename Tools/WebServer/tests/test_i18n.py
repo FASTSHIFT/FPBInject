@@ -748,6 +748,8 @@ class TestHardcodedTextDetection(unittest.TestCase):
             (r"\.innerHTML\s*=\s*['\"]([A-Z][a-zA-Z\s]+)['\"]", "innerHTML"),
             # title attribute assignments (tooltips)
             (r"\.title\s*=\s*['\"`]([A-Z][a-zA-Z\s:\.]+)['\"`]", "title"),
+            # title="..." in template strings (hardcoded tooltips)
+            (r'title="([A-Z][a-zA-Z\s]+)"', "title attr"),
         ]
 
         # Whitelist for JS - technical terms and acceptable hardcoded text
@@ -796,7 +798,36 @@ class TestHardcodedTextDetection(unittest.TestCase):
                         if "${" in match_text or "{{" in match_text:
                             continue
                         issues.append(
-                            f"{filename}:{line_num} ({pattern_type}): '{match_text}'"
+                            f"core/{filename}:{line_num} ({pattern_type}): '{match_text}'"
+                        )
+
+        # Also scan features directory
+        js_features_dir = os.path.join(BASE_DIR, "static", "js", "features")
+        for filename in os.listdir(js_features_dir):
+            if not filename.endswith(".js"):
+                continue
+
+            filepath = os.path.join(js_features_dir, filename)
+            with open(filepath, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            for line_num, line in enumerate(lines, 1):
+                # Skip lines that already use t() function
+                if "t(" in line:
+                    continue
+
+                for pattern, pattern_type in js_hardcoded_patterns:
+                    matches = re.findall(pattern, line)
+                    for match in matches:
+                        match_text = match.strip()
+                        # Skip if whitelisted or too short
+                        if match_text in js_whitelist or len(match_text) < 3:
+                            continue
+                        # Skip if it's a variable or contains special chars
+                        if "${" in match_text or "{{" in match_text:
+                            continue
+                        issues.append(
+                            f"features/{filename}:{line_num} ({pattern_type}): '{match_text}'"
                         )
 
         # This test should FAIL if there are hardcoded strings

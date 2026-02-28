@@ -339,13 +339,16 @@ function addWatchDirItem(path, index = null) {
 
   const item = document.createElement('div');
   item.className = 'watch-dir-item';
+  const browseTitle = typeof t === 'function' ? t('buttons.browse') : 'Browse';
+  const removeTitle = typeof t === 'function' ? t('buttons.remove') : 'Remove';
+
   item.innerHTML = `
     <input type="text" value="${path}" placeholder="/path/to/dir" onchange="saveConfig(true)" />
     <div class="dir-actions">
-      <button class="dir-btn" onclick="browseWatchDir(this)" title="Browse">
+      <button class="dir-btn" onclick="browseWatchDir(this)" title="${browseTitle}">
         <i class="codicon codicon-folder-opened" style="font-size: 12px;"></i>
       </button>
-      <button class="dir-btn" onclick="removeWatchDir(this)" title="Remove">
+      <button class="dir-btn" onclick="removeWatchDir(this)" title="${removeTitle}">
         <i class="codicon codicon-close" style="font-size: 12px;"></i>
       </button>
     </div>

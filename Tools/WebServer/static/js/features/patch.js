@@ -363,7 +363,7 @@ async function performInject() {
   };
 
   progressEl.style.display = 'flex';
-  progressText.textContent = 'Starting...';
+  progressText.textContent = t('statusbar.starting');
   progressFill.style.width = '5%';
   progressFill.style.background = '';
 
@@ -407,7 +407,7 @@ async function performInject() {
 
             if (data.type === 'status') {
               if (data.stage === 'compiling') {
-                progressText.textContent = 'Compiling...';
+                progressText.textContent = t('statusbar.compiling');
                 progressFill.style.width = '20%';
               }
             } else if (data.type === 'progress') {

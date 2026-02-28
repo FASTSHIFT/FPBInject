@@ -214,11 +214,14 @@ function renderPathList(item, elementId, tooltip) {
   const label = getConfigLabel(item);
   const i18nLabel = `data-i18n="config.labels.${item.key}"`;
 
+  const addTitle =
+    typeof t === 'function' && isI18nReady() ? t('buttons.add') : 'Add';
+
   return `
     <div class="config-item config-item-path-list" id="${elementId}Section"${dependsAttr}${tooltip}>
       <div class="config-path-list-header">
         <span ${i18nLabel}>${label}</span>
-        <button class="vscode-btn icon-only secondary" onclick="addPathListItem('${item.key}')" title="Add">
+        <button class="vscode-btn icon-only secondary" onclick="addPathListItem('${item.key}')" title="${addTitle}">
           <i class="codicon codicon-add"></i>
         </button>
       </div>
@@ -547,13 +550,18 @@ function addPathListItemElement(key, path) {
 
   const item = document.createElement('div');
   item.className = 'config-path-list-item';
+  const browseTitle =
+    typeof t === 'function' && isI18nReady() ? t('buttons.browse') : 'Browse';
+  const removeTitle =
+    typeof t === 'function' && isI18nReady() ? t('buttons.remove') : 'Remove';
+
   item.innerHTML = `
     <input type="text" value="${escapeHtml(path)}" class="vscode-input"
            onchange="onConfigItemChange('${key}')" />
-    <button class="vscode-btn icon-only secondary" onclick="browsePathListItem(this, '${key}')" title="Browse">
+    <button class="vscode-btn icon-only secondary" onclick="browsePathListItem(this, '${key}')" title="${browseTitle}">
       <i class="codicon codicon-folder-opened"></i>
     </button>
-    <button class="vscode-btn icon-only secondary" onclick="removePathListItem(this, '${key}')" title="Remove">
+    <button class="vscode-btn icon-only secondary" onclick="removePathListItem(this, '${key}')" title="${removeTitle}">
       <i class="codicon codicon-close"></i>
     </button>
   `;

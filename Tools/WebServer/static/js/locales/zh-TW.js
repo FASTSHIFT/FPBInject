@@ -109,6 +109,7 @@ window.i18nResources['zh-TW'] = {
     // 狀態列
     statusbar: {
       ready: '就緒',
+      starting: '啟動中...',
       compiling: '編譯中...',
       injecting: '注入中...',
       connected: '已連線',

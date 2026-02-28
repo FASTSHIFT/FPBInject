@@ -110,6 +110,7 @@ window.i18nResources['en'] = {
     // Status bar
     statusbar: {
       ready: 'Ready',
+      starting: 'Starting...',
       compiling: 'Compiling...',
       injecting: 'Injecting...',
       connected: 'Connected',

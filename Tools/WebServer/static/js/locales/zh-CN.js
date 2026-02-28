@@ -109,6 +109,7 @@ window.i18nResources['zh-CN'] = {
     // 状态栏
     statusbar: {
       ready: '就绪',
+      starting: '启动中...',
       compiling: '编译中...',
       injecting: '注入中...',
       connected: '已连接',
