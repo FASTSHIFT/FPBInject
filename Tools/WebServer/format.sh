@@ -5,6 +5,7 @@
 
 # Auto-format script for FPBInject WebServer
 # Formats all Python, JavaScript, HTML, and CSS files by extension
+# Supports parallel execution for faster formatting
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -20,14 +21,49 @@ echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}  FPBInject WebServer Code Formatter${NC}"
 echo -e "${BLUE}================================================${NC}"
 
-# Track formatting status
-FORMATTED=0
-FAILED=0
+# Temp files for parallel result collection
+TMPDIR_FMT=$(mktemp -d)
+trap "rm -rf $TMPDIR_FMT" EXIT
+
+# Common exclude patterns for find
+FIND_EXCLUDE_COMMON=(
+    -not -path "./htmlcov/*"
+    -not -path "./coverage/*"
+    -not -path "./tests/htmlcov/*"
+    -not -path "./tests/coverage/*"
+    -not -path "./node_modules/*"
+    -not -path "./.venv/*"
+    -not -path "./venv/*"
+)
+
+# ============================================================
+# Detect available prettier command (shared by JS/HTML/CSS)
+# ============================================================
+detect_prettier() {
+    if command -v prettier &>/dev/null; then
+        echo "prettier"
+    elif command -v npx &>/dev/null; then
+        # Check Node.js version (prettier requires Node >= 14)
+        if command -v node &>/dev/null; then
+            local node_version=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
+            if [ -n "$node_version" ] && [ "$node_version" -lt 14 ]; then
+                return 1
+            fi
+        fi
+        echo "npx --yes prettier"
+    else
+        return 1
+    fi
+}
+
+# ============================================================
+# Format functions - batch mode (pass all files at once)
+# ============================================================
 
 format_python() {
+    local result_file="$TMPDIR_FMT/python"
     echo -e "\n${GREEN}📦 Formatting Python files (*.py)...${NC}"
 
-    # Check for black via python -m
     if python -m black --version &>/dev/null; then
         echo -e "   Using $(python -m black --version)"
     else
@@ -35,179 +71,65 @@ format_python() {
         pip install black -q
     fi
 
-    # Find all Python files, exclude cache and coverage directories
     local files=$(find . -name "*.py" \
         -not -path "./__pycache__/*" \
-        -not -path "./htmlcov/*" \
-        -not -path "./coverage/*" \
-        -not -path "./tests/htmlcov/*" \
-        -not -path "./tests/coverage/*" \
-        -not -path "./.venv/*" \
-        -not -path "./venv/*" \
+        "${FIND_EXCLUDE_COMMON[@]}" \
         2>/dev/null | sort)
 
     if [ -z "$files" ]; then
         echo "   No Python files found"
+        echo "0 0" >"$result_file"
         return
     fi
 
-    for file in $files; do
-        echo -n "   Formatting $file... "
-        if python -m black --quiet --line-length 88 "$file" 2>/dev/null; then
-            echo -e "${GREEN}✓${NC}"
-            FORMATTED=$((FORMATTED + 1))
-        else
-            echo -e "${RED}✗${NC}"
-            FAILED=$((FAILED + 1))
-        fi
-    done
+    local count=$(echo "$files" | wc -l)
+
+    # black supports batch: pass all files at once
+    if python -m black --quiet --line-length 88 $files 2>/dev/null; then
+        echo -e "   ${GREEN}Python: $count file(s) formatted ✓${NC}"
+        echo "$count 0" >"$result_file"
+    else
+        echo -e "   ${RED}Python: black failed on some files ✗${NC}"
+        echo "0 $count" >"$result_file"
+    fi
 }
 
-format_javascript() {
-    echo -e "\n${GREEN}📦 Formatting JavaScript files (*.js)...${NC}"
+format_prettier_batch() {
+    local label="$1"
+    local ext="$2"
+    local extra_args="$3"
+    local result_file="$TMPDIR_FMT/$ext"
 
-    # Find all JS files
-    local files=$(find . -name "*.js" \
-        -not -path "./node_modules/*" \
-        -not -path "./.venv/*" \
-        -not -path "./htmlcov/*" \
-        -not -path "./coverage/*" \
-        -not -path "./tests/htmlcov/*" \
-        -not -path "./tests/coverage/*" \
+    echo -e "\n${GREEN}📦 Formatting $label files (*.$ext)...${NC}"
+
+    local formatter
+    formatter=$(detect_prettier)
+    if [ $? -ne 0 ]; then
+        echo -e "${YELLOW}   ⚠️  prettier not found or Node too old, skipping $label${NC}"
+        echo "0 0" >"$result_file"
+        return
+    fi
+
+    local files=$(find . -name "*.$ext" \
+        "${FIND_EXCLUDE_COMMON[@]}" \
         2>/dev/null | sort)
 
     if [ -z "$files" ]; then
-        echo "   No JavaScript files found"
+        echo "   No $label files found"
+        echo "0 0" >"$result_file"
         return
     fi
 
-    # Check Node.js version (prettier requires Node >= 14)
-    if command -v node &>/dev/null; then
-        local node_version=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
-        if [ -n "$node_version" ] && [ "$node_version" -lt 14 ]; then
-            echo -e "${YELLOW}   ⚠️  Node.js version too old (need >= 14), skipping JavaScript${NC}"
-            return
-        fi
-    fi
+    local count=$(echo "$files" | wc -l)
 
-    # Try prettier, then npx prettier with auto-install
-    local formatter=""
-    if command -v prettier &>/dev/null; then
-        formatter="prettier"
-    elif command -v npx &>/dev/null; then
-        echo -e "${YELLOW}   Using npx prettier...${NC}"
-        formatter="npx --yes prettier"
+    # prettier supports batch: pass all files at once
+    if $formatter --write $extra_args $files >/dev/null 2>&1; then
+        echo -e "   ${GREEN}$label: $count file(s) formatted ✓${NC}"
+        echo "$count 0" >"$result_file"
     else
-        echo -e "${YELLOW}   ⚠️  prettier not found, skipping JavaScript${NC}"
-        return
+        echo -e "   ${RED}$label: prettier failed on some files ✗${NC}"
+        echo "0 $count" >"$result_file"
     fi
-
-    for file in $files; do
-        echo -n "   Formatting $file... "
-        if $formatter --write --single-quote "$file" >/dev/null 2>&1; then
-            echo -e "${GREEN}✓${NC}"
-            FORMATTED=$((FORMATTED + 1))
-        else
-            echo -e "${RED}✗${NC}"
-            FAILED=$((FAILED + 1))
-        fi
-    done
-}
-
-format_html() {
-    echo -e "\n${GREEN}📦 Formatting HTML files (*.html)...${NC}"
-
-    # Find all HTML files
-    local files=$(find . -name "*.html" \
-        -not -path "./htmlcov/*" \
-        -not -path "./coverage/*" \
-        -not -path "./tests/htmlcov/*" \
-        -not -path "./tests/coverage/*" \
-        -not -path "./node_modules/*" \
-        2>/dev/null | sort)
-
-    if [ -z "$files" ]; then
-        echo "   No HTML files found"
-        return
-    fi
-
-    # Check Node.js version
-    if command -v node &>/dev/null; then
-        local node_version=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
-        if [ -n "$node_version" ] && [ "$node_version" -lt 14 ]; then
-            echo -e "${YELLOW}   ⚠️  Node.js version too old (need >= 14), skipping HTML${NC}"
-            return
-        fi
-    fi
-
-    local formatter=""
-    if command -v prettier &>/dev/null; then
-        formatter="prettier"
-    elif command -v npx &>/dev/null; then
-        formatter="npx --yes prettier"
-    else
-        echo -e "${YELLOW}   ⚠️  prettier not found, skipping HTML${NC}"
-        return
-    fi
-
-    for file in $files; do
-        echo -n "   Formatting $file... "
-        if $formatter --write --print-width 120 "$file" >/dev/null 2>&1; then
-            echo -e "${GREEN}✓${NC}"
-            FORMATTED=$((FORMATTED + 1))
-        else
-            echo -e "${RED}✗${NC}"
-            FAILED=$((FAILED + 1))
-        fi
-    done
-}
-
-format_css() {
-    echo -e "\n${GREEN}📦 Formatting CSS files (*.css)...${NC}"
-
-    # Find all CSS files
-    local files=$(find . -name "*.css" \
-        -not -path "./htmlcov/*" \
-        -not -path "./coverage/*" \
-        -not -path "./tests/htmlcov/*" \
-        -not -path "./tests/coverage/*" \
-        -not -path "./node_modules/*" \
-        2>/dev/null | sort)
-
-    if [ -z "$files" ]; then
-        echo "   No CSS files found"
-        return
-    fi
-
-    # Check Node.js version
-    if command -v node &>/dev/null; then
-        local node_version=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
-        if [ -n "$node_version" ] && [ "$node_version" -lt 14 ]; then
-            echo -e "${YELLOW}   ⚠️  Node.js version too old (need >= 14), skipping CSS${NC}"
-            return
-        fi
-    fi
-
-    local formatter=""
-    if command -v prettier &>/dev/null; then
-        formatter="prettier"
-    elif command -v npx &>/dev/null; then
-        formatter="npx --yes prettier"
-    else
-        echo -e "${YELLOW}   ⚠️  prettier not found, skipping CSS${NC}"
-        return
-    fi
-
-    for file in $files; do
-        echo -n "   Formatting $file... "
-        if $formatter --write "$file" >/dev/null 2>&1; then
-            echo -e "${GREEN}✓${NC}"
-            FORMATTED=$((FORMATTED + 1))
-        else
-            echo -e "${RED}✗${NC}"
-            FAILED=$((FAILED + 1))
-        fi
-    done
 }
 
 lint_python() {
@@ -220,11 +142,7 @@ lint_python() {
 
     local files=$(find . -name "*.py" \
         -not -path "*/__pycache__/*" \
-        -not -path "*/htmlcov/*" \
-        -not -path "*/coverage/*" \
-        -not -path "*/.venv/*" \
-        -not -path "*/venv/*" \
-        -not -path "*/node_modules/*" \
+        "${FIND_EXCLUDE_COMMON[@]}" \
         2>/dev/null | sort)
 
     if [ -z "$files" ]; then
@@ -232,29 +150,42 @@ lint_python() {
         return
     fi
 
-    local lint_errors=0
+    # Split into test and non-test files for different ignore rules
+    local test_files=""
+    local src_files=""
     for file in $files; do
-        # For test files, also ignore E402 (module level import not at top)
-        # because tests need to modify sys.path before imports
         if [[ "$file" == *"/tests/"* ]]; then
-            if ! flake8 --ignore=E501,W503,E203,E402 --max-line-length=120 "$file" 2>/dev/null; then
-                lint_errors=$((lint_errors + 1))
-            fi
+            test_files="$test_files $file"
         else
-            if ! flake8 --ignore=E501,W503,E203 --max-line-length=120 "$file" 2>/dev/null; then
-                lint_errors=$((lint_errors + 1))
-            fi
+            src_files="$src_files $file"
         fi
     done
+
+    local lint_errors=0
+
+    # Batch lint: pass all files at once per category
+    if [ -n "$src_files" ]; then
+        if ! flake8 --ignore=E501,W503,E203 --max-line-length=120 $src_files 2>/dev/null; then
+            lint_errors=$((lint_errors + 1))
+        fi
+    fi
+
+    if [ -n "$test_files" ]; then
+        if ! flake8 --ignore=E501,W503,E203,E402 --max-line-length=120 $test_files 2>/dev/null; then
+            lint_errors=$((lint_errors + 1))
+        fi
+    fi
 
     if [ $lint_errors -eq 0 ]; then
         echo -e "   ${GREEN}All Python files passed linting ✓${NC}"
     else
-        echo -e "   ${YELLOW}$lint_errors file(s) have linting warnings${NC}"
+        echo -e "   ${YELLOW}$lint_errors category(s) have linting warnings${NC}"
     fi
 }
 
+# ============================================================
 # Parse arguments
+# ============================================================
 CHECK_ONLY=false
 LINT=false
 
@@ -284,15 +215,43 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Run formatters
 if [ "$CHECK_ONLY" = true ]; then
     echo -e "${YELLOW}Running in check-only mode...${NC}"
 fi
 
-format_python
-format_javascript
-format_html
-format_css
+# ============================================================
+# Run formatters in parallel
+# Python (black) and Prettier (JS/HTML/CSS) are independent
+# ============================================================
+echo -e "\n${BLUE}Running formatters in parallel...${NC}"
+
+format_python &
+PID_PYTHON=$!
+
+# JS, HTML, CSS all use prettier - run them in parallel too
+# (each is a separate prettier invocation with different args)
+format_prettier_batch "JavaScript" "js" "--single-quote" &
+PID_JS=$!
+
+format_prettier_batch "HTML" "html" "--print-width 120" &
+PID_HTML=$!
+
+format_prettier_batch "CSS" "css" "" &
+PID_CSS=$!
+
+# Wait for all formatters
+wait $PID_PYTHON $PID_JS $PID_HTML $PID_CSS
+
+# Collect results
+FORMATTED=0
+FAILED=0
+for result_file in "$TMPDIR_FMT"/*; do
+    if [ -f "$result_file" ]; then
+        read ok fail <"$result_file"
+        FORMATTED=$((FORMATTED + ${ok:-0}))
+        FAILED=$((FAILED + ${fail:-0}))
+    fi
+done
 
 if [ "$LINT" = true ]; then
     lint_python
