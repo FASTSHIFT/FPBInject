@@ -18,8 +18,8 @@ FPBInject uses the Flash Patch and Breakpoint (FPB) hardware unit to intercept f
 
 ```mermaid
 flowchart LR
-    A["caller()\ncalls foo()"] -->|"FPB intercepts\nfoo's address"| B["Trampoline\nin Flash"]
-    B -->|"Jump to RAM"| C["Your Code\nin RAM"]
+    A["caller()<br/>calls foo()"] -->|"FPB intercepts<br/>foo's address"| B["Trampoline<br/>in Flash"]
+    B -->|"Jump to RAM"| C["Your Code<br/>in RAM"]
 ```
 
 The FPB unit matches the target function's address, redirects execution through a trampoline in Flash, which jumps to your replacement function in RAM. All handled by hardware — zero software overhead on the call path.

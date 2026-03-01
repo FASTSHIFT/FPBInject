@@ -18,8 +18,8 @@ FPBInject 利用 Flash Patch and Breakpoint（FPB）硬件单元拦截函数调�
 
 ```mermaid
 flowchart LR
-    A["caller()\n调用 foo()"] -->|"FPB 拦截\nfoo 的地址"| B["跳板代码\nFlash 中"]
-    B -->|"跳转到 RAM"| C["你的代码\nRAM 中"]
+    A["caller()<br/>调用 foo()"] -->|"FPB 拦截<br/>foo 的地址"| B["跳板代码<br/>Flash 中"]
+    B -->|"跳转到 RAM"| C["你的代码<br/>RAM 中"]
 ```
 
 FPB 单元匹配目标函数地址，通过 Flash 中的跳板代码将执行重定向到 RAM 中的替换函数。全程由硬件完成，调用路径零软件开销。
