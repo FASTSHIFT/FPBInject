@@ -6,7 +6,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FASTSHIFT/FPBInject)
 [![CI](https://github.com/FASTSHIFT/FPBInject/actions/workflows/ci.yml/badge.svg)](https://github.com/FASTSHIFT/FPBInject/actions/workflows/ci.yml)
 
-Runtime code injection for ARM Cortex-M3/M4. Replace any function on a running MCU through a serial connection — no reflashing, no debugger, no downtime.
+Runtime code injection for ARM Cortex-M. Replace any function on a running MCU through a serial connection — no reflashing, no debugger, no downtime.
 
 FPBInject uses the Flash Patch and Breakpoint (FPB) hardware unit to intercept function calls and redirect them to your custom code in RAM, while the original Flash stays untouched.
 
@@ -103,10 +103,10 @@ void digitalWrite(uint8_t pin, uint8_t value) {
 
 | Feature | Spec |
 |---------|------|
-| Architecture | ARM Cortex-M3/M4 (ARMv7-M) |
+| Architecture | ARMv7-M, ARMv8-M |
 | Tested MCU | STM32F103C8T6 |
 | Patch Slots | 6 (FPB v1) or 8 (FPB v2) |
-| Patch Modes | Trampoline (REMAP), DebugMonitor (BKPT), Direct |
+| Patch Modes | Trampoline / Direct (ARMv7-M REMAP), DebugMonitor (ARMv8-M BKPT) |
 | RTOS Support | Bare-metal, NuttX |
 | Connection | Serial (USB-to-UART or USB CDC) |
 
