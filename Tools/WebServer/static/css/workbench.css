@@ -1656,6 +1656,270 @@ input[type="checkbox"] {
   }
 }
 
+/* ===========================
+   CSS ANIMATIONS
+   =========================== */
+
+/* --- Keyframes --- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulseGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(78, 201, 176, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(78, 201, 176, 0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes statusPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes borderGlow {
+  0%,
+  100% {
+    border-color: var(--vscode-focus-border);
+  }
+  50% {
+    border-color: transparent;
+  }
+}
+
+/* --- Tab content fade-in on switch --- */
+.tab-content.active {
+  animation: fadeIn 0.18s ease-out;
+}
+
+/* --- Sidebar section expand animation --- */
+details[open] > .sidebar-content {
+  animation: slideInUp 0.2s ease-out;
+}
+
+/* --- Sidebar chevron smooth rotation (already has transition, enhance) --- */
+.sidebar-header .codicon-chevron-right {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Slot item staggered entrance --- */
+.slot-container .slot-item {
+  animation: slideInLeft 0.2s ease-out both;
+}
+.slot-container .slot-item:nth-child(1) {
+  animation-delay: 0s;
+}
+.slot-container .slot-item:nth-child(2) {
+  animation-delay: 0.03s;
+}
+.slot-container .slot-item:nth-child(3) {
+  animation-delay: 0.06s;
+}
+.slot-container .slot-item:nth-child(4) {
+  animation-delay: 0.09s;
+}
+.slot-container .slot-item:nth-child(5) {
+  animation-delay: 0.12s;
+}
+.slot-container .slot-item:nth-child(6) {
+  animation-delay: 0.15s;
+}
+.slot-container .slot-item:nth-child(7) {
+  animation-delay: 0.18s;
+}
+.slot-container .slot-item:nth-child(8) {
+  animation-delay: 0.21s;
+}
+
+/* --- Occupied slot indicator pulse --- */
+.slot-item.occupied .slot-indicator {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* --- Button press effect --- */
+.vscode-btn:active {
+  transform: scale(0.96);
+  transition: transform 0.08s ease-out;
+}
+
+.small-btn:active {
+  transform: scale(0.94);
+  transition: transform 0.08s ease-out;
+}
+
+/* --- Activity bar item hover glow --- */
+.activity-item {
+  transition:
+    all 0.2s ease,
+    border-left-color 0.15s;
+}
+
+.activity-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.activity-item.active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* --- Symbol list item staggered fade --- */
+.symbol-item {
+  animation: slideInLeft 0.15s ease-out both;
+}
+.symbol-item:nth-child(n + 2) {
+  animation-delay: 0.02s;
+}
+.symbol-item:nth-child(n + 4) {
+  animation-delay: 0.04s;
+}
+.symbol-item:nth-child(n + 6) {
+  animation-delay: 0.06s;
+}
+.symbol-item:nth-child(n + 8) {
+  animation-delay: 0.08s;
+}
+.symbol-item:nth-child(n + 10) {
+  animation-delay: 0.1s;
+}
+
+/* --- Modal entrance animation --- */
+.modal-overlay.show .modal {
+  animation: scaleIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Progress bar shimmer effect --- */
+.progress-bar .progress-fill {
+  background: linear-gradient(
+    90deg,
+    var(--vscode-button-bg) 0%,
+    rgba(0, 122, 204, 0.6) 40%,
+    rgba(0, 122, 204, 0.9) 50%,
+    rgba(0, 122, 204, 0.6) 60%,
+    var(--vscode-button-bg) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* --- Inject progress bar shimmer --- */
+.inject-progress .progress-fill {
+  background: linear-gradient(
+    90deg,
+    var(--vscode-button-bg) 0%,
+    rgba(0, 122, 204, 0.6) 40%,
+    rgba(0, 122, 204, 0.9) 50%,
+    rgba(0, 122, 204, 0.6) 60%,
+    var(--vscode-button-bg) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* --- Status bar connection indicator --- */
+.status-item .codicon-circle-filled {
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+/* --- Device file list drag-over border animation --- */
+.device-file-list.drag-over {
+  animation: borderGlow 1s ease-in-out infinite;
+}
+
+/* --- File item entrance --- */
+.device-file-item {
+  animation: slideInLeft 0.12s ease-out both;
+}
+
+/* --- Panel tab underline slide --- */
+.panel-tab {
+  position: relative;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.panel-tab.active {
+  transition: border-bottom-color 0.25s ease;
+}
+
+/* --- Input focus glow --- */
+.vscode-input:focus {
+  box-shadow: 0 0 0 1px var(--vscode-focus-border);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+/* --- Sash hover transition --- */
+.sash {
+  transition: background 0.2s ease;
+}
+
+/* --- Reduce motion for accessibility --- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* 4K displays (2160p and above) */
 @media screen and (min-width: 3200px),
   screen and (min-resolution: 192dpi) and (min-width: 2400px) {
