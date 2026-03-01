@@ -6,6 +6,7 @@ Flask-Cors
 pyserial
 watchdog
 tree_sitter
+mcp
 
 # Test dependencies
 coverage
