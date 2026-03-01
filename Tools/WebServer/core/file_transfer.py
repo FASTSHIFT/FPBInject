@@ -20,6 +20,13 @@ from utils.crc import crc16
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_path(path: str) -> str:
+    """Sanitize path to prevent command injection."""
+    if "\r" in path or "\n" in path:
+        raise ValueError("Path contains control characters")
+    return path.replace('"', '\\"')
+
+
 class FileTransfer:
     """File transfer handler for device communication."""
 
@@ -113,7 +120,8 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f"fl -c fopen --path {path} --mode {mode}"
+        path = _sanitize_path(path)
+        cmd = f'fl -c fopen --path "{path}" --mode {mode}'
         return self._send_cmd(cmd)
 
     def fwrite(
@@ -344,23 +352,25 @@ class FileTransfer:
             Tuple of (success, stat_dict)
             stat_dict contains: size, mtime, type
         """
-        cmd = f"fl -c fstat --path {path}"
+        path = _sanitize_path(path)
+        cmd = f'fl -c fstat --path "{path}"'
         success, response = self._send_cmd(cmd)
 
         if not success:
             return False, {"error": response}
 
         # Parse: [FLOK] FSTAT <path> size=<n> mtime=<t> type=<file|dir>
+        # Path may contain spaces, so match everything before "size="
         match = re.search(
-            r"FSTAT\s+\S+\s+size=(\d+)\s+mtime=(\d+)\s+type=(\w+)", response
+            r"FSTAT\s+(.+?)\s+size=(\d+)\s+mtime=(\d+)\s+type=(\w+)", response
         )
         if not match:
             return False, {"error": f"Invalid response: {response}"}
 
         return True, {
-            "size": int(match.group(1)),
-            "mtime": int(match.group(2)),
-            "type": match.group(3),
+            "size": int(match.group(2)),
+            "mtime": int(match.group(3)),
+            "type": match.group(4),
         }
 
     def flist(self, path: str) -> Tuple[bool, List[Dict[str, Any]]]:
@@ -374,7 +384,8 @@ class FileTransfer:
             Tuple of (success, entries_list)
             Each entry contains: name, type, size
         """
-        cmd = f"fl -c flist --path {path}"
+        path = _sanitize_path(path)
+        cmd = f'fl -c flist --path "{path}"'
         success, response = self._send_cmd(cmd, timeout=5.0)
 
         if not success:
@@ -414,7 +425,8 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f"fl -c fremove --path {path}"
+        path = _sanitize_path(path)
+        cmd = f'fl -c fremove --path "{path}"'
         return self._send_cmd(cmd)
 
     def fmkdir(self, path: str) -> Tuple[bool, str]:
@@ -427,7 +439,8 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f"fl -c fmkdir --path {path}"
+        path = _sanitize_path(path)
+        cmd = f'fl -c fmkdir --path "{path}"'
         return self._send_cmd(cmd)
 
     def frename(self, old_path: str, new_path: str) -> Tuple[bool, str]:
@@ -441,7 +454,9 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f"fl -c frename --path {old_path} --newpath {new_path}"
+        old_path = _sanitize_path(old_path)
+        new_path = _sanitize_path(new_path)
+        cmd = f'fl -c frename --path "{old_path}" --newpath "{new_path}"'
         return self._send_cmd(cmd)
 
     def upload(
