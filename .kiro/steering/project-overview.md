@@ -40,4 +40,3 @@ FPBInject 是一个 ARM Cortex-M 微控制器的运行时代码注入系统，�
 
 - 架构文档：`Docs/Architecture.md`
 - CLI 文档：`Docs/CLI.md`
-- AI 集成 / CLI Skills：`Tools/WebServer/docs/SKILLS.md`

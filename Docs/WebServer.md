@@ -158,6 +158,5 @@ WebServer/
 
 ## Related Documentation
 
-- [CLI Tool](CLI.md) - Command-line interface
+- [CLI Tool](CLI.md) - Command-line interface & AI integration guide
 - [Architecture](Architecture.md) - Technical details
-- [SKILLS.md](../Tools/WebServer/docs/SKILLS.md) - AI integration skills
