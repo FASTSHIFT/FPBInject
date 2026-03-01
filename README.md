@@ -1,4 +1,4 @@
-# FPBInject - Cortex-M Runtime Code Injection
+# FPBInject
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-STM32F103-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103.html)
@@ -6,19 +6,41 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FASTSHIFT/FPBInject)
 [![CI](https://github.com/FASTSHIFT/FPBInject/actions/workflows/ci.yml/badge.svg)](https://github.com/FASTSHIFT/FPBInject/actions/workflows/ci.yml)
 
-Runtime function hooking for ARM Cortex-M3/M4 using the FPB hardware unit. Inject custom code without modifying Flash.
+Runtime code injection for ARM Cortex-M3/M4. Replace any function on a running MCU through a serial connection — no reflashing, no debugger, no downtime.
 
-## Features
+FPBInject uses the Flash Patch and Breakpoint (FPB) hardware unit to intercept function calls and redirect them to your custom code in RAM, while the original Flash stays untouched.
 
-- ✅ **Zero Flash Modification** - Runtime injection to RAM
-- ✅ **Hardware Redirection** - FPB unit for zero-overhead patching
-- ✅ **Dual Modes** - REMAP (M3/M4) and DebugMonitor (ARMv8-M)
-- ✅ **6-8 Simultaneous Hooks** - FPB v1: 6 slots, FPB v2: 8 slots
-- ✅ **Reversible** - Restore original behavior instantly
+![FPBInject Workbench](Docs/images/webserver-overview.png)
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A["caller()\ncalls foo()"] -->|"FPB intercepts\nfoo's address"| B["Trampoline\nin Flash"]
+    B -->|"Jump to RAM"| C["Your Code\nin RAM"]
+```
+
+The FPB unit matches the target function's address, redirects execution through a trampoline in Flash, which jumps to your replacement function in RAM. All handled by hardware — zero software overhead on the call path.
+
+## Workbench
+
+FPBInject ships with a browser-based workbench for the full workflow: browse symbols, read disassembly, write patches, and inject — all from one interface.
+
+### Symbol Search & Disassembly
+
+Search the firmware's symbol table, click a function to view its disassembly or decompiled source.
+
+![Disassembly View](Docs/images/webserver-disasm.png)
+
+### Write & Inject
+
+Write your replacement function in C, hit inject. The workbench compiles, uploads, and patches — typically under a second.
+
+![Inject View](Docs/images/webserver-inject.png)
 
 ## Quick Start
 
-### Build
+### 1. Build & Flash Firmware
 
 ```bash
 git clone https://github.com/FASTSHIFT/FPBInject.git
@@ -26,98 +48,112 @@ cd FPBInject
 
 cmake -B build -DAPP_SELECT=3 -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
 cmake --build build
-```
 
-### Flash
-
-```bash
 st-flash write build/FPBInject.bin 0x08000000
 ```
 
-### Inject via CLI
+### 2. Start the Workbench
 
 ```bash
 cd Tools/WebServer
-pip install pyserial
+pip install -r ../requirements.txt
+python main.py
+```
 
-# Analyze target function
-python fpb_cli.py analyze build/FPBInject.elf digitalWrite
+Open `http://127.0.0.1:5500` in your browser, connect to the serial port, load your ELF file, and start patching.
 
-# Inject patch
-python fpb_cli.py --port /dev/ttyACM0 --elf build/FPBInject.elf \
+### 3. Or Use the CLI
+
+All commands output JSON, designed for scripting and AI agent integration.
+
+```bash
+# Search for functions
+python fpb_cli.py search firmware.elf "gpio"
+
+# View disassembly
+python fpb_cli.py disasm firmware.elf digitalWrite
+
+# Inject a patch
+python fpb_cli.py --port /dev/ttyACM0 --elf firmware.elf \
     --compile-commands build/compile_commands.json \
     inject digitalWrite patch.c
 ```
 
-## Tools
-
-| Tool | Description |
-|------|-------------|
-| [fpb_cli.py](Docs/CLI.md) | CLI for AI integration (JSON output) |
-| [WebServer](Docs/WebServer.md) | Web UI with file monitoring |
+See the [CLI Guide](Docs/CLI.md) for the full command reference.
 
 ## Writing Patches
 
-```cpp
-// patch_digitalWrite.c
+Create a C file with the `/* FPB_INJECT */` marker. The function signature must match the original.
+
+```c
 #include <Arduino.h>
 
 /* FPB_INJECT */
 __attribute__((section(".fpb.text"), used))
 void digitalWrite(uint8_t pin, uint8_t value) {
-    // Completely replaces the original digitalWrite function
     Serial.printf("Patched: pin=%d val=%d\n", pin, value);
-    value ? GPIO_SetBits(GPIOA, 1 << pin) : GPIO_ResetBits(GPIOA, 1 << pin);
+    value ? GPIO_SetBits(GPIOA, 1 << pin)
+          : GPIO_ResetBits(GPIOA, 1 << pin);
 }
 ```
 
-> **Note**: Calling the original function from injected code is NOT supported due to FPB hardware limitations.
+> Calling the original function from injected code is not supported — the FPB redirect applies to all callers, so it would cause infinite recursion.
 
-## CMake Options
+## Supported Hardware
+
+| Feature | Spec |
+|---------|------|
+| Architecture | ARM Cortex-M3/M4 (ARMv7-M) |
+| Tested MCU | STM32F103C8T6 |
+| Patch Slots | 6 (FPB v1) or 8 (FPB v2) |
+| Patch Modes | Trampoline (REMAP), DebugMonitor (BKPT), Direct |
+| RTOS Support | Bare-metal, NuttX |
+| Connection | Serial (USB-to-UART or USB CDC) |
+
+
+<details>
+<summary>CMake Build Options</summary>
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `APP_SELECT` | 1 | Application (3=func_loader) |
-| `FL_ALLOC_MODE` | STATIC | Memory: STATIC/LIBC |
-| `FPB_NO_DEBUGMON` | OFF | Disable DebugMonitor |
+| `APP_SELECT` | 1 | Application selection (3 = func_loader) |
+| `FL_ALLOC_MODE` | STATIC | Memory allocation: STATIC or LIBC |
+| `FPB_NO_DEBUGMON` | OFF | Disable DebugMonitor mode |
 
-## Hardware
+</details>
 
-- **MCU**: STM32F103C8T6 or other Cortex-M3/M4
-- **Debugger**: ST-Link V2
-- **Serial**: USB-to-Serial or USB CDC
-
-## Documentation
-
-- [CLI Tool Guide](Docs/CLI.md)
-- [WebServer Guide](Docs/WebServer.md)
-- [Architecture Details](Docs/Architecture.md)
-- [AI Skills](Tools/WebServer/docs/SKILLS.md)
-
-## Project Structure
+<details>
+<summary>Project Structure</summary>
 
 ```
 FPBInject/
-├── App/                    # Applications and inject examples
-├── Source/                 # FPB driver and function loader
-├── Project/                # Platform HAL and Arduino API
+├── Source/                 # FPB driver, trampoline, DebugMonitor
+├── App/
+│   ├── func_loader/        # Serial protocol, memory allocator, FPB control
+│   ├── inject/             # Injection helpers
+│   └── tests/              # Firmware unit tests (host-based, with coverage)
+├── Project/                # Platform HAL (STM32F10x, Arduino API)
 ├── Tools/
-│   └── WebServer/          # CLI and Web tools
-└── Docs/                   # Documentation
+│   └── WebServer/          # Workbench (Flask backend + JS frontend) & CLI
+└── Docs/                   # Architecture, CLI reference, WebServer guide
 ```
 
-## Limitations
+</details>
 
-- FPB patches Code region only (0x00000000 - 0x1FFFFFFF)
-- FPB v1: 6 comparators (STM32F103, etc.), FPB v2: up to 8 comparators
-- Thumb/Thumb-2 instructions only
-- Debuggers may conflict with FPB
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](Docs/Architecture.md) | FPB internals, patch modes, memory layout, protocol |
+| [CLI Reference](Docs/CLI.md) | All CLI commands with examples and JSON output format |
+| [WebServer Guide](Docs/WebServer.md) | Workbench setup and usage |
 
 ## License
 
-MIT License - See [LICENSE](LICENSE)
+[MIT](LICENSE)
 
 ## References
 
-- [ARM Cortex-M3 TRM](https://developer.arm.com/documentation/ddi0337)
+- [ARM Cortex-M3 Technical Reference Manual](https://developer.arm.com/documentation/ddi0337)
+- [ARMv7-M Architecture Reference Manual](https://developer.arm.com/documentation/ddi0403)
 - [STM32F103 Reference Manual](https://www.st.com/resource/en/reference_manual/rm0008.pdf)
