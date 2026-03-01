@@ -48,6 +48,14 @@ Point the workbench at your source directory and enable file watching. Add `/* F
 
 ![Auto Inject - Workbench](Docs/images/webserver-auto-inject.png)
 
+## File Transfer (Optional)
+
+FPBInject also supports file transfer over serial — browse, upload, and download files on the device's filesystem. Supports drag-and-drop (files and folders), CRC verification, and progress tracking.
+
+Filesystem backends: POSIX (NuttX VFS, Linux), FatFS, standard C library (stdio), or custom implementations via the `fl_fs_ops_t` interface.
+
+![File Transfer](Docs/images/file-transfer.png)
+
 ## Quick Start
 
 ### 1. Build & Flash Firmware

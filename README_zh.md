@@ -48,6 +48,14 @@ FPBInject 自带浏览器工作台，支持完整工作流：浏览符号、查�
 
 ![自动注入 - 工作台](Docs/images/webserver-auto-inject.png)
 
+## 文件传输（可选）
+
+FPBInject 还支持通过串口进行文件传输 — 浏览、上传、下载设备文件系统中的文件。支持拖拽上传（文件和文件夹）、CRC 校验和传输进度显示。
+
+文件系统后端：POSIX（NuttX VFS、Linux）、FatFS、标准 C 库（stdio），或通过 `fl_fs_ops_t` 接口自定义实现。
+
+![文件传输](Docs/images/file-transfer.png)
+
 ## 快速开始
 
 ### 1. 编译与烧录固件
