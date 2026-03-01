@@ -10,7 +10,7 @@
 
 Runtime code injection for ARM Cortex-M. Replace any function on a running MCU through a serial connection — no reflashing, no debugger, no downtime.
 
-FPBInject uses the Flash Patch and Breakpoint (FPB) hardware unit to intercept function calls and redirect them to your custom code in RAM, while the original Flash stays untouched.
+FPBInject uses the [Flash Patch and Breakpoint (FPB)](https://developer.arm.com/documentation/ddi0337/h/debug/about-the-flash-patch-and-breakpoint-unit--fpb-) hardware unit to intercept function calls and redirect them to your custom code in RAM, while the original Flash stays untouched.
 
 ![FPBInject Workbench](Docs/images/webserver-overview.png)
 

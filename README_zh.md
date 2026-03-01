@@ -10,7 +10,7 @@
 
 ARM Cortex-M 运行时代码注入工具。通过串口连接，在不重新烧录、不需要调试器的情况下，替换正在运行的 MCU 上的任意函数。
 
-FPBInject 利用 Flash Patch and Breakpoint（FPB）硬件单元拦截函数调用，将执行重定向到 RAM 中的自定义代码，原始 Flash 内容保持不变。
+FPBInject 利用 [Flash Patch and Breakpoint（FPB）](https://developer.arm.com/documentation/ddi0337/h/debug/about-the-flash-patch-and-breakpoint-unit--fpb-)硬件单元拦截函数调用，将执行重定向到 RAM 中的自定义代码，原始 Flash 内容保持不变。
 
 ![FPBInject Workbench](Docs/images/webserver-overview.png)
 
