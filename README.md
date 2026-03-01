@@ -1,5 +1,7 @@
 # FPBInject
 
+**English** | [中文](README_zh.md)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-STM32F103-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103.html)
 [![Platform](https://img.shields.io/badge/Platform-NuttX-blue.svg)](https://github.com/apache/nuttx)
@@ -91,7 +93,7 @@ Create a C file with the `/* FPB_INJECT */` marker. The function signature must 
 /* FPB_INJECT */
 __attribute__((section(".fpb.text"), used))
 void digitalWrite(uint8_t pin, uint8_t value) {
-    Serial.printf("Patched: pin=%d val=%d\n", pin, value);
+    printf("Patched: pin=%d val=%d\n", pin, value);
     value ? GPIO_SetBits(GPIOA, 1 << pin)
           : GPIO_ResetBits(GPIOA, 1 << pin);
 }
