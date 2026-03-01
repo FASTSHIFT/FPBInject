@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "fpbinject": {
+      "command": "python3",
+      "args": [
+        "Tools/WebServer/fpb_mcp_server.py"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "analyze",
+        "disasm",
+        "decompile",
+        "signature",
+        "search",
+        "compile_patch",
+        "info",
+        "serial_read",
+        "connect",
+        "inject",
+        "unpatch",
+        "disconnect"
+      ]
+    }
+  }
+}
