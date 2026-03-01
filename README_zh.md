@@ -34,11 +34,19 @@ FPBInject 自带浏览器工作台，支持完整工作流：浏览符号、查�
 
 ![反汇编视图](Docs/images/webserver-disasm.png)
 
-### 编写与注入
+### 手动注入
 
 用 C 语言编写替换函数，点击注入。工作台自动编译、上传、打补丁，通常不到一秒完成。
 
 ![注入视图](Docs/images/webserver-inject.png)
+
+### 自动注入
+
+在工作台中指定源码目录并开启文件监控。在需要替换的函数前添加 `/* FPB_INJECT */` 标记，保存文件即可 — 工作台自动检测变更、重新编译并注入。
+
+![自动注入 - 编辑器](Docs/images/editor-auto-inejct.png)
+
+![自动注入 - 工作台](Docs/images/webserver-auto-inject.png)
 
 ## 快速开始
 

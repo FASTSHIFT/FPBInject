@@ -34,11 +34,19 @@ Search the firmware's symbol table, click a function to view its disassembly or 
 
 ![Disassembly View](Docs/images/webserver-disasm.png)
 
-### Write & Inject
+### Manual Inject
 
-Write your replacement function in C, hit inject. The workbench compiles, uploads, and patches — typically under a second.
+Write your replacement function in C, then hit inject. The workbench compiles, uploads, and patches — typically under a second.
 
 ![Inject View](Docs/images/webserver-inject.png)
+
+### Auto Inject
+
+Point the workbench at your source directory and enable file watching. Add `/* FPB_INJECT */` before any function you want to patch, then just save the file — the workbench detects the change, recompiles, and re-injects automatically.
+
+![Auto Inject - Editor](Docs/images/editor-auto-inejct.png)
+
+![Auto Inject - Workbench](Docs/images/webserver-auto-inject.png)
 
 ## Quick Start
 
