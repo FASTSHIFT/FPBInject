@@ -154,7 +154,7 @@ jobs:
         working-directory: Tools/WebServer
         run: |
           echo "🧪 Running backend Python tests..."
-          python tests/run_tests.py --coverage --html --target 80
+          python tests/run_tests.py --coverage --html --target 85
           echo "✅ Backend tests passed!"
 
       - name: Install Node.js dependencies
