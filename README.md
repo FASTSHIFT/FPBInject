@@ -94,8 +94,8 @@ Create a C file with the `/* FPB_INJECT */` marker. The function signature must 
 __attribute__((section(".fpb.text"), used))
 void digitalWrite(uint8_t pin, uint8_t value) {
     printf("Patched: pin=%d val=%d\n", pin, value);
-    value ? GPIO_SetBits(GPIOA, 1 << pin)
-          : GPIO_ResetBits(GPIOA, 1 << pin);
+    value ? digitalWrite_HIGH(pin)
+          : digitalWrite_LOW(pin);
 }
 ```
 
