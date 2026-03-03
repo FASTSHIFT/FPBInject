@@ -563,6 +563,40 @@ function selectDeviceFile(item, event) {
 }
 
 /**
+ * Handle keyboard shortcuts on device file list
+ * @param {KeyboardEvent} event
+ */
+function handleDeviceFileKeydown(event) {
+  if (event.key === 'F2') {
+    event.preventDefault();
+    window.renameOnDevice();
+  }
+}
+
+// Bind F2 shortcut to device file list
+(function initDeviceFileKeyboard() {
+  const fileList = document.getElementById('deviceFileList');
+  if (fileList) {
+    // Make focusable so it can receive keyboard events
+    if (!fileList.getAttribute('tabindex')) {
+      fileList.setAttribute('tabindex', '0');
+    }
+    fileList.addEventListener('keydown', handleDeviceFileKeydown);
+  } else {
+    // Retry after DOM ready
+    document.addEventListener('DOMContentLoaded', () => {
+      const fl = document.getElementById('deviceFileList');
+      if (fl) {
+        if (!fl.getAttribute('tabindex')) {
+          fl.setAttribute('tabindex', '0');
+        }
+        fl.addEventListener('keydown', handleDeviceFileKeydown);
+      }
+    });
+  }
+})();
+
+/**
  * Format file size for display
  */
 function formatFileSize(bytes) {
@@ -1399,6 +1433,7 @@ window.uploadFolderToDevice = uploadFolderToDevice;
 window.downloadFromDevice = downloadFromDevice;
 window.deleteFromDevice = deleteFromDevice;
 window.renameOnDevice = renameOnDevice;
+window.handleDeviceFileKeydown = handleDeviceFileKeydown;
 window.createDeviceDir = createDeviceDir;
 window.updateTransferProgress = updateTransferProgress;
 window.hideTransferProgress = hideTransferProgress;

@@ -1939,4 +1939,63 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
   });
+
+  describe('F2 Rename Keyboard Shortcut', () => {
+    it('handleDeviceFileKeydown is a function', () =>
+      assertTrue(typeof w.handleDeviceFileKeydown === 'function'));
+
+    it('F2 key calls renameOnDevice', async () => {
+      let renameCalled = false;
+      const origRename = w.renameOnDevice;
+      w.renameOnDevice = async () => {
+        renameCalled = true;
+      };
+
+      const event = {
+        key: 'F2',
+        preventDefault: () => {},
+      };
+      w.handleDeviceFileKeydown(event);
+      assertTrue(renameCalled);
+
+      w.renameOnDevice = origRename;
+    });
+
+    it('F2 key calls preventDefault', () => {
+      let preventDefaultCalled = false;
+      const origRename = w.renameOnDevice;
+      w.renameOnDevice = async () => {};
+
+      const event = {
+        key: 'F2',
+        preventDefault: () => {
+          preventDefaultCalled = true;
+        },
+      };
+      w.handleDeviceFileKeydown(event);
+      assertTrue(preventDefaultCalled);
+
+      w.renameOnDevice = origRename;
+    });
+
+    it('other keys do not trigger rename', () => {
+      let renameCalled = false;
+      const origRename = w.renameOnDevice;
+      w.renameOnDevice = async () => {
+        renameCalled = true;
+      };
+
+      const keys = ['Enter', 'Escape', 'Delete', 'F1', 'F3', 'a', ' '];
+      for (const key of keys) {
+        const event = {
+          key,
+          preventDefault: () => {},
+        };
+        w.handleDeviceFileKeydown(event);
+      }
+      assertFalse(renameCalled);
+
+      w.renameOnDevice = origRename;
+    });
+  });
 };
