@@ -304,7 +304,7 @@ function openQuickCommandEditor(id) {
       document.querySelector('input[name="qcType"][value="single"]').checked =
         true;
       onQcTypeChange();
-      if (cmdInput) cmdInput.value = escapeCommandForDisplay(cmd.command || '');
+      if (cmdInput) cmdInput.value = cmd.command || '';
       if (appendNl) appendNl.checked = cmd.appendNewline !== false;
     }
 
@@ -486,7 +486,7 @@ function renderMacroSteps(steps) {
   stepList.innerHTML = '';
   for (const s of steps) {
     addMacroStep(
-      escapeCommandForDisplay(s.command || ''),
+      s.command || '',
       s.delay != null ? s.delay : 0,
       s.appendNewline,
     );
