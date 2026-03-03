@@ -304,7 +304,13 @@ function openQuickCommandEditor(id) {
       document.querySelector('input[name="qcType"][value="single"]').checked =
         true;
       onQcTypeChange();
-      if (cmdInput) cmdInput.value = cmd.command || '';
+      let displayCmd = cmd.command || '';
+      // Strip trailing \n that was auto-appended by save logic,
+      // since it's controlled by the appendNewline checkbox
+      if (cmd.appendNewline !== false && displayCmd.endsWith('\\n')) {
+        displayCmd = displayCmd.slice(0, -2);
+      }
+      if (cmdInput) cmdInput.value = displayCmd;
       if (appendNl) appendNl.checked = cmd.appendNewline !== false;
     }
 

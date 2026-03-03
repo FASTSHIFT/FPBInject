@@ -1776,6 +1776,111 @@ module.exports = function (w) {
     });
   });
 
+  // ===== Editor round-trip: no trailing \n leak =====
+  describe('Quick Commands - Editor Round-Trip', () => {
+    it('openQuickCommandEditor strips auto-appended \\n from single command', () => {
+      const origGet = browserGlobals.localStorage.getItem;
+      const origQS = browserGlobals.document.querySelector;
+
+      // Stored command has trailing \\n appended by save logic
+      browserGlobals.localStorage.getItem = () =>
+        JSON.stringify([
+          {
+            id: 'rt1',
+            name: 'Test',
+            type: 'single',
+            command: 'hello\\n',
+            appendNewline: true,
+          },
+        ]);
+
+      browserGlobals.document.querySelector = (sel) => {
+        if (sel.includes('qcType')) {
+          return { checked: false, set checked(v) {} };
+        }
+        return origQS.call(browserGlobals.document, sel);
+      };
+
+      const cmdInput = browserGlobals.document.getElementById('qcCommand');
+      w.openQuickCommandEditor('rt1');
+
+      // The input should show 'hello' without trailing \n
+      assertEqual(cmdInput.value, 'hello');
+
+      browserGlobals.localStorage.getItem = origGet;
+      browserGlobals.document.querySelector = origQS;
+    });
+
+    it('openQuickCommandEditor preserves command without trailing \\n', () => {
+      const origGet = browserGlobals.localStorage.getItem;
+      const origQS = browserGlobals.document.querySelector;
+
+      browserGlobals.localStorage.getItem = () =>
+        JSON.stringify([
+          {
+            id: 'rt2',
+            name: 'NoNL',
+            type: 'single',
+            command: 'world',
+            appendNewline: false,
+          },
+        ]);
+
+      browserGlobals.document.querySelector = (sel) => {
+        if (sel.includes('qcType')) {
+          return { checked: false, set checked(v) {} };
+        }
+        return origQS.call(browserGlobals.document, sel);
+      };
+
+      const cmdInput = browserGlobals.document.getElementById('qcCommand');
+      w.openQuickCommandEditor('rt2');
+
+      // appendNewline=false, command should stay as-is
+      assertEqual(cmdInput.value, 'world');
+
+      browserGlobals.localStorage.getItem = origGet;
+      browserGlobals.document.querySelector = origQS;
+    });
+
+    it('save then edit round-trip does not accumulate \\n', () => {
+      const origGet = browserGlobals.localStorage.getItem;
+      const origQS = browserGlobals.document.querySelector;
+
+      // Simulate: first save stored 'test\\n', second edit should show 'test'
+      // then second save should still store 'test\\n' (not 'test\\n\\n')
+      browserGlobals.localStorage.getItem = () =>
+        JSON.stringify([
+          {
+            id: 'rt3',
+            name: 'Accum',
+            type: 'single',
+            command: 'test\\n',
+            appendNewline: true,
+          },
+        ]);
+
+      browserGlobals.document.querySelector = (sel) => {
+        if (sel.includes('qcType')) {
+          return { checked: false, set checked(v) {} };
+        }
+        return origQS.call(browserGlobals.document, sel);
+      };
+
+      const cmdInput = browserGlobals.document.getElementById('qcCommand');
+      w.openQuickCommandEditor('rt3');
+
+      // Editor should show 'test' without \n
+      assertEqual(cmdInput.value, 'test');
+      // If user saves again without changes, the stored value
+      // should be 'test\\n' not 'test\\n\\n'
+      assertFalse(cmdInput.value.includes('\\n'));
+
+      browserGlobals.localStorage.getItem = origGet;
+      browserGlobals.document.querySelector = origQS;
+    });
+  });
+
   // ===== Execution mutex =====
   describe('Quick Commands - Execution Mutex', () => {
     it('executeQuickCommand blocks concurrent execution', async () => {
