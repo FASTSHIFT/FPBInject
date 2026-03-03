@@ -93,10 +93,24 @@ def compile_inject(
     objcopy = config.get("objcopy", "arm-none-eabi-objcopy")
     raw_command = config.get("raw_command")  # Raw command from .d file
 
-    if not os.path.isabs(compiler):
-        compiler = get_tool_path(compiler, toolchain_path)
-    if not os.path.isabs(objcopy):
-        objcopy = get_tool_path(objcopy, toolchain_path)
+    # User-configured toolchain_path takes priority over absolute paths
+    # from compile_commands.json
+    if toolchain_path:
+        compiler_name = os.path.basename(compiler)
+        resolved = get_tool_path(compiler_name, toolchain_path)
+        if resolved != compiler_name:
+            if resolved != compiler:
+                logger.info(f"Toolchain override: {compiler} -> {resolved}")
+            compiler = resolved
+        objcopy_name = os.path.basename(objcopy)
+        resolved_objcopy = get_tool_path(objcopy_name, toolchain_path)
+        if resolved_objcopy != objcopy_name:
+            objcopy = resolved_objcopy
+    else:
+        if not os.path.isabs(compiler):
+            compiler = get_tool_path(compiler, toolchain_path)
+        if not os.path.isabs(objcopy):
+            objcopy = get_tool_path(objcopy, toolchain_path)
 
     includes = config.get("includes", [])
     defines = config.get("defines", [])

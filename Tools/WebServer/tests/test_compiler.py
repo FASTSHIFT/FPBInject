@@ -1039,3 +1039,98 @@ int test_func(void) {
 
             # Check that inject_test symbol exists
             self.assertIn("inject_test", symbols)
+
+
+class TestToolchainPathPriority(unittest.TestCase):
+    """Test that user-configured toolchain_path overrides compile_commands.json absolute paths"""
+
+    @patch("core.compiler.parse_compile_commands")
+    def test_toolchain_overrides_absolute_compiler(self, mock_parse):
+        """toolchain_path should override absolute compiler path from compile_commands"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create fake gcc in toolchain dir
+            fake_gcc = os.path.join(tmpdir, "arm-none-eabi-gcc")
+            fake_objcopy = os.path.join(tmpdir, "arm-none-eabi-objcopy")
+            open(fake_gcc, "w").close()
+            open(fake_objcopy, "w").close()
+            os.chmod(fake_gcc, 0o755)
+            os.chmod(fake_objcopy, 0o755)
+
+            mock_parse.return_value = {
+                "compiler": "/opt/old-toolchain/bin/arm-none-eabi-gcc",
+                "objcopy": "/opt/old-toolchain/bin/arm-none-eabi-objcopy",
+                "includes": [],
+                "defines": [],
+                "cflags": ["-mcpu=cortex-m4"],
+                "ldflags": [],
+                "raw_command": None,
+            }
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = Mock(returncode=1, stderr="error")
+
+                compiler.compile_inject(
+                    "void test() {}",
+                    0x20000000,
+                    compile_commands_path="/tmp/cc.json",
+                    toolchain_path=tmpdir,
+                )
+
+                # The compiler called should be from toolchain_path, not the absolute path
+                called_cmd = mock_run.call_args[0][0]
+                self.assertEqual(called_cmd[0], fake_gcc)
+
+    @patch("core.compiler.parse_compile_commands")
+    def test_no_toolchain_keeps_absolute_compiler(self, mock_parse):
+        """Without toolchain_path, absolute compiler path from compile_commands is kept"""
+        mock_parse.return_value = {
+            "compiler": "/opt/toolchain/bin/arm-none-eabi-gcc",
+            "objcopy": "/opt/toolchain/bin/arm-none-eabi-objcopy",
+            "includes": [],
+            "defines": [],
+            "cflags": ["-mcpu=cortex-m4"],
+            "ldflags": [],
+            "raw_command": None,
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stderr="error")
+
+            compiler.compile_inject(
+                "void test() {}",
+                0x20000000,
+                compile_commands_path="/tmp/cc.json",
+                toolchain_path=None,
+            )
+
+            called_cmd = mock_run.call_args[0][0]
+            self.assertEqual(called_cmd[0], "/opt/toolchain/bin/arm-none-eabi-gcc")
+
+    @patch("core.compiler.parse_compile_commands")
+    def test_toolchain_fallback_when_tool_not_found(self, mock_parse):
+        """If toolchain_path doesn't contain the tool, keep original path"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Empty dir - no gcc here
+            mock_parse.return_value = {
+                "compiler": "/opt/old/bin/arm-none-eabi-gcc",
+                "objcopy": "/opt/old/bin/arm-none-eabi-objcopy",
+                "includes": [],
+                "defines": [],
+                "cflags": ["-mcpu=cortex-m4"],
+                "ldflags": [],
+                "raw_command": None,
+            }
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = Mock(returncode=1, stderr="error")
+
+                compiler.compile_inject(
+                    "void test() {}",
+                    0x20000000,
+                    compile_commands_path="/tmp/cc.json",
+                    toolchain_path=tmpdir,
+                )
+
+                # Should keep original since tool not found in toolchain_path
+                called_cmd = mock_run.call_args[0][0]
+                self.assertEqual(called_cmd[0], "/opt/old/bin/arm-none-eabi-gcc")
