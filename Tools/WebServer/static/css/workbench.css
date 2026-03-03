@@ -2207,6 +2207,16 @@ details[open] > .sidebar-content {
   opacity: 0.8;
 }
 
+.qc-step-dragging {
+  opacity: 0.5;
+  background: var(--vscode-list-hover);
+  border-radius: 3px;
+}
+
+.qc-step-drag:active {
+  cursor: grabbing;
+}
+
 .qc-step-cmd {
   flex: 1;
   min-width: 0;

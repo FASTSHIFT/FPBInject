@@ -376,6 +376,60 @@ function populateGroupDropdown(select) {
    MACRO STEP EDITOR
    =========================== */
 
+let qcDragItem = null;
+
+function setupStepDrag(step) {
+  const handle = step.querySelector('.qc-step-drag');
+  if (!handle) return;
+
+  handle.addEventListener('mousedown', (e) => {
+    qcDragItem = step;
+    step.classList.add('qc-step-dragging');
+    e.preventDefault();
+  });
+
+  step.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (!qcDragItem || qcDragItem === step) return;
+    const rect = step.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    if (e.clientY < mid) {
+      step.parentElement.insertBefore(qcDragItem, step);
+    } else {
+      step.parentElement.insertBefore(qcDragItem, step.nextSibling);
+    }
+  });
+}
+
+function initStepDragListeners() {
+  document.addEventListener('mousemove', (e) => {
+    if (!qcDragItem) return;
+    const stepList = document.getElementById('qcStepList');
+    if (!stepList) return;
+    for (const child of stepList.children) {
+      if (child === qcDragItem) continue;
+      const rect = child.getBoundingClientRect();
+      if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+        const mid = rect.top + rect.height / 2;
+        if (e.clientY < mid) {
+          stepList.insertBefore(qcDragItem, child);
+        } else {
+          stepList.insertBefore(qcDragItem, child.nextSibling);
+        }
+        break;
+      }
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (qcDragItem) {
+      qcDragItem.classList.remove('qc-step-dragging');
+      qcDragItem = null;
+      updateMacroSummary();
+    }
+  });
+}
+
 function addMacroStep(command, delay) {
   const stepList = document.getElementById('qcStepList');
   if (!stepList) return;
@@ -395,6 +449,7 @@ function addMacroStep(command, delay) {
     '<button class="qc-action-btn" onclick="this.parentElement.remove(); updateMacroSummary()" title="Remove">' +
     '<i class="codicon codicon-close"></i></button>';
 
+  setupStepDrag(step);
   stepList.appendChild(step);
   updateMacroSummary();
 
@@ -791,6 +846,7 @@ function initQuickCommandKeyboard() {
 function initQuickCommands() {
   renderQuickCommands();
   initQuickCommandKeyboard();
+  initStepDragListeners();
 }
 
 // Auto-init when DOM ready
@@ -831,3 +887,4 @@ window.escapeCommandForDisplay = escapeCommandForDisplay;
 window.generateId = generateId;
 window.sendSerialData = sendSerialData;
 window.moveToGroup = moveToGroup;
+window.initStepDragListeners = initStepDragListeners;
