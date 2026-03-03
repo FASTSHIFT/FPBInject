@@ -452,5 +452,62 @@ def serial_send(
         return {"success": False, "error": f"Send error: {e}"}
 
 
+
+# ============================================================
+# File Transfer Tools (device required)
+# ============================================================
+
+
+@mcp.tool()
+def file_list(
+    path: str = "/",
+    port: Optional[str] = None,
+) -> dict:
+    """List directory contents on the device filesystem.
+
+    Args:
+        path: Directory path on device (default: "/")
+        port: Serial port (uses existing connection if omitted)
+    """
+    cli = _get_cli(port=port)
+    return _capture_cli_output(cli.file_list, path)
+
+
+@mcp.tool()
+def file_stat(
+    path: str,
+    port: Optional[str] = None,
+) -> dict:
+    """Get file or directory info on the device filesystem.
+
+    Returns size, modification time, and type (file/dir).
+
+    Args:
+        path: File or directory path on device
+        port: Serial port (uses existing connection if omitted)
+    """
+    cli = _get_cli(port=port)
+    return _capture_cli_output(cli.file_stat, path)
+
+
+@mcp.tool()
+def file_download(
+    remote_path: str,
+    local_path: str,
+    port: Optional[str] = None,
+) -> dict:
+    """Download a file from the device to the local filesystem.
+
+    Transfers the file over serial using chunked Base64 encoding with CRC verification.
+
+    Args:
+        remote_path: Source file path on device (e.g., "/data/log.bin")
+        local_path: Destination path on local machine (e.g., "/tmp/log.bin")
+        port: Serial port (uses existing connection if omitted)
+    """
+    cli = _get_cli(port=port)
+    return _capture_cli_output(cli.file_download, remote_path, local_path)
+
+
 if __name__ == "__main__":
     mcp.run()

@@ -556,5 +556,89 @@ class TestMcpServerModule(unittest.TestCase):
         self.assertIn(str(_SERVER_DIR), sys.path)
 
 
+class TestFileListTool(unittest.TestCase):
+    """Test file_list MCP tool"""
+
+    def setUp(self):
+        import fpb_mcp_server
+        fpb_mcp_server._cli_instance = None
+
+    @patch("fpb_mcp_server.FPBCLI")
+    def test_file_list_success(self, mock_cli_cls):
+        from fpb_mcp_server import file_list
+
+        mock_instance = MagicMock()
+        mock_cli_cls.return_value = mock_instance
+
+        def fake_file_list(path):
+            print(json.dumps({"success": True, "path": path, "entries": [{"name": "a.txt"}]}))
+
+        mock_instance.file_list = fake_file_list
+        result = file_list(path="/data")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["path"], "/data")
+
+    @patch("fpb_mcp_server.FPBCLI")
+    def test_file_list_default_path(self, mock_cli_cls):
+        from fpb_mcp_server import file_list
+
+        mock_instance = MagicMock()
+        mock_cli_cls.return_value = mock_instance
+
+        def fake_file_list(path):
+            print(json.dumps({"success": True, "path": path, "entries": []}))
+
+        mock_instance.file_list = fake_file_list
+        result = file_list()
+        self.assertTrue(result["success"])
+        self.assertEqual(result["path"], "/")
+
+
+class TestFileStatTool(unittest.TestCase):
+    """Test file_stat MCP tool"""
+
+    def setUp(self):
+        import fpb_mcp_server
+        fpb_mcp_server._cli_instance = None
+
+    @patch("fpb_mcp_server.FPBCLI")
+    def test_file_stat_success(self, mock_cli_cls):
+        from fpb_mcp_server import file_stat
+
+        mock_instance = MagicMock()
+        mock_cli_cls.return_value = mock_instance
+
+        def fake_file_stat(path):
+            print(json.dumps({"success": True, "path": path, "stat": {"size": 512}}))
+
+        mock_instance.file_stat = fake_file_stat
+        result = file_stat(path="/test.bin")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["stat"]["size"], 512)
+
+
+class TestFileDownloadTool(unittest.TestCase):
+    """Test file_download MCP tool"""
+
+    def setUp(self):
+        import fpb_mcp_server
+        fpb_mcp_server._cli_instance = None
+
+    @patch("fpb_mcp_server.FPBCLI")
+    def test_file_download_success(self, mock_cli_cls):
+        from fpb_mcp_server import file_download
+
+        mock_instance = MagicMock()
+        mock_cli_cls.return_value = mock_instance
+
+        def fake_download(remote, local):
+            print(json.dumps({"success": True, "remote_path": remote, "local_path": local, "size": 100}))
+
+        mock_instance.file_download = fake_download
+        result = file_download(remote_path="/dev/log.bin", local_path="/tmp/log.bin")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["size"], 100)
+
+
 if __name__ == "__main__":
     unittest.main()

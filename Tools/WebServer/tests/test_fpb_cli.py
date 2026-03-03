@@ -78,6 +78,13 @@ class TestDeviceState(unittest.TestCase):
 
     def test_disconnect_no_connection(self):
         """Test disconnect when not connected"""
+
+    def test_add_tool_log_stub(self):
+        """Test add_tool_log is a no-op stub"""
+        state = DeviceState()
+        # Should not raise
+        state.add_tool_log("test message")
+        state.add_tool_log("")
         state = DeviceState()
         state.disconnect()  # Should not raise
         self.assertFalse(state.connected)
@@ -707,6 +714,161 @@ class TestFPBCLIInfo(unittest.TestCase):
             output = json.loads(f.getvalue())
             self.assertFalse(output["success"])
             self.assertIn("Serial error", output["error"])
+
+    # ===== file_list tests =====
+
+    def test_file_list_not_connected(self):
+        """Test file_list when not connected"""
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_list("/")
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+        self.assertIn("No device connected", output["error"])
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_list_success(self, mock_ft_cls):
+        """Test file_list success"""
+        self.cli._device_state.connected = True
+        mock_ft = MagicMock()
+        mock_ft.flist.return_value = (True, [{"name": "test.txt", "type": "file"}])
+        mock_ft_cls.return_value = mock_ft
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_list("/data")
+        output = json.loads(f.getvalue())
+        self.assertTrue(output["success"])
+        self.assertEqual(output["path"], "/data")
+        self.assertEqual(len(output["entries"]), 1)
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_list_failure(self, mock_ft_cls):
+        """Test file_list when flist returns failure"""
+        self.cli._device_state.connected = True
+        mock_ft = MagicMock()
+        mock_ft.flist.return_value = (False, [])
+        mock_ft_cls.return_value = mock_ft
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_list("/nonexist")
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_list_exception(self, mock_ft_cls):
+        """Test file_list with exception"""
+        self.cli._device_state.connected = True
+        mock_ft_cls.side_effect = Exception("Transfer init error")
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_list("/")
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+
+    # ===== file_stat tests =====
+
+    def test_file_stat_not_connected(self):
+        """Test file_stat when not connected"""
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_stat("/test.txt")
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+        self.assertIn("No device connected", output["error"])
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_stat_success(self, mock_ft_cls):
+        """Test file_stat success"""
+        self.cli._device_state.connected = True
+        mock_ft = MagicMock()
+        mock_ft.fstat.return_value = (True, {"size": 1024, "type": "file"})
+        mock_ft_cls.return_value = mock_ft
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_stat("/data/test.bin")
+        output = json.loads(f.getvalue())
+        self.assertTrue(output["success"])
+        self.assertEqual(output["stat"]["size"], 1024)
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_stat_failure(self, mock_ft_cls):
+        """Test file_stat when fstat returns failure"""
+        self.cli._device_state.connected = True
+        mock_ft = MagicMock()
+        mock_ft.fstat.return_value = (False, {"error": "not found"})
+        mock_ft_cls.return_value = mock_ft
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_stat("/missing")
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+
+    # ===== file_download tests =====
+
+    def test_file_download_not_connected(self):
+        """Test file_download when not connected"""
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_download("/remote.bin", "/tmp/local.bin")
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+        self.assertIn("No device connected", output["error"])
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_download_success(self, mock_ft_cls):
+        """Test file_download success"""
+        self.cli._device_state.connected = True
+        mock_ft = MagicMock()
+        mock_ft.download.return_value = (True, b"file content", "OK")
+        mock_ft_cls.return_value = mock_ft
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_path = os.path.join(tmpdir, "downloaded.bin")
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.file_download("/remote.bin", local_path)
+            output = json.loads(f.getvalue())
+            self.assertTrue(output["success"])
+            self.assertEqual(output["size"], 12)
+            self.assertTrue(os.path.exists(local_path))
+            with open(local_path, "rb") as lf:
+                self.assertEqual(lf.read(), b"file content")
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_download_failure(self, mock_ft_cls):
+        """Test file_download when download fails"""
+        self.cli._device_state.connected = True
+        mock_ft = MagicMock()
+        mock_ft.download.return_value = (False, None, "CRC error")
+        mock_ft_cls.return_value = mock_ft
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.cli.file_download("/remote.bin", "/tmp/out.bin")
+        output = json.loads(f.getvalue())
+        self.assertFalse(output["success"])
+
+    @patch("core.file_transfer.FileTransfer")
+    def test_file_download_creates_directory(self, mock_ft_cls):
+        """Test file_download creates local directory if needed"""
+        self.cli._device_state.connected = True
+        mock_ft = MagicMock()
+        mock_ft.download.return_value = (True, b"data", "OK")
+        mock_ft_cls.return_value = mock_ft
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_path = os.path.join(tmpdir, "subdir", "nested", "file.bin")
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.file_download("/remote.bin", local_path)
+            output = json.loads(f.getvalue())
+            self.assertTrue(output["success"])
+            self.assertTrue(os.path.exists(local_path))
 
     def test_info_build_time_match(self):
         """Test info with matching build times"""

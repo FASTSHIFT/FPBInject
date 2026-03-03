@@ -61,6 +61,10 @@ class DeviceState:
         self.tx_chunk_delay = 0.005  # Delay between TX chunks (seconds)
         self.transfer_max_retries = 10  # Max retries for file transfer
 
+    def add_tool_log(self, message):
+        """Stub for compatibility with FileTransfer log callbacks."""
+        pass
+
     def connect(self, port: str, baudrate: int = 115200) -> bool:
         """Connect to device via serial port"""
         if not HAS_SERIAL:
@@ -471,6 +475,68 @@ class FPBCLI:
 
         except Exception as e:
             self.output_error(f"Serial test failed: {str(e)}", e)
+
+    def file_list(self, path: str = "/") -> None:
+        """List directory contents on device"""
+        try:
+            if not self._device_state.connected:
+                raise FPBCLIError("No device connected.")
+            from core.file_transfer import FileTransfer
+            ft = FileTransfer(self._fpb, chunk_size=self._device_state.chunk_size)
+            success, entries = ft.flist(path)
+            if not success:
+                raise FPBCLIError(f"Failed to list directory: {path}")
+            self.output_json({"success": True, "path": path, "entries": entries})
+        except Exception as e:
+            self.output_error(f"file_list failed: {str(e)}", e)
+
+    def file_stat(self, path: str) -> None:
+        """Get file/directory stat on device"""
+        try:
+            if not self._device_state.connected:
+                raise FPBCLIError("No device connected.")
+            from core.file_transfer import FileTransfer
+            ft = FileTransfer(self._fpb, chunk_size=self._device_state.chunk_size)
+            success, stat = ft.fstat(path)
+            if not success:
+                raise FPBCLIError(f"Failed to stat: {stat.get('error', 'unknown')}")
+            self.output_json({"success": True, "path": path, "stat": stat})
+        except Exception as e:
+            self.output_error(f"file_stat failed: {str(e)}", e)
+
+    def file_download(self, remote_path: str, local_path: str) -> None:
+        """Download a file from device to local path"""
+        try:
+            if not self._device_state.connected:
+                raise FPBCLIError("No device connected.")
+            from core.file_transfer import FileTransfer
+            import os
+            ft = FileTransfer(
+                self._fpb,
+                chunk_size=self._device_state.chunk_size,
+                max_retries=self._device_state.transfer_max_retries,
+            )
+            success, data, msg = ft.download(remote_path)
+            if not success:
+                raise FPBCLIError(f"Download failed: {msg}")
+
+            # Ensure local directory exists
+            local_dir = os.path.dirname(local_path)
+            if local_dir:
+                os.makedirs(local_dir, exist_ok=True)
+
+            with open(local_path, "wb") as f:
+                f.write(data)
+
+            self.output_json({
+                "success": True,
+                "remote_path": remote_path,
+                "local_path": local_path,
+                "size": len(data),
+                "message": msg,
+            })
+        except Exception as e:
+            self.output_error(f"file_download failed: {str(e)}", e)
 
     def cleanup(self):
         """Cleanup resources"""
