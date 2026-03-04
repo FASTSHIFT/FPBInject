@@ -6,6 +6,7 @@ Serial Utils module tests
 
 import os
 import sys
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -143,7 +144,7 @@ class TestSerialOpen(unittest.TestCase):
 
         ser, error = serial_utils.serial_open("/dev/ttyUSB0", 115200, 1)
 
-        self.assertEqual(ser, mock_ser)
+        self.assertIsInstance(ser, serial_utils.ThreadCheckedSerial)
         self.assertIsNone(error)
         mock_serial.assert_called_with(
             "/dev/ttyUSB0",
@@ -209,7 +210,7 @@ class TestSerialOpen(unittest.TestCase):
             flow_control="rtscts",
         )
 
-        self.assertEqual(ser, mock_ser)
+        self.assertIsInstance(ser, serial_utils.ThreadCheckedSerial)
         self.assertIsNone(error)
         mock_serial.assert_called_with(
             "/dev/ttyUSB0",
@@ -233,7 +234,7 @@ class TestSerialOpen(unittest.TestCase):
 
         ser, error = serial_utils.serial_open("/dev/ttyUSB0", flow_control="xonxoff")
 
-        self.assertEqual(ser, mock_ser)
+        self.assertIsInstance(ser, serial_utils.ThreadCheckedSerial)
         self.assertIsNone(error)
         call_kwargs = mock_serial.call_args
         self.assertTrue(
@@ -460,6 +461,172 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
         result = serial_utils.get_device_timer_manager(device)
 
         self.assertEqual(result, mock_timer_manager)
+
+
+class TestThreadCheckedSerial(unittest.TestCase):
+    """ThreadCheckedSerial thread safety tests"""
+
+    def test_auto_bind_on_first_io(self):
+        """Test that owner thread is auto-bound on first I/O call"""
+        mock_ser = Mock()
+        mock_ser.in_waiting = 5
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+
+        self.assertIsNone(wrapped._owner_thread)
+        _ = wrapped.in_waiting
+        self.assertEqual(wrapped._owner_thread, threading.current_thread().ident)
+
+    def test_explicit_bind_thread(self):
+        """Test explicit bind_thread sets owner"""
+        mock_ser = Mock()
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+
+        wrapped.bind_thread()
+        self.assertEqual(wrapped._owner_thread, threading.current_thread().ident)
+        self.assertEqual(wrapped._owner_thread_name, threading.current_thread().name)
+
+    def test_same_thread_io_allowed(self):
+        """Test I/O from owner thread succeeds"""
+        mock_ser = Mock()
+        mock_ser.in_waiting = 0
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+        wrapped.bind_thread()
+
+        # These should not raise
+        _ = wrapped.in_waiting
+        wrapped.write(b"hello")
+        wrapped.read(5)
+        wrapped.flush()
+        wrapped.reset_input_buffer()
+
+    def test_cross_thread_read_raises(self):
+        """Test read from non-owner thread raises SerialThreadViolation"""
+        mock_ser = Mock()
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+        wrapped.bind_thread()  # Bind to current (main) thread
+
+        error = [None]
+
+        def other_thread():
+            try:
+                wrapped.read(1)
+            except serial_utils.SerialThreadViolation as e:
+                error[0] = e
+
+        t = threading.Thread(target=other_thread)
+        t.start()
+        t.join(timeout=2)
+
+        self.assertIsNotNone(error[0])
+        self.assertIn("Serial.read()", str(error[0]))
+
+    def test_cross_thread_write_raises(self):
+        """Test write from non-owner thread raises SerialThreadViolation"""
+        mock_ser = Mock()
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+        wrapped.bind_thread()
+
+        error = [None]
+
+        def other_thread():
+            try:
+                wrapped.write(b"data")
+            except serial_utils.SerialThreadViolation as e:
+                error[0] = e
+
+        t = threading.Thread(target=other_thread)
+        t.start()
+        t.join(timeout=2)
+
+        self.assertIsNotNone(error[0])
+        self.assertIn("Serial.write()", str(error[0]))
+
+    def test_cross_thread_in_waiting_raises(self):
+        """Test in_waiting from non-owner thread raises SerialThreadViolation"""
+        mock_ser = Mock()
+        mock_ser.in_waiting = 10
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+        wrapped.bind_thread()
+
+        error = [None]
+
+        def other_thread():
+            try:
+                _ = wrapped.in_waiting
+            except serial_utils.SerialThreadViolation as e:
+                error[0] = e
+
+        t = threading.Thread(target=other_thread)
+        t.start()
+        t.join(timeout=2)
+
+        self.assertIsNotNone(error[0])
+        self.assertIn("Serial.in_waiting()", str(error[0]))
+
+    def test_cross_thread_flush_raises(self):
+        """Test flush from non-owner thread raises SerialThreadViolation"""
+        mock_ser = Mock()
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+        wrapped.bind_thread()
+
+        error = [None]
+
+        def other_thread():
+            try:
+                wrapped.flush()
+            except serial_utils.SerialThreadViolation as e:
+                error[0] = e
+
+        t = threading.Thread(target=other_thread)
+        t.start()
+        t.join(timeout=2)
+
+        self.assertIsNotNone(error[0])
+        self.assertIn("Serial.flush()", str(error[0]))
+
+    def test_lifecycle_methods_allowed_cross_thread(self):
+        """Test isOpen/close are allowed from any thread"""
+        mock_ser = Mock()
+        mock_ser.isOpen.return_value = True
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+        wrapped.bind_thread()
+
+        results = []
+
+        def other_thread():
+            try:
+                results.append(wrapped.isOpen())
+                wrapped.close()
+                results.append(True)
+            except serial_utils.SerialThreadViolation:
+                results.append(False)
+
+        t = threading.Thread(target=other_thread)
+        t.start()
+        t.join(timeout=2)
+
+        self.assertEqual(results, [True, True])
+
+    def test_error_message_contains_thread_info(self):
+        """Test error message includes both thread names and ids"""
+        mock_ser = Mock()
+        wrapped = serial_utils.ThreadCheckedSerial(mock_ser)
+        wrapped.bind_thread()
+
+        error = [None]
+
+        def other_thread():
+            try:
+                wrapped.write(b"x")
+            except serial_utils.SerialThreadViolation as e:
+                error[0] = str(e)
+
+        t = threading.Thread(target=other_thread, name="test-offender")
+        t.start()
+        t.join(timeout=2)
+
+        self.assertIn("test-offender", error[0])
+        self.assertIn(threading.current_thread().name, error[0])
 
 
 if __name__ == "__main__":

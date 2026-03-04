@@ -90,7 +90,7 @@ class TestSerialOpen(unittest.TestCase):
         ser, error = serial_open("/dev/ttyUSB0", 115200, 1)
 
         self.assertIsNone(error)
-        self.assertEqual(ser, mock_instance)
+        self.assertIsNotNone(ser)
 
 
 class TestFPBInject(unittest.TestCase):

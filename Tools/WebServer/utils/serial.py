@@ -11,11 +11,86 @@ Provides serial port operations with multi-device support.
 
 import glob
 import logging
+import threading
 
 import serial
 import serial.tools.list_ports
 
 from services.device_worker import start_worker, stop_worker
+
+logger = logging.getLogger(__name__)
+
+
+class SerialThreadViolation(RuntimeError):
+    """Raised when serial port is accessed from a non-owner thread."""
+
+    pass
+
+
+class ThreadCheckedSerial:
+    """Wrapper around serial.Serial that enforces single-thread I/O access.
+
+    All I/O operations (read, write, flush, etc.) must be called from the
+    owner thread. The owner thread is auto-bound on the first I/O call.
+    Lifecycle methods (isOpen, close) are allowed from any thread.
+    """
+
+    # Methods that perform I/O and must be thread-checked
+    _IO_METHODS = frozenset(
+        {
+            "read",
+            "write",
+            "flush",
+            "reset_input_buffer",
+            "reset_output_buffer",
+            "readline",
+            "readlines",
+            "readall",
+        }
+    )
+
+    def __init__(self, ser):
+        self._ser = ser
+        self._owner_thread = None
+        self._owner_thread_name = None
+
+    def bind_thread(self):
+        """Explicitly bind the current thread as the owner."""
+        self._owner_thread = threading.current_thread().ident
+        self._owner_thread_name = threading.current_thread().name
+        logger.debug(f"Serial port bound to thread: {self._owner_thread_name}")
+
+    def _check_thread(self, method_name):
+        """Check that the current thread is the owner thread."""
+        current = threading.current_thread()
+        if self._owner_thread is None:
+            # Auto-bind on first I/O call
+            self._owner_thread = current.ident
+            self._owner_thread_name = current.name
+            logger.debug(f"Serial port auto-bound to thread: {self._owner_thread_name}")
+            return
+
+        if current.ident != self._owner_thread:
+            raise SerialThreadViolation(
+                f"Serial.{method_name}() called from thread "
+                f"'{current.name}' (id={current.ident}), "
+                f"but owner is '{self._owner_thread_name}' "
+                f"(id={self._owner_thread})"
+            )
+
+    @property
+    def in_waiting(self):
+        self._check_thread("in_waiting")
+        return self._ser.in_waiting
+
+    def __getattr__(self, name):
+        # Thread-checked I/O methods
+        if name in self._IO_METHODS:
+            self._check_thread(name)
+            return getattr(self._ser, name)
+
+        # All other attributes pass through directly
+        return getattr(self._ser, name)
 
 
 def scan_serial_ports():
@@ -90,7 +165,7 @@ def serial_open(
         import time
 
         time.sleep(0.1)
-        return ser, None
+        return ThreadCheckedSerial(ser), None
     except serial.SerialException as e:
         return None, f"Serial error: {e}"
     except Exception as e:
