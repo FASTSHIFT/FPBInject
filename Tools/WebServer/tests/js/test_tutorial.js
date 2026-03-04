@@ -310,7 +310,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // complete
+      w.tutorialGoTo(10); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-summary'));
     });
@@ -320,7 +320,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // complete
+      w.tutorialGoTo(10); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('🎉'));
     });
@@ -349,7 +349,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // last step
+      w.tutorialGoTo(10); // last step
       const skipBtn = getElement('tutorialSkipBtn');
       assertEqual(skipBtn.style.display, 'none');
     });
@@ -359,7 +359,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // last step
+      w.tutorialGoTo(10); // last step
       const skipAllBtn = getElement('tutorialSkipAllBtn');
       assertEqual(skipAllBtn.style.display, 'none');
     });
@@ -370,9 +370,9 @@ module.exports = function (w) {
       setupTutorialDOM();
       w.startTutorial();
       const progress = getElement('tutorialProgress');
-      // 9 steps = 9 dot buttons
+      // 11 steps = 11 dot buttons
       const dotCount = (progress.innerHTML.match(/tutorial-dot/g) || []).length;
-      assertEqual(dotCount, 9);
+      assertEqual(dotCount, 11);
     });
   });
 
@@ -389,7 +389,7 @@ module.exports = function (w) {
       w.tutorialNext(); // marks welcome, moves to step 1 = appearance
       w.tutorialNext(); // marks appearance as configured, moves to step 2
       // Go to complete step to check summary - appearance should be configured
-      w.tutorialGoTo(8);
+      w.tutorialGoTo(10);
       const body = getElement('tutorialBody');
       // connection was marked configured via tutorialNext (welcome is excluded from summary)
       assertTrue(body.innerHTML.includes('configured'));
@@ -407,6 +407,8 @@ module.exports = function (w) {
       w.tutorialSkip(); // skip quickcmd
       w.tutorialSkip(); // skip transfer
       w.tutorialSkip(); // skip symbols
+      w.tutorialSkip(); // skip editor
+      w.tutorialSkip(); // skip logs
       w.tutorialSkip(); // skip config -> complete
       const body = getElement('tutorialBody');
       // All intermediate steps should show skipped
@@ -424,7 +426,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // last step
+      w.tutorialGoTo(10); // last step
       w.tutorialNext(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));
@@ -436,7 +438,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // last step
+      w.tutorialGoTo(10); // last step
       w.tutorialSkip(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));
@@ -506,7 +508,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // complete (last step)
+      w.tutorialGoTo(10); // complete (last step)
       const nextBtn = getElement('tutorialNextBtn');
       assertTrue(nextBtn.textContent !== 'Next');
     });
