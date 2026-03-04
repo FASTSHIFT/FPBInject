@@ -85,11 +85,17 @@ format_python() {
     local count=$(echo "$files" | wc -l)
 
     # black supports batch: pass all files at once
-    if python -m black --quiet --line-length 88 $files 2>/dev/null; then
+    local err_file="$TMPDIR_FMT/python_err"
+    if python -m black --quiet --line-length 88 $files 2>"$err_file"; then
         echo -e "   ${GREEN}Python: $count file(s) formatted ✓${NC}"
         echo "$count 0" >"$result_file"
     else
         echo -e "   ${RED}Python: black failed on some files ✗${NC}"
+        if [ -s "$err_file" ]; then
+            echo -e "   ${RED}--- black error output ---${NC}"
+            cat "$err_file" | sed 's/^/   /'
+            echo -e "   ${RED}--- end of error output ---${NC}"
+        fi
         echo "0 $count" >"$result_file"
     fi
 }
@@ -123,11 +129,17 @@ format_prettier_batch() {
     local count=$(echo "$files" | wc -l)
 
     # prettier supports batch: pass all files at once
-    if $formatter --write $extra_args $files >/dev/null 2>&1; then
+    local err_file="$TMPDIR_FMT/${ext}_err"
+    if $formatter --write $extra_args $files >"$err_file" 2>&1; then
         echo -e "   ${GREEN}$label: $count file(s) formatted ✓${NC}"
         echo "$count 0" >"$result_file"
     else
         echo -e "   ${RED}$label: prettier failed on some files ✗${NC}"
+        if [ -s "$err_file" ]; then
+            echo -e "   ${RED}--- prettier ($label) error output ---${NC}"
+            cat "$err_file" | sed 's/^/   /'
+            echo -e "   ${RED}--- end of error output ---${NC}"
+        fi
         echo "0 $count" >"$result_file"
     fi
 }
