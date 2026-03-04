@@ -356,7 +356,8 @@ window.i18nResources['zh-TW'] = {
     btn_title: '教學引導',
 
     welcome_title: '歡迎使用 FPBInject Workbench',
-    welcome_desc: '基於 ARM Cortex-M FPB 硬體單元的執行時期程式碼注入工具。接下來將引導你完成基本設定。',
+    welcome_desc:
+      '基於 ARM Cortex-M FPB 硬體單元的執行時期程式碼注入工具。接下來將引導你完成基本設定。',
 
     ui_title: '介面設定',
     ui_desc: '選擇你偏好的語言和主題。',

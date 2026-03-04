@@ -371,13 +371,15 @@ window.i18nResources['en'] = {
     btn_title: 'Tutorial',
 
     welcome_title: 'Welcome to FPBInject Workbench',
-    welcome_desc: 'An ARM Cortex-M runtime code injection tool based on FPB hardware. This guide will walk you through the basic setup.',
+    welcome_desc:
+      'An ARM Cortex-M runtime code injection tool based on FPB hardware. This guide will walk you through the basic setup.',
 
     ui_title: 'Interface Settings',
     ui_desc: 'Choose your preferred language and theme.',
 
     connection_title: 'Serial Connection',
-    connection_desc: 'Select the serial port and baud rate for your device. You can change these later in the config panel.',
+    connection_desc:
+      'Select the serial port and baud rate for your device. You can change these later in the config panel.',
     connection_refresh: 'Refresh Ports',
     connection_test: 'Test Connection',
     connection_success: 'Connected successfully!',
@@ -385,22 +387,27 @@ window.i18nResources['en'] = {
     connection_skip_hint: 'No device? Skip this step.',
 
     project_title: 'Project Configuration',
-    project_desc: 'Set the ELF firmware file and compile database paths for symbol resolution and patch compilation.',
+    project_desc:
+      'Set the ELF firmware file and compile database paths for symbol resolution and patch compilation.',
 
     inject_title: 'Injection Settings',
-    inject_desc: 'Configure the patch injection mode and file watch directories.',
+    inject_desc:
+      'Configure the patch injection mode and file watch directories.',
 
     quickcmd_title: 'Quick Commands',
-    quickcmd_desc: 'Quick commands let you send serial commands or execute command sequences (macros) with one click.',
+    quickcmd_desc:
+      'Quick commands let you send serial commands or execute command sequences (macros) with one click.',
     quickcmd_feature_single: 'Single Command',
     quickcmd_feature_single_desc: 'Send a serial command instantly.',
     quickcmd_feature_macro: 'Macro',
     quickcmd_feature_macro_desc: 'Execute a sequence of commands with delays.',
 
     complete_title: 'Setup Complete!',
-    complete_desc: 'You can modify these settings anytime in the sidebar config panel.',
+    complete_desc:
+      'You can modify these settings anytime in the sidebar config panel.',
     complete_configured: 'Configured',
     complete_skipped: 'Skipped',
-    complete_hint: 'Click the \ud83c\udf93 button in the title bar to restart this tutorial anytime.',
+    complete_hint:
+      'Click the \ud83c\udf93 button in the title bar to restart this tutorial anytime.',
   },
 };
