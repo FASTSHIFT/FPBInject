@@ -110,6 +110,28 @@ class TestParseArgs(unittest.TestCase):
 
         self.assertTrue(args.debug)
 
+    def test_no_browser_default_false(self):
+        """Test --no-browser defaults to False"""
+        with patch("sys.argv", ["main.py"]):
+            args = main.parse_args()
+
+        self.assertFalse(args.no_browser)
+
+    def test_no_browser_flag(self):
+        """Test --no-browser flag sets no_browser=True"""
+        with patch("sys.argv", ["main.py", "--no-browser"]):
+            args = main.parse_args()
+
+        self.assertTrue(args.no_browser)
+
+    def test_no_browser_with_other_args(self):
+        """Test --no-browser can combine with other args"""
+        with patch("sys.argv", ["main.py", "--port", "9090", "--no-browser"]):
+            args = main.parse_args()
+
+        self.assertEqual(args.port, 9090)
+        self.assertTrue(args.no_browser)
+
 
 class TestRestoreState(unittest.TestCase):
     """restore_state function tests"""
@@ -196,7 +218,11 @@ class TestMain(unittest.TestCase):
     def test_main_port_in_use(self, mock_args, mock_check, mock_restore, mock_create):
         """Test main exits when port is in use"""
         mock_args.return_value = Mock(
-            host="0.0.0.0", port=5500, debug=False, skip_port_check=False
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=False,
+            no_browser=True,
         )
         mock_check.return_value = False
 
@@ -206,14 +232,21 @@ class TestMain(unittest.TestCase):
         self.assertEqual(cm.exception.code, 1)
         mock_create.assert_not_called()
 
+    @patch("main.threading.Timer")
     @patch("main.create_app")
     @patch("main.restore_state")
     @patch("main.check_port_available")
     @patch("main.parse_args")
-    def test_main_starts_server(self, mock_args, mock_check, mock_restore, mock_create):
+    def test_main_starts_server(
+        self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
+    ):
         """Test main starts server successfully"""
         mock_args.return_value = Mock(
-            host="0.0.0.0", port=5500, debug=False, skip_port_check=False
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=False,
+            no_browser=True,
         )
         mock_check.return_value = True
 
@@ -228,16 +261,21 @@ class TestMain(unittest.TestCase):
             host="0.0.0.0", port=5500, debug=False, threaded=True
         )
 
+    @patch("main.threading.Timer")
     @patch("main.create_app")
     @patch("main.restore_state")
     @patch("main.check_port_available")
     @patch("main.parse_args")
     def test_main_skip_port_check(
-        self, mock_args, mock_check, mock_restore, mock_create
+        self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
     ):
         """Test main skips port check when skip_port_check is True"""
         mock_args.return_value = Mock(
-            host="0.0.0.0", port=5500, debug=False, skip_port_check=True
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=True,
+            no_browser=True,
         )
         mock_check.return_value = False  # Port in use, but should be ignored
 
@@ -251,6 +289,155 @@ class TestMain(unittest.TestCase):
         mock_create.assert_called_once()
         mock_restore.assert_called_once()
         mock_app.run.assert_called_once()
+
+
+class TestAutoOpenBrowser(unittest.TestCase):
+    """Tests for auto-open browser and startup banner"""
+
+    @patch("main.threading.Timer")
+    @patch("main.webbrowser.open")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_browser_opens_by_default(
+        self,
+        mock_args,
+        mock_check,
+        mock_restore,
+        mock_create,
+        mock_wb_open,
+        mock_timer_cls,
+    ):
+        """Browser should auto-open when --no-browser is not set"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=True,
+            no_browser=False,
+        )
+        mock_create.return_value = Mock()
+        mock_timer = Mock()
+        mock_timer_cls.return_value = mock_timer
+
+        main.main()
+
+        mock_timer_cls.assert_called_once_with(
+            1.0, mock_wb_open, args=["http://127.0.0.1:5500"]
+        )
+        mock_timer.start.assert_called_once()
+
+    @patch("main.threading.Timer")
+    @patch("main.webbrowser.open")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_no_browser_skips_open(
+        self,
+        mock_args,
+        mock_check,
+        mock_restore,
+        mock_create,
+        mock_wb_open,
+        mock_timer_cls,
+    ):
+        """Browser should NOT open when --no-browser is set"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=True,
+            no_browser=True,
+        )
+        mock_create.return_value = Mock()
+
+        main.main()
+
+        mock_timer_cls.assert_not_called()
+
+    @patch("main.threading.Timer")
+    @patch("main.webbrowser.open")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_browser_url_uses_custom_port(
+        self,
+        mock_args,
+        mock_check,
+        mock_restore,
+        mock_create,
+        mock_wb_open,
+        mock_timer_cls,
+    ):
+        """Browser URL should use the custom port"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=9090,
+            debug=False,
+            skip_port_check=True,
+            no_browser=False,
+        )
+        mock_create.return_value = Mock()
+        mock_timer = Mock()
+        mock_timer_cls.return_value = mock_timer
+
+        main.main()
+
+        mock_timer_cls.assert_called_once_with(
+            1.0, mock_wb_open, args=["http://127.0.0.1:9090"]
+        )
+
+    @patch("main.threading.Timer")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_startup_banner_logged(
+        self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
+    ):
+        """Startup banner should contain server URL"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=True,
+            no_browser=True,
+        )
+        mock_create.return_value = Mock()
+
+        with self.assertLogs("main", level="INFO") as cm:
+            main.main()
+
+        log_output = "\n".join(cm.output)
+        self.assertIn("FPBInject Web Server Started", log_output)
+        self.assertIn("http://127.0.0.1:5500", log_output)
+
+    @patch("main.threading.Timer")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_startup_banner_with_custom_port(
+        self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
+    ):
+        """Startup banner should show custom port"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=8080,
+            debug=False,
+            skip_port_check=True,
+            no_browser=True,
+        )
+        mock_create.return_value = Mock()
+
+        with self.assertLogs("main", level="INFO") as cm:
+            main.main()
+
+        log_output = "\n".join(cm.output)
+        self.assertIn("http://127.0.0.1:8080", log_output)
 
 
 if __name__ == "__main__":

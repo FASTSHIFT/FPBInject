@@ -21,6 +21,8 @@ import logging
 import os
 import socket
 import sys
+import webbrowser
+import threading
 
 from flask import Flask
 from flask_cors import CORS
@@ -89,6 +91,11 @@ def parse_args():
         "--skip-port-check",
         action="store_true",
         help="Skip port availability check (use with caution)",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not auto-open browser on startup",
     )
     return parser.parse_args()
 
@@ -175,10 +182,19 @@ def main():
     # Restore previous state (auto-connect)
     restore_state()
 
-    logger.info(f"Starting FPBInject Web Server on http://127.0.0.1:{args.port}")
-    logger.info(
-        f"⚠️  Recommended to use http://127.0.0.1:{args.port} for access (to avoid localhost IPv6 delay)"
-    )
+    url = f"http://127.0.0.1:{args.port}"
+
+    logger.info("")
+    logger.info("  ╔══════════════════════════════════════════════╗")
+    logger.info("  ║        FPBInject Web Server Started          ║")
+    logger.info("  ╠══════════════════════════════════════════════╣")
+    logger.info(f"  ║  🌐 Open: {url:<35s}║")
+    logger.info("  ╚══════════════════════════════════════════════╝")
+    logger.info("")
+
+    if not args.no_browser:
+        threading.Timer(1.0, webbrowser.open, args=[url]).start()
+
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 
