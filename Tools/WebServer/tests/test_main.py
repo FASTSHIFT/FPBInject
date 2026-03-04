@@ -415,10 +415,11 @@ class TestAutoOpenBrowser(unittest.TestCase):
         )
         mock_create.return_value = Mock()
 
-        with self.assertLogs("main", level="INFO") as cm:
+        with patch("main.logger") as mock_logger:
             main.main()
 
-        log_output = "\n".join(cm.output)
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        log_output = "\n".join(calls)
         self.assertIn("FPBInject Web Server Started", log_output)
         self.assertIn("http://127.0.0.1:5500", log_output)
 
@@ -447,10 +448,11 @@ class TestAutoOpenBrowser(unittest.TestCase):
         )
         mock_create.return_value = Mock()
 
-        with self.assertLogs("main", level="INFO") as cm:
+        with patch("main.logger") as mock_logger:
             main.main()
 
-        log_output = "\n".join(cm.output)
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        log_output = "\n".join(calls)
         self.assertIn("http://127.0.0.1:8080", log_output)
 
 
