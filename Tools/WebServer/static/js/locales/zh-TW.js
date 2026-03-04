@@ -357,17 +357,17 @@ window.i18nResources['zh-TW'] = {
 
       welcome_title: '歡迎使用 FPBInject Workbench',
       welcome_desc:
-        '基於 ARM Cortex-M FPB 硬體單元的執行時程式碼注入工具。<br><br>本教學將帶你了解所有功能的位置。',
+        '基於 ARM Cortex-M FPB 硬體單元的執行時程式碼注入工具。<br><br>本教學將帶您了解所有功能的位置。',
 
       appearance_title: '語言和主題',
-      appearance_desc: '首先，選擇你偏好的語言和主題。',
+      appearance_desc: '首先，選擇您偏好的語言和主題。',
       appearance_language: '語言',
       appearance_language_desc: '從下拉選單切換介面語言。',
       appearance_theme: '主題',
       appearance_theme_desc: '在深色和淺色主題之間切換。',
 
       connection_title: '串列埠連線',
-      connection_desc: '連線區域用於透過串列埠連線你的裝置。',
+      connection_desc: '連線區域用於透過串列埠連線您的裝置。',
       connection_port: '串列埠連接埠',
       connection_port_desc:
         '從下拉選單選擇裝置連接埠。點擊重新整理按鈕掃描新連接埠。',
@@ -404,7 +404,7 @@ window.i18nResources['zh-TW'] = {
       transfer_browse_desc: '導覽裝置目錄並遠端管理檔案。',
 
       symbols_title: '符號分析',
-      symbols_desc: '符號區域幫助你分析韌體函式。',
+      symbols_desc: '符號區域幫助您分析韌體函式。',
       symbols_search: '搜尋函式',
       symbols_search_desc: '透過名稱模式在 ELF 韌體中查詢函式。',
       symbols_disasm: '反組譯',
@@ -425,7 +425,7 @@ window.i18nResources['zh-TW'] = {
       config_hint: '展開每個部分以設定選項。',
 
       complete_title: '教學完成！',
-      complete_desc: '你現在知道在哪裡找到所有功能了。',
+      complete_desc: '您現在知道在哪裡找到所有功能了。',
       complete_configured: '已造訪',
       complete_skipped: '已跳過',
       complete_hint: '點擊標題列的 🎓 按鈕可隨時重新進入教學。',
