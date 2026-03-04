@@ -276,7 +276,7 @@ const stepRenderers = {
       <div class="tutorial-config-group">
         <div class="tutorial-config-item">
           <label><i class="codicon codicon-globe"></i> ${t('tutorial.appearance_language', 'Language')}</label>
-          <select id="tutorialLangSelect" class="vscode-select" onchange="if(typeof changeLanguage==='function') changeLanguage(this.value)">
+          <select id="tutorialLangSelect" class="vscode-select" onchange="if(typeof changeLanguage==='function'){changeLanguage(this.value).then(function(){renderTutorialStep()})}">
             <option value="en" ${currentLang === 'en' ? 'selected' : ''}>English</option>
             <option value="zh-CN" ${currentLang === 'zh-CN' ? 'selected' : ''}>简体中文</option>
             <option value="zh-TW" ${currentLang === 'zh-TW' ? 'selected' : ''}>繁體中文</option>
