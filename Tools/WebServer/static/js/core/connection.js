@@ -299,3 +299,11 @@ window.checkBackendHealth = checkBackendHealth;
 window.startBackendHealthCheck = startBackendHealthCheck;
 window.stopBackendHealthCheck = stopBackendHealthCheck;
 window.resetBackendAlertState = resetBackendAlertState;
+
+// Fix connect button text after translatePage() overwrites it
+document.addEventListener('i18n:translated', () => {
+  const btn = document.getElementById('connectBtn');
+  if (btn && window.FPBState && window.FPBState.isConnected) {
+    btn.textContent = t('connection.disconnect', 'Disconnect');
+  }
+});

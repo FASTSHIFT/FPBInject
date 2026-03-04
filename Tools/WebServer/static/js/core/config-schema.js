@@ -628,3 +628,53 @@ window.browsePathListItem = browsePathListItem;
 window.removePathListItem = removePathListItem;
 window.keyToElementId = keyToElementId;
 window.getConfigLabel = getConfigLabel;
+
+/**
+ * Translate config schema labels and tooltips.
+ * Listens for i18n:translated event to stay decoupled from i18n module.
+ */
+function translateConfigSchema() {
+  if (typeof i18next === 'undefined' || typeof getConfigSchema !== 'function')
+    return;
+
+  const schema = getConfigSchema();
+  if (!schema) return;
+
+  // Translate group headers
+  document.querySelectorAll('.config-group-header').forEach((header) => {
+    const group = header.getAttribute('data-group');
+    if (group) {
+      const key = `config.groups.${group}`;
+      const translated = i18next.t(key);
+      if (translated !== key) {
+        header.textContent = translated;
+      }
+    }
+  });
+
+  // Translate item labels and tooltips
+  for (const item of schema.schema) {
+    const elementId = keyToElementId(item.key);
+    const labelEl = document.querySelector(`label[for="${elementId}"]`);
+    if (labelEl) {
+      const key = `config.labels.${item.key}`;
+      const translated = i18next.t(key);
+      if (translated !== key) {
+        labelEl.textContent = translated;
+      }
+    }
+
+    const configItem = document
+      .querySelector(`.config-item [id="${elementId}"]`)
+      ?.closest('.config-item');
+    if (configItem) {
+      const tooltipKey = `tooltips.${item.key}`;
+      const translatedTooltip = i18next.t(tooltipKey);
+      if (translatedTooltip !== tooltipKey) {
+        configItem.setAttribute('title', translatedTooltip);
+      }
+    }
+  }
+}
+
+document.addEventListener('i18n:translated', translateConfigSchema);

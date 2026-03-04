@@ -93,55 +93,8 @@ function translatePage() {
     }
   });
 
-  // Translate config schema labels if schema is loaded
-  translateConfigSchema();
-}
-
-/**
- * Translate config schema labels and tooltips
- */
-function translateConfigSchema() {
-  if (!i18nInitialized || typeof getConfigSchema !== 'function') return;
-
-  const schema = getConfigSchema();
-  if (!schema) return;
-
-  // Re-render config panel headers with translated group labels
-  document.querySelectorAll('.config-group-header').forEach((header) => {
-    const group = header.getAttribute('data-group');
-    if (group) {
-      const key = `config.groups.${group}`;
-      const translated = i18next.t(key);
-      if (translated !== key) {
-        header.textContent = translated;
-      }
-    }
-  });
-
-  // Re-render config item labels
-  for (const item of schema.schema) {
-    const elementId = keyToElementId(item.key);
-    const labelEl = document.querySelector(`label[for="${elementId}"]`);
-    if (labelEl) {
-      const key = `config.labels.${item.key}`;
-      const translated = i18next.t(key);
-      if (translated !== key) {
-        labelEl.textContent = translated;
-      }
-    }
-
-    // Update tooltips
-    const configItem = document
-      .querySelector(`.config-item [id="${elementId}"]`)
-      ?.closest('.config-item');
-    if (configItem) {
-      const tooltipKey = `tooltips.${item.key}`;
-      const translatedTooltip = i18next.t(tooltipKey);
-      if (translatedTooltip !== tooltipKey) {
-        configItem.setAttribute('title', translatedTooltip);
-      }
-    }
-  }
+  // Notify other modules that translation is complete
+  document.dispatchEvent(new CustomEvent('i18n:translated'));
 }
 
 /**
