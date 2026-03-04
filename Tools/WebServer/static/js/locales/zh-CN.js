@@ -365,7 +365,6 @@ window.i18nResources['zh-CN'] = {
       appearance_language_desc: '从下拉菜单切换界面语言。',
       appearance_theme: '主题',
       appearance_theme_desc: '在深色和浅色主题之间切换。',
-      appearance_hint: '展开左侧的配置区域来更改这些设置。',
 
       connection_title: '串口连接',
       connection_desc: '连接区域用于通过串口连接你的设备。',

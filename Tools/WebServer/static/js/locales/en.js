@@ -381,8 +381,6 @@ window.i18nResources['en'] = {
         'Switch the interface language from the dropdown.',
       appearance_theme: 'Theme',
       appearance_theme_desc: 'Choose between dark and light theme.',
-      appearance_hint:
-        'Expand the Configuration section on the left to change these settings.',
 
       connection_title: 'Serial Connection',
       connection_desc:

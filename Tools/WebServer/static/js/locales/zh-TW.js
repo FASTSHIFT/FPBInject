@@ -365,7 +365,6 @@ window.i18nResources['zh-TW'] = {
       appearance_language_desc: '從下拉選單切換介面語言。',
       appearance_theme: '主題',
       appearance_theme_desc: '在深色和淺色主題之間切換。',
-      appearance_hint: '展開左側的設定區域來更改這些設定。',
 
       connection_title: '串列埠連線',
       connection_desc: '連線區域用於透過串列埠連線你的裝置。',

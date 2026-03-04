@@ -282,7 +282,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(1); // connection
+      w.tutorialGoTo(2); // connection
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-list'));
     });
@@ -292,7 +292,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(3); // quickcmd
+      w.tutorialGoTo(4); // quickcmd
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-list'));
     });
@@ -302,7 +302,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(7); // complete
+      w.tutorialGoTo(8); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-summary'));
     });
@@ -312,7 +312,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(7); // complete
+      w.tutorialGoTo(8); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('🎉'));
     });
@@ -341,7 +341,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(7); // last step
+      w.tutorialGoTo(8); // last step
       const skipBtn = getElement('tutorialSkipBtn');
       assertEqual(skipBtn.style.display, 'none');
     });
@@ -351,7 +351,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(7); // last step
+      w.tutorialGoTo(8); // last step
       const skipAllBtn = getElement('tutorialSkipAllBtn');
       assertEqual(skipAllBtn.style.display, 'none');
     });
@@ -416,7 +416,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(7); // last step
+      w.tutorialGoTo(8); // last step
       w.tutorialNext(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));
@@ -428,7 +428,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(7); // last step
+      w.tutorialGoTo(8); // last step
       w.tutorialSkip(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));

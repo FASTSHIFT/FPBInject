@@ -6,7 +6,7 @@ const TUTORIAL_STORAGE_KEY = 'fpbinject_tutorial_completed';
 
 const TUTORIAL_STEPS = [
   { id: 'welcome', sidebar: null },
-  { id: 'appearance', sidebar: 'details-configuration' },
+  { id: 'appearance', sidebar: null },
   { id: 'connection', sidebar: 'details-connection' },
   { id: 'device', sidebar: 'details-device' },
   { id: 'quickcmd', sidebar: 'details-quick-commands' },
@@ -267,27 +267,29 @@ const stepRenderers = {
   },
 
   appearance() {
+    const currentLang = localStorage.getItem('fpbinject_ui_language') || 'en';
+    const currentTheme =
+      document.documentElement.getAttribute('data-theme') || 'dark';
+
     return `
       <p>${t('tutorial.appearance_desc', 'First, choose your preferred language and theme.')}</p>
-      <div class="tutorial-feature-list">
-        <div class="tutorial-feature-item">
-          <i class="codicon codicon-globe"></i>
-          <div>
-            <strong>${t('tutorial.appearance_language', 'Language')}</strong>
-            ${t('tutorial.appearance_language_desc', 'Switch the interface language from the dropdown.')}
-          </div>
+      <div class="tutorial-config-group">
+        <div class="tutorial-config-item">
+          <label><i class="codicon codicon-globe"></i> ${t('tutorial.appearance_language', 'Language')}</label>
+          <select id="tutorialLangSelect" class="vscode-select" onchange="if(typeof changeLanguage==='function') changeLanguage(this.value)">
+            <option value="en" ${currentLang === 'en' ? 'selected' : ''}>English</option>
+            <option value="zh-CN" ${currentLang === 'zh-CN' ? 'selected' : ''}>简体中文</option>
+            <option value="zh-TW" ${currentLang === 'zh-TW' ? 'selected' : ''}>繁體中文</option>
+          </select>
         </div>
-        <div class="tutorial-feature-item">
-          <i class="codicon codicon-color-mode"></i>
-          <div>
-            <strong>${t('tutorial.appearance_theme', 'Theme')}</strong>
-            ${t('tutorial.appearance_theme_desc', 'Choose between dark and light theme.')}
-          </div>
+        <div class="tutorial-config-item">
+          <label><i class="codicon codicon-color-mode"></i> ${t('tutorial.appearance_theme', 'Theme')}</label>
+          <select id="tutorialThemeSelect" class="vscode-select" onchange="if(typeof setTheme==='function') setTheme(this.value)">
+            <option value="dark" ${currentTheme === 'dark' ? 'selected' : ''}>${t('config.options.dark', 'Dark')}</option>
+            <option value="light" ${currentTheme === 'light' ? 'selected' : ''}>${t('config.options.light', 'Light')}</option>
+          </select>
         </div>
       </div>
-      <p class="tutorial-hint" style="margin-top: 12px; opacity: 0.7; font-size: 12px;">
-        ${t('tutorial.appearance_hint', 'Expand the Configuration section on the left to change these settings.')}
-      </p>
     `;
   },
 
