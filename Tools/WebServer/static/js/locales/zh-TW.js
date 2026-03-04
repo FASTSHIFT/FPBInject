@@ -376,7 +376,7 @@ window.i18nResources['zh-TW'] = {
       connection_connect: '連線按鈕',
       connection_connect_desc: '點擊以建立與裝置的連線。',
 
-      device_title: '裝置資訊',
+      device_title: '熱補丁',
       device_desc: '裝置區域顯示已連線裝置的資訊。',
       device_info: '裝置資訊',
       device_info_desc: '檢視裝置狀態、FPB 硬體能力和活動補丁。',
@@ -433,8 +433,8 @@ window.i18nResources['zh-TW'] = {
       // 門控提示
       gate_connection: '⏳ 請在左側邊欄連線裝置後，再點擊下一步。',
       gate_connection_ok: '✅ 裝置連線成功！',
-      gate_device: '⏳ 請點擊「偵測裝置」或「取得資訊」來偵測裝置。',
-      gate_device_ok: '✅ 裝置偵測成功！',
+      gate_device: '⏳ 請點擊「吞吐測試」按鈕優化串列埠傳輸參數。',
+      gate_device_ok: '✅ 吞吐測試完成！',
       gate_transfer: '⏳ 請在傳輸區域點擊「重新整理」載入檔案列表。',
       gate_transfer_ok: '✅ 檔案列表載入成功！',
       gate_config:

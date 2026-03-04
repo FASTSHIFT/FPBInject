@@ -395,7 +395,7 @@ window.i18nResources['en'] = {
       connection_connect_desc:
         'Click to establish connection with your device.',
 
-      device_title: 'Device Information',
+      device_title: 'Hot Patch',
       device_desc:
         'The Device section shows information about your connected device.',
       device_info: 'Device Info',
@@ -469,8 +469,8 @@ window.i18nResources['en'] = {
         '⏳ Please connect to your device using the sidebar, then click Next.',
       gate_connection_ok: '✅ Device connected successfully!',
       gate_device:
-        '⏳ Please click "Detect Device" or "Get Info" to detect your device.',
-      gate_device_ok: '✅ Device detected successfully!',
+        '⏳ Please click "Throughput Test" to optimize serial transfer parameters.',
+      gate_device_ok: '✅ Throughput test completed!',
       gate_transfer:
         '⏳ Please click "Refresh" in the Transfer section to load the file list.',
       gate_transfer_ok: '✅ File list loaded successfully!',

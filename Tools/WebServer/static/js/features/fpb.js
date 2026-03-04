@@ -60,6 +60,7 @@ async function fpbTestSerial() {
     const data = await res.json();
 
     if (data.success) {
+      state.throughputTested = true;
       writeToOutput('─'.repeat(50), 'info');
       log.info('Serial Throughput Test Results:');
 

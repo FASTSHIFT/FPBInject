@@ -22,12 +22,7 @@ const TUTORIAL_STEPS = [
   {
     id: 'device',
     sidebar: 'details-device',
-    gate: () => {
-      // Device detected = memoryInfo has been populated by fpbInfo()
-      const memEl = document.getElementById('memoryInfo');
-      if (!memEl) return false;
-      return !memEl.querySelector('[data-i18n="panels.memory_not_available"]');
-    },
+    gate: () => !!(window.FPBState && window.FPBState.throughputTested),
     gateHint: 'tutorial.gate_device',
     gateOk: 'tutorial.gate_device_ok',
   },

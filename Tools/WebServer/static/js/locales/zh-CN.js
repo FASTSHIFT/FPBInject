@@ -375,7 +375,7 @@ window.i18nResources['zh-CN'] = {
       connection_connect: '连接按钮',
       connection_connect_desc: '点击以建立与设备的连接。',
 
-      device_title: '设备信息',
+      device_title: '热补丁',
       device_desc: '设备区域显示已连接设备的信息。',
       device_info: '设备信息',
       device_info_desc: '查看设备状态、FPB 硬件能力和活动补丁。',
@@ -432,8 +432,8 @@ window.i18nResources['zh-CN'] = {
       // 门控提示
       gate_connection: '⏳ 请在左侧边栏连接设备后，再点击下一步。',
       gate_connection_ok: '✅ 设备连接成功！',
-      gate_device: '⏳ 请点击「探测设备」或「获取信息」来检测设备。',
-      gate_device_ok: '✅ 设备探测成功！',
+      gate_device: '⏳ 请点击「吞吐测试」按钮优化串口传输参数。',
+      gate_device_ok: '✅ 吞吐测试完成！',
       gate_transfer: '⏳ 请在传输区域点击「刷新」加载文件列表。',
       gate_transfer_ok: '✅ 文件列表加载成功！',
       gate_config:
