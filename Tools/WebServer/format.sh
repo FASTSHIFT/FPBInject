@@ -258,6 +258,8 @@ wait $PID_PYTHON $PID_JS $PID_HTML $PID_CSS
 FORMATTED=0
 FAILED=0
 for result_file in "$TMPDIR_FMT"/*; do
+    # Skip error log files, only read result files
+    [[ "$result_file" == *_err ]] && continue
     if [ -f "$result_file" ]; then
         read ok fail <"$result_file"
         FORMATTED=$((FORMATTED + ${ok:-0}))
