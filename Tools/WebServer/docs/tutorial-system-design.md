@@ -18,6 +18,7 @@
 
 - 替代传统文档维护，降低用户上手门槛
 - 分步骤引导，每步聚焦一个功能区域
+- **所有步骤均为非强制性**，包括欢迎页在内均可跳过
 - 支持跳过、返回、重做
 - 完整 i18n 支持（en / zh-CN / zh-TW）
 
@@ -97,9 +98,9 @@ Step 1: 欢迎页
 
 Step 2: 项目配置 ⭐
   ├─ 高亮 Sidebar → Configuration 区域
-  ├─ 引导设置 ELF 路径（必填）
-  ├─ 引导设置 compile_commands.json 路径（推荐）
-  └─ 引导设置工具链路径（推荐）
+  ├─ 引导设置 ELF 路径（推荐）
+  ├─ 引导设置 compile_commands.json 路径（可选）
+  └─ 引导设置工具链路径（可选）
 
 Step 3: 串口连接 ⭐
   ├─ 高亮 Sidebar → Connection 区域
@@ -261,8 +262,8 @@ const TutorialStep = {
     targetPanel: 'details-configuration', // 需要展开的 sidebar panel
     position: 'right',                   // tooltip 位置: top/right/bottom/left
     action: null,                        // 可选：步骤触发的动作函数
-    validation: null,                    // 可选：进入下一步前的验证函数
-    canSkip: true,                       // 是否允许跳过
+    validation: null,                    // 可选：进入下一步前的提示函数（不阻止跳过）
+    canSkip: true,                       // 始终为 true，所有步骤均可跳过
 };
 ```
 
@@ -360,7 +361,7 @@ ConfigItem(key="tutorial_completed", label="Tutorial Completed",
 
 | 步骤 | 高亮目标 | 需展开面板 | Tooltip 位置 | 交互动作 |
 |------|---------|-----------|-------------|---------|
-| 1. 欢迎 | 无（全屏卡片） | — | center | 语言选择下拉框 |
+| 1. 欢迎 | 无（全屏卡片） | — | center | 语言选择下拉框 + 「跳过全部教程」按钮 |
 | 2. 项目配置 | `#details-configuration` | Configuration | right | 引导点击 ELF 路径浏览按钮 |
 | 3. 串口连接 | `#details-connection` | Connection | right | 引导选择端口 |
 | 4. 注入流程 | `.editor-area` | — | left | 介绍编辑器 + 工具栏按钮 |
