@@ -374,6 +374,16 @@ window.i18nResources['en'] = {
       welcome_desc:
         'An ARM Cortex-M runtime code injection tool based on FPB hardware.<br><br>This guide will show you where to find all the features.',
 
+      appearance_title: 'Language & Theme',
+      appearance_desc: 'First, choose your preferred language and theme.',
+      appearance_language: 'Language',
+      appearance_language_desc:
+        'Switch the interface language from the dropdown.',
+      appearance_theme: 'Theme',
+      appearance_theme_desc: 'Choose between dark and light theme.',
+      appearance_hint:
+        'Expand the Configuration section on the left to change these settings.',
+
       connection_title: 'Serial Connection',
       connection_desc:
         'The Connection section lets you connect to your device via serial port.',

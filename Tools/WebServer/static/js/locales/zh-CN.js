@@ -359,6 +359,14 @@ window.i18nResources['zh-CN'] = {
       welcome_desc:
         '基于 ARM Cortex-M FPB 硬件单元的运行时代码注入工具。<br><br>本教程将带你了解所有功能的位置。',
 
+      appearance_title: '语言和主题',
+      appearance_desc: '首先，选择你偏好的语言和主题。',
+      appearance_language: '语言',
+      appearance_language_desc: '从下拉菜单切换界面语言。',
+      appearance_theme: '主题',
+      appearance_theme_desc: '在深色和浅色主题之间切换。',
+      appearance_hint: '展开左侧的配置区域来更改这些设置。',
+
       connection_title: '串口连接',
       connection_desc: '连接区域用于通过串口连接你的设备。',
       connection_port: '串口端口',

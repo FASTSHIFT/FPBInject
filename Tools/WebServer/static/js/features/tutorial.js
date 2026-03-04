@@ -6,6 +6,7 @@ const TUTORIAL_STORAGE_KEY = 'fpbinject_tutorial_completed';
 
 const TUTORIAL_STEPS = [
   { id: 'welcome', sidebar: null },
+  { id: 'appearance', sidebar: 'details-configuration' },
   { id: 'connection', sidebar: 'details-connection' },
   { id: 'device', sidebar: 'details-device' },
   { id: 'quickcmd', sidebar: 'details-quick-commands' },
@@ -262,6 +263,31 @@ const stepRenderers = {
       <div class="tutorial-icon">🔧</div>
       <div class="tutorial-welcome-title">${t('tutorial.welcome_title', 'Welcome to FPBInject Workbench')}</div>
       <p class="tutorial-welcome-subtitle">${t('tutorial.welcome_desc', 'An ARM Cortex-M runtime code injection tool based on FPB hardware.')}</p>
+    `;
+  },
+
+  appearance() {
+    return `
+      <p>${t('tutorial.appearance_desc', 'First, choose your preferred language and theme.')}</p>
+      <div class="tutorial-feature-list">
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-globe"></i>
+          <div>
+            <strong>${t('tutorial.appearance_language', 'Language')}</strong>
+            ${t('tutorial.appearance_language_desc', 'Switch the interface language from the dropdown.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-color-mode"></i>
+          <div>
+            <strong>${t('tutorial.appearance_theme', 'Theme')}</strong>
+            ${t('tutorial.appearance_theme_desc', 'Choose between dark and light theme.')}
+          </div>
+        </div>
+      </div>
+      <p class="tutorial-hint" style="margin-top: 12px; opacity: 0.7; font-size: 12px;">
+        ${t('tutorial.appearance_hint', 'Expand the Configuration section on the left to change these settings.')}
+      </p>
     `;
   },
 

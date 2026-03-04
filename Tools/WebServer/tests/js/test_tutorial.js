@@ -362,9 +362,9 @@ module.exports = function (w) {
       setupTutorialDOM();
       w.startTutorial();
       const progress = getElement('tutorialProgress');
-      // 8 steps = 8 dot buttons
+      // 9 steps = 9 dot buttons
       const dotCount = (progress.innerHTML.match(/tutorial-dot/g) || []).length;
-      assertEqual(dotCount, 8);
+      assertEqual(dotCount, 9);
     });
   });
 
@@ -378,10 +378,10 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial(); // step 0 = welcome
-      w.tutorialNext(); // marks welcome, moves to step 1 = connection
-      w.tutorialNext(); // marks connection as configured, moves to step 2
-      // Go to complete step to check summary - connection should be configured
-      w.tutorialGoTo(7);
+      w.tutorialNext(); // marks welcome, moves to step 1 = appearance
+      w.tutorialNext(); // marks appearance as configured, moves to step 2
+      // Go to complete step to check summary - appearance should be configured
+      w.tutorialGoTo(8);
       const body = getElement('tutorialBody');
       // connection was marked configured via tutorialNext (welcome is excluded from summary)
       assertTrue(body.innerHTML.includes('configured'));
@@ -393,6 +393,7 @@ module.exports = function (w) {
       setupTutorialDOM();
       w.startTutorial(); // step 0
       w.tutorialSkip(); // skip welcome, move to step 1
+      w.tutorialSkip(); // skip appearance
       w.tutorialSkip(); // skip connection
       w.tutorialSkip(); // skip device
       w.tutorialSkip(); // skip quickcmd
