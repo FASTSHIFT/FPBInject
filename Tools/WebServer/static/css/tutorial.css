@@ -16,27 +16,20 @@
 }
 
 /* --- UI Highlighting System --- */
-.tutorial-highlight-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1050;
-  pointer-events: none;
+
+/* Dim non-highlighted sidebar sections */
+.tutorial-dimmed {
+  opacity: 0.15 !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s ease;
 }
 
+/* Highlighted target section */
 .tutorial-highlight-target {
-  position: relative;
-  z-index: 1060 !important;
-  background: var(--vscode-editor-background, #1e1e1e) !important;
-  box-shadow:
-    0 0 0 4px var(--vscode-focusBorder, #007acc),
-    0 0 20px 8px rgba(0, 122, 204, 0.5),
-    inset 0 0 0 2000px rgba(255, 255, 255, 0.08);
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -2px;
   border-radius: 4px;
-  transition: all 0.3s ease;
+  transition: outline-color 0.3s ease;
 }
 
 .tutorial-highlight-pulse {
@@ -46,16 +39,10 @@
 @keyframes tutorial-pulse {
   0%,
   100% {
-    box-shadow:
-      0 0 0 4px var(--vscode-focusBorder, #007acc),
-      0 0 20px 8px rgba(0, 122, 204, 0.5),
-      inset 0 0 0 2000px rgba(255, 255, 255, 0.08);
+    outline-color: var(--vscode-focusBorder, #007acc);
   }
   50% {
-    box-shadow:
-      0 0 0 4px var(--vscode-focusBorder, #007acc),
-      0 0 30px 12px rgba(0, 122, 204, 0.7),
-      inset 0 0 0 2000px rgba(255, 255, 255, 0.12);
+    outline-color: rgba(0, 122, 204, 0.4);
   }
 }
 

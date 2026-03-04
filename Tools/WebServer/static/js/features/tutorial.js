@@ -30,11 +30,16 @@ function highlightElement(selector) {
   const element = document.querySelector(selector);
   if (!element) return;
 
-  // Create backdrop
-  const backdrop = document.createElement('div');
-  backdrop.className = 'tutorial-highlight-backdrop';
-  backdrop.id = 'tutorialHighlightBackdrop';
-  document.body.appendChild(backdrop);
+  // Find the parent sidebar-section of the target
+  const targetSection = element.closest('.sidebar-section');
+
+  // Dim all other sidebar-section containers
+  const allSections = document.querySelectorAll('.sidebar .sidebar-section');
+  allSections.forEach((section) => {
+    if (section !== targetSection) {
+      section.classList.add('tutorial-dimmed');
+    }
+  });
 
   // Highlight target
   element.classList.add(
@@ -50,8 +55,10 @@ function highlightElement(selector) {
 }
 
 function clearHighlight() {
-  const backdrop = document.getElementById('tutorialHighlightBackdrop');
-  if (backdrop) backdrop.remove();
+  // Remove all dimmed classes
+  document.querySelectorAll('.tutorial-dimmed').forEach((el) => {
+    el.classList.remove('tutorial-dimmed');
+  });
 
   if (currentHighlightedElement) {
     currentHighlightedElement.classList.remove(
