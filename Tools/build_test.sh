@@ -430,6 +430,64 @@ run_tests() {
         FAILED_TESTS=$((FAILED_TESTS + 1))
         FAILED_CONFIGS+=("$config_desc")
     fi
+
+    echo ""
+    echo -e "${YELLOW}Testing library.cmake integration...${NC}"
+    echo ""
+
+    config_name="LIB_CMAKE"
+    config_desc="library.cmake (all backends: NONE/FATFS/LIBC/POSIX × STATIC/LIBC)"
+
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+
+    start_time=$(date +%s)
+
+    if build_library_test; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
+}
+
+# Build library.cmake integration test (uses App/tests with full mocks)
+build_library_test() {
+    local build_subdir="$BUILD_DIR/library_cmake"
+    local tests_dir="$PROJECT_ROOT/App/tests"
+
+    mkdir -p "$build_subdir"
+
+    # Configure (host compiler, no cross-compilation)
+    if ! cmake -B "$build_subdir" -S "$tests_dir" \
+        -DCOVERAGE=OFF -DASAN=OFF \
+        >"$build_subdir/cmake.log" 2>&1; then
+        return 1
+    fi
+
+    # Build only the library.cmake targets
+    local targets=(
+        lib_cmake_none_static
+        lib_cmake_none_libc
+        lib_cmake_libc_static
+        lib_cmake_fatfs_static
+        lib_cmake_fatfs_malloc
+        lib_cmake_posix_static
+    )
+
+    for target in "${targets[@]}"; do
+        if ! cmake --build "$build_subdir" --target "$target" --parallel \
+            >"$build_subdir/build_${target}.log" 2>&1; then
+            echo "  Failed target: $target (see $build_subdir/build_${target}.log)"
+            return 1
+        fi
+    done
+
+    return 0
 }
 
 # Print summary

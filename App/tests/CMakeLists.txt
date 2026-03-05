@@ -159,6 +159,54 @@ target_compile_definitions(test_runner_fatfs PRIVATE FL_USE_FILE=1
                                                      FL_FILE_USE_FATFS=1)
 target_link_libraries(test_runner_fatfs m)
 
+# ============================================================================
+# library.cmake integration tests (compile-only, verifies exported variables)
+# ============================================================================
+
+# Helper function: create a static library target using library.cmake exports
+function(add_library_cmake_test TARGET_NAME FILE_BACKEND ALLOC_MODE)
+  # Configure options before including library.cmake
+  set(FL_FILE_BACKEND ${FILE_BACKEND})
+  set(FL_ALLOC_MODE ${ALLOC_MODE})
+  set(FL_FATFS_USE_MALLOC OFF)
+  set(FL_USE_EXTERNAL_ARGPARSE OFF)
+
+  # Parse optional arguments
+  cmake_parse_arguments(ARG "FATFS_MALLOC" "" "" ${ARGN})
+  if(ARG_FATFS_MALLOC)
+    set(FL_FATFS_USE_MALLOC ON)
+  endif()
+
+  include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/library.cmake)
+
+  add_library(${TARGET_NAME} STATIC ${FPBINJECT_SOURCES})
+  target_include_directories(${TARGET_NAME} PRIVATE ${FPBINJECT_INCLUDES}
+                                                    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_definitions(${TARGET_NAME} PRIVATE ${FPBINJECT_DEFINITIONS}
+                                                    FPB_HOST_TESTING=1)
+  target_compile_options(
+    ${TARGET_NAME} PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter
+                           -Wno-unused-function)
+endfunction()
+
+# NONE backend + STATIC alloc
+add_library_cmake_test(lib_cmake_none_static NONE STATIC)
+
+# NONE backend + LIBC alloc
+add_library_cmake_test(lib_cmake_none_libc NONE LIBC)
+
+# LIBC file backend + STATIC alloc
+add_library_cmake_test(lib_cmake_libc_static LIBC STATIC)
+
+# FATFS file backend + STATIC alloc (uses mock_fatfs.h from this directory)
+add_library_cmake_test(lib_cmake_fatfs_static FATFS STATIC)
+
+# FATFS file backend + FATFS_MALLOC
+add_library_cmake_test(lib_cmake_fatfs_malloc FATFS STATIC FATFS_MALLOC)
+
+# POSIX file backend + STATIC alloc (host has POSIX support)
+add_library_cmake_test(lib_cmake_posix_static POSIX STATIC)
+
 # Custom target for running all tests
 add_custom_target(
   run_tests
