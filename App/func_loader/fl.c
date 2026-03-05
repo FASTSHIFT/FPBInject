@@ -799,8 +799,6 @@ static void cmd_flist(fl_context_t* ctx, const char* path) {
         return;
     }
 
-    fl_println("");
-
     /* First pass: count dirs and files */
     flist_count_ctx_t count_ctx = {0, 0};
     int total = fl_file_list_cb(&ctx->file_ctx, path, flist_print_cb, &count_ctx);
