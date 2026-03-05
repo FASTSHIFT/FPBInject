@@ -3,6 +3,26 @@
   ========================================*/
 
 /* ===========================
+   SYMBOL CLICK DEBOUNCE
+   =========================== */
+
+// Prevent single-click (disassembly) from firing on double-click (patch).
+// Single-click is delayed 250ms; double-click cancels it.
+let _symbolClickTimer = null;
+
+function onSymbolClick(name, addr) {
+  clearTimeout(_symbolClickTimer);
+  _symbolClickTimer = setTimeout(() => {
+    openDisassembly(name, addr);
+  }, 250);
+}
+
+function onSymbolDblClick(name) {
+  clearTimeout(_symbolClickTimer);
+  openManualPatchTab(name);
+}
+
+/* ===========================
    SYMBOL SEARCH
    =========================== */
 async function searchSymbols() {
@@ -29,7 +49,7 @@ async function searchSymbols() {
       list.innerHTML = data.symbols
         .map(
           (sym) => `
-        <div class="symbol-item" onclick="openDisassembly('${sym.name}', '${sym.addr}')" ondblclick="openManualPatchTab('${sym.name}')">
+        <div class="symbol-item" onclick="onSymbolClick('${sym.name}', '${sym.addr}')" ondblclick="onSymbolDblClick('${sym.name}')">
           <i class="codicon codicon-symbol-method symbol-icon"></i>
           <span class="symbol-name">${sym.name}</span>
           <span class="symbol-addr">${sym.addr}</span>

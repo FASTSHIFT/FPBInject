@@ -74,6 +74,44 @@ const TUTORIAL_STEPS = [
     gateHint: 'tutorial.gate_config',
     gateOk: 'tutorial.gate_config_ok',
   },
+  {
+    id: 'demo_search',
+    sidebar: 'details-symbols',
+    gate: () => {
+      const tabs = document.querySelectorAll('#editorTabsHeader .tab');
+      return Array.from(tabs).some((t) =>
+        t.textContent.includes('fl_cmd_demo'),
+      );
+    },
+    gateHint: 'tutorial.gate_demo_search',
+    gateOk: 'tutorial.gate_demo_search_ok',
+  },
+  {
+    id: 'demo_inject',
+    sidebar: null,
+    highlight: '#editorContainer',
+    gate: () => {
+      const slotStates = window.FPBState?.slotStates || [];
+      return slotStates.some((s) => s && s.occupied);
+    },
+    gateHint: 'tutorial.gate_demo_inject',
+    gateOk: 'tutorial.gate_demo_inject_ok',
+  },
+  {
+    id: 'demo_verify',
+    sidebar: null,
+    highlight: '#panelContainer',
+  },
+  {
+    id: 'demo_unpatch',
+    sidebar: 'details-device',
+    gate: () => {
+      const slotStates = window.FPBState?.slotStates || [];
+      return slotStates.every((s) => !s || !s.occupied);
+    },
+    gateHint: 'tutorial.gate_demo_unpatch',
+    gateOk: 'tutorial.gate_demo_unpatch_ok',
+  },
   { id: 'complete', sidebar: null },
 ];
 
@@ -758,6 +796,117 @@ const stepRenderers = {
       </div>
       <p class="tutorial-hint" style="margin-top: 12px; opacity: 0.7; font-size: 12px;">
         ${t('tutorial.config_hint', 'Expand each section to configure settings.')}
+      </p>
+      ${renderGateStatus(step)}
+    `;
+  },
+
+  demo_search() {
+    const step = TUTORIAL_STEPS.find((s) => s.id === 'demo_search');
+    return `
+      <p>${t('tutorial.demo_search_desc', "Let's try a real injection! Search for the demo function in the Symbols panel.")}</p>
+      <div class="tutorial-feature-list">
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-search"></i>
+          <div>
+            <strong>${t('tutorial.demo_search_input', 'Search Symbol')}</strong>
+            ${t('tutorial.demo_search_input_desc', 'Type <code>fl_cmd_demo</code> in the search box and press Enter.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-list-flat"></i>
+          <div>
+            <strong>${t('tutorial.demo_search_result', 'View Results')}</strong>
+            ${t('tutorial.demo_search_result_desc', 'The list shows the function address and name from your ELF firmware.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-edit"></i>
+          <div>
+            <strong>${t('tutorial.demo_search_dblclick', 'Double-Click to Patch')}</strong>
+            ${t('tutorial.demo_search_dblclick_desc', 'Double-click the symbol to auto-generate a patch template in the editor.')}
+          </div>
+        </div>
+      </div>
+      ${renderGateStatus(step)}
+    `;
+  },
+
+  demo_inject() {
+    const step = TUTORIAL_STEPS.find((s) => s.id === 'demo_inject');
+    return `
+      <p>${t('tutorial.demo_inject_desc', 'The generated patch template can be injected directly. Select a slot and click inject.')}</p>
+      <div class="tutorial-feature-list">
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-edit"></i>
+          <div>
+            <strong>${t('tutorial.demo_inject_edit', 'Edit Code')}</strong>
+            ${t('tutorial.demo_inject_edit_desc', 'Change the <code>fl_println</code> string to your own message.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-layers"></i>
+          <div>
+            <strong>${t('tutorial.demo_inject_slot', 'Select Slot')}</strong>
+            ${t('tutorial.demo_inject_slot_desc', 'Make sure an available FPB slot is selected in the toolbar.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-play"></i>
+          <div>
+            <strong>${t('tutorial.demo_inject_run', 'Click Inject')}</strong>
+            ${t('tutorial.demo_inject_run_desc', 'Click the inject button in the toolbar and wait for completion.')}
+          </div>
+        </div>
+      </div>
+      ${renderGateStatus(step)}
+    `;
+  },
+
+  demo_verify() {
+    return `
+      <p>${t('tutorial.demo_verify_desc', 'Send the demo command in the serial terminal to verify the injection effect.')}</p>
+      <div class="tutorial-feature-list">
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-terminal"></i>
+          <div>
+            <strong>${t('tutorial.demo_verify_send_cmd', 'Send Command')}</strong>
+            ${t('tutorial.demo_verify_send_cmd_desc', 'Type <code>fl -c demo</code> in the serial terminal and press Enter.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-check"></i>
+          <div>
+            <strong>${t('tutorial.demo_verify_check_output', 'Check Output')}</strong>
+            ${t('tutorial.demo_verify_check_output_desc', 'The output should show the injected message instead of the original one.')}
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  demo_unpatch() {
+    const step = TUTORIAL_STEPS.find((s) => s.id === 'demo_unpatch');
+    return `
+      <p>${t('tutorial.demo_unpatch_desc', 'Remove the injection and verify the original function is restored.')}</p>
+      <div class="tutorial-feature-list">
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-close"></i>
+          <div>
+            <strong>${t('tutorial.demo_unpatch_click', 'Click ✕ to Unpatch')}</strong>
+            ${t('tutorial.demo_unpatch_click_desc', 'In the Device Info panel, click the ✕ button on the occupied slot to remove the injection.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-terminal"></i>
+          <div>
+            <strong>${t('tutorial.demo_unpatch_verify', 'Verify Restore')}</strong>
+            ${t('tutorial.demo_unpatch_verify_desc', 'Send <code>fl -c demo</code> again — the output should revert to the original message.')}
+          </div>
+        </div>
+      </div>
+      <p class="tutorial-hint" style="margin-top: 14px; text-align: center; opacity: 0.7; font-size: 12px;">
+        ${t('tutorial.demo_unpatch_hint', 'This is the complete FPB runtime code injection workflow — replace any function without reflashing!')}
       </p>
       ${renderGateStatus(step)}
     `;

@@ -521,6 +521,63 @@ window.i18nResources['en'] = {
       gate_config_autoinject: 'Auto-Inject',
       gate_logs: '⏳ Please click the "Serial" tab in the bottom panel.',
       gate_logs_ok: '✅ Serial terminal is now active!',
+
+      // Demo inject steps
+      demo_search_title: 'Search Target Function',
+      demo_search_desc:
+        "Let's try a real injection! Search for the demo function in the Symbols panel.",
+      demo_search_input: 'Search Symbol',
+      demo_search_input_desc:
+        'Type <code>fl_cmd_demo</code> in the search box and press Enter.',
+      demo_search_result: 'View Results',
+      demo_search_result_desc:
+        'The list shows the function address and name from your ELF firmware.',
+      demo_search_dblclick: 'Double-Click to Patch',
+      demo_search_dblclick_desc:
+        'Double-click the symbol to auto-generate a patch template in the editor.',
+      gate_demo_search:
+        '⏳ Please search for <code>fl_cmd_demo</code> and double-click to create a patch tab.',
+      gate_demo_search_ok: '✅ Patch tab created!',
+
+      demo_inject_title: 'Edit & Inject Patch',
+      demo_inject_desc:
+        'The generated patch template can be injected directly. Select a slot and click inject.',
+      demo_inject_edit: 'Edit Code',
+      demo_inject_edit_desc:
+        'Change the <code>fl_println</code> string to your own message.',
+      demo_inject_slot: 'Select Slot',
+      demo_inject_slot_desc:
+        'Make sure an available FPB slot is selected in the toolbar.',
+      demo_inject_run: 'Click Inject',
+      demo_inject_run_desc:
+        'Click the inject button in the toolbar and wait for completion.',
+      gate_demo_inject: '⏳ Please select a slot and click the inject button.',
+      gate_demo_inject_ok: '✅ Injection successful!',
+
+      demo_verify_title: 'Verify Injection',
+      demo_verify_desc:
+        'Send the demo command in the serial terminal to verify the injection effect.',
+      demo_verify_send_cmd: 'Send Command',
+      demo_verify_send_cmd_desc:
+        'Type <code>fl -c demo</code> in the serial terminal and press Enter.',
+      demo_verify_check_output: 'Check Output',
+      demo_verify_check_output_desc:
+        'The output should show the injected message instead of the original one.',
+
+      demo_unpatch_title: 'Unpatch',
+      demo_unpatch_desc:
+        'Remove the injection and verify the original function is restored.',
+      demo_unpatch_click: 'Click ✕ to Unpatch',
+      demo_unpatch_click_desc:
+        'In the Device Info panel, click the ✕ button on the occupied slot to remove the injection.',
+      demo_unpatch_verify: 'Verify Restore',
+      demo_unpatch_verify_desc:
+        'Send <code>fl -c demo</code> again — the output should revert to the original message.',
+      gate_demo_unpatch:
+        '⏳ Please click ✕ on the occupied slot to remove the injection.',
+      gate_demo_unpatch_ok: '✅ Unpatch complete!',
+      demo_unpatch_hint:
+        'This is the complete FPB runtime code injection workflow — replace any function without reflashing!',
     },
   },
 };

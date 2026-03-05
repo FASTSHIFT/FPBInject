@@ -36,6 +36,13 @@ module.exports = function (w) {
     createMockElement('tutorialSkipBtn');
     createMockElement('tutorialNextBtn');
     createMockElement('tutorialSkipAllBtn');
+    // Add tutorial-modal for positionModalNearTarget coverage
+    const modal = createMockElement('tutorialModal');
+    modal.className = 'tutorial-modal';
+    // Add panelContainer for demo_verify highlight
+    createMockElement('panelContainer');
+    // Add editorContainer for demo_inject highlight
+    createMockElement('editorContainer');
   }
 
   /* ===========================
@@ -310,7 +317,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // complete
+      w.tutorialGoTo(14); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-summary'));
     });
@@ -320,7 +327,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // complete
+      w.tutorialGoTo(14); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('🎉'));
     });
@@ -349,7 +356,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // last step
+      w.tutorialGoTo(14); // last step
       const skipBtn = getElement('tutorialSkipBtn');
       assertEqual(skipBtn.style.display, 'none');
     });
@@ -359,7 +366,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // last step
+      w.tutorialGoTo(14); // last step
       const skipAllBtn = getElement('tutorialSkipAllBtn');
       assertEqual(skipAllBtn.style.display, 'none');
     });
@@ -370,9 +377,9 @@ module.exports = function (w) {
       setupTutorialDOM();
       w.startTutorial();
       const progress = getElement('tutorialProgress');
-      // 11 steps = 11 dot buttons
+      // 15 steps = 15 dot buttons
       const dotCount = (progress.innerHTML.match(/tutorial-dot/g) || []).length;
-      assertEqual(dotCount, 11);
+      assertEqual(dotCount, 15);
     });
   });
 
@@ -389,7 +396,7 @@ module.exports = function (w) {
       w.tutorialNext(); // marks welcome, moves to step 1 = appearance
       w.tutorialNext(); // marks appearance as configured, moves to step 2
       // Go to complete step to check summary - appearance should be configured
-      w.tutorialGoTo(10);
+      w.tutorialGoTo(14);
       const body = getElement('tutorialBody');
       // connection was marked configured via tutorialNext (welcome is excluded from summary)
       assertTrue(body.innerHTML.includes('configured'));
@@ -409,7 +416,11 @@ module.exports = function (w) {
       w.tutorialSkip(); // skip symbols
       w.tutorialSkip(); // skip editor
       w.tutorialSkip(); // skip logs
-      w.tutorialSkip(); // skip config -> complete
+      w.tutorialSkip(); // skip config
+      w.tutorialSkip(); // skip demo_search
+      w.tutorialSkip(); // skip demo_inject
+      w.tutorialSkip(); // skip demo_verify
+      w.tutorialSkip(); // skip demo_unpatch -> complete
       const body = getElement('tutorialBody');
       // All intermediate steps should show skipped
       assertTrue(body.innerHTML.includes('skipped'));
@@ -426,7 +437,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // last step
+      w.tutorialGoTo(14); // last step
       w.tutorialNext(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));
@@ -438,7 +449,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // last step
+      w.tutorialGoTo(14); // last step
       w.tutorialSkip(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));
@@ -508,7 +519,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // complete (last step)
+      w.tutorialGoTo(14); // complete (last step)
       const nextBtn = getElement('tutorialNextBtn');
       assertTrue(nextBtn.textContent !== 'Next');
     });
@@ -546,6 +557,174 @@ module.exports = function (w) {
       );
       assertTrue(themeSelectMatch !== null);
       assertTrue(themeSelectMatch[1].includes('saveConfig'));
+    });
+  });
+
+  /* ===========================
+     DEMO INJECT STEPS
+     =========================== */
+
+  describe('Tutorial - Demo Search Step', () => {
+    it('demo_search step renders feature list', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(10); // demo_search
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('tutorial-feature-list'));
+    });
+
+    it('demo_search step mentions fl_cmd_demo', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(10); // demo_search
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('fl_cmd_demo'));
+    });
+
+    it('demo_search step has 3 feature items', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(10); // demo_search
+      const body = getElement('tutorialBody');
+      const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
+        .length;
+      assertEqual(count, 3);
+    });
+  });
+
+  describe('Tutorial - Demo Inject Step', () => {
+    it('demo_inject step renders feature list', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(11); // demo_inject
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('tutorial-feature-list'));
+    });
+
+    it('demo_inject step mentions inject button', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(11); // demo_inject
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('Inject'));
+    });
+
+    it('demo_inject step has 3 feature items', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(11); // demo_inject
+      const body = getElement('tutorialBody');
+      const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
+        .length;
+      assertEqual(count, 3);
+    });
+  });
+
+  describe('Tutorial - Demo Verify Step', () => {
+    it('demo_verify step renders feature list', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(12); // demo_verify
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('tutorial-feature-item'));
+    });
+
+    it('demo_verify step mentions fl -c demo command', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(12); // demo_verify
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('fl -c demo'));
+    });
+
+    it('demo_verify step has 2 feature items', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(12); // demo_verify
+      const body = getElement('tutorialBody');
+      const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
+        .length;
+      assertEqual(count, 2);
+    });
+
+    it('demo_verify step has no gate (next button enabled)', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(12); // demo_verify
+      const nextBtn = getElement('tutorialNextBtn');
+      assertFalse(nextBtn.disabled);
+    });
+  });
+
+  describe('Tutorial - Demo Unpatch Step', () => {
+    it('demo_unpatch step renders feature list', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(13); // demo_unpatch
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('tutorial-feature-item'));
+    });
+
+    it('demo_unpatch step mentions fl -c demo command', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(13); // demo_unpatch
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('fl -c demo'));
+    });
+
+    it('demo_unpatch step has 2 feature items', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(13); // demo_unpatch
+      const body = getElement('tutorialBody');
+      const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
+        .length;
+      assertEqual(count, 2);
+    });
+
+    it('demo_unpatch step has gate', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      // Set a slot as occupied so the gate is not yet satisfied
+      browserGlobals.window.FPBState.slotStates[0] = {
+        occupied: true,
+        func: 'fl_cmd_demo',
+        orig_addr: '0x08001000',
+        target_addr: '0x20001000',
+        code_size: 64,
+      };
+      w.startTutorial();
+      w.tutorialGoTo(13); // demo_unpatch
+      const nextBtn = getElement('tutorialNextBtn');
+      assertTrue(nextBtn.disabled);
     });
   });
 };
