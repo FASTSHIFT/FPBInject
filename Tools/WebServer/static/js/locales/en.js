@@ -559,7 +559,7 @@ window.i18nResources['en'] = {
         'Send the demo command in the serial terminal to verify the injection effect.',
       demo_verify_send_cmd: 'Send Command',
       demo_verify_send_cmd_desc:
-        'Type <code>fl -c demo</code> in the serial terminal and press Enter.',
+        'The system has auto-entered fl mode. Type <code>--cmd demo</code> in the serial terminal and press Enter.',
       demo_verify_check_output: 'Check Output',
       demo_verify_check_output_desc:
         'The output should show the injected message instead of the original one.',
@@ -572,7 +572,7 @@ window.i18nResources['en'] = {
         'In the Device Info panel, click the ✕ button on the occupied slot to remove the injection.',
       demo_unpatch_verify: 'Verify Restore',
       demo_unpatch_verify_desc:
-        'Send <code>fl -c demo</code> again — the output should revert to the original message.',
+        'Send <code>--cmd demo</code> again in fl mode — the output should revert to the original message.',
       gate_demo_unpatch:
         '⏳ Please click ✕ on the occupied slot to remove the injection.',
       gate_demo_unpatch_ok: '✅ Unpatch complete!',

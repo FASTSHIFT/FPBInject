@@ -511,7 +511,7 @@ window.i18nResources['zh-CN'] = {
       demo_verify_desc: '在串口终端发送 demo 命令，验证注入是否生效。',
       demo_verify_send_cmd: '发送命令',
       demo_verify_send_cmd_desc:
-        '在串口终端输入 <code>fl -c demo</code> 并按回车。',
+        '已自动进入 fl 模式，在串口终端输入 <code>--cmd demo</code> 并按回车。',
       demo_verify_check_output: '查看输出',
       demo_verify_check_output_desc: '输出应显示注入后的消息，而不是原始消息。',
 
@@ -522,7 +522,7 @@ window.i18nResources['zh-CN'] = {
         '在热补丁面板中，点击已占用槽位的 ✕ 按钮移除注入。',
       demo_unpatch_verify: '验证恢复',
       demo_unpatch_verify_desc:
-        '再次发送 <code>fl -c demo</code>，输出应恢复为原始消息。',
+        '在 fl 模式下再次发送 <code>--cmd demo</code>，输出应恢复为原始消息。',
       gate_demo_unpatch: '⏳ 请点击已占用槽位的 ✕ 按钮取消注入。',
       gate_demo_unpatch_ok: '✅ 已取消注入！',
       demo_unpatch_hint:
