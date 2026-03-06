@@ -1047,9 +1047,8 @@ void test_loader_cmd_write_with_crc(void) {
     char addr_str[32];
     snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
 
-    /* First write without CRC to get the data in, then read to find CRC */
-    /* Use hex data "01020304" for simplicity */
-    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "01020304"};
+    /* Write base64 data (AQIDBA== = 0x01 0x02 0x03 0x04) */
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "AQIDBA=="};
     fl_exec_cmd(&test_ctx, 7, argv);
 
     TEST_ASSERT(mock_output_contains("FLOK"));
@@ -1069,7 +1068,7 @@ void test_loader_cmd_write_crc_mismatch(void) {
     /* Write with wrong CRC */
     char addr_str[32];
     snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
-    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "01020304", "--crc", "0xFFFF"};
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "AQIDBA==", "--crc", "0xFFFF"};
     fl_exec_cmd(&test_ctx, 9, argv);
 
     TEST_ASSERT(mock_output_contains("FLERR"));
@@ -1092,7 +1091,7 @@ void test_loader_cmd_write_zero_addr(void) {
     fl_init(&test_ctx);
 
     /* Write to address 0 should fail */
-    const char* argv[] = {"fl", "--cmd", "write", "--addr", "0x0", "--data", "01020304"};
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", "0x0", "--data", "AQIDBA=="};
     fl_exec_cmd(&test_ctx, 7, argv);
 
     TEST_ASSERT(mock_output_contains("FLERR"));
@@ -1113,8 +1112,8 @@ void test_loader_cmd_read_write_roundtrip(void) {
 
     mock_output_reset();
 
-    /* Write known data */
-    const char* write_argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "DEADBEEF"};
+    /* Write known data (3q2+7w== = 0xDE 0xAD 0xBE 0xEF) */
+    const char* write_argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "3q2+7w=="};
     fl_exec_cmd(&test_ctx, 7, write_argv);
     TEST_ASSERT(mock_output_contains("FLOK"));
 

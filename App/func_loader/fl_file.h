@@ -60,14 +60,6 @@ extern "C" {
 #define FL_FILE_PATH_MAX 128
 #endif
 
-/* File transfer buffer sizes */
-#ifndef FL_FILE_BUF_SIZE
-#define FL_FILE_BUF_SIZE 1024
-#endif
-#ifndef FL_FILE_B64_BUF_SIZE
-#define FL_FILE_B64_BUF_SIZE 2048
-#endif
-
 /* File open modes (for fl_file_open mode string) */
 #define FL_FILE_MODE_READ 0x01
 #define FL_FILE_MODE_WRITE 0x02

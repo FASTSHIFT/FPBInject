@@ -193,6 +193,12 @@ bool fl_is_inited(fl_context_t* ctx) {
     return ctx->is_inited;
 }
 
+static void fl_flush_dcache(fl_context_t* ctx, const void* addr, size_t len) {
+    if (ctx->flush_dcache_cb) {
+        ctx->flush_dcache_cb((uintptr_t)addr, (uintptr_t)addr + len);
+    }
+}
+
 static void cmd_ping(fl_context_t* ctx) {
     (void)ctx;
     fl_response(true, "PONG");
@@ -331,9 +337,7 @@ static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str
     memcpy(dest, buf, n);
 
     /* Flush data cache after upload to ensure code is visible to CPU */
-    if (ctx->flush_dcache_cb) {
-        ctx->flush_dcache_cb((uintptr_t)dest, (uintptr_t)dest + n);
-    }
+    fl_flush_dcache(ctx, dest, n);
 
     fl_response(true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)dest);
 }
@@ -393,9 +397,7 @@ static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* data_str, u
     memcpy(dest, buf, n);
 
     /* Flush data cache */
-    if (ctx->flush_dcache_cb) {
-        ctx->flush_dcache_cb((uintptr_t)dest, (uintptr_t)dest + n);
-    }
+    fl_flush_dcache(ctx, dest, n);
 
     fl_response(true, "WRITE %d bytes to 0x%lX", n, (unsigned long)addr);
 }

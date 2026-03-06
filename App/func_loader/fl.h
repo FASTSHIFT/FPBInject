@@ -43,10 +43,10 @@ extern "C" {
 
 /* Shared transfer buffer sizes */
 #ifndef FL_BUF_SIZE
-#define FL_BUF_SIZE 2048
+#define FL_BUF_SIZE 1024
 #endif
 #ifndef FL_B64_BUF_SIZE
-#define FL_B64_BUF_SIZE 4096
+#define FL_B64_BUF_SIZE 2048
 #endif
 
 /* Callback types */
