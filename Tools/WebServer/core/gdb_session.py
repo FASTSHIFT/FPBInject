@@ -9,8 +9,9 @@ GDB Session manager for FPBInject Web Server.
 Manages an arm-none-eabi-gdb subprocess connected to the GDB RSP Bridge,
 providing high-level APIs for symbol lookup, type resolution, and memory access.
 
-This replaces pyelftools for ELF/DWARF parsing with GDB's native capabilities,
-achieving ~100-300x speedup for symbol and type queries.
+Uses pygdbmi for structured GDB/MI communication instead of fragile text parsing
+of the MI transport layer. High-level command output (ptype, info address, etc.)
+is still parsed from console text since GDB/MI has no native equivalents.
 """
 
 import logging
@@ -20,6 +21,8 @@ import subprocess
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
+
+from pygdbmi.IoManager import IoManager
 
 from utils.toolchain import get_tool_path, get_subprocess_env
 
@@ -44,9 +47,13 @@ class GDBSession:
     The GDB process loads the ELF file once and builds internal indexes.
     Subsequent queries (symbol lookup, ptype, etc.) are near-instant.
 
+    Communication uses pygdbmi's IoManager for reliable GDB/MI parsing.
+    High-level APIs execute CLI commands via -interpreter-exec and extract
+    console output from the structured MI responses.
+
     Usage:
         session = GDBSession(elf_path, toolchain_path)
-        session.start(rsp_port=3333)  # Connect to RSP bridge
+        session.start(rsp_port=3333)
         result = session.execute("ptype my_struct_var")
         session.stop()
     """
@@ -55,12 +62,11 @@ class GDBSession:
         self._elf_path = elf_path
         self._toolchain_path = toolchain_path
         self._proc: Optional[subprocess.Popen] = None
+        self._io: Optional[IoManager] = None
         self._lock = threading.Lock()
         self._alive = False
         self._rsp_port: Optional[int] = None
-        self._search_generation = (
-            0  # Incremented on each new search to cancel stale ones
-        )
+        self._search_generation = 0
 
     @property
     def is_alive(self) -> bool:
@@ -108,16 +114,8 @@ class GDBSession:
         logger.info(f"  RSP port: {rsp_port}")
 
         try:
-            # Launch GDB in MI mode for structured output
-            # --nx: don't read .gdbinit
-            # -q: quiet
             self._proc = subprocess.Popen(
-                [
-                    gdb_path,
-                    "--interpreter=mi3",
-                    "--nx",
-                    "-q",
-                ],
+                [gdb_path, "--interpreter=mi3", "--nx", "-q"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -125,19 +123,25 @@ class GDBSession:
                 bufsize=0,
             )
 
-            # Wait for GDB prompt
-            self._read_until_prompt(timeout=5.0)
+            # Create pygdbmi IoManager for structured MI communication
+            self._io = IoManager(
+                self._proc.stdin,
+                self._proc.stdout,
+                self._proc.stderr,
+                time_to_check_for_additional_output_sec=0.3,
+            )
+
+            # Read initial GDB startup output
+            self._io.get_gdb_response(timeout_sec=5.0, raise_error_on_timeout=False)
 
             # For gdb-multiarch: set ARM architecture before loading ELF
             if is_multiarch:
                 logger.info("Setting ARM architecture for gdb-multiarch...")
-                self._execute_mi("set architecture arm", timeout=5.0)
+                self._write_mi("set architecture arm", timeout=5.0)
 
             # Load ELF file
             logger.info("Loading ELF file into GDB...")
-            resp = self._execute_mi(
-                f"file {self._elf_path}", timeout=GDB_STARTUP_TIMEOUT
-            )
+            resp = self._write_mi(f"file {self._elf_path}", timeout=GDB_STARTUP_TIMEOUT)
             if resp is None:
                 self.stop()
                 return False
@@ -147,7 +151,7 @@ class GDBSession:
 
             # Connect to RSP bridge
             logger.info(f"Connecting to RSP bridge on port {rsp_port}...")
-            resp = self._execute_mi(f"target remote 127.0.0.1:{rsp_port}", timeout=10.0)
+            resp = self._write_mi(f"target remote 127.0.0.1:{rsp_port}", timeout=10.0)
             if resp is None:
                 logger.error("Failed to connect GDB to RSP bridge")
                 self.stop()
@@ -169,43 +173,32 @@ class GDBSession:
     def _find_gdb(self):
         """Find a usable GDB executable.
 
-        Tries arm-none-eabi-gdb from toolchain first, then gdb-multiarch.
-
         Returns:
             (gdb_path, is_multiarch) tuple. gdb_path is None if not found.
         """
         import shutil
 
         for candidate in _GDB_CANDIDATES:
-            # Try toolchain path first
             path = get_tool_path(candidate, self._toolchain_path)
             if os.path.isfile(path):
-                # Verify it actually runs
                 try:
                     result = subprocess.run(
-                        [path, "--version"],
-                        capture_output=True,
-                        timeout=5.0,
+                        [path, "--version"], capture_output=True, timeout=5.0
                     )
                     if result.returncode == 0:
-                        is_multiarch = "multiarch" in candidate
-                        return path, is_multiarch
+                        return path, "multiarch" in candidate
                 except Exception:
                     logger.debug(f"GDB candidate failed: {path}")
                     continue
 
-            # Try system PATH
             sys_path = shutil.which(candidate)
             if sys_path:
                 try:
                     result = subprocess.run(
-                        [sys_path, "--version"],
-                        capture_output=True,
-                        timeout=5.0,
+                        [sys_path, "--version"], capture_output=True, timeout=5.0
                     )
                     if result.returncode == 0:
-                        is_multiarch = "multiarch" in candidate
-                        return sys_path, is_multiarch
+                        return sys_path, "multiarch" in candidate
                 except Exception:
                     logger.debug(f"GDB candidate failed: {sys_path}")
                     continue
@@ -231,6 +224,7 @@ class GDBSession:
                 except Exception:
                     pass
             self._proc = None
+        self._io = None
         logger.info("GDB session stopped")
 
     def execute(self, cmd: str, timeout: float = GDB_CMD_TIMEOUT) -> Optional[str]:
@@ -254,173 +248,142 @@ class GDBSession:
     # ------------------------------------------------------------------
 
     def lookup_symbol(self, sym_name: str) -> Optional[dict]:
-        """Look up a symbol by name. Replaces elf_utils.lookup_symbol().
-
-        Returns:
-            {"addr": int, "size": int, "type": str, "section": str} or None
-        """
+        """Look up a symbol by name. Returns symbol info dict or None."""
         if not self.is_alive:
             return None
-
         with self._lock:
             return self._lookup_symbol_impl(sym_name)
 
     def search_symbols(self, query: str, limit: int = 100) -> Tuple[List[dict], int]:
-        """Search symbols by name pattern. Replaces elf_utils.search_symbols().
-
-        Returns:
-            (list of symbol dicts, total count)
-        """
+        """Search symbols by name pattern. Returns (list, total_count)."""
         if not self.is_alive:
             return [], 0
-
-        # Bump generation to signal any in-progress search to abort
         self._search_generation += 1
-
         with self._lock:
             return self._search_symbols_impl(query, limit)
 
     def get_struct_layout(self, sym_name: str) -> Optional[List[dict]]:
-        """Get struct member layout. Replaces elf_utils.get_struct_layout().
-
-        Returns:
-            [{"name", "offset", "size", "type_name"}, ...] or None
-        """
+        """Get struct member layout via 'ptype /o'. Returns member list or None."""
         if not self.is_alive:
             return None
-
         with self._lock:
             return self._get_struct_layout_impl(sym_name)
 
     def get_symbols(self) -> Dict[str, dict]:
-        """Get all symbols. Replaces elf_utils.get_symbols().
-
-        Returns:
-            Dict mapping symbol name to info dict
-        """
+        """Get all symbols. Returns dict mapping name to info."""
         if not self.is_alive:
             return {}
-
         with self._lock:
             return self._get_symbols_impl()
 
     def read_symbol_value(self, sym_name: str) -> Optional[bytes]:
-        """Read the raw bytes of a symbol's initial value from the ELF.
-
-        Uses GDB's 'x' command which reads from the loaded ELF sections.
-        Returns None for .bss symbols (no initial value) or if not found.
-        """
+        """Read raw bytes of a symbol's initial value from the ELF."""
         if not self.is_alive:
             return None
-
         with self._lock:
             return self._read_symbol_value_impl(sym_name)
 
     # ------------------------------------------------------------------
-    # Internal: GDB/MI communication
+    # Internal: GDB/MI communication via pygdbmi
     # ------------------------------------------------------------------
 
-    def _execute_mi(self, cmd: str, timeout: float = GDB_CMD_TIMEOUT) -> Optional[str]:
-        """Execute a GDB/MI command (via -interpreter-exec console) and return raw output."""
-        if not self._proc or not self._proc.stdin:
+    def _write_mi(
+        self, cmd: str, timeout: float = GDB_CMD_TIMEOUT
+    ) -> Optional[List[dict]]:
+        """Execute a GDB command via MI and return parsed responses.
+
+        Uses pygdbmi IoManager for structured MI output parsing.
+        Commands are sent as: -interpreter-exec console "<cmd>"
+
+        Returns:
+            List of pygdbmi response dicts, or None on error/timeout.
+            Each dict has keys: type, message, payload, token, stream
+        """
+        if not self._io:
             return None
 
+        mi_cmd = f'-interpreter-exec console "{cmd}"'
         try:
-            # Use MI command to execute CLI command
-            mi_cmd = f'-interpreter-exec console "{cmd}"\n'
-            self._proc.stdin.write(mi_cmd.encode("utf-8"))
-            self._proc.stdin.flush()
-            return self._read_until_prompt(timeout)
+            responses = self._io.write(
+                mi_cmd,
+                timeout_sec=timeout,
+                raise_error_on_timeout=False,
+                read_response=True,
+            )
         except Exception as e:
-            logger.error(f"GDB MI command failed: {e}")
+            logger.error(f"GDB MI write failed: {e}")
             return None
+
+        if not responses:
+            return None
+
+        # Check for error in result records
+        for r in responses:
+            if r.get("type") == "result" and r.get("message") == "error":
+                err_msg = ""
+                if isinstance(r.get("payload"), dict):
+                    err_msg = r["payload"].get("msg", "")
+                logger.debug(f"GDB command error: {cmd} -> {err_msg}")
+                # Still return responses so caller can inspect
+                break
+
+        return responses
 
     def _execute_cli(self, cmd: str, timeout: float = GDB_CMD_TIMEOUT) -> Optional[str]:
-        """Execute a GDB CLI command and return console output lines."""
+        """Execute a GDB CLI command and return console output text.
+
+        Sends command via MI, extracts console-stream output from responses.
+        """
         t0 = time.time()
-        raw = self._execute_mi(cmd, timeout)
+        responses = self._write_mi(cmd, timeout)
         elapsed = time.time() - t0
-        if raw is None:
+
+        if responses is None:
             logger.warning(f"[GDB] command timed out ({elapsed:.2f}s): {cmd}")
             return None
+
         if elapsed > 1.0:
             logger.warning(f"[GDB] slow command ({elapsed:.2f}s): {cmd}")
         else:
             logger.debug(f"[GDB] command ({elapsed:.3f}s): {cmd}")
-        return self._extract_console_output(raw)
 
-    def _read_until_prompt(self, timeout: float = 5.0) -> Optional[str]:
-        """Read GDB/MI output until we see the (gdb) prompt or ^done/^error."""
-        if not self._proc or not self._proc.stdout:
-            return None
+        console_text = self._extract_console_output(responses)
 
-        lines = []
-        deadline = time.time() + timeout
-
-        while time.time() < deadline:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-
-            try:
-                # Non-blocking read with select
-                import select
-
-                ready, _, _ = select.select(
-                    [self._proc.stdout], [], [], min(remaining, 0.5)
-                )
-                if not ready:
-                    continue
-
-                line = self._proc.stdout.readline()
-                if not line:
+        # Log MI-level errors when no console output was produced
+        if not console_text:
+            for r in responses:
+                if r.get("type") == "result" and r.get("message") == "error":
+                    err_payload = r.get("payload", {})
+                    err_msg = (
+                        err_payload.get("msg", "")
+                        if isinstance(err_payload, dict)
+                        else str(err_payload)
+                    )
+                    logger.warning(f"[GDB] command '{cmd}' returned error: {err_msg}")
                     break
 
-                line_str = line.decode("utf-8", errors="replace").rstrip("\r\n")
-                lines.append(line_str)
-
-                # MI prompt indicates command completion
-                if line_str == "(gdb) " or line_str == "(gdb)":
-                    break
-                if line_str.startswith("^done") or line_str.startswith("^error"):
-                    # Read remaining until (gdb) prompt
-                    while time.time() < deadline:
-                        ready2, _, _ = select.select([self._proc.stdout], [], [], 0.1)
-                        if not ready2:
-                            break
-                        next_line = self._proc.stdout.readline()
-                        if not next_line:
-                            break
-                        nl = next_line.decode("utf-8", errors="replace").rstrip("\r\n")
-                        lines.append(nl)
-                        if nl == "(gdb) " or nl == "(gdb)":
-                            break
-                    break
-
-            except Exception as e:
-                logger.debug(f"GDB read error: {e}")
-                break
-
-        return "\n".join(lines)
+        return console_text
 
     @staticmethod
-    def _extract_console_output(raw: str) -> str:
-        """Extract console output from GDB/MI response.
+    def _extract_console_output(responses: List[dict]) -> str:
+        """Extract console text from pygdbmi response list.
 
-        MI console output lines start with ~"..." (C-string escaped).
+        Console output comes as responses with type='console' and
+        payload containing the text string (already unescaped by pygdbmi).
         """
         lines = []
-        for line in raw.split("\n"):
-            if line.startswith('~"'):
-                # Unescape MI C-string: ~"text\\n"
-                content = line[2:]
-                if content.endswith('"'):
-                    content = content[:-1]
-                # Unescape common sequences
-                content = content.replace("\\n", "\n").replace("\\t", "\t")
-                content = content.replace('\\"', '"').replace("\\\\", "\\")
-                lines.append(content.rstrip("\n"))
-        return "\n".join(lines)
+        for r in responses:
+            if r.get("type") == "console" and r.get("payload"):
+                text = r["payload"].rstrip("\n")
+                if text:
+                    lines.append(text)
+        result = "\n".join(lines)
+        if not result and responses:
+            # Log non-console responses for debugging
+            non_console = [r for r in responses if r.get("type") != "console"]
+            if non_console:
+                logger.debug(f"[GDB] no console output, other responses: {non_console}")
+        return result
 
     # ------------------------------------------------------------------
     # Internal: Symbol lookup implementation
@@ -431,37 +394,42 @@ class GDBSession:
         t_start = time.time()
         logger.info(f"[GDB] lookup_symbol start: '{sym_name}'")
 
-        # Use 'info address' to get symbol address
-        output = self._execute_cli(f"info address {sym_name}")
+        # Strip array suffix (e.g. "PIN_MAP[128]" -> "PIN_MAP")
+        bare_name = re.sub(r"\[.*\]$", "", sym_name)
+
+        output = self._execute_cli(f"info address {bare_name}")
         if not output or "No symbol" in output:
-            logger.info(f"[GDB] lookup_symbol: '{sym_name}' not found")
+            logger.info(f"[GDB] lookup_symbol: '{sym_name}' not found, raw={output!r}")
             return None
 
         addr = self._parse_address_from_info(output)
         if addr is None:
             logger.warning(
-                f"[GDB] lookup_symbol: cannot parse address for '{sym_name}'"
+                f"[GDB] lookup_symbol: cannot parse address for '{sym_name}', raw={output!r}"
             )
             return None
 
-        # Get size via 'print sizeof(sym_name)'
-        size = self._get_sizeof(sym_name)
+        # For scoped C++ symbols, sizeof/ptype on the qualified name may fail.
+        # Resolve a GDB-queryable name via the linker symbol at this address.
+        query_name = bare_name
+        size = self._get_sizeof(query_name)
+        if size == 0 and addr:
+            linker_name = self._resolve_linker_name(addr)
+            if linker_name:
+                query_name = linker_name
+                size = self._get_sizeof(query_name)
 
-        # Determine type (function vs variable)
         sym_type = "variable"
         if "is a function" in output or "in .text" in output:
             sym_type = "function"
 
-        # Get section info
         section = self._get_symbol_section(output)
 
-        # Classify const: check section first, then check type qualifier via ptype
         if sym_type == "variable":
             if section.startswith(".rodata"):
                 sym_type = "const"
             else:
-                # Check if the type has const qualifier
-                ptype_out = self._execute_cli(f"ptype {sym_name}")
+                ptype_out = self._execute_cli(f"ptype {query_name}")
                 if ptype_out and re.match(r"type\s*=\s*const\b", ptype_out):
                     sym_type = "const"
 
@@ -493,13 +461,8 @@ class GDBSession:
         )
 
         if is_addr:
-            # Address search: use 'info symbol <addr>'
             try:
-                addr_val = (
-                    int(query_lower, 16)
-                    if not query_lower.startswith("0x")
-                    else int(query_lower, 16)
-                )
+                addr_val = int(query_lower, 16)
                 output = self._execute_cli(f"info symbol 0x{addr_val:x}")
                 if output and "No symbol" not in output:
                     results = self._parse_info_symbol(output, addr_val)
@@ -508,27 +471,23 @@ class GDBSession:
                 pass
             return [], 0
 
-        # Name search: use 'info variables' first (more useful), then 'info functions'
         results = []
 
-        # Search variables first
         var_output = self._execute_cli(f"info variables {query}")
         if var_output:
             results.extend(self._parse_info_functions(var_output, "variable"))
 
-        # Check if search was superseded
         if self._search_generation != my_gen:
             logger.info(
                 f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})"
             )
             return [], 0
 
-        # Search functions
         func_output = self._execute_cli(f"info functions {query}")
         if func_output:
             results.extend(self._parse_info_functions(func_output, "function"))
 
-        # Deduplicate by name (first occurrence wins — variables before functions)
+        # Deduplicate by name
         seen = set()
         unique = []
         for r in results:
@@ -543,15 +502,9 @@ class GDBSession:
             f"(parse took {t_parse - t_start:.3f}s)"
         )
 
-        # Check if search was superseded
         if self._search_generation != my_gen:
-            logger.info(
-                f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})"
-            )
             return [], 0
 
-        # Only resolve addresses for the first `limit` results to avoid
-        # hundreds of individual GDB commands for broad queries
         unique.sort(key=lambda x: x["name"])
         capped = unique[:limit]
         if total_count > limit:
@@ -561,11 +514,7 @@ class GDBSession:
 
         self._resolve_addresses(capped, generation=my_gen)
 
-        # Check cancellation after resolve
         if self._search_generation != my_gen:
-            logger.info(
-                f"[GDB] search_symbols cancelled after resolve (gen {my_gen} -> {self._search_generation})"
-            )
             return [], 0
 
         elapsed = time.time() - t_start
@@ -579,7 +528,6 @@ class GDBSession:
         """Internal implementation of get_symbols (full symbol dump)."""
         symbols: Dict[str, dict] = {}
 
-        # Get all functions
         func_output = self._execute_cli("info functions", timeout=30.0)
         if func_output:
             func_list = self._parse_info_functions(func_output, "function")
@@ -596,7 +544,6 @@ class GDBSession:
                     "section": sym.get("section", ""),
                 }
 
-        # Get all variables
         var_output = self._execute_cli("info variables", timeout=30.0)
         if var_output:
             var_list = self._parse_info_functions(var_output, "variable")
@@ -618,23 +565,58 @@ class GDBSession:
         return symbols
 
     def _get_struct_layout_impl(self, sym_name: str) -> Optional[List[dict]]:
-        """Internal implementation of get_struct_layout.
-
-        Uses 'ptype /o <sym>' which shows struct members with offsets.
-        """
+        """Internal implementation of get_struct_layout."""
         t0 = time.time()
         logger.info(f"[GDB] get_struct_layout start: '{sym_name}'")
 
-        output = self._execute_cli(f"ptype /o {sym_name}", timeout=30.0)
+        bare_name = re.sub(r"\[.*\]$", "", sym_name)
+        output = self._execute_cli(f"ptype /o {bare_name}", timeout=30.0)
+
+        # Fallback for scoped symbols (e.g. "Class::Method()::var"):
+        # Resolve linker name via address, then whatis -> ptype /o <type>.
+        if not output or "No symbol" in output or "no debug info" in output:
+            addr_output = self._execute_cli(f"info address {bare_name}")
+            if addr_output:
+                addr = self._parse_address_from_info(addr_output)
+                if addr is not None:
+                    linker_name = self._resolve_linker_name(addr)
+                    if linker_name:
+                        # Try ptype /o on the linker name directly first
+                        output = self._execute_cli(
+                            f"ptype /o {linker_name}", timeout=30.0
+                        )
+                        # If not struct, try getting type name via whatis
+                        if not output or (
+                            "type = struct" not in output
+                            and "type = union" not in output
+                        ):
+                            whatis_out = self._execute_cli(f"whatis {linker_name}")
+                            if whatis_out:
+                                tm = re.match(r"type\s*=\s*(.+)", whatis_out.strip())
+                                if tm:
+                                    type_name = tm.group(1).strip()
+                                    logger.info(
+                                        f"[GDB] get_struct_layout: fallback via "
+                                        f"type '{type_name}' for '{sym_name}'"
+                                    )
+                                    # Try with struct prefix if needed
+                                    output = self._execute_cli(
+                                        f"ptype /o struct {type_name}",
+                                        timeout=30.0,
+                                    )
+                                    if not output or "type = struct" not in output:
+                                        output = self._execute_cli(
+                                            f"ptype /o {type_name}",
+                                            timeout=30.0,
+                                        )
+
         if not output:
             logger.info(f"[GDB] get_struct_layout: no output for '{sym_name}'")
             return None
 
-        # Check if it's a struct/union
         if "type = struct" not in output and "type = union" not in output:
             logger.info(
-                f"[GDB] get_struct_layout: '{sym_name}' is not struct/union "
-                f"(output length={len(output)})"
+                f"[GDB] get_struct_layout: '{sym_name}' is not struct/union, raw={output!r}"
             )
             return None
 
@@ -647,13 +629,29 @@ class GDBSession:
         )
         return result
 
-    def _read_symbol_value_impl(self, sym_name: str) -> Optional[bytes]:
-        """Internal implementation of read_symbol_value.
+    def _resolve_linker_name(self, addr: int) -> Optional[str]:
+        """Resolve a linker-level symbol name from an address.
 
-        Uses GDB 'x/<N>bx &<sym>' to read raw bytes from the loaded ELF image.
-        For .bss symbols (all zeros in ELF), returns None.
+        Uses 'info symbol <addr>' to get the simple name that GDB can
+        use for sizeof/ptype/whatis queries. This works even when the
+        original symbol name is a scoped C++ qualified name.
+
+        Returns:
+            Simple symbol name (e.g. "fl_ctx") or None.
         """
-        # First look up the symbol to get size and section
+        output = self._execute_cli(f"info symbol 0x{addr:x}")
+        if not output or "No symbol" not in output:
+            if output:
+                # "fl_ctx in section .bss" or "foo + 0 in section .data"
+                m = re.match(r"(\S+)\s*(?:\+\s*\d+\s+)?in section", output.strip())
+                if m:
+                    name = m.group(1)
+                    logger.debug(f"[GDB] _resolve_linker_name: 0x{addr:x} -> '{name}'")
+                    return name
+        return None
+
+    def _read_symbol_value_impl(self, sym_name: str) -> Optional[bytes]:
+        """Read raw bytes of a symbol from the loaded ELF image."""
         info = self._lookup_symbol_impl(sym_name)
         if not info:
             return None
@@ -663,7 +661,6 @@ class GDBSession:
             return None
 
         section = info.get("section", "")
-        # .bss has no initial value in ELF
         if section.startswith(".bss"):
             return None
 
@@ -671,11 +668,7 @@ class GDBSession:
         if addr == 0:
             return None
 
-        # Read raw bytes via GDB 'x' command
-        # Use word-sized reads (4 bytes per unit) to reduce output volume
-        # and speed up transfer over RSP
         num_words = (size + 3) // 4
-        # Dynamic timeout: ~0.05s per word, minimum 10s
         read_timeout = max(10.0, num_words * 0.05)
         logger.info(
             f"[GDB] read_symbol_value: reading {size} bytes "
@@ -685,24 +678,19 @@ class GDBSession:
         if not output:
             return None
 
-        # Parse hex words from output lines like:
-        # 0x20001000:  0x04030201  0x08070605  ...
         raw_bytes = bytearray()
         for line in output.split("\n"):
             line = line.strip()
             if not line:
                 continue
-            # Skip the address prefix (everything before first ':')
             colon_idx = line.find(":")
             if colon_idx >= 0:
                 line = line[colon_idx + 1 :]
-            # Extract hex values (each is a 32-bit word)
             for token in line.split():
                 token = token.strip()
                 if token.startswith("0x"):
                     try:
                         word = int(token, 16)
-                        # Little-endian: LSB first
                         raw_bytes.extend(word.to_bytes(4, byteorder="little"))
                     except ValueError:
                         continue
@@ -717,16 +705,7 @@ class GDBSession:
     # ------------------------------------------------------------------
 
     def _resolve_addresses(self, symbols: List[dict], generation: int = -1):
-        """Resolve missing addresses for debug-format symbols.
-
-        Debug-format 'info functions/variables' output has line numbers but no
-        addresses. This method queries 'info address <name>' for each symbol
-        with addr "0x00000000" to fill in the real address and section.
-
-        Args:
-            symbols: List of symbol dicts to resolve in-place
-            generation: Search generation for cancellation (-1 = no cancellation)
-        """
+        """Resolve missing addresses for debug-format symbols."""
         unresolved = [s for s in symbols if s["addr"] == "0x00000000"]
         if unresolved:
             logger.info(
@@ -738,7 +717,6 @@ class GDBSession:
         for sym in symbols:
             if sym["addr"] != "0x00000000":
                 continue
-            # Check cancellation every 10 resolutions
             if generation >= 0 and resolved_count % 10 == 0:
                 if self._search_generation != generation:
                     logger.info(
@@ -752,18 +730,15 @@ class GDBSession:
             if addr is not None:
                 sym["addr"] = f"0x{addr:08X}"
                 resolved_count += 1
-                # Also fix section and type from info address output
                 section = self._get_symbol_section(output)
                 if section:
                     sym["section"] = section
-                # Reclassify type based on actual info
                 if "is a function" in output:
                     sym["type"] = "function"
                 elif sym["type"] != "function":
                     if section.startswith(".rodata"):
                         sym["type"] = "const"
                     elif sym["type"] != "const":
-                        # Preserve const classification from declaration
                         sym["type"] = "variable"
 
         if unresolved:
@@ -777,11 +752,12 @@ class GDBSession:
     def _parse_address_from_info(output: str) -> Optional[int]:
         """Parse address from 'info address' output.
 
-        Examples:
-            "Symbol \"foo\" is at address 0x20001234."
-            "Symbol \"bar\" is static storage at address 0x8001000."
+        Handles multiple GDB output formats:
+          - "Symbol \"foo\" is at address 0x20001234."
+          - "Symbol \"bar\" is static storage at address 0x8001000."
+          - "Symbol \"baz\" is at 0x80eb1cc in a file compiled without debugging."
         """
-        m = re.search(r"address\s+0x([0-9a-fA-F]+)", output)
+        m = re.search(r"(?:address|at)\s+0x([0-9a-fA-F]+)", output)
         if m:
             return int(m.group(1), 16)
         return None
@@ -793,6 +769,9 @@ class GDBSession:
             m = re.search(r"\$\d+\s*=\s*(\d+)", output)
             if m:
                 return int(m.group(1))
+            logger.debug(
+                f"[GDB] _get_sizeof: cannot parse for '{sym_name}', raw={output!r}"
+            )
         return 0
 
     @staticmethod
@@ -811,16 +790,12 @@ class GDBSession:
 
     @staticmethod
     def _parse_info_symbol(output: str, addr: int) -> List[dict]:
-        """Parse 'info symbol <addr>' output.
-
-        Example: "foo + 0 in section .text"
-        """
+        """Parse 'info symbol <addr>' output."""
         results = []
         for line in output.strip().split("\n"):
             line = line.strip()
             if not line or "No symbol" in line:
                 continue
-            # "name + offset in section .sect"
             m = re.match(r"(\S+)\s*\+\s*(\d+)\s+in section\s+(\S+)", line)
             if m:
                 name = m.group(1)
@@ -844,24 +819,13 @@ class GDBSession:
     def _parse_info_functions(
         output: str, default_type: str = "function"
     ) -> List[dict]:
-        """Parse 'info functions/variables <pattern>' output.
-
-        GDB output format:
-            File path/to/file.c:
-            123:	void foo(int);
-            456:	static int bar;
-
-        Or non-debug:
-            Non-debugging symbols:
-            0x08001234  func_name
-        """
+        """Parse 'info functions/variables <pattern>' output."""
         results = []
         for line in output.strip().split("\n"):
             line = line.strip()
             if not line:
                 continue
 
-            # Skip file headers and section headers
             if line.endswith(":") or line.startswith("File "):
                 continue
             if "All defined" in line or "Non-debugging" in line:
@@ -887,15 +851,11 @@ class GDBSession:
             m = re.match(r"\d+:\s+(.+);", line)
             if m:
                 decl = m.group(1).strip()
-                # Extract function/variable name from declaration
                 name = _extract_name_from_decl(decl)
                 if name:
-                    # Detect type from declaration
                     sym_type = default_type
-                    if default_type == "variable":
-                        # Check if declaration has const qualifier
-                        if _decl_is_const(decl):
-                            sym_type = "const"
+                    if default_type == "variable" and _decl_is_const(decl):
+                        sym_type = "const"
                     results.append(
                         {
                             "name": name,
@@ -910,23 +870,10 @@ class GDBSession:
 
     @staticmethod
     def _parse_ptype_output(output: str) -> Optional[List[dict]]:
-        """Parse 'ptype /o <sym>' output into struct member list.
-
-        GDB 'ptype /o' output format:
-        type = struct foo {
-        /*    0      |     4 */    int x;
-        /*    4      |     4 */    int y;
-        /*    8      |     8 */    double z;
-
-                                   /* total size (bytes):   16 */
-                                 }
-
-        Each member line: /* offset | size */  type name;
-        """
+        """Parse 'ptype /o <sym>' output into struct member list."""
         members = []
 
         for line in output.split("\n"):
-            # Match member lines: /*  offset  |  size  */  type name;
             m = re.match(
                 r"\s*/\*\s*(\d+)\s*\|\s*(\d+)\s*\*/\s+(.+?)\s*;",
                 line,
@@ -938,9 +885,6 @@ class GDBSession:
             size = int(m.group(2))
             decl = m.group(3).strip()
 
-            # Split declaration into type and name
-            # Handle arrays: "int arr[10]" -> type="int", name="arr[10]"
-            # Handle pointers: "int *ptr" -> type="int *", name="ptr"
             type_name, member_name = _split_type_and_name(decl)
 
             members.append(
@@ -961,28 +905,13 @@ class GDBSession:
 
 
 def _decl_is_const(decl: str) -> bool:
-    """Check if a C declaration has a const qualifier.
-
-    Examples:
-        "const lv_font_t lv_font_montserrat_14" -> True
-        "static const int foo" -> True
-        "int bar" -> False
-        "const char *baz" -> True
-    """
-    # Split into tokens and check for 'const' before the variable name
+    """Check if a C declaration has a const qualifier."""
     tokens = decl.split()
     return "const" in tokens
 
 
 def _extract_name_from_decl(decl: str) -> Optional[str]:
-    """Extract symbol name from a C declaration string.
-
-    Examples:
-        "void foo(int, int)" -> "foo"
-        "static int bar" -> "bar"
-        "const char *baz" -> "baz"
-    """
-    # Function: look for name before '('
+    """Extract symbol name from a C declaration string."""
     paren = decl.find("(")
     if paren >= 0:
         prefix = decl[:paren].strip()
@@ -991,11 +920,9 @@ def _extract_name_from_decl(decl: str) -> Optional[str]:
             name = parts[-1].lstrip("*")
             return name if name else None
 
-    # Variable: last word (skip type qualifiers)
     parts = decl.split()
     if parts:
         name = parts[-1].rstrip(";").lstrip("*")
-        # Skip if it looks like a type keyword
         if name in (
             "int",
             "char",
@@ -1020,28 +947,18 @@ def _extract_name_from_decl(decl: str) -> Optional[str]:
 
 
 def _split_type_and_name(decl: str) -> Tuple[str, str]:
-    """Split a C member declaration into (type_name, member_name).
-
-    Examples:
-        "int x" -> ("int", "x")
-        "int *ptr" -> ("int *", "ptr")
-        "char buf[64]" -> ("char[64]", "buf")
-        "struct foo bar" -> ("struct foo", "bar")
-    """
+    """Split a C member declaration into (type_name, member_name)."""
     decl = decl.strip()
 
-    # Handle arrays: find '[' in the name part
     bracket = decl.rfind("[")
     if bracket >= 0:
-        # "type name[N]" or "type name[N][M]"
-        array_suffix = decl[bracket:]  # "[N]" or "[N][M]"
+        array_suffix = decl[bracket:]
         prefix = decl[:bracket].strip()
         parts = prefix.rsplit(None, 1)
         if len(parts) == 2:
             return (parts[0] + array_suffix, parts[1])
         return (decl, "?")
 
-    # Handle bitfields: "type name : N"
     colon = decl.find(" : ")
     if colon >= 0:
         prefix = decl[:colon].strip()
@@ -1049,12 +966,10 @@ def _split_type_and_name(decl: str) -> Tuple[str, str]:
         if len(parts) == 2:
             return (parts[0], parts[1])
 
-    # Normal: "type name" or "type *name"
     parts = decl.rsplit(None, 1)
     if len(parts) == 2:
         type_part = parts[0]
         name_part = parts[1]
-        # Move leading * from name to type
         while name_part.startswith("*"):
             type_part += " *"
             name_part = name_part[1:]

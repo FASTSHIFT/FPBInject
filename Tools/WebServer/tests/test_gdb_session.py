@@ -213,19 +213,31 @@ File src/main.c:
         self.assertEqual(members[1]["name"], "next")
 
     def test_extract_console_output(self):
-        raw = '~"hello world\\n"\n~"second line\\n"\n^done\n(gdb)'
-        output = GDBSession._extract_console_output(raw)
+        responses = [
+            {"type": "console", "payload": "hello world\n", "message": None},
+            {"type": "console", "payload": "second line\n", "message": None},
+            {"type": "result", "payload": None, "message": "done"},
+        ]
+        output = GDBSession._extract_console_output(responses)
         self.assertIn("hello world", output)
         self.assertIn("second line", output)
 
     def test_extract_console_output_escaped(self):
-        raw = '~"type = struct foo {\\n"\n~"  int x;\\n"\n~"}\\n"\n^done'
-        output = GDBSession._extract_console_output(raw)
+        responses = [
+            {"type": "console", "payload": "type = struct foo {\n", "message": None},
+            {"type": "console", "payload": "  int x;\n", "message": None},
+            {"type": "console", "payload": "}\n", "message": None},
+            {"type": "result", "payload": None, "message": "done"},
+        ]
+        output = GDBSession._extract_console_output(responses)
         self.assertIn("struct foo", output)
         self.assertIn("int x", output)
 
     def test_extract_console_output_empty(self):
-        output = GDBSession._extract_console_output("^done\n(gdb)")
+        responses = [
+            {"type": "result", "payload": None, "message": "done"},
+        ]
+        output = GDBSession._extract_console_output(responses)
         self.assertEqual(output, "")
 
 
@@ -303,10 +315,10 @@ class TestGDBSessionLifecycle(unittest.TestCase):
         mock_popen.return_value = mock_proc
 
         session = GDBSession("/fake/elf")
-        # _execute_mi returns None → file command fails → start returns False
-        with patch.object(
-            session, "_read_until_prompt", return_value="(gdb)"
-        ), patch.object(session, "_execute_mi", return_value=None):
+        # _write_mi returns None → file command fails → start returns False
+        with patch.object(session, "_write_mi", return_value=None), patch(
+            "core.gdb_session.IoManager"
+        ):
             result = session.start(rsp_port=3333)
         self.assertFalse(result)
 
@@ -459,6 +471,7 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
             mock_cli.side_effect = [
                 'Symbol "x" is at address 0x1000.',
                 "No symbol in current context",  # sizeof fails
+                "No symbol matches",  # _resolve_linker_name (info symbol)
                 # ptype (non-const)
                 "type = int",
             ]
@@ -471,6 +484,7 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
             mock_cli.side_effect = [
                 'Symbol "x" is at address 0x1000.',
                 None,  # sizeof returns None
+                "No symbol matches",  # _resolve_linker_name (info symbol)
                 # ptype (non-const)
                 "type = int",
             ]
@@ -650,49 +664,50 @@ class TestGDBSessionGetSymbolsImpl(unittest.TestCase):
 
 
 class TestGDBSessionMICommunication(unittest.TestCase):
-    """Test GDB/MI communication methods."""
+    """Test GDB/MI communication methods (pygdbmi-based)."""
 
     def setUp(self):
         self.session = GDBSession("/fake/elf")
         self.session._proc = MagicMock()
         self.session._proc.stdin = MagicMock()
         self.session._proc.stdout = MagicMock()
+        self.session._io = MagicMock()
 
-    def test_execute_mi_no_proc(self):
-        self.session._proc = None
-        result = self.session._execute_mi("test")
+    def test_write_mi_no_io(self):
+        self.session._io = None
+        result = self.session._write_mi("test")
         self.assertIsNone(result)
 
-    def test_execute_mi_no_stdin(self):
-        self.session._proc.stdin = None
-        result = self.session._execute_mi("test")
+    def test_write_mi_exception(self):
+        self.session._io.write.side_effect = BrokenPipeError()
+        result = self.session._write_mi("test")
         self.assertIsNone(result)
 
-    def test_execute_mi_exception(self):
-        self.session._proc.stdin.write.side_effect = BrokenPipeError()
-        result = self.session._execute_mi("test")
+    def test_write_mi_empty_response(self):
+        self.session._io.write.return_value = []
+        result = self.session._write_mi("test")
         self.assertIsNone(result)
+
+    def test_write_mi_error_response(self):
+        self.session._io.write.return_value = [
+            {"type": "result", "message": "error", "payload": {"msg": "No symbol"}}
+        ]
+        result = self.session._write_mi("test")
+        self.assertIsNotNone(result)  # Still returns responses for caller inspection
 
     def test_execute_cli_returns_none_on_mi_failure(self):
-        with patch.object(self.session, "_execute_mi", return_value=None):
+        with patch.object(self.session, "_write_mi", return_value=None):
             result = self.session._execute_cli("test")
             self.assertIsNone(result)
 
     def test_execute_cli_extracts_output(self):
-        raw = '~"hello\\n"\n^done\n(gdb)'
-        with patch.object(self.session, "_execute_mi", return_value=raw):
+        responses = [
+            {"type": "console", "payload": "hello\n", "message": None},
+            {"type": "result", "payload": None, "message": "done"},
+        ]
+        with patch.object(self.session, "_write_mi", return_value=responses):
             result = self.session._execute_cli("test")
             self.assertIn("hello", result)
-
-    def test_read_until_prompt_no_proc(self):
-        self.session._proc = None
-        result = self.session._read_until_prompt()
-        self.assertIsNone(result)
-
-    def test_read_until_prompt_no_stdout(self):
-        self.session._proc.stdout = None
-        result = self.session._read_until_prompt()
-        self.assertIsNone(result)
 
     def test_get_symbol_section_text(self):
         self.assertEqual(GDBSession._get_symbol_section("in .text section"), ".text")
