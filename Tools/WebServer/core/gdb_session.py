@@ -58,7 +58,9 @@ class GDBSession:
         self._lock = threading.Lock()
         self._alive = False
         self._rsp_port: Optional[int] = None
-        self._search_generation = 0  # Incremented on each new search to cancel stale ones
+        self._search_generation = (
+            0  # Incremented on each new search to cancel stale ones
+        )
 
     @property
     def is_alive(self) -> bool:
@@ -482,7 +484,9 @@ class GDBSession:
         """Internal implementation of search_symbols."""
         t_start = time.time()
         my_gen = self._search_generation
-        logger.info(f"[GDB] search_symbols start: query='{query}' limit={limit} gen={my_gen}")
+        logger.info(
+            f"[GDB] search_symbols start: query='{query}' limit={limit} gen={my_gen}"
+        )
         query_lower = query.lower().strip()
         is_addr = query_lower.startswith("0x") or (
             len(query_lower) >= 4 and all(c in "0123456789abcdef" for c in query_lower)
@@ -514,7 +518,9 @@ class GDBSession:
 
         # Check if search was superseded
         if self._search_generation != my_gen:
-            logger.info(f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})")
+            logger.info(
+                f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})"
+            )
             return [], 0
 
         # Search functions
@@ -539,7 +545,9 @@ class GDBSession:
 
         # Check if search was superseded
         if self._search_generation != my_gen:
-            logger.info(f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})")
+            logger.info(
+                f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})"
+            )
             return [], 0
 
         # Only resolve addresses for the first `limit` results to avoid
@@ -555,7 +563,9 @@ class GDBSession:
 
         # Check cancellation after resolve
         if self._search_generation != my_gen:
-            logger.info(f"[GDB] search_symbols cancelled after resolve (gen {my_gen} -> {self._search_generation})")
+            logger.info(
+                f"[GDB] search_symbols cancelled after resolve (gen {my_gen} -> {self._search_generation})"
+            )
             return [], 0
 
         elapsed = time.time() - t_start
@@ -624,7 +634,8 @@ class GDBSession:
         if "type = struct" not in output and "type = union" not in output:
             logger.info(
                 f"[GDB] get_struct_layout: '{sym_name}' is not struct/union "
-                f"(output length={len(output)})")
+                f"(output length={len(output)})"
+            )
             return None
 
         result = self._parse_ptype_output(output)

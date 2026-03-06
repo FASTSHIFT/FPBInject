@@ -194,7 +194,9 @@ def api_search_symbols():
 
     # Minimum query length to avoid overly broad GDB searches
     if len(query) < 3:
-        logger.info(f"[symbols] query too short ({len(query)} chars), skipping GDB search")
+        logger.info(
+            f"[symbols] query too short ({len(query)} chars), skipping GDB search"
+        )
         return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
 
     try:
