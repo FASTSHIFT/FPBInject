@@ -158,6 +158,11 @@ def api_disconnect():
     run_in_device_worker(device, do_disconnect, timeout=2.0)
     stop_worker(device)
 
+    # Stop GDB integration
+    from core.gdb_manager import stop_gdb
+
+    stop_gdb(state)
+
     device.auto_connect = False
     device.inject_active = False
     state.save_config()
@@ -247,6 +252,11 @@ def api_config():
 
         # Start ELF file watcher
         _start_elf_watcher(device.elf_path)
+
+        # Start GDB integration in background (non-blocking)
+        from core.gdb_manager import start_gdb_async
+
+        start_gdb_async(state)
 
     if "toolchain_path" in data:
         fpb = get_fpb_inject()

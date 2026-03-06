@@ -171,6 +171,10 @@ class AppState:
         self.symbols = {}
         self.symbols_loaded = False
 
+        # GDB integration (RSP bridge + session)
+        self.gdb_bridge = None  # core.gdb_bridge.GDBRSPBridge
+        self.gdb_session = None  # core.gdb_session.GDBSession
+
         # Patch generation state
         self.generated_patch = None
         self.patch_template = self._get_default_patch_template()

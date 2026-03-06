@@ -113,11 +113,12 @@ def _get_addr(info):
 
 
 def _lookup_symbol(sym_name):
-    """Look up a symbol, using cache if available, else streaming lookup.
+    """Look up a symbol, using GDB > cache > pyelftools streaming.
 
     Results are cached in state.symbols for subsequent lookups.
     """
     from core import elf_utils
+    from core.gdb_manager import is_gdb_available
 
     # Try cache first
     if sym_name in state.symbols:
@@ -127,12 +128,16 @@ def _lookup_symbol(sym_name):
     if state.symbols_loaded:
         return None
 
-    # Streaming single-symbol lookup (no full load)
     device = state.device
     if not device.elf_path or not os.path.exists(device.elf_path):
         return None
 
-    result = elf_utils.lookup_symbol(device.elf_path, sym_name)
+    # GDB fast path (~0.01s vs ~3s)
+    if is_gdb_available(state):
+        result = state.gdb_session.lookup_symbol(sym_name)
+    else:
+        # pyelftools fallback: streaming single-symbol lookup
+        result = elf_utils.lookup_symbol(device.elf_path, sym_name)
 
     # Cache for future lookups
     if result is not None:
@@ -142,7 +147,18 @@ def _lookup_symbol(sym_name):
 
 
 def _ensure_symbols_loaded():
-    """Ensure symbols are loaded exactly once (thread-safe)."""
+    """Ensure symbols are loaded exactly once (thread-safe).
+
+    When GDB is available, skip full preloading — GDB handles per-query
+    search in milliseconds. Full dump (info variables/functions) would
+    timeout on large ELFs (200k+ symbols).
+    """
+    from core.gdb_manager import is_gdb_available
+
+    # GDB available: no need to preload, per-query search is fast enough
+    if is_gdb_available(state):
+        return
+
     if state.symbols_loaded:
         return
 
@@ -155,8 +171,10 @@ def _ensure_symbols_loaded():
         if not device.elf_path or not os.path.exists(device.elf_path):
             return
 
+        logger.info("Loading symbols via pyelftools (GDB not available)...")
         fpb = _get_fpb_inject()
         state.symbols = fpb.get_symbols(device.elf_path)
+
         state.symbols_loaded = True
 
 
@@ -183,6 +201,8 @@ def api_search_symbols():
         return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
 
     try:
+        from core.gdb_manager import is_gdb_available
+
         # Use cached symbols if already loaded (instant search)
         if state.symbols_loaded:
             query_lower = query.lower()
@@ -215,8 +235,11 @@ def api_search_symbols():
             matched.sort(key=lambda x: x["name"])
             total = len(state.symbols)
             symbol_list = matched[:limit]
+        elif is_gdb_available(state):
+            # GDB fast search (~0.01s vs ~3s)
+            symbol_list, total = state.gdb_session.search_symbols(query, limit=limit)
         else:
-            # Streaming search (no full load)
+            # pyelftools streaming search (no full load)
             symbol_list, total = elf_utils.search_symbols(
                 device.elf_path, query, limit=limit
             )
@@ -248,8 +271,22 @@ def api_reload_symbols():
 
     try:
         with state._symbols_load_lock:
-            fpb = _get_fpb_inject()
-            state.symbols = fpb.get_symbols(device.elf_path)
+            from core.gdb_manager import is_gdb_available
+
+            if is_gdb_available(state):
+                # GDB: no full dump needed, clear cache so searches use GDB
+                state.symbols = {}
+                state.symbols_loaded = False
+                return jsonify(
+                    {
+                        "success": True,
+                        "count": 0,
+                        "message": "GDB active, symbols queried on demand",
+                    }
+                )
+            else:
+                fpb = _get_fpb_inject()
+                state.symbols = fpb.get_symbols(device.elf_path)
             state.symbols_loaded = True
     except Exception as e:
         return jsonify({"success": False, "error": f"Failed to reload symbols: {e}"})
@@ -495,8 +532,13 @@ def api_get_symbol_value():
     logger.info(f"[value] read_symbol_value: {t_read - t_lookup:.2f}s")
     hex_data = raw_data.hex() if raw_data else None
 
-    # Try to get struct layout from DWARF
-    struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
+    # Try to get struct layout — GDB fast path or DWARF fallback
+    from core.gdb_manager import is_gdb_available
+
+    if is_gdb_available(state):
+        struct_layout = state.gdb_session.get_struct_layout(sym_name)
+    else:
+        struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
     t_dwarf = time.time()
     logger.info(f"[value] get_struct_layout: {t_dwarf - t_read:.2f}s")
 
@@ -560,7 +602,13 @@ def api_read_symbol_from_device():
             return jsonify({"success": False, "error": msg})
 
         hex_data = raw_data.hex()
-        struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
+
+        from core.gdb_manager import is_gdb_available
+
+        if is_gdb_available(state):
+            struct_layout = state.gdb_session.get_struct_layout(sym_name)
+        else:
+            struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
 
         return jsonify(
             {
