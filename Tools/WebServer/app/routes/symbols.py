@@ -11,7 +11,6 @@ Provides endpoints for symbol query, search, disassembly and decompilation.
 
 import logging
 import os
-import threading
 import time
 
 from flask import Blueprint, jsonify, request, Response
@@ -22,9 +21,6 @@ from services.device_worker import run_in_device_worker
 logger = logging.getLogger(__name__)
 
 bp = Blueprint("symbols", __name__)
-
-# Prevent concurrent ELF symbol loading
-_symbols_load_lock = threading.Lock()
 
 
 def _get_fpb_inject():
@@ -150,7 +146,7 @@ def _ensure_symbols_loaded():
     if state.symbols_loaded:
         return
 
-    with _symbols_load_lock:
+    with state._symbols_load_lock:
         # Double-check after acquiring lock
         if state.symbols_loaded:
             return
@@ -251,7 +247,7 @@ def api_reload_symbols():
         return jsonify({"success": False, "error": "ELF file not found"})
 
     try:
-        with _symbols_load_lock:
+        with state._symbols_load_lock:
             fpb = _get_fpb_inject()
             state.symbols = fpb.get_symbols(device.elf_path)
             state.symbols_loaded = True
@@ -469,6 +465,8 @@ def api_get_symbol_value():
     """
     from core import elf_utils
 
+    t_start = time.time()
+
     sym_name = request.args.get("name", "").strip()
     if not sym_name:
         return jsonify({"success": False, "error": "Symbol name not specified"})
@@ -479,6 +477,8 @@ def api_get_symbol_value():
 
     # Look up symbol info (streaming, no full load)
     sym_info = _lookup_symbol(sym_name)
+    t_lookup = time.time()
+    logger.info(f"[value] Symbol lookup '{sym_name}': {t_lookup - t_start:.2f}s")
     if not sym_info:
         return jsonify({"success": False, "error": f"Symbol '{sym_name}' not found"})
 
@@ -491,10 +491,16 @@ def api_get_symbol_value():
 
     # Read raw bytes from ELF
     raw_data = elf_utils.read_symbol_value(device.elf_path, sym_name)
+    t_read = time.time()
+    logger.info(f"[value] read_symbol_value: {t_read - t_lookup:.2f}s")
     hex_data = raw_data.hex() if raw_data else None
 
     # Try to get struct layout from DWARF
     struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
+    t_dwarf = time.time()
+    logger.info(f"[value] get_struct_layout: {t_dwarf - t_read:.2f}s")
+
+    logger.info(f"[value] Total for '{sym_name}': {t_dwarf - t_start:.2f}s")
 
     return jsonify(
         {

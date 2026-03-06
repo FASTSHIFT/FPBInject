@@ -1193,7 +1193,8 @@ class TestRoutesExtended(TestRoutesBase):
 
             self.assertTrue(data["success"])
             self.assertEqual(state.device.elf_path, elf_path)
-            self.assertTrue(state.symbols_loaded)
+            # Symbols are now lazy-loaded on first access, not on config change
+            self.assertFalse(state.symbols_loaded)
         finally:
             os.unlink(elf_path)
 

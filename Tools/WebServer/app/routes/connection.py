@@ -9,12 +9,15 @@ Connection API routes for FPBInject Web Server.
 Provides endpoints for serial port connection management and configuration.
 """
 
+import logging
 import os
 
 from flask import Blueprint, jsonify, request
 
 from core.state import state
 from services.device_worker import run_in_device_worker, start_worker, stop_worker
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("connection", __name__)
 
@@ -237,11 +240,10 @@ def api_config():
 
     # Special handling for certain config changes
     if "elf_path" in data:
-        # Reload symbols
-        if device.elf_path and os.path.exists(device.elf_path):
-            fpb = get_fpb_inject()
-            state.symbols = fpb.get_symbols(device.elf_path)
-            state.symbols_loaded = True
+        # Reload symbols in background to avoid blocking config response
+        state.symbols = {}
+        state.symbols_loaded = False
+        logger.info("ELF path changed, symbols will be loaded on next access")
 
         # Start ELF file watcher
         _start_elf_watcher(device.elf_path)

@@ -159,6 +159,7 @@ class AppState:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self._symbols_load_lock = threading.Lock()
         self.device = DeviceState()
 
         # File watcher state

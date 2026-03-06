@@ -410,6 +410,7 @@ def read_symbol_value(elf_path: str, sym_name: str) -> Optional[bytes]:
     if not elf_path or not os.path.exists(elf_path):
         return None
 
+    t_start = time.time()
     try:
         with open(elf_path, "rb") as f:
             elf = ELFFile(f)
@@ -432,9 +433,15 @@ def read_symbol_value(elf_path: str, sym_name: str) -> Optional[bytes]:
                         return None
                     offset = sym["st_value"] - section["sh_addr"]
                     data = section.data()
+                    elapsed = time.time() - t_start
+                    logger.info(f"read_symbol_value '{sym_name}': {elapsed:.2f}s")
                     return data[offset : offset + sym["st_size"]]
     except Exception as e:
         logger.error(f"Error reading symbol value: {e}")
+
+    elapsed = time.time() - t_start
+    if elapsed > 1.0:
+        logger.warning(f"read_symbol_value '{sym_name}' not found ({elapsed:.2f}s)")
     return None
 
 
@@ -632,13 +639,21 @@ def get_struct_layout(elf_path: str, sym_name: str) -> Optional[List[dict]]:
     if not elf_path or not os.path.exists(elf_path):
         return None
 
+    t_start = time.time()
     try:
         with open(elf_path, "rb") as f:
             elf = ELFFile(f)
             if not elf.has_dwarf_info():
                 return None
 
+            t_open = time.time()
             dwarf = elf.get_dwarf_info()
+            t_dwarf = time.time()
+            if t_dwarf - t_open > 1.0:
+                logger.info(
+                    f"get_struct_layout: DWARF info loaded in {t_dwarf - t_open:.2f}s"
+                )
+
             for cu in dwarf.iter_CUs():
                 for die in cu.iter_DIEs():
                     if die.tag != "DW_TAG_variable":
@@ -663,6 +678,12 @@ def get_struct_layout(elf_path: str, sym_name: str) -> Optional[List[dict]]:
                     return None
     except Exception as e:
         logger.debug(f"DWARF struct layout parse failed for {sym_name}: {e}")
+
+    elapsed = time.time() - t_start
+    if elapsed > 1.0:
+        logger.warning(
+            f"get_struct_layout '{sym_name}': {elapsed:.2f}s (no struct found)"
+        )
     return None
 
 
