@@ -4,6 +4,7 @@
 Flask
 Flask-Cors
 pyserial
+pygdbmi
 watchdog
 tree_sitter
 mcp

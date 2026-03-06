@@ -134,6 +134,13 @@ def restore_state():
             logger.warning(f"Failed to restore log recording: {error}")
             device.log_file_enabled = False
 
+    # Start GDB integration if ELF path is configured (works offline too)
+    if device.elf_path and os.path.exists(device.elf_path):
+        from core.gdb_manager import start_gdb_async
+
+        logger.info(f"Auto-starting GDB for ELF: {device.elf_path}")
+        start_gdb_async(state)
+
     # Check auto-connect conditions
     if not device.auto_connect or not device.port:
         return
