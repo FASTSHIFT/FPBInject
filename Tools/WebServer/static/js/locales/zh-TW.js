@@ -451,50 +451,52 @@ window.i18nResources['zh-TW'] = {
       gate_config_autoinject: '自動注入',
 
       // 注入體驗步驟
-      demo_search_title: '搜尋目標函式',
-      demo_search_desc: '接下來實際體驗一次注入！在符號面板中搜尋演示函式。',
-      demo_search_input: '搜尋符號',
-      demo_search_input_desc:
-        '在搜尋框中輸入 <code>fl_cmd_demo</code> 並按 Enter。',
-      demo_search_result: '檢視結果',
-      demo_search_result_desc: '列表中會顯示 ELF 韌體中的函式位址和名稱。',
-      demo_search_dblclick: '雙擊建立補丁',
-      demo_search_dblclick_desc: '雙擊符號，編輯器中會自動產生補丁範本程式碼。',
-      gate_demo_search:
-        '⏳ 請搜尋 <code>fl_cmd_demo</code> 並雙擊建立補丁標籤頁。',
-      gate_demo_search_ok: '✅ 補丁標籤頁已建立！',
+      hello_search_title: '搜尋目標函式',
+      hello_search_desc: '接下來實際體驗一次注入！在符號面板中搜尋目標函式。',
+      hello_search_input: '搜尋符號',
+      hello_search_input_desc:
+        '在搜尋框中輸入 <code>fl_hello</code> 並按 Enter。',
+      hello_search_result: '檢視結果',
+      hello_search_result_desc: '列表中會顯示 ELF 韌體中的函式位址和名稱。',
+      hello_search_dblclick: '雙擊建立補丁',
+      hello_search_dblclick_desc:
+        '雙擊符號，編輯器中會自動產生補丁範本程式碼。',
+      gate_hello_search:
+        '⏳ 請搜尋 <code>fl_hello</code> 並雙擊建立補丁標籤頁。',
+      gate_hello_search_ok: '✅ 補丁標籤頁已建立！',
 
-      demo_inject_title: '編輯並注入補丁',
-      demo_inject_desc: '生成的補丁範本可以直接注入，選擇槽位後點擊注入即可。',
-      demo_inject_edit: '修改程式碼',
-      demo_inject_edit_desc:
+      hello_inject_title: '編輯並注入補丁',
+      hello_inject_desc: '生成的補丁範本可以直接注入，選擇槽位後點擊注入即可。',
+      hello_inject_edit: '修改程式碼',
+      hello_inject_edit_desc:
         '將 <code>fl_println</code> 中的字串改為您自己的訊息。',
-      demo_inject_slot: '選擇 Slot',
-      demo_inject_slot_desc: '確認工具列的 Slot 下拉框選擇了可用槽位。',
-      demo_inject_run: '點擊「注入」按鈕',
-      demo_inject_run_desc: '點擊工具列的「注入」按鈕，等待注入完成。',
-      gate_demo_inject: '⏳ 請選擇槽位後點擊「注入」按鈕。',
-      gate_demo_inject_ok: '✅ 注入成功！',
+      hello_inject_slot: '選擇 Slot',
+      hello_inject_slot_desc: '確認工具列的 Slot 下拉框選擇了可用槽位。',
+      hello_inject_run: '點擊「注入」按鈕',
+      hello_inject_run_desc: '點擊工具列的「注入」按鈕，等待注入完成。',
+      gate_hello_inject: '⏳ 請選擇槽位後點擊「注入」按鈕。',
+      gate_hello_inject_ok: '✅ 注入成功！',
 
-      demo_verify_title: '驗證注入效果',
-      demo_verify_desc: '在串口終端傳送 demo 命令，驗證注入是否生效。',
-      demo_verify_send_cmd: '傳送命令',
-      demo_verify_send_cmd_desc:
-        '在串口終端輸入 <code>fl -c demo</code> 並按 Enter。',
-      demo_verify_check_output: '檢查輸出',
-      demo_verify_check_output_desc: '輸出應顯示注入後的訊息，而不是原始訊息。',
+      hello_verify_title: '驗證注入效果',
+      hello_verify_desc: '在串口終端傳送 hello 命令，驗證注入是否生效。',
+      hello_verify_send_cmd: '傳送命令',
+      hello_verify_send_cmd_desc:
+        '在串口終端輸入 <code>fl -c hello</code> 並按 Enter。',
+      hello_verify_check_output: '檢查輸出',
+      hello_verify_check_output_desc:
+        '輸出應顯示注入後的訊息，而不是原始訊息。',
 
-      demo_unpatch_title: '取消注入',
-      demo_unpatch_desc: '移除注入並驗證原始函式已恢復。',
-      demo_unpatch_click: '點擊 ✕ 取消注入',
-      demo_unpatch_click_desc:
+      hello_unpatch_title: '取消注入',
+      hello_unpatch_desc: '移除注入並驗證原始函式已恢復。',
+      hello_unpatch_click: '點擊 ✕ 取消注入',
+      hello_unpatch_click_desc:
         '在熱補丁面板中，點擊已佔用槽位的 ✕ 按鈕移除注入。',
-      demo_unpatch_verify: '驗證恢復',
-      demo_unpatch_verify_desc:
-        '再次傳送 <code>fl -c demo</code>，輸出應恢復為原始訊息。',
-      gate_demo_unpatch: '⏳ 請點擊已佔用槽位的 ✕ 按鈕取消注入。',
-      gate_demo_unpatch_ok: '✅ 已取消注入！',
-      demo_unpatch_hint:
+      hello_unpatch_verify: '驗證恢復',
+      hello_unpatch_verify_desc:
+        '再次傳送 <code>fl -c hello</code>，輸出應恢復為原始訊息。',
+      gate_hello_unpatch: '⏳ 請點擊已佔用槽位的 ✕ 按鈕取消注入。',
+      gate_hello_unpatch_ok: '✅ 已取消注入！',
+      hello_unpatch_hint:
         '這就是 FPB 執行時程式碼注入的完整流程 — 無需重新燒錄即可替換任意函式！',
     },
   },

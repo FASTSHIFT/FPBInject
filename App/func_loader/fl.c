@@ -559,10 +559,10 @@ static void cmd_unpatch(fl_context_t* ctx, uint32_t comp, bool all) {
     }
 }
 
-__attribute__((noinline)) void fl_cmd_demo(void) {
-    fl_println("Hello from original fl_cmd_demo!");
+__attribute__((noinline)) void fl_hello(void) {
+    fl_println("Hello from original fl_hello!");
     fl_println("Inject a new version to change this message.");
-    fl_response(true, "DEMO original");
+    fl_response(true, "HELLO original");
 }
 
 /* ===========================
@@ -992,8 +992,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     } else if (strcmp(cmd, "frename") == 0) {
         cmd_frename(ctx, path, newpath);
 #endif /* FL_USE_FILE */
-    } else if (strcmp(cmd, "demo") == 0) {
-        fl_cmd_demo();
+    } else if (strcmp(cmd, "hello") == 0) {
+        fl_hello();
     } else {
         fl_response(false, "Unknown: %s", cmd);
         return -1;

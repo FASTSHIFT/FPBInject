@@ -418,10 +418,10 @@ module.exports = function (w) {
       w.tutorialSkip(); // skip transfer
       w.tutorialSkip(); // skip symbols
       w.tutorialSkip(); // skip config
-      w.tutorialSkip(); // skip demo_search
-      w.tutorialSkip(); // skip demo_inject
-      w.tutorialSkip(); // skip demo_verify
-      w.tutorialSkip(); // skip demo_unpatch -> complete
+      w.tutorialSkip(); // skip hello_search
+      w.tutorialSkip(); // skip hello_inject
+      w.tutorialSkip(); // skip hello_verify
+      w.tutorialSkip(); // skip hello_unpatch -> complete
       const body = getElement('tutorialBody');
       // All intermediate steps should show skipped
       assertTrue(body.innerHTML.includes('skipped'));
@@ -562,36 +562,36 @@ module.exports = function (w) {
   });
 
   /* ===========================
-     DEMO INJECT STEPS
+     HELLO INJECT STEPS
      =========================== */
 
-  describe('Tutorial - Demo Search Step', () => {
-    it('demo_search step renders feature list', () => {
+  describe('Tutorial - Hello Search Step', () => {
+    it('hello_search step renders feature list', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // demo_search
+      w.tutorialGoTo(8); // hello_search
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-list'));
     });
 
-    it('demo_search step mentions fl_cmd_demo', () => {
+    it('hello_search step mentions fl_hello', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // demo_search
+      w.tutorialGoTo(8); // hello_search
       const body = getElement('tutorialBody');
-      assertTrue(body.innerHTML.includes('fl_cmd_demo'));
+      assertTrue(body.innerHTML.includes('fl_hello'));
     });
 
-    it('demo_search step has 3 feature items', () => {
+    it('hello_search step has 3 feature items', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // demo_search
+      w.tutorialGoTo(8); // hello_search
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
@@ -599,33 +599,33 @@ module.exports = function (w) {
     });
   });
 
-  describe('Tutorial - Demo Inject Step', () => {
-    it('demo_inject step renders feature list', () => {
+  describe('Tutorial - Hello Inject Step', () => {
+    it('hello_inject step renders feature list', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(9); // demo_inject
+      w.tutorialGoTo(9); // hello_inject
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-list'));
     });
 
-    it('demo_inject step mentions inject button', () => {
+    it('hello_inject step mentions inject button', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(9); // demo_inject
+      w.tutorialGoTo(9); // hello_inject
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('Inject'));
     });
 
-    it('demo_inject step has 3 feature items', () => {
+    it('hello_inject step has 3 feature items', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(9); // demo_inject
+      w.tutorialGoTo(9); // hello_inject
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
@@ -633,97 +633,97 @@ module.exports = function (w) {
     });
   });
 
-  describe('Tutorial - Demo Verify Step', () => {
-    it('demo_verify step renders feature list', () => {
+  describe('Tutorial - Hello Verify Step', () => {
+    it('hello_verify step renders feature list', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // demo_verify
+      w.tutorialGoTo(10); // hello_verify
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-item'));
     });
 
-    it('demo_verify step mentions fl -c demo command', () => {
+    it('hello_verify step mentions fl -c hello command', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // demo_verify
+      w.tutorialGoTo(10); // hello_verify
       const body = getElement('tutorialBody');
-      assertTrue(body.innerHTML.includes('fl -c demo'));
+      assertTrue(body.innerHTML.includes('fl -c hello'));
     });
 
-    it('demo_verify step has 2 feature items', () => {
+    it('hello_verify step has 2 feature items', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // demo_verify
+      w.tutorialGoTo(10); // hello_verify
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
       assertEqual(count, 2);
     });
 
-    it('demo_verify step has no gate (next button enabled)', () => {
+    it('hello_verify step has no gate (next button enabled)', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // demo_verify
+      w.tutorialGoTo(10); // hello_verify
       const nextBtn = getElement('tutorialNextBtn');
       assertFalse(nextBtn.disabled);
     });
   });
 
-  describe('Tutorial - Demo Unpatch Step', () => {
-    it('demo_unpatch step renders feature list', () => {
+  describe('Tutorial - Hello Unpatch Step', () => {
+    it('hello_unpatch step renders feature list', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(11); // demo_unpatch
+      w.tutorialGoTo(11); // hello_unpatch
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-item'));
     });
 
-    it('demo_unpatch step mentions fl -c demo command', () => {
+    it('hello_unpatch step mentions fl -c hello command', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(11); // demo_unpatch
+      w.tutorialGoTo(11); // hello_unpatch
       const body = getElement('tutorialBody');
-      assertTrue(body.innerHTML.includes('fl -c demo'));
+      assertTrue(body.innerHTML.includes('fl -c hello'));
     });
 
-    it('demo_unpatch step has 2 feature items', () => {
+    it('hello_unpatch step has 2 feature items', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(11); // demo_unpatch
+      w.tutorialGoTo(11); // hello_unpatch
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
       assertEqual(count, 2);
     });
 
-    it('demo_unpatch step has gate', () => {
+    it('hello_unpatch step has gate', () => {
       resetMocks();
       clearTutorialStorage();
       setupTutorialDOM();
       // Set a slot as occupied so the gate is not yet satisfied
       browserGlobals.window.FPBState.slotStates[0] = {
         occupied: true,
-        func: 'fl_cmd_demo',
+        func: 'fl_hello',
         orig_addr: '0x08001000',
         target_addr: '0x20001000',
         code_size: 64,
       };
       w.startTutorial();
-      w.tutorialGoTo(11); // demo_unpatch
+      w.tutorialGoTo(11); // hello_unpatch
       const nextBtn = getElement('tutorialNextBtn');
       assertTrue(nextBtn.disabled);
     });

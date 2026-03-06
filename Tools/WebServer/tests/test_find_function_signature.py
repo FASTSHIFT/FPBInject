@@ -235,13 +235,13 @@ int get_value()
     def test_attribute_noinline_function(self):
         """Test parsing function with __attribute__((noinline))."""
         code = """
-__attribute__((noinline)) void fl_cmd_demo(void)
+__attribute__((noinline)) void fl_hello(void)
 {
     printf("Hello");
 }
 """
-        sig = find_function_signature(code, "fl_cmd_demo")
-        self.assertEqual(sig, "__attribute__((noinline)) void fl_cmd_demo(void)")
+        sig = find_function_signature(code, "fl_hello")
+        self.assertEqual(sig, "__attribute__((noinline)) void fl_hello(void)")
 
     def test_attribute_section_function(self):
         """Test parsing function with __attribute__((section(...)))."""
