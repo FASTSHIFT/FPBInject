@@ -1502,8 +1502,8 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms:
-                mock_syms.return_value = {}  # Empty symbols
+            with patch.object(self.fpb, "_resolve_symbol_addr") as mock_resolve:
+                mock_resolve.return_value = None  # Symbol not found
 
                 success, result = self.fpb.inject("source", "target_func")
 
@@ -1520,13 +1520,15 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+            with patch.object(
+                self.fpb, "_resolve_symbol_addr"
+            ) as mock_resolve, patch.object(
                 self.fpb, "info"
             ) as mock_info, patch.object(
                 self.fpb, "find_slot_for_target"
             ) as mock_find_slot:
 
-                mock_syms.return_value = {"target_func": 0x08000000}
+                mock_resolve.return_value = 0x08000000
                 mock_info.return_value = ({"base": 0x20000000}, "")
                 mock_find_slot.return_value = (
                     0,
@@ -1555,13 +1557,17 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+            with patch.object(
+                self.fpb, "_resolve_symbol_addr"
+            ) as mock_resolve, patch.object(
                 self.fpb, "info"
-            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+            ) as mock_info, patch.object(
+                self.fpb, "alloc"
+            ) as mock_alloc, patch.object(
                 self.fpb, "find_slot_for_target"
             ) as mock_find_slot:
 
-                mock_syms.return_value = {"target_func": 0x08000000}
+                mock_resolve.return_value = 0x08000000
                 mock_info.return_value = ({"used": 0}, "")
                 mock_alloc.return_value = (0x20000000, "")
                 mock_find_slot.return_value = (
@@ -1606,9 +1612,13 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+            with patch.object(
+                self.fpb, "_resolve_symbol_addr"
+            ) as mock_resolve, patch.object(
                 self.fpb, "info"
-            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+            ) as mock_info, patch.object(
+                self.fpb, "alloc"
+            ) as mock_alloc, patch.object(
                 self.fpb, "find_slot_for_target"
             ) as mock_find_slot, patch.object(
                 self.fpb, "upload"
@@ -1616,7 +1626,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
                 self.fpb, "tpatch"
             ) as mock_tpatch:
 
-                mock_syms.return_value = {"target_func": 0x08000000}
+                mock_resolve.return_value = 0x08000000
                 # info returns used memory
                 mock_info.return_value = (
                     {"used": 0},
@@ -1654,9 +1664,13 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+            with patch.object(
+                self.fpb, "_resolve_symbol_addr"
+            ) as mock_resolve, patch.object(
                 self.fpb, "info"
-            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+            ) as mock_info, patch.object(
+                self.fpb, "alloc"
+            ) as mock_alloc, patch.object(
                 self.fpb, "find_slot_for_target"
             ) as mock_find_slot, patch.object(
                 self.fpb, "upload"
@@ -1664,7 +1678,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
                 self.fpb, "tpatch"
             ) as mock_tpatch:
 
-                mock_syms.return_value = {"digitalWrite": 0x08000100}
+                mock_resolve.return_value = 0x08000100
                 mock_info.return_value = ({"used": 0}, "")
                 mock_alloc.return_value = (0x20001000, "")
                 mock_find_slot.return_value = (0, False)
@@ -1692,13 +1706,17 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+            with patch.object(
+                self.fpb, "_resolve_symbol_addr"
+            ) as mock_resolve, patch.object(
                 self.fpb, "info"
-            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+            ) as mock_info, patch.object(
+                self.fpb, "alloc"
+            ) as mock_alloc, patch.object(
                 self.fpb, "find_slot_for_target"
             ) as mock_find_slot:
 
-                mock_syms.return_value = {"target_func": 0x08000100}
+                mock_resolve.return_value = 0x08000100
                 mock_info.return_value = ({"used": 0}, "")
                 mock_alloc.return_value = (0x20001000, "")
                 mock_find_slot.return_value = (0, False)
@@ -1724,9 +1742,13 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
+            with patch.object(
+                self.fpb, "_resolve_symbol_addr"
+            ) as mock_resolve, patch.object(
                 self.fpb, "info"
-            ) as mock_info, patch.object(self.fpb, "alloc") as mock_alloc, patch.object(
+            ) as mock_info, patch.object(
+                self.fpb, "alloc"
+            ) as mock_alloc, patch.object(
                 self.fpb, "find_slot_for_target"
             ) as mock_find_slot, patch.object(
                 self.fpb, "upload"
@@ -1734,7 +1756,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
                 self.fpb, "tpatch"
             ) as mock_tpatch:
 
-                mock_syms.return_value = {"some_func": 0x08000100}
+                mock_resolve.return_value = 0x08000100
                 mock_info.return_value = ({"used": 0}, "")
                 mock_alloc.return_value = (0x20001000, "")
                 mock_find_slot.return_value = (0, False)
@@ -2326,15 +2348,19 @@ class TestInjectMulti(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms, patch.object(
-                self.fpb, "inject"
-            ) as mock_inject:
+            with patch.object(
+                self.fpb, "_resolve_symbol_addr"
+            ) as mock_resolve, patch.object(self.fpb, "inject") as mock_inject:
 
-                # Firmware has these functions
-                mock_syms.return_value = {
-                    "digitalWrite": 0x08000100,
-                    "analogWrite": 0x08000200,
-                }
+                # _resolve_symbol_addr returns address for known functions
+                def resolve_side_effect(name):
+                    addrs = {
+                        "digitalWrite": 0x08000100,
+                        "analogWrite": 0x08000200,
+                    }
+                    return addrs.get(name)
+
+                mock_resolve.side_effect = resolve_side_effect
 
                 # Compiled patch has these symbols (same names, no prefix)
                 mock_compile.return_value = (
@@ -2361,17 +2387,13 @@ class TestInjectMulti(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms:
+            # No symbols in compiled code
+            mock_compile.return_value = (b"\x00" * 100, {}, "")
 
-                mock_syms.return_value = {"some_func": 0x08000100}
+            success, result = self.fpb.inject_multi("source")
 
-                # No symbols in compiled code
-                mock_compile.return_value = (b"\x00" * 100, {}, "")
-
-                success, result = self.fpb.inject_multi("source")
-
-                self.assertFalse(success)
-                self.assertIn("No FPB_INJECT marked functions", result["error"])
+            self.assertFalse(success)
+            self.assertIn("No FPB_INJECT marked functions", result["error"])
         finally:
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
@@ -2383,10 +2405,10 @@ class TestInjectMulti(unittest.TestCase):
             self.device.elf_path = f.name
 
         try:
-            with patch.object(self.fpb, "get_symbols") as mock_syms:
+            with patch.object(self.fpb, "_resolve_symbol_addr") as mock_resolve:
 
-                # Firmware doesn't have the function we're trying to patch
-                mock_syms.return_value = {"other_func": 0x08000100}
+                # Function not found in ELF
+                mock_resolve.return_value = None
 
                 # Compiled patch has this function
                 mock_compile.return_value = (
