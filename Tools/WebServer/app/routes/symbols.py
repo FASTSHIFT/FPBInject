@@ -22,6 +22,29 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint("symbols", __name__)
 
+# Cache for struct layout results (keyed by symbol name).
+# Struct layout is derived from ELF debug info and does not change at runtime,
+# so we cache it to avoid repeated GDB queries on every auto-read.
+_struct_layout_cache = {}
+
+
+def _get_struct_layout_cached(sym_name):
+    """Get struct layout with caching. Returns cached result on subsequent calls."""
+    if sym_name in _struct_layout_cache:
+        return _struct_layout_cache[sym_name]
+
+    from core.gdb_manager import is_gdb_available
+
+    layout = None
+    if is_gdb_available(state):
+        try:
+            layout = state.gdb_session.get_struct_layout(sym_name)
+        except Exception:
+            logger.debug(f"Failed to get struct layout for '{sym_name}'")
+
+    _struct_layout_cache[sym_name] = layout
+    return layout
+
 
 def _get_fpb_inject():
     """Lazy import to avoid circular dependency."""
@@ -278,6 +301,7 @@ def api_reload_symbols():
 
             state.symbols = {}
             state.symbols_loaded = False
+            _struct_layout_cache.clear()
 
             if is_gdb_available(state):
                 return jsonify(
@@ -542,8 +566,8 @@ def api_get_symbol_value():
     logger.info(f"[value] read_symbol_value: {t_read - t_lookup:.2f}s")
     hex_data = raw_data.hex() if raw_data else None
 
-    # Get struct layout via GDB
-    struct_layout = state.gdb_session.get_struct_layout(sym_name)
+    # Get struct layout via GDB (cached)
+    struct_layout = _get_struct_layout_cached(sym_name)
     t_struct = time.time()
     logger.info(f"[value] get_struct_layout: {t_struct - t_read:.2f}s")
 
@@ -606,14 +630,7 @@ def api_read_symbol_from_device():
 
         hex_data = raw_data.hex()
 
-        struct_layout = None
-        try:
-            from core.gdb_manager import is_gdb_available
-
-            if is_gdb_available(state):
-                struct_layout = state.gdb_session.get_struct_layout(sym_name)
-        except Exception:
-            logger.debug(f"Failed to get struct layout for '{sym_name}'")
+        struct_layout = _get_struct_layout_cached(sym_name)
 
         return jsonify(
             {

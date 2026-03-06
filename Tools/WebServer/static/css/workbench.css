@@ -1204,11 +1204,40 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-.sym-viewer-toolbar .vscode-button {
+.sym-viewer-toolbar .vscode-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
+}
+
+.sym-viewer-icon {
+  color: var(--vscode-descriptionForeground);
+}
+
+.sym-auto-read {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.sym-auto-read-interval {
+  width: 72px;
+  height: 24px;
+  font-size: 11px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.sym-auto-read-unit {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.sym-auto-read-toggle.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
 }
 
 .sym-viewer-status {

@@ -11,6 +11,12 @@
 let _symbolClickTimer = null;
 
 /* ===========================
+   AUTO-READ TIMER
+   =========================== */
+let _autoReadTimer = null;
+let _autoReadSymName = null;
+
+/* ===========================
    SYMBOL TYPE HELPERS
    =========================== */
 const SYMBOL_TYPE_CONFIG = {
@@ -133,33 +139,49 @@ async function openSymbolValueTab(symName, symType) {
 }
 
 function _renderSymbolValueContent(data, isConst) {
-  const sectionLabel = isConst ? 'Read-Only' : 'Read-Write';
+  const sectionLabel = isConst
+    ? t('symbols.read_only', 'Read-Only')
+    : t('symbols.read_write', 'Read-Write');
   const isBss = data.section && data.section.startsWith('.bss');
 
   let headerHtml = `
     <div class="sym-viewer-header">
       <div class="sym-viewer-title">
-        <span class="sym-viewer-icon">${isConst ? '📌' : '📊'}</span>
+        <i class="codicon ${isConst ? 'codicon-lock' : 'codicon-symbol-variable'} sym-viewer-icon"></i>
         <strong>${_escapeHtml(data.name)}</strong>
       </div>
       <div class="sym-viewer-meta">
-        Address: ${data.addr} &nbsp; Size: ${data.size} bytes &nbsp;
-        Section: ${_escapeHtml(data.section)} (${sectionLabel})
+        ${t('symbols.address', 'Address')}: ${data.addr} &nbsp;
+        ${t('symbols.size', 'Size')}: ${data.size} ${t('symbols.bytes', 'bytes')} &nbsp;
+        ${t('symbols.section', 'Section')}: ${_escapeHtml(data.section)} (${sectionLabel})
       </div>
     </div>
   `;
 
   let toolbarHtml = '';
   if (!isConst) {
+    const escapedName = _escapeHtml(data.name);
     toolbarHtml = `
       <div class="sym-viewer-toolbar">
-        <button class="vscode-button" onclick="readSymbolFromDevice('${_escapeHtml(data.name)}')">
-          <i class="codicon codicon-refresh"></i> Read from Device
+        <button class="vscode-btn" onclick="readSymbolFromDevice('${escapedName}')">
+          <i class="codicon codicon-refresh"></i> ${t('symbols.read_from_device', 'Read from Device')}
         </button>
-        <button class="vscode-button" onclick="writeSymbolToDevice('${_escapeHtml(data.name)}')">
-          <i class="codicon codicon-cloud-upload"></i> Write to Device
+        <button class="vscode-btn secondary" onclick="writeSymbolToDevice('${escapedName}')">
+          <i class="codicon codicon-cloud-upload"></i> ${t('symbols.write_to_device', 'Write to Device')}
         </button>
-        <span class="sym-viewer-status" id="symStatus_${_escapeHtml(data.name)}"></span>
+        <div class="sym-auto-read">
+          <button class="vscode-btn secondary sym-auto-read-toggle" id="symAutoReadBtn_${escapedName}"
+            onclick="toggleAutoRead('${escapedName}')"
+            title="${t('symbols.auto_read_hint', 'Toggle periodic auto-read')}">
+            <i class="codicon codicon-sync"></i> ${t('symbols.auto_read', 'Auto')}
+          </button>
+          <input type="number" class="vscode-input sym-auto-read-interval"
+            id="symAutoReadInterval_${escapedName}"
+            value="1000" min="100" step="100"
+            title="${t('symbols.auto_read_interval_hint', 'Auto-read interval (ms)')}" />
+          <span class="sym-auto-read-unit">ms</span>
+        </div>
+        <span class="sym-viewer-status" id="symStatus_${escapedName}"></span>
       </div>
     `;
   }
@@ -167,18 +189,20 @@ function _renderSymbolValueContent(data, isConst) {
   let bodyHtml = '';
 
   if (data.struct_layout && data.struct_layout.length > 0) {
-    // Struct table view
     bodyHtml += '<div class="sym-viewer-struct">';
     bodyHtml += '<table class="sym-struct-table"><thead><tr>';
-    bodyHtml +=
-      '<th>Field</th><th>Type</th><th>Offset</th><th>Size</th><th>Value</th>';
+    bodyHtml += `<th>${t('symbols.field', 'Field')}</th>`;
+    bodyHtml += `<th>${t('symbols.type', 'Type')}</th>`;
+    bodyHtml += `<th>${t('symbols.offset', 'Offset')}</th>`;
+    bodyHtml += `<th>${t('symbols.size', 'Size')}</th>`;
+    bodyHtml += `<th>${t('symbols.value', 'Value')}</th>`;
     bodyHtml += '</tr></thead><tbody>';
 
     for (const member of data.struct_layout) {
       const valueHex = data.hex_data
         ? _extractFieldHex(data.hex_data, member.offset, member.size)
         : isBss
-          ? '<em>needs device read</em>'
+          ? `<em>${t('symbols.needs_device_read', 'needs device read')}</em>`
           : '—';
       const valueDecoded = data.hex_data
         ? _decodeFieldValue(
@@ -206,7 +230,7 @@ function _renderSymbolValueContent(data, isConst) {
   // Raw hex dump
   if (data.hex_data) {
     bodyHtml += '<div class="sym-viewer-hex">';
-    bodyHtml += '<div class="sym-hex-label">Raw Hex:</div>';
+    bodyHtml += `<div class="sym-hex-label">${t('symbols.raw_hex', 'Raw Hex')}:</div>`;
     bodyHtml += `<pre class="sym-hex-dump">${_formatHexDump(data.hex_data)}</pre>`;
     bodyHtml += '</div>';
   } else if (isBss) {
@@ -395,7 +419,8 @@ async function readSymbolFromDevice(symName) {
 
     if (!data.success) {
       log.error(`Read failed: ${data.error}`);
-      if (statusEl) statusEl.textContent = `Error: ${data.error}`;
+      if (statusEl)
+        statusEl.textContent = `${t('symbols.error', 'Error')}: ${data.error}`;
       return;
     }
 
@@ -404,15 +429,22 @@ async function readSymbolFromDevice(symName) {
     const contentDiv = document.getElementById(`tabContent_${tabId}`);
     if (contentDiv) {
       contentDiv.innerHTML = _renderSymbolValueContent(data, false);
+      // Restore auto-read state if active
+      if (_autoReadSymName === symName && _autoReadTimer) {
+        const btn = document.getElementById(`symAutoReadBtn_${symName}`);
+        if (btn) btn.classList.add('active');
+      }
     }
 
     const now = new Date().toLocaleTimeString();
     const newStatusEl = document.getElementById(`symStatus_${symName}`);
-    if (newStatusEl) newStatusEl.textContent = `Last read: ${now}`;
+    if (newStatusEl)
+      newStatusEl.textContent = `${t('symbols.last_read', 'Last read')}: ${now}`;
     log.success(`Read ${data.size} bytes from device for ${symName}`);
   } catch (e) {
     log.error(`Read exception: ${e}`);
-    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    if (statusEl)
+      statusEl.textContent = `${t('symbols.error', 'Error')}: ${e.message}`;
   }
 }
 
@@ -424,7 +456,7 @@ async function writeSymbolToDevice(symName) {
   // Extract current hex data from the hex dump
   const hexDump = contentDiv.querySelector('.sym-hex-dump');
   if (!hexDump) {
-    log.error('No hex data to write');
+    log.error(t('symbols.no_hex_data', 'No hex data to write'));
     return;
   }
 
@@ -437,7 +469,7 @@ async function writeSymbolToDevice(symName) {
     .trim();
 
   if (!hexBytes || !/^[0-9a-fA-F]+$/.test(hexBytes)) {
-    log.error('Invalid hex data');
+    log.error(t('symbols.invalid_hex', 'Invalid hex data'));
     return;
   }
 
@@ -454,17 +486,55 @@ async function writeSymbolToDevice(symName) {
 
     if (!data.success) {
       log.error(`Write failed: ${data.error}`);
-      if (statusEl) statusEl.textContent = `Error: ${data.error}`;
+      if (statusEl)
+        statusEl.textContent = `${t('symbols.error', 'Error')}: ${data.error}`;
       return;
     }
 
     const now = new Date().toLocaleTimeString();
-    if (statusEl) statusEl.textContent = `Written at ${now}`;
+    if (statusEl)
+      statusEl.textContent = `${t('symbols.written_at', 'Written at')} ${now}`;
     log.success(`Wrote to device for ${symName}`);
   } catch (e) {
     log.error(`Write exception: ${e}`);
-    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    if (statusEl)
+      statusEl.textContent = `${t('symbols.error', 'Error')}: ${e.message}`;
   }
+}
+
+/* ===========================
+   AUTO-READ TIMER
+   =========================== */
+function toggleAutoRead(symName) {
+  const btn = document.getElementById(`symAutoReadBtn_${symName}`);
+  const intervalInput = document.getElementById(
+    `symAutoReadInterval_${symName}`,
+  );
+
+  if (_autoReadTimer && _autoReadSymName === symName) {
+    // Stop auto-read
+    clearInterval(_autoReadTimer);
+    _autoReadTimer = null;
+    _autoReadSymName = null;
+    if (btn) btn.classList.remove('active');
+    log.info(`Auto-read stopped for ${symName}`);
+    return;
+  }
+
+  // Stop any existing auto-read for another symbol
+  if (_autoReadTimer) {
+    clearInterval(_autoReadTimer);
+    const oldBtn = document.getElementById(
+      `symAutoReadBtn_${_autoReadSymName}`,
+    );
+    if (oldBtn) oldBtn.classList.remove('active');
+  }
+
+  const interval = parseInt(intervalInput?.value) || 1000;
+  _autoReadSymName = symName;
+  _autoReadTimer = setInterval(() => readSymbolFromDevice(symName), interval);
+  if (btn) btn.classList.add('active');
+  log.info(`Auto-read started for ${symName} (${interval}ms)`);
 }
 
 // Export for global access
@@ -475,6 +545,7 @@ window.onSymbolDblClick = onSymbolDblClick;
 window.openSymbolValueTab = openSymbolValueTab;
 window.readSymbolFromDevice = readSymbolFromDevice;
 window.writeSymbolToDevice = writeSymbolToDevice;
+window.toggleAutoRead = toggleAutoRead;
 // Export helpers for testing
 window._extractFieldHex = _extractFieldHex;
 window._decodeFieldValue = _decodeFieldValue;
