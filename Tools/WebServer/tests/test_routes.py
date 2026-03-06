@@ -900,20 +900,15 @@ class TestRoutesExtended(TestRoutesBase):
     """Routes extended tests"""
 
     def test_symbols_reload(self):
-        """Test symbol reloading"""
+        """Test symbol reloading clears cache"""
         state.device.elf_path = "/tmp/test.elf"
 
-        with patch("routes.get_fpb_inject") as mock_get_fpb:
-            mock_fpb = Mock()
-            mock_fpb.get_symbols.return_value = {"main": 0x08000000}
-            mock_get_fpb.return_value = mock_fpb
+        with patch("os.path.exists", return_value=True):
+            response = self.client.post("/api/symbols/reload")
+            data = json.loads(response.data)
 
-            with patch("os.path.exists", return_value=True):
-                response = self.client.post("/api/symbols/reload")
-                data = json.loads(response.data)
-
-                self.assertTrue(data["success"])
-                self.assertEqual(data["count"], 1)
+            self.assertTrue(data["success"])
+            self.assertEqual(data["count"], 0)
 
     def test_symbols_reload_no_elf(self):
         """Test reloading without ELF file"""
@@ -940,10 +935,11 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["filtered"], 1)
 
-    @patch("core.elf_utils.search_symbols")
-    def test_get_symbols_search_by_address(self, mock_search):
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_get_symbols_search_by_address(self, mock_gdb_avail):
         """Test searching symbols by address (0x prefix)"""
-        mock_search.return_value = (
+        mock_session = Mock()
+        mock_session.search_symbols.return_value = (
             [
                 {
                     "name": "test_func",
@@ -955,6 +951,7 @@ class TestRoutesExtended(TestRoutesBase):
             ],
             3,
         )
+        state.gdb_session = mock_session
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -968,10 +965,11 @@ class TestRoutesExtended(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.search_symbols")
-    def test_get_symbols_search_by_address_partial(self, mock_search):
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_get_symbols_search_by_address_partial(self, mock_gdb_avail):
         """Test searching symbols by partial address"""
-        mock_search.return_value = (
+        mock_session = Mock()
+        mock_session.search_symbols.return_value = (
             [
                 {
                     "name": "test_func",
@@ -983,6 +981,7 @@ class TestRoutesExtended(TestRoutesBase):
             ],
             3,
         )
+        state.gdb_session = mock_session
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -1754,27 +1753,19 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["symbols"], [])
 
-    @patch("routes.get_fpb_inject")
-    def test_get_symbols_with_data(self, mock_get_fpb):
-        """Test getting symbols with data"""
-        mock_fpb = Mock()
-        mock_fpb.get_symbols.return_value = {
+    def test_get_symbols_with_data(self):
+        """Test getting symbols with data (GDB-only: symbols pre-populated)"""
+        state.symbols = {
             "func_a": 0x08001000,
             "func_b": 0x08002000,
         }
-        mock_get_fpb.return_value = mock_fpb
+        state.symbols_loaded = True
 
-        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
-            state.device.elf_path = f.name
+        response = self.client.get("/api/symbols")
+        data = json.loads(response.data)
 
-        try:
-            response = self.client.get("/api/symbols")
-            data = json.loads(response.data)
-
-            self.assertTrue(data["success"])
-            self.assertEqual(len(data["symbols"]), 2)
-        finally:
-            os.unlink(state.device.elf_path)
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["symbols"]), 2)
 
     @patch("routes.get_fpb_inject")
     def test_get_symbols_with_query(self, mock_get_fpb):
@@ -1792,10 +1783,11 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["filtered"], 2)
 
-    @patch("core.elf_utils.search_symbols")
-    def test_search_symbols_by_name(self, mock_search):
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_search_symbols_by_name(self, mock_gdb_avail):
         """Test searching symbols by name"""
-        mock_search.return_value = (
+        mock_session = Mock()
+        mock_session.search_symbols.return_value = (
             [
                 {
                     "name": "gpio_init",
@@ -1814,6 +1806,7 @@ class TestSymbolsAPI(TestRoutesBase):
             ],
             3,
         )
+        state.gdb_session = mock_session
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -1825,10 +1818,11 @@ class TestSymbolsAPI(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.search_symbols")
-    def test_search_symbols_by_address(self, mock_search):
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_search_symbols_by_address(self, mock_gdb_avail):
         """Test searching symbols by address"""
-        mock_search.return_value = (
+        mock_session = Mock()
+        mock_session.search_symbols.return_value = (
             [
                 {
                     "name": "func_a",
@@ -1840,6 +1834,7 @@ class TestSymbolsAPI(TestRoutesBase):
             ],
             2,
         )
+        state.gdb_session = mock_session
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -1863,13 +1858,8 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"].lower())
 
-    @patch("routes.get_fpb_inject")
-    def test_reload_symbols_success(self, mock_get_fpb):
-        """Test reloading symbols"""
-        mock_fpb = Mock()
-        mock_fpb.get_symbols.return_value = {"func": 0x08001000}
-        mock_get_fpb.return_value = mock_fpb
-
+    def test_reload_symbols_success(self):
+        """Test reloading symbols (GDB-only: clears cache, returns count=0)"""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
 
@@ -1878,7 +1868,7 @@ class TestSymbolsAPI(TestRoutesBase):
             data = json.loads(response.data)
 
             self.assertTrue(data["success"])
-            self.assertEqual(data["count"], 1)
+            self.assertEqual(data["count"], 0)
         finally:
             os.unlink(state.device.elf_path)
 

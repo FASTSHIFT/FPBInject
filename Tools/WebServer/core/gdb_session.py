@@ -298,6 +298,18 @@ class GDBSession:
         with self._lock:
             return self._get_symbols_impl()
 
+    def read_symbol_value(self, sym_name: str) -> Optional[bytes]:
+        """Read the raw bytes of a symbol's initial value from the ELF.
+
+        Uses GDB's 'x' command which reads from the loaded ELF sections.
+        Returns None for .bss symbols (no initial value) or if not found.
+        """
+        if not self.is_alive:
+            return None
+
+        with self._lock:
+            return self._read_symbol_value_impl(sym_name)
+
     # ------------------------------------------------------------------
     # Internal: GDB/MI communication
     # ------------------------------------------------------------------
@@ -548,6 +560,61 @@ class GDBSession:
             return None
 
         return self._parse_ptype_output(output)
+
+    def _read_symbol_value_impl(self, sym_name: str) -> Optional[bytes]:
+        """Internal implementation of read_symbol_value.
+
+        Uses GDB 'x/<N>bx &<sym>' to read raw bytes from the loaded ELF image.
+        For .bss symbols (all zeros in ELF), returns None.
+        """
+        # First look up the symbol to get size and section
+        info = self._lookup_symbol_impl(sym_name)
+        if not info:
+            return None
+
+        size = info.get("size", 0)
+        if size <= 0:
+            return None
+
+        section = info.get("section", "")
+        # .bss has no initial value in ELF
+        if section.startswith(".bss"):
+            return None
+
+        addr = info.get("addr", 0)
+        if addr == 0:
+            return None
+
+        # Read raw bytes via GDB 'x' command
+        # x/<N>bx <addr> prints N bytes in hex
+        output = self._execute_cli(f"x/{size}bx 0x{addr:x}")
+        if not output:
+            return None
+
+        # Parse hex bytes from output lines like:
+        # 0x20001000:  0x01  0x02  0x03  0x04  ...
+        raw_bytes = bytearray()
+        for line in output.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            # Skip the address prefix (everything before first ':')
+            colon_idx = line.find(":")
+            if colon_idx >= 0:
+                line = line[colon_idx + 1 :]
+            # Extract hex values
+            for token in line.split():
+                token = token.strip()
+                if token.startswith("0x"):
+                    try:
+                        raw_bytes.append(int(token, 16))
+                    except ValueError:
+                        continue
+
+        if len(raw_bytes) == 0:
+            return None
+
+        return bytes(raw_bytes[:size])
 
     # ------------------------------------------------------------------
     # Internal: Output parsing helpers

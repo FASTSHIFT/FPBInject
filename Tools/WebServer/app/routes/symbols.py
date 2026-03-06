@@ -113,11 +113,10 @@ def _get_addr(info):
 
 
 def _lookup_symbol(sym_name):
-    """Look up a symbol, using GDB > cache > pyelftools streaming.
+    """Look up a symbol via GDB or cache.
 
     Results are cached in state.symbols for subsequent lookups.
     """
-    from core import elf_utils
     from core.gdb_manager import is_gdb_available
 
     # Try cache first
@@ -132,12 +131,11 @@ def _lookup_symbol(sym_name):
     if not device.elf_path or not os.path.exists(device.elf_path):
         return None
 
-    # GDB fast path (~0.01s vs ~3s)
-    if is_gdb_available(state):
-        result = state.gdb_session.lookup_symbol(sym_name)
-    else:
-        # pyelftools fallback: streaming single-symbol lookup
-        result = elf_utils.lookup_symbol(device.elf_path, sym_name)
+    if not is_gdb_available(state):
+        logger.warning("GDB not available, cannot look up symbol")
+        return None
+
+    result = state.gdb_session.lookup_symbol(sym_name)
 
     # Cache for future lookups
     if result is not None:
@@ -162,27 +160,12 @@ def _ensure_symbols_loaded():
     if state.symbols_loaded:
         return
 
-    with state._symbols_load_lock:
-        # Double-check after acquiring lock
-        if state.symbols_loaded:
-            return
-
-        device = state.device
-        if not device.elf_path or not os.path.exists(device.elf_path):
-            return
-
-        logger.info("Loading symbols via pyelftools (GDB not available)...")
-        fpb = _get_fpb_inject()
-        state.symbols = fpb.get_symbols(device.elf_path)
-
-        state.symbols_loaded = True
+    logger.warning("GDB not available, symbol preloading skipped")
 
 
 @bp.route("/symbols/search", methods=["GET"])
 def api_search_symbols():
     """Search symbols from ELF file. Uses cache when available."""
-    from core import elf_utils
-
     device = state.device
     if not device.elf_path or not os.path.exists(device.elf_path):
         elf_path = device.elf_path if device.elf_path else "(not set)"
@@ -239,10 +222,8 @@ def api_search_symbols():
             # GDB fast search (~0.01s vs ~3s)
             symbol_list, total = state.gdb_session.search_symbols(query, limit=limit)
         else:
-            # pyelftools streaming search (no full load)
-            symbol_list, total = elf_utils.search_symbols(
-                device.elf_path, query, limit=limit
-            )
+            symbol_list, total = [], 0
+            logger.warning("GDB not available, cannot search symbols")
     except Exception as e:
         return jsonify(
             {
@@ -273,10 +254,10 @@ def api_reload_symbols():
         with state._symbols_load_lock:
             from core.gdb_manager import is_gdb_available
 
+            state.symbols = {}
+            state.symbols_loaded = False
+
             if is_gdb_available(state):
-                # GDB: no full dump needed, clear cache so searches use GDB
-                state.symbols = {}
-                state.symbols_loaded = False
                 return jsonify(
                     {
                         "success": True,
@@ -285,9 +266,13 @@ def api_reload_symbols():
                     }
                 )
             else:
-                fpb = _get_fpb_inject()
-                state.symbols = fpb.get_symbols(device.elf_path)
-            state.symbols_loaded = True
+                return jsonify(
+                    {
+                        "success": True,
+                        "count": 0,
+                        "message": "Cache cleared (GDB not available)",
+                    }
+                )
     except Exception as e:
         return jsonify({"success": False, "error": f"Failed to reload symbols: {e}"})
 
@@ -498,9 +483,9 @@ def api_decompile_symbol_stream():
 def api_get_symbol_value():
     """Get symbol value from ELF file (for const/variable viewing).
 
-    Returns hex data and optional struct layout from DWARF.
+    Returns hex data and optional struct layout via GDB.
     """
-    from core import elf_utils
+    from core.gdb_manager import is_gdb_available
 
     t_start = time.time()
 
@@ -512,7 +497,10 @@ def api_get_symbol_value():
     if not device.elf_path or not os.path.exists(device.elf_path):
         return jsonify({"success": False, "error": "ELF file not found"})
 
-    # Look up symbol info (streaming, no full load)
+    if not is_gdb_available(state):
+        return jsonify({"success": False, "error": "GDB not available"})
+
+    # Look up symbol info
     sym_info = _lookup_symbol(sym_name)
     t_lookup = time.time()
     logger.info(f"[value] Symbol lookup '{sym_name}': {t_lookup - t_start:.2f}s")
@@ -526,23 +514,18 @@ def api_get_symbol_value():
     )
     section = sym_info.get("section", "") if isinstance(sym_info, dict) else ""
 
-    # Read raw bytes from ELF
-    raw_data = elf_utils.read_symbol_value(device.elf_path, sym_name)
+    # Read raw bytes via GDB
+    raw_data = state.gdb_session.read_symbol_value(sym_name)
     t_read = time.time()
     logger.info(f"[value] read_symbol_value: {t_read - t_lookup:.2f}s")
     hex_data = raw_data.hex() if raw_data else None
 
-    # Try to get struct layout — GDB fast path or DWARF fallback
-    from core.gdb_manager import is_gdb_available
+    # Get struct layout via GDB
+    struct_layout = state.gdb_session.get_struct_layout(sym_name)
+    t_struct = time.time()
+    logger.info(f"[value] get_struct_layout: {t_struct - t_read:.2f}s")
 
-    if is_gdb_available(state):
-        struct_layout = state.gdb_session.get_struct_layout(sym_name)
-    else:
-        struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
-    t_dwarf = time.time()
-    logger.info(f"[value] get_struct_layout: {t_dwarf - t_read:.2f}s")
-
-    logger.info(f"[value] Total for '{sym_name}': {t_dwarf - t_start:.2f}s")
+    logger.info(f"[value] Total for '{sym_name}': {t_struct - t_start:.2f}s")
 
     return jsonify(
         {
@@ -561,8 +544,6 @@ def api_get_symbol_value():
 @bp.route("/symbols/read", methods=["POST"])
 def api_read_symbol_from_device():
     """Read symbol value from device memory (live read via serial)."""
-    from core import elf_utils
-
     t_start = time.time()
 
     data = request.get_json() or {}
@@ -603,12 +584,7 @@ def api_read_symbol_from_device():
 
         hex_data = raw_data.hex()
 
-        from core.gdb_manager import is_gdb_available
-
-        if is_gdb_available(state):
-            struct_layout = state.gdb_session.get_struct_layout(sym_name)
-        else:
-            struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
+        struct_layout = state.gdb_session.get_struct_layout(sym_name)
 
         return jsonify(
             {

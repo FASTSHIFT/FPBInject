@@ -74,8 +74,8 @@ class TestBuildSlotResponse(unittest.TestCase):
         self.assertEqual(result["slots"][0]["func"], "main")
         self.assertEqual(result["slots"][0]["code_size"], 64)
 
-    def test_loads_symbols_if_needed(self):
-        """Test that symbols are loaded if not already loaded"""
+    def test_no_symbols_loaded_still_works(self):
+        """Test that build_slot_response works without preloaded symbols"""
         device = DeviceState()
         device.device_info = {"slots": [], "base": 0x20000000}
 
@@ -87,13 +87,10 @@ class TestBuildSlotResponse(unittest.TestCase):
             app_state.symbols_loaded = False
 
             mock_fpb = Mock()
-            mock_fpb.get_symbols.return_value = {"test": 0x08000000}
 
             result = build_slot_response(device, app_state, lambda: mock_fpb)
 
             self.assertIsNotNone(result)
-            mock_fpb.get_symbols.assert_called_once()
-            self.assertTrue(app_state.symbols_loaded)
         finally:
             os.unlink(device.elf_path)
 

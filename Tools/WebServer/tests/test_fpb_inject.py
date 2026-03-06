@@ -546,12 +546,6 @@ class TestFPBInjectCompile(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_get_symbols_not_found(self):
-        """Test getting symbols from nonexistent ELF"""
-        result = self.fpb.get_symbols("/nonexistent/elf.elf")
-
-        self.assertEqual(result, {})
-
     def test_inject_no_elf(self):
         """Test injection when no ELF file"""
         self.device.elf_path = ""
@@ -1469,47 +1463,6 @@ class TestFPBInjectCoverage(unittest.TestCase):
             self.assertEqual(result["defines"].count("DEBUG"), 1)
         finally:
             os.remove(cmd_path)
-
-    @patch("core.elf_utils.get_symbols")
-    def test_get_symbols(self, mock_get_symbols):
-        """Test getting symbol table"""
-        mock_get_symbols.return_value = {
-            "main": {
-                "addr": 0x08000000,
-                "size": 64,
-                "type": "function",
-                "section": ".text",
-            },
-            "var": {
-                "addr": 0x20000000,
-                "size": 4,
-                "type": "variable",
-                "section": ".data",
-            },
-            "static_func": {
-                "addr": 0x08001000,
-                "size": 32,
-                "type": "function",
-                "section": ".text",
-            },
-        }
-        self.fpb._toolchain_path = "/usr/bin"
-
-        symbols = self.fpb.get_symbols("/path/to/elf")
-
-        self.assertIn("main", symbols)
-        self.assertEqual(symbols["main"]["addr"], 0x08000000)
-        self.assertEqual(symbols["main"]["type"], "function")
-        self.assertIn("static_func", symbols)
-
-    @patch("core.elf_utils.get_symbols")
-    def test_get_symbols_error(self, mock_get_symbols):
-        """Test getting symbol table failure"""
-        mock_get_symbols.return_value = {}
-
-        symbols = self.fpb.get_symbols("/path/to/elf")
-
-        self.assertEqual(symbols, {})
 
     def test_upload_success(self):
         """Test upload success"""

@@ -42,20 +42,15 @@ class TestGetSymbols(SymbolRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["total"], 0)
 
-    @patch("app.routes.symbols._get_fpb_inject")
-    def test_symbols_auto_load(self, mock_get_fpb):
-        mock_fpb = Mock()
-        mock_fpb.get_symbols.return_value = {"main": 0x08000000, "foo": 0x08001000}
-        mock_get_fpb.return_value = mock_fpb
-
+    def test_symbols_no_gdb_no_preload(self):
+        """Without GDB, symbols are not preloaded."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
             response = self.client.get("/api/symbols")
             data = response.get_json()
             self.assertTrue(data["success"])
-            self.assertEqual(data["total"], 2)
-            self.assertTrue(state.symbols_loaded)
+            self.assertEqual(data["total"], 0)
         finally:
             os.unlink(state.device.elf_path)
 
@@ -89,33 +84,23 @@ class TestSearchSymbols(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    @patch("core.elf_utils.search_symbols")
-    def test_search_load_failure(self, mock_search):
-        mock_search.side_effect = Exception("ELF parse error")
-        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
-            state.device.elf_path = f.name
-        try:
-            response = self.client.get("/api/symbols/search?q=main")
-            data = response.get_json()
-            self.assertFalse(data["success"])
-            self.assertIn("Failed to search", data["error"])
-        finally:
-            os.unlink(state.device.elf_path)
-
-    @patch("core.elf_utils.search_symbols")
-    def test_search_by_name(self, mock_search):
-        mock_search.return_value = (
-            [
-                {
-                    "name": "test_func",
-                    "addr": "0x08001000",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                }
-            ],
-            2,
-        )
+    def test_search_from_cache(self):
+        """Search uses cached symbols when loaded."""
+        state.symbols = {
+            "test_func": {
+                "addr": 0x08001000,
+                "size": 100,
+                "type": "function",
+                "section": ".text",
+            },
+            "other_func": {
+                "addr": 0x08002000,
+                "size": 50,
+                "type": "function",
+                "section": ".text",
+            },
+        }
+        state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -127,20 +112,23 @@ class TestSearchSymbols(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.search_symbols")
-    def test_search_by_hex_address(self, mock_search):
-        mock_search.return_value = (
-            [
-                {
-                    "name": "foo",
-                    "addr": "0x08001234",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                }
-            ],
-            2,
-        )
+    def test_search_by_hex_address_cached(self):
+        """Search by hex address from cache."""
+        state.symbols = {
+            "foo": {
+                "addr": 0x08001234,
+                "size": 100,
+                "type": "function",
+                "section": ".text",
+            },
+            "bar": {
+                "addr": 0x20000000,
+                "size": 4,
+                "type": "variable",
+                "section": ".data",
+            },
+        }
+        state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -152,27 +140,16 @@ class TestSearchSymbols(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.search_symbols")
-    def test_search_by_partial_hex(self, mock_search):
-        mock_search.return_value = (
-            [
-                {
-                    "name": "foo",
-                    "addr": "0x08001234",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                }
-            ],
-            2,
-        )
+    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    def test_search_no_gdb_no_cache(self, _mock_gdb):
+        """Without GDB and no cache, search returns empty."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
-            response = self.client.get("/api/symbols/search?q=08001")
+            response = self.client.get("/api/symbols/search?q=main")
             data = response.get_json()
             self.assertTrue(data["success"])
-            self.assertEqual(data["filtered"], 1)
+            self.assertEqual(data["filtered"], 0)
         finally:
             os.unlink(state.device.elf_path)
 
@@ -188,9 +165,9 @@ class TestSearchSymbols(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.search_symbols")
-    def test_search_invalid_hex_fallback(self, mock_search):
-        mock_search.return_value = ([], 2)
+    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    def test_search_invalid_hex_fallback(self, _mock_gdb):
+        """Non-hex query with no cache/GDB returns empty."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -210,24 +187,31 @@ class TestReloadSymbols(SymbolRoutesBase):
         data = response.get_json()
         self.assertFalse(data["success"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
-    def test_reload_success(self, mock_get_fpb):
-        mock_fpb = Mock()
-        mock_fpb.get_symbols.return_value = {"main": 0x08000000}
-        mock_get_fpb.return_value = mock_fpb
+    def test_reload_clears_cache(self):
+        """Reload clears symbol cache."""
+        state.symbols = {
+            "main": {
+                "addr": 0x08000000,
+                "size": 100,
+                "type": "function",
+                "section": ".text",
+            }
+        }
+        state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
             response = self.client.post("/api/symbols/reload")
             data = response.get_json()
             self.assertTrue(data["success"])
-            self.assertEqual(data["count"], 1)
+            self.assertEqual(data["count"], 0)
+            self.assertEqual(state.symbols, {})
+            self.assertFalse(state.symbols_loaded)
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
-    def test_reload_exception(self, mock_get_fpb):
-        mock_get_fpb.side_effect = Exception("Parse error")
+    @patch("core.gdb_manager.is_gdb_available", side_effect=Exception("Parse error"))
+    def test_reload_exception(self, _mock_gdb):
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -544,11 +528,25 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.get_struct_layout")
-    @patch("core.elf_utils.read_symbol_value")
-    def test_value_const_symbol(self, mock_read, mock_struct):
-        mock_read.return_value = b"\x01\x02\x03\x04"
-        mock_struct.return_value = []
+    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    def test_no_gdb(self, _mock_gdb):
+        """Returns error when GDB not available."""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=my_var")
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("GDB", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_value_const_symbol(self, mock_gdb_avail):
+        mock_session = Mock()
+        mock_session.read_symbol_value.return_value = b"\x01\x02\x03\x04"
+        mock_session.get_struct_layout.return_value = None
+        state.gdb_session = mock_session
         state.symbols = {
             "my_const": {
                 "addr": 0x08002000,
@@ -572,14 +570,15 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.get_struct_layout")
-    @patch("core.elf_utils.read_symbol_value")
-    def test_value_with_struct_layout(self, mock_read, mock_struct):
-        mock_read.return_value = b"\x0a\x00\x00\x00\x14\x00"
-        mock_struct.return_value = [
-            {"name": "x", "type_name": "int16_t", "offset": 0, "size": 2},
-            {"name": "y", "type_name": "int32_t", "offset": 2, "size": 4},
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_value_with_struct_layout(self, mock_gdb_avail):
+        """struct_layout returned from GDB session."""
+        mock_session = Mock()
+        mock_session.read_symbol_value.return_value = b"\x0a\x00\x00\x00\x14\x00"
+        mock_session.get_struct_layout.return_value = [
+            {"name": "x", "offset": 0, "size": 4, "type_name": "int"},
         ]
+        state.gdb_session = mock_session
         state.symbols = {
             "my_struct": {
                 "addr": 0x20000100,
@@ -595,17 +594,17 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
             response = self.client.get("/api/symbols/value?name=my_struct")
             data = response.get_json()
             self.assertTrue(data["success"])
-            self.assertEqual(len(data["struct_layout"]), 2)
-            self.assertEqual(data["struct_layout"][0]["name"], "x")
+            self.assertIsNotNone(data["struct_layout"])
             self.assertEqual(data["hex_data"], "0a0000001400")
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.get_struct_layout")
-    @patch("core.elf_utils.read_symbol_value")
-    def test_value_bss_no_data(self, mock_read, mock_struct):
-        mock_read.return_value = None
-        mock_struct.return_value = []
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_value_bss_no_data(self, mock_gdb_avail):
+        mock_session = Mock()
+        mock_session.read_symbol_value.return_value = None
+        mock_session.get_struct_layout.return_value = None
+        state.gdb_session = mock_session
         state.symbols = {
             "bss_var": {
                 "addr": 0x20001000,
@@ -626,12 +625,13 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.get_struct_layout")
-    @patch("core.elf_utils.read_symbol_value")
-    def test_value_old_int_format(self, mock_read, mock_struct):
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_value_old_int_format(self, mock_gdb_avail):
         """Backward compat: symbols stored as plain int."""
-        mock_read.return_value = b"\xff"
-        mock_struct.return_value = []
+        mock_session = Mock()
+        mock_session.read_symbol_value.return_value = b"\xff"
+        mock_session.get_struct_layout.return_value = None
+        state.gdb_session = mock_session
         state.symbols = {"legacy_sym": 0x08003000}
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -701,15 +701,13 @@ class TestReadSymbolFromDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.elf_utils.get_struct_layout")
     @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
     @patch("app.routes.symbols._get_fpb_inject")
-    def test_read_success(self, mock_get_fpb, mock_run_serial, mock_struct):
+    def test_read_success(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.read_memory.return_value = (b"\xaa\xbb", "Read 2 bytes OK")
         mock_fpb.get_symbols.return_value = {}
         mock_get_fpb.return_value = mock_fpb
-        mock_struct.return_value = []
         state.symbols = {
             "my_var": {
                 "addr": 0x20001000,

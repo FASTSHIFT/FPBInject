@@ -8,7 +8,6 @@ Shared helper functions for FPBInject Web Server.
 """
 
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -32,25 +31,8 @@ def build_slot_response(device, app_state, get_fpb_inject):
     if info is None:
         return None
 
-    # Ensure symbols are loaded for address lookup
-    fpb = get_fpb_inject()
-    if (
-        not app_state.symbols_loaded
-        and device.elf_path
-        and os.path.exists(device.elf_path)
-    ):
-        with app_state._symbols_load_lock:
-            # Double-check after acquiring lock
-            if not app_state.symbols_loaded:
-                logger.info("build_slot_response: triggering lazy symbol load")
-                app_state.symbols = fpb.get_symbols(device.elf_path)
-                app_state.symbols_loaded = True
-                logger.info(
-                    f"build_slot_response: loaded {len(app_state.symbols)} symbols"
-                )
-
-    # Get symbols for address lookup
-    # Symbol values may be int (legacy) or dict with 'addr' key (pyelftools)
+    # Get symbols for address lookup (populated by GDB on-demand)
+    # Symbol values may be int (legacy) or dict with 'addr' key
     symbols_reverse = {}
     if app_state.symbols:
         for sym_name, sym_info in app_state.symbols.items():
