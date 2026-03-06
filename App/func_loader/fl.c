@@ -363,7 +363,7 @@ static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len) {
     /* Output in segments to avoid buffer overflow */
     fl_print("[FLOK] READ %d bytes crc=0x%04X data=", len, (unsigned)crc);
     fl_print_raw(b64_buf);
-    fl_print_raw("\n");
+    fl_print_raw("\n[FLEND]\n");
 }
 
 static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* data_str, uintptr_t crc, bool verify) {
