@@ -192,6 +192,11 @@ def api_search_symbols():
     if not query:
         return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
 
+    # Minimum query length to avoid overly broad GDB searches
+    if len(query) < 3:
+        logger.info(f"[symbols] query too short ({len(query)} chars), skipping GDB search")
+        return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
+
     try:
         from core.gdb_manager import is_gdb_available
 
@@ -599,7 +604,14 @@ def api_read_symbol_from_device():
 
         hex_data = raw_data.hex()
 
-        struct_layout = state.gdb_session.get_struct_layout(sym_name)
+        struct_layout = None
+        try:
+            from core.gdb_manager import is_gdb_available
+
+            if is_gdb_available(state):
+                struct_layout = state.gdb_session.get_struct_layout(sym_name)
+        except Exception:
+            logger.debug(f"Failed to get struct layout for '{sym_name}'")
 
         return jsonify(
             {

@@ -31,6 +31,7 @@ class SymbolRoutesBase(unittest.TestCase):
     def tearDown(self):
         state.symbols = {}
         state.symbols_loaded = False
+        state.gdb_session = None
 
 
 class TestGetSymbols(SymbolRoutesBase):
@@ -508,7 +509,8 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    def test_symbol_not_found(self):
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_symbol_not_found(self, _mock_gdb):
         state.symbols = {
             "other": {
                 "addr": 0x08000000,

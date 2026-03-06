@@ -58,6 +58,7 @@ class GDBSession:
         self._lock = threading.Lock()
         self._alive = False
         self._rsp_port: Optional[int] = None
+        self._search_generation = 0  # Incremented on each new search to cancel stale ones
 
     @property
     def is_alive(self) -> bool:
@@ -271,6 +272,9 @@ class GDBSession:
         if not self.is_alive:
             return [], 0
 
+        # Bump generation to signal any in-progress search to abort
+        self._search_generation += 1
+
         with self._lock:
             return self._search_symbols_impl(query, limit)
 
@@ -477,7 +481,8 @@ class GDBSession:
     ) -> Tuple[List[dict], int]:
         """Internal implementation of search_symbols."""
         t_start = time.time()
-        logger.info(f"[GDB] search_symbols start: query='{query}' limit={limit}")
+        my_gen = self._search_generation
+        logger.info(f"[GDB] search_symbols start: query='{query}' limit={limit} gen={my_gen}")
         query_lower = query.lower().strip()
         is_addr = query_lower.startswith("0x") or (
             len(query_lower) >= 4 and all(c in "0123456789abcdef" for c in query_lower)
@@ -507,6 +512,11 @@ class GDBSession:
         if var_output:
             results.extend(self._parse_info_functions(var_output, "variable"))
 
+        # Check if search was superseded
+        if self._search_generation != my_gen:
+            logger.info(f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})")
+            return [], 0
+
         # Search functions
         func_output = self._execute_cli(f"info functions {query}")
         if func_output:
@@ -521,21 +531,39 @@ class GDBSession:
                 unique.append(r)
 
         t_parse = time.time()
+        total_count = len(unique)
         logger.info(
-            f"[GDB] search_symbols: found {len(unique)} unique symbols, "
-            f"resolving addresses... (parse took {t_parse - t_start:.3f}s)"
+            f"[GDB] search_symbols: found {total_count} unique symbols "
+            f"(parse took {t_parse - t_start:.3f}s)"
         )
 
-        # Resolve missing addresses via 'info address'
-        self._resolve_addresses(unique)
+        # Check if search was superseded
+        if self._search_generation != my_gen:
+            logger.info(f"[GDB] search_symbols cancelled (gen {my_gen} -> {self._search_generation})")
+            return [], 0
 
+        # Only resolve addresses for the first `limit` results to avoid
+        # hundreds of individual GDB commands for broad queries
         unique.sort(key=lambda x: x["name"])
+        capped = unique[:limit]
+        if total_count > limit:
+            logger.info(
+                f"[GDB] search_symbols: capping address resolution to {limit}/{total_count} symbols"
+            )
+
+        self._resolve_addresses(capped, generation=my_gen)
+
+        # Check cancellation after resolve
+        if self._search_generation != my_gen:
+            logger.info(f"[GDB] search_symbols cancelled after resolve (gen {my_gen} -> {self._search_generation})")
+            return [], 0
+
         elapsed = time.time() - t_start
         logger.info(
             f"[GDB] search_symbols done: query='{query}' -> "
-            f"{len(unique)} results ({elapsed:.3f}s)"
+            f"{len(capped)} results, {total_count} total ({elapsed:.3f}s)"
         )
-        return unique[:limit], len(unique)
+        return capped, total_count
 
     def _get_symbols_impl(self) -> Dict[str, dict]:
         """Internal implementation of get_symbols (full symbol dump)."""
@@ -665,12 +693,16 @@ class GDBSession:
     # Internal: Output parsing helpers
     # ------------------------------------------------------------------
 
-    def _resolve_addresses(self, symbols: List[dict]):
+    def _resolve_addresses(self, symbols: List[dict], generation: int = -1):
         """Resolve missing addresses for debug-format symbols.
 
         Debug-format 'info functions/variables' output has line numbers but no
         addresses. This method queries 'info address <name>' for each symbol
         with addr "0x00000000" to fill in the real address and section.
+
+        Args:
+            symbols: List of symbol dicts to resolve in-place
+            generation: Search generation for cancellation (-1 = no cancellation)
         """
         unresolved = [s for s in symbols if s["addr"] == "0x00000000"]
         if unresolved:
@@ -683,6 +715,13 @@ class GDBSession:
         for sym in symbols:
             if sym["addr"] != "0x00000000":
                 continue
+            # Check cancellation every 10 resolutions
+            if generation >= 0 and resolved_count % 10 == 0:
+                if self._search_generation != generation:
+                    logger.info(
+                        f"[GDB] _resolve_addresses cancelled at {resolved_count}/{len(unresolved)}"
+                    )
+                    return
             output = self._execute_cli(f"info address {sym['name']}")
             if not output or "No symbol" in output:
                 continue
