@@ -242,6 +242,25 @@ class FPBInject:
         """
         return {}
 
+    def _resolve_symbol_addr(self, sym_name: str) -> Optional[int]:
+        """Resolve a symbol name to its address via GDB session.
+
+        Returns the address as int, or None if not found.
+        """
+        from core.state import state
+        from core.gdb_manager import is_gdb_available
+
+        if not is_gdb_available(state):
+            logger.warning("GDB not available, cannot resolve symbol address")
+            return None
+
+        info = state.gdb_session.lookup_symbol(sym_name)
+        if info is None:
+            return None
+
+        addr = info["addr"] if isinstance(info, dict) else info
+        return addr
+
     def disassemble_function(self, elf_path: str, func_name: str) -> Tuple[bool, str]:
         """Disassemble a specific function from ELF file."""
         return elf_utils.disassemble_function(elf_path, func_name, self._toolchain_path)
@@ -416,11 +435,10 @@ class FPBInject:
         if not elf_path or not os.path.exists(elf_path):
             return False, {"error": "ELF file not found"}
 
-        symbols = self.get_symbols(elf_path)
-        if target_func not in symbols:
+        target_addr = self._resolve_symbol_addr(target_func)
+        if target_addr is None:
             return False, {"error": f"Target function '{target_func}' not found in ELF"}
 
-        target_addr = symbols[target_func]
         result["target_addr"] = f"0x{target_addr:08X}"
 
         actual_comp = comp
@@ -592,8 +610,6 @@ class FPBInject:
         if not elf_path or not os.path.exists(elf_path):
             return False, {"error": "ELF file not found"}
 
-        elf_symbols = self.get_symbols(elf_path)
-
         data, inject_symbols, error = self.compile_inject(
             source_content=source_content,
             base_addr=0x20000000,
@@ -632,14 +648,7 @@ class FPBInject:
             # In new design, inject_name IS the target function name
             target_func = inject_name
 
-            target_addr = None
-            actual_target_name = target_func
-            for sym_name, sym_addr in elf_symbols.items():
-                if sym_name.lower() == target_func.lower():
-                    target_addr = sym_addr
-                    actual_target_name = sym_name
-                    break
-
+            target_addr = self._resolve_symbol_addr(target_func)
             if target_addr is None:
                 result["errors"].append(f"Target '{target_func}' not found in ELF")
                 logger.warning(
@@ -647,7 +656,7 @@ class FPBInject:
                 )
                 continue
 
-            injection_targets.append((actual_target_name, inject_name))
+            injection_targets.append((target_func, inject_name))
 
         if not injection_targets:
             return False, {"error": "No valid injection targets found"}
