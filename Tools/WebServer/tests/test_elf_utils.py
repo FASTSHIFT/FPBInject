@@ -143,14 +143,18 @@ class TestClassifySymbol(unittest.TestCase):
         self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".rodata"), "const")
 
     def test_const_rodata_str(self):
-        self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".rodata.str1.1"), "const")
+        self.assertEqual(
+            elf_utils._classify_symbol("STT_OBJECT", ".rodata.str1.1"), "const"
+        )
 
     def test_other_type(self):
         self.assertEqual(elf_utils._classify_symbol("STT_NOTYPE", ".text"), "other")
 
     def test_unknown_section_object(self):
         """STT_OBJECT in unknown section defaults to variable"""
-        self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".custom"), "variable")
+        self.assertEqual(
+            elf_utils._classify_symbol("STT_OBJECT", ".custom"), "variable"
+        )
 
 
 def _make_mock_elf(symbols_data):
@@ -202,11 +206,13 @@ class TestGetSymbols(unittest.TestCase):
     @patch("builtins.open", create=True)
     def test_get_symbols_success(self, mock_open, mock_elffile_cls, mock_run):
         """Test getting symbols with pyelftools"""
-        mock_elf = _make_mock_elf([
-            ("main", 0x08000000, 100, "STT_FUNC", 1, ".text"),
-            ("g_var", 0x20000000, 4, "STT_OBJECT", 2, ".data"),
-            ("k_const", 0x08010000, 8, "STT_OBJECT", 3, ".rodata"),
-        ])
+        mock_elf = _make_mock_elf(
+            [
+                ("main", 0x08000000, 100, "STT_FUNC", 1, ".text"),
+                ("g_var", 0x20000000, 4, "STT_OBJECT", 2, ".data"),
+                ("k_const", 0x08010000, 8, "STT_OBJECT", 3, ".rodata"),
+            ]
+        )
         mock_elffile_cls.return_value = mock_elf
         mock_open.return_value.__enter__ = lambda s: MagicMock()
         mock_open.return_value.__exit__ = MagicMock(return_value=False)
@@ -237,11 +243,13 @@ class TestGetSymbols(unittest.TestCase):
     @patch("builtins.open", create=True)
     def test_get_symbols_skips_undefined(self, mock_open, mock_elffile_cls):
         """Test that undefined and zero-size symbols are skipped"""
-        mock_elf = _make_mock_elf([
-            ("undef_sym", 0, 0, "STT_FUNC", "SHN_UNDEF", ""),
-            ("zero_size", 0x08000000, 0, "STT_FUNC", 1, ".text"),
-            ("valid", 0x08000100, 10, "STT_FUNC", 1, ".text"),
-        ])
+        mock_elf = _make_mock_elf(
+            [
+                ("undef_sym", 0, 0, "STT_FUNC", "SHN_UNDEF", ""),
+                ("zero_size", 0x08000000, 0, "STT_FUNC", 1, ".text"),
+                ("valid", 0x08000100, 10, "STT_FUNC", 1, ".text"),
+            ]
+        )
         mock_elffile_cls.return_value = mock_elf
         mock_open.return_value.__enter__ = lambda s: MagicMock()
         mock_open.return_value.__exit__ = MagicMock(return_value=False)

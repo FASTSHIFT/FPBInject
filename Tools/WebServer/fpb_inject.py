@@ -252,6 +252,20 @@ class FPBInject:
         """Get function signature from ELF file."""
         return elf_utils.get_signature(elf_path, func_name, self._toolchain_path)
 
+    # ========== Memory Read/Write ==========
+
+    def read_memory(
+        self, addr: int, length: int, progress_callback=None
+    ) -> Tuple[Optional[bytes], str]:
+        """Read memory from device."""
+        return self._protocol.read_memory(addr, length, progress_callback)
+
+    def write_memory(
+        self, addr: int, data: bytes, progress_callback=None
+    ) -> Tuple[bool, str]:
+        """Write data to device memory."""
+        return self._protocol.write_memory(addr, data, progress_callback)
+
     # ========== Compiler Utilities ==========
 
     def parse_dep_file_for_compile_command(

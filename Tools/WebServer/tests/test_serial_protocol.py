@@ -172,5 +172,171 @@ class TestFPBProtocolParseResponse(unittest.TestCase):
         self.assertTrue(result["ok"])
 
 
+class TestParseReadResponse(unittest.TestCase):
+    """Test _parse_read_response method."""
+
+    def setUp(self):
+        self.device = MagicMock()
+        self.protocol = FPBProtocol(self.device)
+
+    def test_valid_response(self):
+        """Parse valid READ response with base64 + CRC."""
+        import base64
+        from utils.crc import crc16
+
+        raw = b"\x01\x02\x03\x04"
+        b64 = base64.b64encode(raw).decode()
+        crc = crc16(raw)
+        resp = f"[FLOK] READ 4 bytes crc=0x{crc:04X} data={b64}"
+
+        result = self.protocol._parse_read_response(resp)
+        self.assertEqual(result, raw)
+
+    def test_crc_mismatch(self):
+        """Return None on CRC mismatch."""
+        import base64
+
+        raw = b"\x01\x02\x03\x04"
+        b64 = base64.b64encode(raw).decode()
+        resp = f"[FLOK] READ 4 bytes crc=0xFFFF data={b64}"
+
+        result = self.protocol._parse_read_response(resp)
+        self.assertIsNone(result)
+
+    def test_length_mismatch(self):
+        """Return None on length mismatch."""
+        import base64
+
+        raw = b"\x01\x02"
+        b64 = base64.b64encode(raw).decode()
+        resp = f"[FLOK] READ 99 bytes crc=0x0000 data={b64}"
+
+        result = self.protocol._parse_read_response(resp)
+        self.assertIsNone(result)
+
+    def test_no_match(self):
+        """Return None for non-READ response."""
+        result = self.protocol._parse_read_response("[FLERR] Read failed")
+        self.assertIsNone(result)
+
+    def test_invalid_base64(self):
+        """Return None for invalid base64."""
+        resp = "[FLOK] READ 4 bytes crc=0x1234 data=!!!invalid!!!"
+        result = self.protocol._parse_read_response(resp)
+        self.assertIsNone(result)
+
+
+class TestReadMemory(unittest.TestCase):
+    """Test read_memory method."""
+
+    def setUp(self):
+        self.device = MagicMock()
+        self.device.chunk_size = 128
+        self.protocol = FPBProtocol(self.device)
+
+    def test_single_chunk(self):
+        """Read data that fits in one chunk."""
+        import base64
+        from utils.crc import crc16
+
+        raw = b"\xaa" * 16
+        b64 = base64.b64encode(raw).decode()
+        crc = crc16(raw)
+        self.protocol.send_cmd = MagicMock(
+            return_value=f"[FLOK] READ 16 bytes crc=0x{crc:04X} data={b64}"
+        )
+
+        data, msg = self.protocol.read_memory(0x20000000, 16)
+        self.assertEqual(data, raw)
+        self.assertIn("OK", msg)
+
+    def test_multi_chunk(self):
+        """Read data spanning multiple chunks."""
+        import base64
+        from utils.crc import crc16
+
+        self.device.chunk_size = 4
+
+        def mock_send(cmd, timeout=0.5):
+            # Extract len from command
+            import re
+
+            m = re.search(r"--len (\d+)", cmd)
+            n = int(m.group(1))
+            chunk = b"\xbb" * n
+            b64 = base64.b64encode(chunk).decode()
+            crc = crc16(chunk)
+            return f"[FLOK] READ {n} bytes crc=0x{crc:04X} data={b64}"
+
+        self.protocol.send_cmd = MagicMock(side_effect=mock_send)
+
+        data, msg = self.protocol.read_memory(0x20000000, 10)
+        self.assertEqual(len(data), 10)
+        self.assertEqual(data, b"\xbb" * 10)
+        # 10 bytes / 4 chunk = 3 calls
+        self.assertEqual(self.protocol.send_cmd.call_count, 3)
+
+    def test_read_failure(self):
+        """Return None on read failure."""
+        self.protocol.send_cmd = MagicMock(return_value="[FLERR] Read failed")
+
+        data, msg = self.protocol.read_memory(0x20000000, 16)
+        self.assertIsNone(data)
+        self.assertIn("failed", msg.lower())
+
+    def test_read_exception(self):
+        """Return None on exception."""
+        self.protocol.send_cmd = MagicMock(side_effect=Exception("Timeout"))
+
+        data, msg = self.protocol.read_memory(0x20000000, 16)
+        self.assertIsNone(data)
+        self.assertIn("Timeout", msg)
+
+
+class TestWriteMemory(unittest.TestCase):
+    """Test write_memory method."""
+
+    def setUp(self):
+        self.device = MagicMock()
+        self.device.chunk_size = 128
+        self.protocol = FPBProtocol(self.device)
+
+    def test_single_chunk(self):
+        """Write data that fits in one chunk."""
+        self.protocol.send_cmd = MagicMock(
+            return_value="[FLOK] WRITE 4 bytes to 0x20000000"
+        )
+
+        ok, msg = self.protocol.write_memory(0x20000000, b"\x01\x02\x03\x04")
+        self.assertTrue(ok)
+        self.assertIn("OK", msg)
+        self.protocol.send_cmd.assert_called_once()
+
+    def test_multi_chunk(self):
+        """Write data spanning multiple chunks."""
+        self.device.chunk_size = 4
+        self.protocol.send_cmd = MagicMock(return_value="[FLOK] WRITE 4 bytes")
+
+        ok, msg = self.protocol.write_memory(0x20000000, b"\xaa" * 10)
+        self.assertTrue(ok)
+        self.assertEqual(self.protocol.send_cmd.call_count, 3)
+
+    def test_write_failure(self):
+        """Return False on write failure."""
+        self.protocol.send_cmd = MagicMock(return_value="[FLERR] Write error")
+
+        ok, msg = self.protocol.write_memory(0x20000000, b"\x01\x02")
+        self.assertFalse(ok)
+        self.assertIn("failed", msg.lower())
+
+    def test_write_exception(self):
+        """Return False on exception."""
+        self.protocol.send_cmd = MagicMock(side_effect=Exception("Serial error"))
+
+        ok, msg = self.protocol.write_memory(0x20000000, b"\x01")
+        self.assertFalse(ok)
+        self.assertIn("Serial error", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

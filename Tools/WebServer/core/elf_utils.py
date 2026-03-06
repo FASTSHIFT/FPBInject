@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # Symbol type classification helpers
 # ---------------------------------------------------------------------------
 
+
 def _classify_symbol(sym_type: str, section_name: str) -> str:
     """Classify a symbol as 'function', 'variable', or 'const'.
 
@@ -247,6 +248,7 @@ def read_symbol_value(elf_path: str, sym_name: str) -> Optional[bytes]:
 # DWARF struct layout parsing
 # ---------------------------------------------------------------------------
 
+
 def _resolve_type_die(die, max_depth=20):
     """Follow DW_AT_type references to reach the underlying type DIE.
 
@@ -293,7 +295,10 @@ def _get_type_die_from_attr(die):
         return None
     try:
         ref_offset = type_attr.value
-        if type_attr.form.startswith("DW_FORM_ref") and type_attr.form != "DW_FORM_ref_addr":
+        if (
+            type_attr.form.startswith("DW_FORM_ref")
+            and type_attr.form != "DW_FORM_ref_addr"
+        ):
             ref_offset += die.cu.cu_offset
         return die.cu.get_DIE_from_refaddr(ref_offset)
     except Exception:
@@ -308,15 +313,27 @@ def _get_type_name(die, max_depth=20):
     tag = die.tag
     name_attr = die.attributes.get("DW_AT_name")
 
-    if tag in ("DW_TAG_base_type", "DW_TAG_structure_type",
-               "DW_TAG_union_type", "DW_TAG_enumeration_type"):
+    if tag in (
+        "DW_TAG_base_type",
+        "DW_TAG_structure_type",
+        "DW_TAG_union_type",
+        "DW_TAG_enumeration_type",
+    ):
         if name_attr:
-            return name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+            return (
+                name_attr.value.decode()
+                if isinstance(name_attr.value, bytes)
+                else str(name_attr.value)
+            )
         return f"<anon {tag.split('_')[-1]}>"
 
     if tag == "DW_TAG_typedef":
         if name_attr:
-            return name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+            return (
+                name_attr.value.decode()
+                if isinstance(name_attr.value, bytes)
+                else str(name_attr.value)
+            )
         child = _get_type_die_from_attr(die)
         return _get_type_name(child, max_depth - 1)
 
@@ -337,7 +354,9 @@ def _get_type_name(die, max_depth=20):
         # Get array dimensions
         for sub in die.iter_children():
             if sub.tag == "DW_TAG_subrange_type":
-                count_attr = sub.attributes.get("DW_AT_count") or sub.attributes.get("DW_AT_upper_bound")
+                count_attr = sub.attributes.get("DW_AT_count") or sub.attributes.get(
+                    "DW_AT_upper_bound"
+                )
                 if count_attr:
                     count = count_attr.value
                     if sub.attributes.get("DW_AT_upper_bound"):
@@ -346,7 +365,11 @@ def _get_type_name(die, max_depth=20):
         return f"{base_name}[]"
 
     if name_attr:
-        return name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+        return (
+            name_attr.value.decode()
+            if isinstance(name_attr.value, bytes)
+            else str(name_attr.value)
+        )
     return "unknown"
 
 
@@ -373,7 +396,11 @@ def _parse_struct_members(struct_die) -> List[dict]:
         name_attr = child.attributes.get("DW_AT_name")
         name = ""
         if name_attr:
-            name = name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+            name = (
+                name_attr.value.decode()
+                if isinstance(name_attr.value, bytes)
+                else str(name_attr.value)
+            )
 
         offset = 0
         loc_attr = child.attributes.get("DW_AT_data_member_location")
@@ -390,12 +417,14 @@ def _parse_struct_members(struct_die) -> List[dict]:
         type_name = _get_type_name(member_type_die) if member_type_die else "unknown"
         size = _get_type_size(resolved) if resolved else 0
 
-        members.append({
-            "name": name,
-            "offset": offset,
-            "size": size,
-            "type_name": type_name,
-        })
+        members.append(
+            {
+                "name": name,
+                "offset": offset,
+                "size": size,
+                "type_name": type_name,
+            }
+        )
 
     return members
 
@@ -423,7 +452,11 @@ def get_struct_layout(elf_path: str, sym_name: str) -> Optional[List[dict]]:
                     name_attr = die.attributes.get("DW_AT_name")
                     if not name_attr:
                         continue
-                    die_name = name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+                    die_name = (
+                        name_attr.value.decode()
+                        if isinstance(name_attr.value, bytes)
+                        else str(name_attr.value)
+                    )
                     if die_name != sym_name:
                         continue
 
