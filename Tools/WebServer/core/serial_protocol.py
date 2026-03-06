@@ -630,7 +630,7 @@ class FPBProtocol:
                     break
 
                 results["tests"].append(test_result)
-                test_size *= 2
+                test_size = max(test_size + 2, int(test_size * 1.4) // 2 * 2)
 
             results["max_working_size"] = max_working
             if max_working > 0:
@@ -640,7 +640,12 @@ class FPBProtocol:
                 if results["recommended_chunk_size"] < 16:
                     results["recommended_chunk_size"] = max_working
             else:
-                results["recommended_chunk_size"] = 16
+                results["success"] = False
+                results["error"] = (
+                    "Serial communication failed at minimum size "
+                    f"({start_size} bytes). Check connection and try again."
+                )
+                results["recommended_chunk_size"] = 0
 
         except Exception as e:
             results["success"] = False

@@ -45,7 +45,7 @@ async function fpbTestSerial() {
     return;
   }
 
-  log.info('Starting serial throughput test (x2 stepping)...');
+  log.info('Starting serial throughput test (x1.4 stepping)...');
 
   try {
     const res = await fetch('/api/fpb/test-serial', {
