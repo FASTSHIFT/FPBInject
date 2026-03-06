@@ -801,6 +801,262 @@ class TestGetElfBuildTimeExtended(unittest.TestCase):
             os.unlink(elf_path)
 
 
+class TestSearchSymbols(unittest.TestCase):
+    """search_symbols function tests"""
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_search_by_name(self, mock_open, mock_elffile_cls):
+        """Test searching symbols by name substring"""
+        mock_elf = _make_mock_elf(
+            [
+                ("main", 0x08000000, 100, "STT_FUNC", 1, ".text"),
+                ("g_counter", 0x20000000, 4, "STT_OBJECT", 2, ".data"),
+                ("g_config", 0x20000010, 8, "STT_OBJECT", 2, ".data"),
+                ("helper_func", 0x08001000, 50, "STT_FUNC", 1, ".text"),
+            ]
+        )
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            results, total = elf_utils.search_symbols(elf_path, "g_")
+            self.assertEqual(total, 4)
+            self.assertEqual(len(results), 2)
+            names = [r["name"] for r in results]
+            self.assertIn("g_counter", names)
+            self.assertIn("g_config", names)
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_search_by_address(self, mock_open, mock_elffile_cls):
+        """Test searching symbols by hex address"""
+        mock_elf = _make_mock_elf(
+            [
+                ("main", 0x08000000, 100, "STT_FUNC", 1, ".text"),
+                ("g_var", 0x20000000, 4, "STT_OBJECT", 2, ".data"),
+            ]
+        )
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            results, total = elf_utils.search_symbols(elf_path, "0x20000000")
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["name"], "g_var")
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_search_limit(self, mock_open, mock_elffile_cls):
+        """Test that search respects limit parameter"""
+        syms = [
+            (f"var_{i}", 0x20000000 + i * 4, 4, "STT_OBJECT", 2, ".data")
+            for i in range(10)
+        ]
+        mock_elf = _make_mock_elf(syms)
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            results, total = elf_utils.search_symbols(elf_path, "var", limit=3)
+            self.assertEqual(total, 10)
+            self.assertEqual(len(results), 3)
+        finally:
+            os.unlink(elf_path)
+
+    def test_search_empty_path(self):
+        """Test with empty ELF path"""
+        results, total = elf_utils.search_symbols("", "main")
+        self.assertEqual(results, [])
+        self.assertEqual(total, 0)
+
+    def test_search_nonexistent_file(self):
+        """Test with nonexistent ELF file"""
+        results, total = elf_utils.search_symbols("/nonexistent.elf", "main")
+        self.assertEqual(results, [])
+        self.assertEqual(total, 0)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_search_no_symtab(self, mock_open, mock_elffile_cls):
+        """Test when ELF has no .symtab section"""
+        mock_elf = MagicMock()
+        mock_elf.get_section_by_name.return_value = None
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            results, total = elf_utils.search_symbols(elf_path, "main")
+            self.assertEqual(results, [])
+            self.assertEqual(total, 0)
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_search_no_match(self, mock_open, mock_elffile_cls):
+        """Test search with no matching symbols"""
+        mock_elf = _make_mock_elf([("main", 0x08000000, 100, "STT_FUNC", 1, ".text")])
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            results, total = elf_utils.search_symbols(elf_path, "nonexistent")
+            self.assertEqual(len(results), 0)
+            self.assertEqual(total, 1)
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_search_case_insensitive(self, mock_open, mock_elffile_cls):
+        """Test that search is case-insensitive"""
+        mock_elf = _make_mock_elf(
+            [("MyVariable", 0x20000000, 4, "STT_OBJECT", 2, ".data")]
+        )
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            results, _ = elf_utils.search_symbols(elf_path, "myvariable")
+            self.assertEqual(len(results), 1)
+        finally:
+            os.unlink(elf_path)
+
+
+class TestLookupSymbol(unittest.TestCase):
+    """lookup_symbol function tests"""
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_lookup_found(self, mock_open, mock_elffile_cls):
+        """Test looking up an existing symbol"""
+        mock_elf = _make_mock_elf(
+            [
+                ("main", 0x08000000, 100, "STT_FUNC", 1, ".text"),
+                ("g_var", 0x20000000, 4, "STT_OBJECT", 2, ".data"),
+            ]
+        )
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            result = elf_utils.lookup_symbol(elf_path, "g_var")
+            self.assertIsNotNone(result)
+            self.assertEqual(result["addr"], 0x20000000)
+            self.assertEqual(result["size"], 4)
+            self.assertEqual(result["type"], "variable")
+            self.assertEqual(result["section"], ".data")
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_lookup_not_found(self, mock_open, mock_elffile_cls):
+        """Test looking up a nonexistent symbol"""
+        mock_elf = _make_mock_elf([("main", 0x08000000, 100, "STT_FUNC", 1, ".text")])
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            result = elf_utils.lookup_symbol(elf_path, "nonexistent")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
+
+    def test_lookup_empty_path(self):
+        """Test with empty ELF path"""
+        result = elf_utils.lookup_symbol("", "main")
+        self.assertIsNone(result)
+
+    def test_lookup_nonexistent_file(self):
+        """Test with nonexistent ELF file"""
+        result = elf_utils.lookup_symbol("/nonexistent.elf", "main")
+        self.assertIsNone(result)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_lookup_no_symtab(self, mock_open, mock_elffile_cls):
+        """Test when ELF has no .symtab section"""
+        mock_elf = MagicMock()
+        mock_elf.get_section_by_name.return_value = None
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            result = elf_utils.lookup_symbol(elf_path, "main")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_lookup_skips_zero_size(self, mock_open, mock_elffile_cls):
+        """Test that zero-size symbols are skipped"""
+        mock_elf = _make_mock_elf([("my_sym", 0x08000000, 0, "STT_FUNC", 1, ".text")])
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            result = elf_utils.lookup_symbol(elf_path, "my_sym")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_lookup_skips_undefined(self, mock_open, mock_elffile_cls):
+        """Test that undefined symbols are skipped"""
+        mock_elf = _make_mock_elf(
+            [("my_sym", 0x08000000, 100, "STT_FUNC", "SHN_UNDEF", "")]
+        )
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+        try:
+            result = elf_utils.lookup_symbol(elf_path, "my_sym")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
+
+
 class TestGetTypeHelpers(unittest.TestCase):
     """Tests for DWARF type helper functions"""
 

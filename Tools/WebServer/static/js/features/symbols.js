@@ -338,6 +338,9 @@ async function searchSymbols() {
     return;
   }
 
+  // Show loading spinner while searching
+  list.innerHTML = `<div class="sym-search-loading"><div class="sym-search-spinner"></div><span>${t('symbols.searching', 'Searching...')}</span></div>`;
+
   try {
     const res = await fetch(
       `/api/symbols/search?q=${encodeURIComponent(query)}`,

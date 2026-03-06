@@ -1217,6 +1217,24 @@ input[type="checkbox"] {
   margin-left: auto;
 }
 
+.sym-search-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.sym-search-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--vscode-descriptionForeground);
+  border-top-color: var(--vscode-focusBorder, #007fd4);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .sym-hex-label {
   font-size: 12px;
   font-weight: 600;

@@ -111,6 +111,14 @@ window.i18nResources['zh-TW'] = {
       search_placeholder: '按名稱或地址搜尋',
     },
 
+    // 符號查看器
+    symbols: {
+      searching: '搜尋中...',
+      reading: '讀取中...',
+      writing: '寫入中...',
+      bss_no_init: '無初始值 (.bss) — 從裝置讀取以查看',
+    },
+
     // 狀態列
     statusbar: {
       ready: '就緒',

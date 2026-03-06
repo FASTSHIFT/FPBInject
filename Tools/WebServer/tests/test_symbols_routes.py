@@ -89,60 +89,117 @@ class TestSearchSymbols(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
-    def test_search_load_failure(self, mock_get_fpb):
-        mock_get_fpb.side_effect = Exception("ELF parse error")
+    @patch("core.elf_utils.search_symbols")
+    def test_search_load_failure(self, mock_search):
+        mock_search.side_effect = Exception("ELF parse error")
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
             response = self.client.get("/api/symbols/search?q=main")
             data = response.get_json()
             self.assertFalse(data["success"])
-            self.assertIn("Failed to load", data["error"])
+            self.assertIn("Failed to search", data["error"])
         finally:
             os.unlink(state.device.elf_path)
 
-    def test_search_by_name(self):
-        state.symbols = {"main": 0x08000000, "test_func": 0x08001000}
-        state.symbols_loaded = True
-        response = self.client.get("/api/symbols/search?q=test")
-        data = response.get_json()
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 1)
-        self.assertEqual(data["symbols"][0]["name"], "test_func")
+    @patch("core.elf_utils.search_symbols")
+    def test_search_by_name(self, mock_search):
+        mock_search.return_value = (
+            [
+                {
+                    "name": "test_func",
+                    "addr": "0x08001000",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                }
+            ],
+            2,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/search?q=test")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 1)
+            self.assertEqual(data["symbols"][0]["name"], "test_func")
+        finally:
+            os.unlink(state.device.elf_path)
 
-    def test_search_by_hex_address(self):
-        state.symbols = {"main": 0x08000000, "foo": 0x08001234}
-        state.symbols_loaded = True
-        response = self.client.get("/api/symbols/search?q=0x08001234")
-        data = response.get_json()
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 1)
-        self.assertEqual(data["symbols"][0]["name"], "foo")
+    @patch("core.elf_utils.search_symbols")
+    def test_search_by_hex_address(self, mock_search):
+        mock_search.return_value = (
+            [
+                {
+                    "name": "foo",
+                    "addr": "0x08001234",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                }
+            ],
+            2,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/search?q=0x08001234")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 1)
+            self.assertEqual(data["symbols"][0]["name"], "foo")
+        finally:
+            os.unlink(state.device.elf_path)
 
-    def test_search_by_partial_hex(self):
-        state.symbols = {"main": 0x08000000, "foo": 0x08001234}
-        state.symbols_loaded = True
-        response = self.client.get("/api/symbols/search?q=08001")
-        data = response.get_json()
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 1)
+    @patch("core.elf_utils.search_symbols")
+    def test_search_by_partial_hex(self, mock_search):
+        mock_search.return_value = (
+            [
+                {
+                    "name": "foo",
+                    "addr": "0x08001234",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                }
+            ],
+            2,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/search?q=08001")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 1)
+        finally:
+            os.unlink(state.device.elf_path)
 
     def test_search_empty_query(self):
-        state.symbols = {"a": 1, "b": 2}
-        state.symbols_loaded = True
-        response = self.client.get("/api/symbols/search?q=")
-        data = response.get_json()
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 2)
+        """Empty query returns empty results (no full load)."""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/search?q=")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 0)
+        finally:
+            os.unlink(state.device.elf_path)
 
-    def test_search_invalid_hex_fallback(self):
-        state.symbols = {"0xDEAD_func": 0x08000000, "other": 0x08001000}
-        state.symbols_loaded = True
-        response = self.client.get("/api/symbols/search?q=ZZZZ")
-        data = response.get_json()
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 0)
+    @patch("core.elf_utils.search_symbols")
+    def test_search_invalid_hex_fallback(self, mock_search):
+        mock_search.return_value = ([], 2)
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/search?q=ZZZZ")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 0)
+        finally:
+            os.unlink(state.device.elf_path)
 
 
 class TestReloadSymbols(SymbolRoutesBase):
@@ -645,8 +702,9 @@ class TestReadSymbolFromDevice(SymbolRoutesBase):
             os.unlink(state.device.elf_path)
 
     @patch("core.elf_utils.get_struct_layout")
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
     @patch("app.routes.symbols._get_fpb_inject")
-    def test_read_success(self, mock_get_fpb, mock_struct):
+    def test_read_success(self, mock_get_fpb, mock_run_serial, mock_struct):
         mock_fpb = Mock()
         mock_fpb.read_memory.return_value = (b"\xaa\xbb", "Read 2 bytes OK")
         mock_fpb.get_symbols.return_value = {}
@@ -672,8 +730,9 @@ class TestReadSymbolFromDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
     @patch("app.routes.symbols._get_fpb_inject")
-    def test_read_failure(self, mock_get_fpb):
+    def test_read_failure(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.read_memory.return_value = (None, "Read failed at offset 0x0")
         mock_fpb.get_symbols.return_value = {}
@@ -754,8 +813,9 @@ class TestWriteSymbolToDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
     @patch("app.routes.symbols._get_fpb_inject")
-    def test_write_success(self, mock_get_fpb):
+    def test_write_success(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.write_memory.return_value = (True, "Write 4 bytes OK")
         mock_fpb.get_symbols.return_value = {}
@@ -780,8 +840,9 @@ class TestWriteSymbolToDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
     @patch("app.routes.symbols._get_fpb_inject")
-    def test_write_failure(self, mock_get_fpb):
+    def test_write_failure(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.write_memory.return_value = (False, "Write failed at offset 0x0")
         mock_fpb.get_symbols.return_value = {}

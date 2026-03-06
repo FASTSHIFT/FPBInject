@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from typing import Dict, List, Optional, Tuple
 
 from elftools.elf.elffile import ELFFile
@@ -120,6 +121,10 @@ def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str
     if not elf_path or not os.path.exists(elf_path):
         return symbols
 
+    elf_size_mb = os.path.getsize(elf_path) / (1024 * 1024)
+    logger.info(f"Loading symbols from ELF ({elf_size_mb:.1f} MB): {elf_path}")
+    t_start = time.time()
+
     try:
         with open(elf_path, "rb") as f:
             elf = ELFFile(f)
@@ -128,7 +133,12 @@ def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str
                 logger.warning("No .symtab section found in ELF")
                 return symbols
 
+            t_parse = time.time()
+            logger.info(f"ELF header parsed in {t_parse - t_start:.2f}s")
+
+            sym_count = 0
             for sym in symtab.iter_symbols():
+                sym_count += 1
                 if not sym.name:
                     continue
                 # Skip undefined and absolute symbols
@@ -164,16 +174,38 @@ def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str
         logger.error(f"Error reading symbols with pyelftools: {e}")
         return symbols
 
+    t_symtab = time.time()
+    logger.info(
+        f"Symbol table scanned: {len(symbols)} symbols extracted "
+        f"from {sym_count} entries in {t_symtab - t_start:.2f}s"
+    )
+
     # Also add demangled names via nm -C for C++ support
     try:
         nm_tool = get_tool_path("arm-none-eabi-nm", toolchain_path)
         env = get_subprocess_env(toolchain_path)
+
+        t_nm_start = time.time()
         result = subprocess.run(
-            [nm_tool, "-C", elf_path],
+            [nm_tool, "-C", "--defined-only", elf_path],
             capture_output=True,
             text=True,
             env=env,
         )
+        t_nm_run = time.time()
+        logger.info(
+            f"nm -C subprocess finished in {t_nm_run - t_nm_start:.2f}s "
+            f"({len(result.stdout)} bytes output)"
+        )
+
+        # Build addr→info reverse index for O(1) lookup
+        addr_index = {}
+        for info in symbols.values():
+            addr = info["addr"]
+            if addr not in addr_index:
+                addr_index[addr] = info
+
+        demangle_count = 0
         for line in result.stdout.splitlines():
             parts = line.split()
             if len(parts) >= 3:
@@ -187,25 +219,187 @@ def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str
                     if mangled and mangled in symbols:
                         base_info = symbols[mangled]
                     else:
-                        # Search by address
-                        for info in symbols.values():
-                            if info["addr"] == addr:
-                                base_info = info
-                                break
+                        # O(1) address lookup via reverse index
+                        base_info = addr_index.get(addr)
 
                     if base_info and full_name not in symbols:
                         symbols[full_name] = dict(base_info)
+                        demangle_count += 1
                         # Also add short name for C++ functions
                         if "(" in full_name:
                             short_name = full_name.split("(")[0]
                             if short_name not in symbols:
                                 symbols[short_name] = dict(base_info)
+                                demangle_count += 1
                 except ValueError:
                     pass
+
+        logger.info(
+            f"Demangling added {demangle_count} symbols "
+            f"in {time.time() - t_nm_start:.2f}s"
+        )
     except Exception as e:
         logger.debug(f"Demangling pass skipped: {e}")
 
+    t_total = time.time() - t_start
+    logger.info(f"Symbol loading complete: {len(symbols)} symbols in {t_total:.2f}s")
     return symbols
+
+
+def search_symbols(
+    elf_path: str,
+    query: str,
+    limit: int = 100,
+    toolchain_path: Optional[str] = None,
+) -> Tuple[List[dict], int]:
+    """Search symbols in ELF file without loading all into memory.
+
+    Streams through the symbol table and returns only matching entries.
+
+    Args:
+        elf_path: Path to ELF file
+        query: Search query (name substring or 0x address)
+        limit: Maximum number of results to return
+        toolchain_path: Optional toolchain path for demangling
+
+    Returns:
+        Tuple of (matched symbol list, total symbol count)
+    """
+    if not elf_path or not os.path.exists(elf_path):
+        return [], 0
+
+    t_start = time.time()
+    logger.info(f"Searching symbols: query='{query}', limit={limit}")
+
+    query_lower = query.lower().strip()
+    is_addr_search = query_lower.startswith("0x") or (
+        len(query_lower) >= 4 and all(c in "0123456789abcdef" for c in query_lower)
+    )
+    addr_str = query_lower[2:] if query_lower.startswith("0x") else query_lower
+
+    results = []
+    total = 0
+
+    try:
+        with open(elf_path, "rb") as f:
+            elf = ELFFile(f)
+            symtab = elf.get_section_by_name(".symtab")
+            if not isinstance(symtab, SymbolTableSection):
+                return [], 0
+
+            # Cache section names by index to avoid repeated lookups
+            section_cache = {}
+
+            for sym in symtab.iter_symbols():
+                if not sym.name:
+                    continue
+                shndx = sym["st_shndx"]
+                if shndx in ("SHN_UNDEF", "SHN_ABS"):
+                    continue
+                if sym["st_size"] == 0:
+                    continue
+                sym_type = sym["st_info"]["type"]
+                if sym_type not in ("STT_FUNC", "STT_OBJECT"):
+                    continue
+
+                total += 1
+
+                # Check match
+                if is_addr_search:
+                    if addr_str not in f"{sym['st_value']:08x}":
+                        continue
+                else:
+                    if query_lower not in sym.name.lower():
+                        continue
+
+                # Resolve section name (cached)
+                if isinstance(shndx, int):
+                    if shndx not in section_cache:
+                        try:
+                            sec = elf.get_section(shndx)
+                            section_cache[shndx] = sec.name if sec else ""
+                        except Exception:
+                            section_cache[shndx] = ""
+                    section_name = section_cache[shndx]
+                else:
+                    section_name = ""
+
+                results.append(
+                    {
+                        "name": sym.name,
+                        "addr": f"0x{sym['st_value']:08X}",
+                        "size": sym["st_size"],
+                        "type": _classify_symbol(sym_type, section_name),
+                        "section": section_name,
+                    }
+                )
+
+    except Exception as e:
+        logger.error(f"Error searching symbols: {e}")
+        return [], 0
+
+    # Sort by name and apply limit
+    results.sort(key=lambda x: x["name"])
+    elapsed = time.time() - t_start
+    logger.info(
+        f"Symbol search done: {len(results[:limit])} matches / {total} total "
+        f"in {elapsed:.2f}s"
+    )
+    return results[:limit], total
+
+
+def lookup_symbol(elf_path: str, sym_name: str) -> Optional[dict]:
+    """Look up a single symbol by exact name without loading all symbols.
+
+    Returns:
+        Symbol info dict or None if not found.
+    """
+    if not elf_path or not os.path.exists(elf_path):
+        return None
+
+    t_start = time.time()
+
+    try:
+        with open(elf_path, "rb") as f:
+            elf = ELFFile(f)
+            symtab = elf.get_section_by_name(".symtab")
+            if not isinstance(symtab, SymbolTableSection):
+                return None
+
+            for sym in symtab.iter_symbols():
+                if sym.name != sym_name:
+                    continue
+                if sym["st_size"] == 0:
+                    continue
+                shndx = sym["st_shndx"]
+                if shndx in ("SHN_UNDEF", "SHN_ABS"):
+                    continue
+                sym_type = sym["st_info"]["type"]
+                if sym_type not in ("STT_FUNC", "STT_OBJECT"):
+                    continue
+
+                section_name = ""
+                try:
+                    if isinstance(shndx, int):
+                        section = elf.get_section(shndx)
+                        section_name = section.name if section else ""
+                except Exception:
+                    pass
+
+                elapsed = time.time() - t_start
+                logger.info(f"Symbol lookup '{sym_name}' found in {elapsed:.2f}s")
+                return {
+                    "addr": sym["st_value"],
+                    "size": sym["st_size"],
+                    "type": _classify_symbol(sym_type, section_name),
+                    "section": section_name,
+                }
+    except Exception as e:
+        logger.error(f"Error looking up symbol '{sym_name}': {e}")
+
+    elapsed = time.time() - t_start
+    logger.info(f"Symbol lookup '{sym_name}' not found ({elapsed:.2f}s)")
+    return None
 
 
 def read_symbol_value(elf_path: str, sym_name: str) -> Optional[bytes]:

@@ -40,9 +40,15 @@ def build_slot_response(device, app_state, get_fpb_inject):
         app_state.symbols_loaded = True
 
     # Get symbols for address lookup
+    # Symbol values may be int (legacy) or dict with 'addr' key (pyelftools)
     symbols_reverse = {}
     if app_state.symbols:
-        symbols_reverse = {v: k for k, v in app_state.symbols.items()}
+        for sym_name, sym_info in app_state.symbols.items():
+            if isinstance(sym_info, dict):
+                addr = sym_info.get("addr", 0)
+            else:
+                addr = sym_info
+            symbols_reverse[addr] = sym_name
 
     # Build slot states from device info
     slots = []

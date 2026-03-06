@@ -111,6 +111,14 @@ window.i18nResources['zh-CN'] = {
       search_placeholder: '按名称或地址搜索',
     },
 
+    // 符号查看器
+    symbols: {
+      searching: '搜索中...',
+      reading: '读取中...',
+      writing: '写入中...',
+      bss_no_init: '无初始值 (.bss) — 从设备读取以查看',
+    },
+
     // 状态栏
     statusbar: {
       ready: '就绪',

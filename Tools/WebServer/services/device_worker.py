@@ -124,6 +124,8 @@ class DeviceWorker:
                 while True:
                     cmd_type, cmd_data, done_event = self._cmd_queue.get_nowait()
 
+                    task_start = time.time()
+
                     if cmd_type == "call":
                         try:
                             cmd_data()
@@ -131,6 +133,14 @@ class DeviceWorker:
                             self._logger.warning(f"Worker call error: {e}")
                     elif cmd_type == "write":
                         self._serial_write_direct(cmd_data)
+
+                    task_elapsed = time.time() - task_start
+                    if task_elapsed > 10.0:
+                        task_name = getattr(cmd_data, "__name__", repr(cmd_data))
+                        self._logger.warning(
+                            f"Slow worker task: {task_name} "
+                            f"took {task_elapsed:.1f}s (>{10.0}s threshold)"
+                        )
 
                     if done_event is not None:
                         done_event.set()

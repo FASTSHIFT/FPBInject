@@ -9,13 +9,22 @@ Symbols API routes for FPBInject Web Server.
 Provides endpoints for symbol query, search, disassembly and decompilation.
 """
 
+import logging
 import os
+import threading
+import time
 
 from flask import Blueprint, jsonify, request, Response
 
 from core.state import state
+from services.device_worker import run_in_device_worker
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("symbols", __name__)
+
+# Prevent concurrent ELF symbol loading
+_symbols_load_lock = threading.Lock()
 
 
 def _get_fpb_inject():
@@ -25,15 +34,48 @@ def _get_fpb_inject():
     return get_fpb_inject()
 
 
+def _run_serial_op(func, timeout=10.0):
+    """Run a serial operation in the device worker thread.
+
+    Ensures serial port access is always from the owner thread (fpb-worker).
+
+    Args:
+        func: Function to execute (should return a result)
+        timeout: Maximum time to wait for completion
+
+    Returns:
+        Result from func, or dict with 'error' key on failure
+    """
+    device = state.device
+    result = {"error": None, "data": None}
+
+    def wrapper():
+        try:
+            result["data"] = func()
+        except Exception as e:
+            result["error"] = str(e)
+            logger.exception(f"Serial operation error: {e}")
+
+    t_start = time.time()
+    if not run_in_device_worker(device, wrapper, timeout=timeout):
+        elapsed = time.time() - t_start
+        logger.warning(f"Serial operation timeout after {elapsed:.1f}s")
+        return {"error": "Operation timeout - device worker not running"}
+
+    elapsed = time.time() - t_start
+    if elapsed > 3.0:
+        logger.warning(f"Serial operation took {elapsed:.1f}s")
+
+    if result["error"]:
+        return {"error": result["error"]}
+
+    return result["data"]
+
+
 @bp.route("/symbols", methods=["GET"])
 def api_get_symbols():
     """Get symbols from ELF file."""
-    if not state.symbols_loaded:
-        device = state.device
-        if device.elf_path and os.path.exists(device.elf_path):
-            fpb = _get_fpb_inject()
-            state.symbols = fpb.get_symbols(device.elf_path)
-            state.symbols_loaded = True
+    _ensure_symbols_loaded()
 
     # Filter symbols if search query provided
     query = request.args.get("q", "").lower()
@@ -74,88 +116,129 @@ def _get_addr(info):
     return info
 
 
+def _lookup_symbol(sym_name):
+    """Look up a symbol, using cache if available, else streaming lookup.
+
+    Results are cached in state.symbols for subsequent lookups.
+    """
+    from core import elf_utils
+
+    # Try cache first
+    if sym_name in state.symbols:
+        return state.symbols[sym_name]
+
+    # If full symbols already loaded, it's definitely not there
+    if state.symbols_loaded:
+        return None
+
+    # Streaming single-symbol lookup (no full load)
+    device = state.device
+    if not device.elf_path or not os.path.exists(device.elf_path):
+        return None
+
+    result = elf_utils.lookup_symbol(device.elf_path, sym_name)
+
+    # Cache for future lookups
+    if result is not None:
+        state.symbols[sym_name] = result
+
+    return result
+
+
+def _ensure_symbols_loaded():
+    """Ensure symbols are loaded exactly once (thread-safe)."""
+    if state.symbols_loaded:
+        return
+
+    with _symbols_load_lock:
+        # Double-check after acquiring lock
+        if state.symbols_loaded:
+            return
+
+        device = state.device
+        if not device.elf_path or not os.path.exists(device.elf_path):
+            return
+
+        fpb = _get_fpb_inject()
+        state.symbols = fpb.get_symbols(device.elf_path)
+        state.symbols_loaded = True
+
+
 @bp.route("/symbols/search", methods=["GET"])
 def api_search_symbols():
-    """Search symbols from ELF file. Supports search by name or address (0x prefix)."""
-    # Load symbols if not loaded
-    if not state.symbols_loaded:
-        device = state.device
-        if device.elf_path and os.path.exists(device.elf_path):
-            try:
-                fpb = _get_fpb_inject()
-                state.symbols = fpb.get_symbols(device.elf_path)
-                state.symbols_loaded = True
-            except Exception as e:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": f"Failed to load symbols: {e}",
-                        "symbols": [],
-                    }
-                )
-        else:
-            elf_path = device.elf_path if device.elf_path else "(not set)"
-            return jsonify(
-                {
-                    "success": False,
-                    "error": f"ELF file not found: {elf_path}",
-                    "symbols": [],
-                }
-            )
+    """Search symbols from ELF file. Uses cache when available."""
+    from core import elf_utils
 
-    # Filter symbols if search query provided
+    device = state.device
+    if not device.elf_path or not os.path.exists(device.elf_path):
+        elf_path = device.elf_path if device.elf_path else "(not set)"
+        return jsonify(
+            {
+                "success": False,
+                "error": f"ELF file not found: {elf_path}",
+                "symbols": [],
+            }
+        )
+
     query = request.args.get("q", "").strip()
     limit = int(request.args.get("limit", 100))
 
-    symbols = state.symbols
+    if not query:
+        return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
 
-    if query:
-        # Check if query is an address (starts with 0x or is hex digits)
-        is_addr_search = query.lower().startswith("0x") or (
-            len(query) >= 4 and all(c in "0123456789abcdefABCDEF" for c in query)
-        )
-
-        if is_addr_search:
-            # Search by address
-            try:
-                # Parse the address
-                addr_str = query.lower()
-                if addr_str.startswith("0x"):
-                    addr_str = addr_str[2:]
-
-                # Find symbols matching the address (partial match on hex string)
-                symbols = {
-                    k: v
-                    for k, v in symbols.items()
-                    if addr_str in f"{_get_addr(v):08x}"
-                }
-            except ValueError:
-                # Invalid hex, fall back to name search
-                query_lower = query.lower()
-                symbols = {k: v for k, v in symbols.items() if query_lower in k.lower()}
-        else:
-            # Search by name (case-insensitive)
+    try:
+        # Use cached symbols if already loaded (instant search)
+        if state.symbols_loaded:
             query_lower = query.lower()
-            symbols = {k: v for k, v in symbols.items() if query_lower in k.lower()}
+            is_addr = query_lower.startswith("0x") or (
+                len(query_lower) >= 4
+                and all(c in "0123456789abcdef" for c in query_lower)
+            )
+            addr_str = query_lower[2:] if query_lower.startswith("0x") else query_lower
 
-    # Convert to list and limit
-    symbol_list = [
-        {
-            "name": name,
-            "addr": f"0x{_get_addr(info):08X}",
-            "size": info.get("size", 0) if isinstance(info, dict) else 0,
-            "type": info.get("type", "other") if isinstance(info, dict) else "function",
-            "section": info.get("section", "") if isinstance(info, dict) else "",
-        }
-        for name, info in sorted(symbols.items(), key=lambda x: x[0])
-    ][:limit]
+            matched = []
+            for name, info in state.symbols.items():
+                if not isinstance(info, dict):
+                    continue
+                if is_addr:
+                    if addr_str not in f"{info.get('addr', 0):08x}":
+                        continue
+                else:
+                    if query_lower not in name.lower():
+                        continue
+                matched.append(
+                    {
+                        "name": name,
+                        "addr": f"0x{info['addr']:08X}",
+                        "size": info.get("size", 0),
+                        "type": info.get("type", "other"),
+                        "section": info.get("section", ""),
+                    }
+                )
+
+            matched.sort(key=lambda x: x["name"])
+            total = len(state.symbols)
+            symbol_list = matched[:limit]
+        else:
+            # Streaming search (no full load)
+            symbol_list, total = elf_utils.search_symbols(
+                device.elf_path, query, limit=limit
+            )
+    except Exception as e:
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Failed to search symbols: {e}",
+                "symbols": [],
+            }
+        )
 
     return jsonify(
         {
             "success": True,
             "symbols": symbol_list,
-            "total": len(state.symbols),
-            "filtered": len(symbols),
+            "total": total,
+            "filtered": len(symbol_list),
         }
     )
 
@@ -168,9 +251,10 @@ def api_reload_symbols():
         return jsonify({"success": False, "error": "ELF file not found"})
 
     try:
-        fpb = _get_fpb_inject()
-        state.symbols = fpb.get_symbols(device.elf_path)
-        state.symbols_loaded = True
+        with _symbols_load_lock:
+            fpb = _get_fpb_inject()
+            state.symbols = fpb.get_symbols(device.elf_path)
+            state.symbols_loaded = True
     except Exception as e:
         return jsonify({"success": False, "error": f"Failed to reload symbols: {e}"})
 
@@ -393,13 +477,8 @@ def api_get_symbol_value():
     if not device.elf_path or not os.path.exists(device.elf_path):
         return jsonify({"success": False, "error": "ELF file not found"})
 
-    # Look up symbol info
-    if not state.symbols_loaded:
-        fpb = _get_fpb_inject()
-        state.symbols = fpb.get_symbols(device.elf_path)
-        state.symbols_loaded = True
-
-    sym_info = state.symbols.get(sym_name)
+    # Look up symbol info (streaming, no full load)
+    sym_info = _lookup_symbol(sym_name)
     if not sym_info:
         return jsonify({"success": False, "error": f"Symbol '{sym_name}' not found"})
 
@@ -436,6 +515,8 @@ def api_read_symbol_from_device():
     """Read symbol value from device memory (live read via serial)."""
     from core import elf_utils
 
+    t_start = time.time()
+
     data = request.get_json() or {}
     sym_name = data.get("name", "").strip()
     if not sym_name:
@@ -445,13 +526,11 @@ def api_read_symbol_from_device():
     if not device.elf_path or not os.path.exists(device.elf_path):
         return jsonify({"success": False, "error": "ELF file not found"})
 
-    # Look up symbol info
-    if not state.symbols_loaded:
-        fpb = _get_fpb_inject()
-        state.symbols = fpb.get_symbols(device.elf_path)
-        state.symbols_loaded = True
-
-    sym_info = state.symbols.get(sym_name)
+    # Look up symbol info (cached or streaming)
+    sym_info = _lookup_symbol(sym_name)
+    t_lookup = time.time()
+    if t_lookup - t_start > 1.0:
+        logger.warning(f"Symbol lookup for '{sym_name}' took {t_lookup - t_start:.1f}s")
     if not sym_info:
         return jsonify({"success": False, "error": f"Symbol '{sym_name}' not found"})
 
@@ -464,7 +543,13 @@ def api_read_symbol_from_device():
 
     try:
         fpb = _get_fpb_inject()
-        raw_data, msg = fpb.read_memory(addr, size)
+
+        # Dispatch serial read to worker thread to avoid cross-thread access
+        result = _run_serial_op(lambda: fpb.read_memory(addr, size))
+        if isinstance(result, dict) and "error" in result:
+            return jsonify({"success": False, "error": result["error"]})
+
+        raw_data, msg = result
         if raw_data is None:
             return jsonify({"success": False, "error": msg})
 
@@ -502,12 +587,8 @@ def api_write_symbol_to_device():
     if not device.elf_path or not os.path.exists(device.elf_path):
         return jsonify({"success": False, "error": "ELF file not found"})
 
-    if not state.symbols_loaded:
-        fpb = _get_fpb_inject()
-        state.symbols = fpb.get_symbols(device.elf_path)
-        state.symbols_loaded = True
-
-    sym_info = state.symbols.get(sym_name)
+    # Look up symbol info (streaming, no full load)
+    sym_info = _lookup_symbol(sym_name)
     if not sym_info:
         return jsonify({"success": False, "error": f"Symbol '{sym_name}' not found"})
 
@@ -528,7 +609,13 @@ def api_write_symbol_to_device():
 
     try:
         fpb = _get_fpb_inject()
-        ok, msg = fpb.write_memory(addr, write_bytes)
+
+        # Dispatch serial write to worker thread to avoid cross-thread access
+        result = _run_serial_op(lambda: fpb.write_memory(addr, write_bytes))
+        if isinstance(result, dict) and "error" in result:
+            return jsonify({"success": False, "error": result["error"]})
+
+        ok, msg = result
         return jsonify(
             {
                 "success": ok,

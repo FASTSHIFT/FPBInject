@@ -111,6 +111,14 @@ window.i18nResources['en'] = {
       search_placeholder: 'Search by name or address',
     },
 
+    // Symbol viewer
+    symbols: {
+      searching: 'Searching...',
+      reading: 'Reading...',
+      writing: 'Writing...',
+      bss_no_init: 'No initial value (.bss) — read from device to view',
+    },
+
     // Status bar
     // Status bar
     statusbar: {

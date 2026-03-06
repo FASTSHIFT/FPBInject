@@ -38,6 +38,8 @@ class TestRoutesBase(unittest.TestCase):
         # Create test state
         self.original_device = state.device
         state.device = DeviceState()
+        state.symbols = {}
+        state.symbols_loaded = False
 
         # Register routes
         routes.register_routes(self.app)
@@ -54,6 +56,8 @@ class TestRoutesBase(unittest.TestCase):
         """Clean up test environment"""
         self.worker_patcher.stop()
         state.device = self.original_device
+        state.symbols = {}
+        state.symbols_loaded = False
         routes._fpb_inject = None
 
 
@@ -936,39 +940,61 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["filtered"], 1)
 
-    def test_get_symbols_search_by_address(self):
+    @patch("core.elf_utils.search_symbols")
+    def test_get_symbols_search_by_address(self, mock_search):
         """Test searching symbols by address (0x prefix)"""
-        state.symbols = {
-            "main": 0x08000000,
-            "test_func": 0x08001000,
-            "helper": 0x08002000,
-        }
-        state.symbols_loaded = True
+        mock_search.return_value = (
+            [
+                {
+                    "name": "test_func",
+                    "addr": "0x08001000",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                }
+            ],
+            3,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            # Search by exact address with 0x prefix
+            response = self.client.get("/api/symbols/search?q=0x08001000")
+            data = json.loads(response.data)
 
-        # Search by exact address with 0x prefix
-        response = self.client.get("/api/symbols/search?q=0x08001000")
-        data = json.loads(response.data)
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 1)
+            self.assertEqual(data["symbols"][0]["name"], "test_func")
+        finally:
+            os.unlink(state.device.elf_path)
 
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 1)
-        self.assertEqual(data["symbols"][0]["name"], "test_func")
-
-    def test_get_symbols_search_by_address_partial(self):
+    @patch("core.elf_utils.search_symbols")
+    def test_get_symbols_search_by_address_partial(self, mock_search):
         """Test searching symbols by partial address"""
-        state.symbols = {
-            "main": 0x08000000,
-            "test_func": 0x08001000,
-            "helper": 0x08002000,
-        }
-        state.symbols_loaded = True
+        mock_search.return_value = (
+            [
+                {
+                    "name": "test_func",
+                    "addr": "0x08001000",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                }
+            ],
+            3,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            # Search by partial hex (without 0x prefix)
+            response = self.client.get("/api/symbols/search?q=08001")
+            data = json.loads(response.data)
 
-        # Search by partial hex (without 0x prefix)
-        response = self.client.get("/api/symbols/search?q=08001")
-        data = json.loads(response.data)
-
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 1)
-        self.assertEqual(data["symbols"][0]["name"], "test_func")
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 1)
+            self.assertEqual(data["symbols"][0]["name"], "test_func")
+        finally:
+            os.unlink(state.device.elf_path)
 
     def test_patch_source_get(self):
         """Test getting patch source"""
@@ -1765,36 +1791,64 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["filtered"], 2)
 
-    @patch("routes.get_fpb_inject")
-    def test_search_symbols_by_name(self, mock_get_fpb):
+    @patch("core.elf_utils.search_symbols")
+    def test_search_symbols_by_name(self, mock_search):
         """Test searching symbols by name"""
-        state.symbols = {
-            "gpio_init": 0x08001000,
-            "gpio_read": 0x08002000,
-            "uart_init": 0x08003000,
-        }
-        state.symbols_loaded = True
+        mock_search.return_value = (
+            [
+                {
+                    "name": "gpio_init",
+                    "addr": "0x08001000",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                },
+                {
+                    "name": "gpio_read",
+                    "addr": "0x08002000",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                },
+            ],
+            3,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/search?q=gpio")
+            data = json.loads(response.data)
 
-        response = self.client.get("/api/symbols/search?q=gpio")
-        data = json.loads(response.data)
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 2)
+        finally:
+            os.unlink(state.device.elf_path)
 
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 2)
-
-    @patch("routes.get_fpb_inject")
-    def test_search_symbols_by_address(self, mock_get_fpb):
+    @patch("core.elf_utils.search_symbols")
+    def test_search_symbols_by_address(self, mock_search):
         """Test searching symbols by address"""
-        state.symbols = {
-            "func_a": 0x08001000,
-            "func_b": 0x08002000,
-        }
-        state.symbols_loaded = True
+        mock_search.return_value = (
+            [
+                {
+                    "name": "func_a",
+                    "addr": "0x08001000",
+                    "size": 0,
+                    "type": "function",
+                    "section": ".text",
+                }
+            ],
+            2,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/search?q=0x08001")
+            data = json.loads(response.data)
 
-        response = self.client.get("/api/symbols/search?q=0x08001")
-        data = json.loads(response.data)
-
-        self.assertTrue(data["success"])
-        self.assertEqual(data["filtered"], 1)
+            self.assertTrue(data["success"])
+            self.assertEqual(data["filtered"], 1)
+        finally:
+            os.unlink(state.device.elf_path)
 
     @patch("routes.get_fpb_inject")
     def test_search_symbols_no_elf(self, mock_get_fpb):
