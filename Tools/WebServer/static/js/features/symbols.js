@@ -84,7 +84,9 @@ async function openSymbolValueTab(symName, symType) {
 
     const isConst = symType === 'const';
     const tabTitle = `${symName} [${isConst ? 'const' : 'var'}]`;
-    const tabIcon = isConst ? 'codicon-symbol-constant' : 'codicon-symbol-variable';
+    const tabIcon = isConst
+      ? 'codicon-symbol-constant'
+      : 'codicon-symbol-variable';
     const tabColor = isConst ? '#4fc1ff' : '#75beff';
 
     state.editorTabs.push({
@@ -107,7 +109,10 @@ async function openSymbolValueTab(symName, symType) {
     `;
     tabDiv.onclick = () => switchEditorTab(tabId);
     tabDiv.onmousedown = (e) => {
-      if (e.button === 1) { e.preventDefault(); closeTab(tabId, e); }
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tabId, e);
+      }
     };
     tabsHeader.appendChild(tabDiv);
 
@@ -119,7 +124,9 @@ async function openSymbolValueTab(symName, symType) {
     tabsContent.appendChild(contentDiv);
 
     switchEditorTab(tabId);
-    log.success(`Opened ${isConst ? 'const' : 'variable'} viewer for ${symName}`);
+    log.success(
+      `Opened ${isConst ? 'const' : 'variable'} viewer for ${symName}`,
+    );
   } catch (e) {
     log.error(`Failed to load symbol value: ${e}`);
   }
@@ -142,21 +149,44 @@ function _renderSymbolValueContent(data, isConst) {
     </div>
   `;
 
+  let toolbarHtml = '';
+  if (!isConst) {
+    toolbarHtml = `
+      <div class="sym-viewer-toolbar">
+        <button class="vscode-button" onclick="readSymbolFromDevice('${_escapeHtml(data.name)}')">
+          <i class="codicon codicon-refresh"></i> Read from Device
+        </button>
+        <button class="vscode-button" onclick="writeSymbolToDevice('${_escapeHtml(data.name)}')">
+          <i class="codicon codicon-cloud-upload"></i> Write to Device
+        </button>
+        <span class="sym-viewer-status" id="symStatus_${_escapeHtml(data.name)}"></span>
+      </div>
+    `;
+  }
+
   let bodyHtml = '';
 
   if (data.struct_layout && data.struct_layout.length > 0) {
     // Struct table view
     bodyHtml += '<div class="sym-viewer-struct">';
     bodyHtml += '<table class="sym-struct-table"><thead><tr>';
-    bodyHtml += '<th>Field</th><th>Type</th><th>Offset</th><th>Size</th><th>Value</th>';
+    bodyHtml +=
+      '<th>Field</th><th>Type</th><th>Offset</th><th>Size</th><th>Value</th>';
     bodyHtml += '</tr></thead><tbody>';
 
     for (const member of data.struct_layout) {
       const valueHex = data.hex_data
         ? _extractFieldHex(data.hex_data, member.offset, member.size)
-        : (isBss ? '<em>needs device read</em>' : '—');
+        : isBss
+          ? '<em>needs device read</em>'
+          : '—';
       const valueDecoded = data.hex_data
-        ? _decodeFieldValue(data.hex_data, member.offset, member.size, member.type_name)
+        ? _decodeFieldValue(
+            data.hex_data,
+            member.offset,
+            member.size,
+            member.type_name,
+          )
         : '';
       const displayValue = valueDecoded
         ? `${valueDecoded} <span class="sym-hex-hint">(${valueHex})</span>`
@@ -185,7 +215,7 @@ function _renderSymbolValueContent(data, isConst) {
     bodyHtml += '</div>';
   }
 
-  return `<div class="sym-viewer-container">${headerHtml}${bodyHtml}</div>`;
+  return `<div class="sym-viewer-container">${headerHtml}${toolbarHtml}${bodyHtml}</div>`;
 }
 
 /* ===========================
@@ -195,7 +225,10 @@ function _extractFieldHex(hexData, offset, size) {
   const start = offset * 2;
   const end = start + size * 2;
   if (end > hexData.length) return '??';
-  return hexData.slice(start, end).replace(/(.{2})/g, '$1 ').trim();
+  return hexData
+    .slice(start, end)
+    .replace(/(.{2})/g, '$1 ')
+    .trim();
 }
 
 function _decodeFieldValue(hexData, offset, size, typeName) {
@@ -209,18 +242,42 @@ function _decodeFieldValue(hexData, offset, size, typeName) {
   }
 
   // Integer types (little-endian ARM)
-  const intTypes = ['int', 'uint', 'int8', 'uint8', 'int16', 'uint16',
-    'int32', 'uint32', 'int64', 'uint64', 'short', 'long', 'size_t',
-    'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t'];
-  const isInt = intTypes.some((t) => typeName.toLowerCase().includes(t.toLowerCase()));
+  const intTypes = [
+    'int',
+    'uint',
+    'int8',
+    'uint8',
+    'int16',
+    'uint16',
+    'int32',
+    'uint32',
+    'int64',
+    'uint64',
+    'short',
+    'long',
+    'size_t',
+    'int8_t',
+    'uint8_t',
+    'int16_t',
+    'uint16_t',
+    'int32_t',
+    'uint32_t',
+  ];
+  const isInt = intTypes.some((t) =>
+    typeName.toLowerCase().includes(t.toLowerCase()),
+  );
 
   if (isInt && size <= 8) {
     let val = 0;
     for (let i = 0; i < bytes.length; i++) {
-      val += bytes[i] * (256 ** i);
+      val += bytes[i] * 256 ** i;
     }
     // Check for signed types
-    if (!typeName.startsWith('u') && !typeName.startsWith('U') && !typeName.includes('uint')) {
+    if (
+      !typeName.startsWith('u') &&
+      !typeName.startsWith('U') &&
+      !typeName.includes('uint')
+    ) {
       const maxSigned = 2 ** (size * 8 - 1);
       if (val >= maxSigned) val -= 2 ** (size * 8);
     }
@@ -231,7 +288,9 @@ function _decodeFieldValue(hexData, offset, size, typeName) {
   if (typeName.includes('char')) {
     const nullIdx = bytes.indexOf(0);
     const strBytes = nullIdx >= 0 ? bytes.slice(0, nullIdx) : bytes;
-    const str = strBytes.map((b) => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+    const str = strBytes
+      .map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : '.'))
+      .join('');
     return `"${str}"`;
   }
 
@@ -242,12 +301,15 @@ function _formatHexDump(hexData) {
   const lines = [];
   for (let i = 0; i < hexData.length; i += 32) {
     const offset = (i / 2).toString(16).padStart(4, '0');
-    const hexPart = hexData.slice(i, i + 32).replace(/(.{2})/g, '$1 ').trim();
+    const hexPart = hexData
+      .slice(i, i + 32)
+      .replace(/(.{2})/g, '$1 ')
+      .trim();
     // ASCII preview
     let ascii = '';
     for (let j = i; j < i + 32 && j < hexData.length; j += 2) {
       const b = parseInt(hexData.slice(j, j + 2), 16);
-      ascii += (b >= 32 && b < 127) ? String.fromCharCode(b) : '.';
+      ascii += b >= 32 && b < 127 ? String.fromCharCode(b) : '.';
     }
     lines.push(`0x${offset}: ${hexPart.padEnd(48)}  ${ascii}`);
   }
@@ -284,19 +346,17 @@ async function searchSymbols() {
 
     if (data.symbols && data.symbols.length > 0) {
       list.innerHTML = data.symbols
-        .map(
-          (sym) => {
-            const cfg = _getSymbolTypeConfig(sym.type || 'function');
-            const colorStyle = cfg.color ? ` style="color: ${cfg.color};"` : '';
-            return `
+        .map((sym) => {
+          const cfg = _getSymbolTypeConfig(sym.type || 'function');
+          const colorStyle = cfg.color ? ` style="color: ${cfg.color};"` : '';
+          return `
         <div class="symbol-item" onclick="onSymbolClick('${sym.name}', '${sym.addr}', '${sym.type || 'function'}')" ondblclick="onSymbolDblClick('${sym.name}', '${sym.type || 'function'}')">
           <i class="codicon ${cfg.icon} symbol-icon"${colorStyle}></i>
           <span class="symbol-name">${sym.name}</span>
           <span class="symbol-addr">${sym.addr}</span>
         </div>
       `;
-          },
-        )
+        })
         .join('');
     } else if (data.error) {
       list.innerHTML = `<div style="padding: 8px; font-size: 11px; opacity: 0.7; color: #f44336;">${data.error}</div>`;
@@ -315,9 +375,106 @@ function selectSymbol(name) {
   log.info(`Selected symbol: ${name}`);
 }
 
+/* ===========================
+   DEVICE READ/WRITE
+   =========================== */
+async function readSymbolFromDevice(symName) {
+  const statusEl = document.getElementById(`symStatus_${symName}`);
+  if (statusEl) statusEl.textContent = t('symbols.reading', 'Reading...');
+
+  try {
+    const res = await fetch('/api/symbols/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: symName }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      log.error(`Read failed: ${data.error}`);
+      if (statusEl) statusEl.textContent = `Error: ${data.error}`;
+      return;
+    }
+
+    // Update the tab content with fresh data
+    const tabId = `symval_${symName}`;
+    const contentDiv = document.getElementById(`tabContent_${tabId}`);
+    if (contentDiv) {
+      contentDiv.innerHTML = _renderSymbolValueContent(data, false);
+    }
+
+    const now = new Date().toLocaleTimeString();
+    const newStatusEl = document.getElementById(`symStatus_${symName}`);
+    if (newStatusEl) newStatusEl.textContent = `Last read: ${now}`;
+    log.success(`Read ${data.size} bytes from device for ${symName}`);
+  } catch (e) {
+    log.error(`Read exception: ${e}`);
+    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+  }
+}
+
+async function writeSymbolToDevice(symName) {
+  const tabId = `symval_${symName}`;
+  const contentDiv = document.getElementById(`tabContent_${tabId}`);
+  if (!contentDiv) return;
+
+  // Extract current hex data from the hex dump
+  const hexDump = contentDiv.querySelector('.sym-hex-dump');
+  if (!hexDump) {
+    log.error('No hex data to write');
+    return;
+  }
+
+  // Parse hex bytes from the dump text
+  const dumpText = hexDump.textContent;
+  const hexBytes = dumpText
+    .replace(/^0x[0-9a-f]+:\s*/gm, '')
+    .replace(/\s{2,}.*$/gm, '')
+    .replace(/\s+/g, '')
+    .trim();
+
+  if (!hexBytes || !/^[0-9a-fA-F]+$/.test(hexBytes)) {
+    log.error('Invalid hex data');
+    return;
+  }
+
+  const statusEl = document.getElementById(`symStatus_${symName}`);
+  if (statusEl) statusEl.textContent = t('symbols.writing', 'Writing...');
+
+  try {
+    const res = await fetch('/api/symbols/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: symName, hex_data: hexBytes }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      log.error(`Write failed: ${data.error}`);
+      if (statusEl) statusEl.textContent = `Error: ${data.error}`;
+      return;
+    }
+
+    const now = new Date().toLocaleTimeString();
+    if (statusEl) statusEl.textContent = `Written at ${now}`;
+    log.success(`Wrote to device for ${symName}`);
+  } catch (e) {
+    log.error(`Write exception: ${e}`);
+    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+  }
+}
+
 // Export for global access
 window.searchSymbols = searchSymbols;
 window.selectSymbol = selectSymbol;
 window.onSymbolClick = onSymbolClick;
 window.onSymbolDblClick = onSymbolDblClick;
 window.openSymbolValueTab = openSymbolValueTab;
+window.readSymbolFromDevice = readSymbolFromDevice;
+window.writeSymbolToDevice = writeSymbolToDevice;
+// Export helpers for testing
+window._extractFieldHex = _extractFieldHex;
+window._decodeFieldValue = _decodeFieldValue;
+window._formatHexDump = _formatHexDump;
+window._escapeHtml = _escapeHtml;
+window._renderSymbolValueContent = _renderSymbolValueContent;

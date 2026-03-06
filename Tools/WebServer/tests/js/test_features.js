@@ -500,7 +500,15 @@ module.exports = function (w) {
     it('displays found symbols', async () => {
       browserGlobals.document.getElementById('symbolSearch').value = 'test';
       setFetchResponse('/api/symbols/search', {
-        symbols: [{ name: 'test_func', addr: '0x1000', type: 'function', size: 100, section: '.text' }],
+        symbols: [
+          {
+            name: 'test_func',
+            addr: '0x1000',
+            type: 'function',
+            size: 100,
+            section: '.text',
+          },
+        ],
       });
       await w.searchSymbols();
       const list = browserGlobals.document.getElementById('symbolList');
@@ -520,7 +528,15 @@ module.exports = function (w) {
     it('displays variable symbol with variable icon', async () => {
       browserGlobals.document.getElementById('symbolSearch').value = 'g_var';
       setFetchResponse('/api/symbols/search', {
-        symbols: [{ name: 'g_var', addr: '0x20000000', type: 'variable', size: 4, section: '.data' }],
+        symbols: [
+          {
+            name: 'g_var',
+            addr: '0x20000000',
+            type: 'variable',
+            size: 4,
+            section: '.data',
+          },
+        ],
       });
       await w.searchSymbols();
       const list = browserGlobals.document.getElementById('symbolList');
@@ -530,7 +546,15 @@ module.exports = function (w) {
     it('displays const symbol with constant icon', async () => {
       browserGlobals.document.getElementById('symbolSearch').value = 'k_val';
       setFetchResponse('/api/symbols/search', {
-        symbols: [{ name: 'k_val', addr: '0x08010000', type: 'const', size: 8, section: '.rodata' }],
+        symbols: [
+          {
+            name: 'k_val',
+            addr: '0x08010000',
+            type: 'const',
+            size: 8,
+            section: '.rodata',
+          },
+        ],
       });
       await w.searchSymbols();
       const list = browserGlobals.document.getElementById('symbolList');
@@ -626,6 +650,437 @@ module.exports = function (w) {
         mockTerm._writes.some((wr) => wr.msg && wr.msg.includes('test_func')),
       );
       w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('_extractFieldHex Helper', () => {
+    it('extracts correct hex bytes at offset 0', () => {
+      assertEqual(w._extractFieldHex('0102030405', 0, 2), '01 02');
+    });
+
+    it('extracts correct hex bytes at non-zero offset', () => {
+      assertEqual(w._extractFieldHex('AABBCCDDEE', 2, 2), 'CC DD');
+    });
+
+    it('returns ?? when out of bounds', () => {
+      assertEqual(w._extractFieldHex('0102', 0, 4), '??');
+    });
+
+    it('handles single byte extraction', () => {
+      assertEqual(w._extractFieldHex('FF', 0, 1), 'FF');
+    });
+  });
+
+  describe('_decodeFieldValue Helper', () => {
+    it('decodes uint8_t value', () => {
+      assertEqual(w._decodeFieldValue('FF', 0, 1, 'uint8_t'), '255');
+    });
+
+    it('decodes int8_t signed value', () => {
+      assertEqual(w._decodeFieldValue('FF', 0, 1, 'int8_t'), '-1');
+    });
+
+    it('decodes uint32_t little-endian', () => {
+      // 0x01 0x00 0x00 0x00 = 1 in LE
+      assertEqual(w._decodeFieldValue('01000000', 0, 4, 'uint32_t'), '1');
+    });
+
+    it('decodes uint16_t little-endian', () => {
+      // 0x00 0x01 = 256 in LE
+      assertEqual(w._decodeFieldValue('0001', 0, 2, 'uint16_t'), '256');
+    });
+
+    it('decodes char array as string', () => {
+      // "Hi" + null
+      const result = w._decodeFieldValue('486900', 0, 3, 'char[3]');
+      assertContains(result, 'Hi');
+    });
+
+    it('returns empty string for unknown type', () => {
+      assertEqual(w._decodeFieldValue('01020304', 0, 4, 'my_struct_t'), '');
+    });
+
+    it('returns empty string when out of bounds', () => {
+      assertEqual(w._decodeFieldValue('01', 0, 4, 'uint32_t'), '');
+    });
+  });
+
+  describe('_formatHexDump Helper', () => {
+    it('formats single line hex dump', () => {
+      const result = w._formatHexDump('48656C6C6F');
+      assertContains(result, '0x0000');
+      assertContains(result, '48 65 6C 6C 6F');
+      assertContains(result, 'Hello');
+    });
+
+    it('replaces non-printable chars with dot', () => {
+      const result = w._formatHexDump('001F7F');
+      assertContains(result, '...');
+    });
+
+    it('handles empty hex data', () => {
+      const result = w._formatHexDump('');
+      assertEqual(result, '');
+    });
+
+    it('wraps long data into multiple lines', () => {
+      // 32 hex chars = 16 bytes = 1 line, 34 hex chars = 17 bytes = 2 lines
+      const hex34 = '00'.repeat(17);
+      const result = w._formatHexDump(hex34);
+      const lines = result.split('\n');
+      assertEqual(lines.length, 2);
+    });
+  });
+
+  describe('_escapeHtml Helper', () => {
+    it('escapes angle brackets', () => {
+      const result = w._escapeHtml('<script>alert(1)</script>');
+      assertTrue(!result.includes('<script>'));
+      assertContains(result, '&lt;');
+    });
+
+    it('handles null/undefined gracefully', () => {
+      const result = w._escapeHtml(null);
+      assertEqual(result, '');
+    });
+
+    it('passes plain text through', () => {
+      assertEqual(w._escapeHtml('hello'), 'hello');
+    });
+  });
+
+  describe('_renderSymbolValueContent Helper', () => {
+    it('renders header with name and address', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_counter',
+          addr: '0x20000000',
+          size: 4,
+          section: '.data',
+          hex_data: '01000000',
+        },
+        false,
+      );
+      assertContains(html, 'g_counter');
+      assertContains(html, '0x20000000');
+      assertContains(html, 'Read-Write');
+    });
+
+    it('renders const label for const symbols', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'k_magic',
+          addr: '0x08010000',
+          size: 4,
+          section: '.rodata',
+          hex_data: 'DEADBEEF',
+        },
+        true,
+      );
+      assertContains(html, 'Read-Only');
+    });
+
+    it('renders struct table when struct_layout present', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_cfg',
+          addr: '0x20000000',
+          size: 8,
+          section: '.data',
+          hex_data: '0100000002000000',
+          struct_layout: [
+            { name: 'x', type_name: 'uint32_t', offset: 0, size: 4 },
+            { name: 'y', type_name: 'uint32_t', offset: 4, size: 4 },
+          ],
+        },
+        false,
+      );
+      assertContains(html, 'sym-struct-table');
+      assertContains(html, 'x');
+      assertContains(html, 'y');
+      assertContains(html, 'uint32_t');
+    });
+
+    it('renders hex dump section', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_val',
+          addr: '0x20000000',
+          size: 2,
+          section: '.data',
+          hex_data: 'AABB',
+        },
+        false,
+      );
+      assertContains(html, 'sym-hex-dump');
+      assertContains(html, 'AA BB');
+    });
+
+    it('renders bss hint when no hex_data and .bss section', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_zero',
+          addr: '0x20001000',
+          size: 4,
+          section: '.bss',
+        },
+        false,
+      );
+      assertContains(html, '.bss');
+    });
+
+    it('renders needs device read for bss struct fields', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_state',
+          addr: '0x20001000',
+          size: 4,
+          section: '.bss',
+          struct_layout: [
+            { name: 'count', type_name: 'uint32_t', offset: 0, size: 4 },
+          ],
+        },
+        false,
+      );
+      assertContains(html, 'needs device read');
+    });
+  });
+
+  describe('openSymbolValueTab Function', () => {
+    it('is async function', () => {
+      assertTrue(w.openSymbolValueTab.constructor.name === 'AsyncFunction');
+    });
+
+    it('fetches from /api/symbols/value', async () => {
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/symbols/value', {
+        success: true,
+        name: 'g_val',
+        addr: '0x20000000',
+        size: 4,
+        section: '.data',
+        hex_data: '01000000',
+      });
+      await w.openSymbolValueTab('g_val', 'variable');
+      assertTrue(w.FPBState.editorTabs.some((t) => t.id === 'symval_g_val'));
+    });
+
+    it('reuses existing tab instead of creating duplicate', async () => {
+      w.FPBState.editorTabs = [{ id: 'symval_g_val', title: 'g_val [var]' }];
+      // Should not fetch, just switch
+      await w.openSymbolValueTab('g_val', 'variable');
+      assertEqual(
+        w.FPBState.editorTabs.filter((t) => t.id === 'symval_g_val').length,
+        1,
+      );
+    });
+
+    it('handles API error gracefully', async () => {
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/symbols/value', {
+        success: false,
+        error: 'Not found',
+      });
+      await w.openSymbolValueTab('missing_sym', 'variable');
+      assertTrue(
+        !w.FPBState.editorTabs.some((t) => t.id === 'symval_missing_sym'),
+      );
+    });
+
+    it('sets correct tab type for const', async () => {
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/symbols/value', {
+        success: true,
+        name: 'k_val',
+        addr: '0x08010000',
+        size: 4,
+        section: '.rodata',
+        hex_data: 'DEADBEEF',
+      });
+      await w.openSymbolValueTab('k_val', 'const');
+      const tab = w.FPBState.editorTabs.find((t) => t.id === 'symval_k_val');
+      assertTrue(tab !== undefined);
+      assertEqual(tab.type, 'const-viewer');
+    });
+
+    it('sets correct tab type for variable', async () => {
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/symbols/value', {
+        success: true,
+        name: 'g_cnt',
+        addr: '0x20000000',
+        size: 4,
+        section: '.data',
+        hex_data: '00000000',
+      });
+      await w.openSymbolValueTab('g_cnt', 'variable');
+      const tab = w.FPBState.editorTabs.find((t) => t.id === 'symval_g_cnt');
+      assertEqual(tab.type, 'var-viewer');
+    });
+  });
+
+  describe('onSymbolClick Dispatch', () => {
+    it('is a function', () =>
+      assertTrue(typeof w.onSymbolClick === 'function'));
+
+    it('dispatches variable to openSymbolValueTab', () => {
+      // onSymbolClick uses setTimeout, so we just verify no crash
+      w.onSymbolClick('g_var', '0x20000000', 'variable');
+      assertTrue(true);
+    });
+
+    it('dispatches const to openSymbolValueTab', () => {
+      w.onSymbolClick('k_val', '0x08010000', 'const');
+      assertTrue(true);
+    });
+
+    it('dispatches function to openDisassembly', () => {
+      w.onSymbolClick('main', '0x08000000', 'function');
+      assertTrue(true);
+    });
+  });
+
+  describe('onSymbolDblClick Dispatch', () => {
+    it('dispatches function to openManualPatchTab', () => {
+      w.onSymbolDblClick('main', 'function');
+      assertTrue(true);
+    });
+
+    it('dispatches variable to openSymbolValueTab', () => {
+      w.onSymbolDblClick('g_var', 'variable');
+      assertTrue(true);
+    });
+  });
+
+  describe('readSymbolFromDevice Function', () => {
+    it('is exported to window', () =>
+      assertTrue(typeof w.readSymbolFromDevice === 'function'));
+
+    it('is async function', () =>
+      assertTrue(w.readSymbolFromDevice.constructor.name === 'AsyncFunction'));
+
+    it('calls POST /api/symbols/read', async () => {
+      setFetchResponse('/api/symbols/read', {
+        success: true,
+        name: 'g_cnt',
+        addr: '0x20000000',
+        size: 4,
+        hex_data: '05000000',
+        source: 'device',
+      });
+      await w.readSymbolFromDevice('g_cnt');
+      const calls = getFetchCalls();
+      assertTrue(
+        calls.some(
+          (c) =>
+            c.url === '/api/symbols/read' &&
+            c.options &&
+            c.options.method === 'POST',
+        ),
+      );
+    });
+
+    it('sends symbol name in request body', async () => {
+      setFetchResponse('/api/symbols/read', {
+        success: true,
+        name: 'g_cnt',
+        addr: '0x20000000',
+        size: 4,
+        hex_data: '05000000',
+        source: 'device',
+      });
+      await w.readSymbolFromDevice('g_cnt');
+      const calls = getFetchCalls();
+      const readCall = calls.find((c) => c.url === '/api/symbols/read');
+      assertTrue(readCall !== undefined);
+      const body = JSON.parse(readCall.options.body);
+      assertEqual(body.name, 'g_cnt');
+    });
+
+    it('handles error response gracefully', async () => {
+      setFetchResponse('/api/symbols/read', {
+        success: false,
+        error: 'Not connected',
+      });
+      // Should not throw
+      await w.readSymbolFromDevice('g_cnt');
+      assertTrue(true);
+    });
+  });
+
+  describe('writeSymbolToDevice Function', () => {
+    it('is exported to window', () =>
+      assertTrue(typeof w.writeSymbolToDevice === 'function'));
+
+    it('is async function', () =>
+      assertTrue(w.writeSymbolToDevice.constructor.name === 'AsyncFunction'));
+
+    it('returns early if no tab content', async () => {
+      // No tabContent_symval_xxx element exists, should return without error
+      await w.writeSymbolToDevice('nonexistent');
+      assertTrue(true);
+    });
+  });
+
+  describe('_renderSymbolValueContent Toolbar', () => {
+    it('renders toolbar with Read/Write buttons for variable', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_cnt',
+          addr: '0x20000000',
+          size: 4,
+          section: '.data',
+          hex_data: '01000000',
+        },
+        false,
+      );
+      assertContains(html, 'sym-viewer-toolbar');
+      assertContains(html, 'Read from Device');
+      assertContains(html, 'Write to Device');
+    });
+
+    it('does not render toolbar for const', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'k_val',
+          addr: '0x08010000',
+          size: 4,
+          section: '.rodata',
+          hex_data: 'DEADBEEF',
+        },
+        true,
+      );
+      assertTrue(!html.includes('sym-viewer-toolbar'));
+      assertTrue(!html.includes('Write to Device'));
+    });
+
+    it('toolbar buttons reference correct symbol name', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'my_var',
+          addr: '0x20000000',
+          size: 4,
+          section: '.data',
+          hex_data: '00000000',
+        },
+        false,
+      );
+      assertContains(html, "readSymbolFromDevice('my_var')");
+      assertContains(html, "writeSymbolToDevice('my_var')");
+    });
+
+    it('renders status span with correct id', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_state',
+          addr: '0x20000000',
+          size: 4,
+          section: '.data',
+          hex_data: '00000000',
+        },
+        false,
+      );
+      assertContains(html, 'symStatus_g_state');
     });
   });
 

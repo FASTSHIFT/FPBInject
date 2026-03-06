@@ -468,7 +468,14 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         self.assertIn("not found", data["error"])
 
     def test_symbol_not_found(self):
-        state.symbols = {"other": {"addr": 0x08000000, "size": 4, "type": "variable", "section": ".data"}}
+        state.symbols = {
+            "other": {
+                "addr": 0x08000000,
+                "size": 4,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
@@ -486,7 +493,12 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         mock_read.return_value = b"\x01\x02\x03\x04"
         mock_struct.return_value = []
         state.symbols = {
-            "my_const": {"addr": 0x08002000, "size": 4, "type": "const", "section": ".rodata"}
+            "my_const": {
+                "addr": 0x08002000,
+                "size": 4,
+                "type": "const",
+                "section": ".rodata",
+            }
         }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -512,7 +524,12 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
             {"name": "y", "type_name": "int32_t", "offset": 2, "size": 4},
         ]
         state.symbols = {
-            "my_struct": {"addr": 0x20000100, "size": 6, "type": "variable", "section": ".data"}
+            "my_struct": {
+                "addr": 0x20000100,
+                "size": 6,
+                "type": "variable",
+                "section": ".data",
+            }
         }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -533,7 +550,12 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         mock_read.return_value = None
         mock_struct.return_value = []
         state.symbols = {
-            "bss_var": {"addr": 0x20001000, "size": 8, "type": "variable", "section": ".bss"}
+            "bss_var": {
+                "addr": 0x20001000,
+                "size": 8,
+                "type": "variable",
+                "section": ".bss",
+            }
         }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -563,6 +585,225 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
             self.assertTrue(data["success"])
             self.assertEqual(data["addr"], "0x08003000")
             self.assertEqual(data["hex_data"], "ff")
+        finally:
+            os.unlink(state.device.elf_path)
+
+
+class TestReadSymbolFromDevice(SymbolRoutesBase):
+    """Test /api/symbols/read endpoint."""
+
+    def test_no_name(self):
+        response = self.client.post("/api/symbols/read", json={})
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"])
+
+    def test_no_elf(self):
+        response = self.client.post("/api/symbols/read", json={"name": "my_var"})
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"])
+
+    def test_symbol_not_found(self):
+        state.symbols = {
+            "other": {
+                "addr": 0x20000000,
+                "size": 4,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post("/api/symbols/read", json={"name": "nope"})
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("not found", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    def test_zero_size(self):
+        state.symbols = {
+            "zero_sym": {
+                "addr": 0x20000000,
+                "size": 0,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post("/api/symbols/read", json={"name": "zero_sym"})
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("unknown size", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.elf_utils.get_struct_layout")
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_read_success(self, mock_get_fpb, mock_struct):
+        mock_fpb = Mock()
+        mock_fpb.read_memory.return_value = (b"\xaa\xbb", "Read 2 bytes OK")
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+        mock_struct.return_value = []
+        state.symbols = {
+            "my_var": {
+                "addr": 0x20001000,
+                "size": 2,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post("/api/symbols/read", json={"name": "my_var"})
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["hex_data"], "aabb")
+            self.assertEqual(data["source"], "device")
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_read_failure(self, mock_get_fpb):
+        mock_fpb = Mock()
+        mock_fpb.read_memory.return_value = (None, "Read failed at offset 0x0")
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+        state.symbols = {
+            "my_var": {
+                "addr": 0x20001000,
+                "size": 4,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post("/api/symbols/read", json={"name": "my_var"})
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("Read failed", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+
+class TestWriteSymbolToDevice(SymbolRoutesBase):
+    """Test /api/symbols/write endpoint."""
+
+    def test_no_name(self):
+        response = self.client.post("/api/symbols/write", json={"hex_data": "01"})
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"])
+
+    def test_no_hex_data(self):
+        response = self.client.post("/api/symbols/write", json={"name": "my_var"})
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("hex_data not specified", data["error"])
+
+    def test_no_elf(self):
+        response = self.client.post(
+            "/api/symbols/write", json={"name": "x", "hex_data": "01"}
+        )
+        data = response.get_json()
+        self.assertFalse(data["success"])
+
+    def test_write_const_rejected(self):
+        state.symbols = {
+            "ro": {"addr": 0x08002000, "size": 4, "type": "const", "section": ".rodata"}
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post(
+                "/api/symbols/write", json={"name": "ro", "hex_data": "01020304"}
+            )
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("read-only", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    def test_invalid_hex(self):
+        state.symbols = {
+            "v": {"addr": 0x20000000, "size": 4, "type": "variable", "section": ".data"}
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post(
+                "/api/symbols/write", json={"name": "v", "hex_data": "ZZZZ"}
+            )
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("Invalid hex_data", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_write_success(self, mock_get_fpb):
+        mock_fpb = Mock()
+        mock_fpb.write_memory.return_value = (True, "Write 4 bytes OK")
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+        state.symbols = {
+            "my_var": {
+                "addr": 0x20001000,
+                "size": 4,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post(
+                "/api/symbols/write", json={"name": "my_var", "hex_data": "01020304"}
+            )
+            data = response.get_json()
+            self.assertTrue(data["success"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_write_failure(self, mock_get_fpb):
+        mock_fpb = Mock()
+        mock_fpb.write_memory.return_value = (False, "Write failed at offset 0x0")
+        mock_fpb.get_symbols.return_value = {}
+        mock_get_fpb.return_value = mock_fpb
+        state.symbols = {
+            "my_var": {
+                "addr": 0x20001000,
+                "size": 4,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.post(
+                "/api/symbols/write", json={"name": "my_var", "hex_data": "01020304"}
+            )
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("Write failed", data["error"])
         finally:
             os.unlink(state.device.elf_path)
 

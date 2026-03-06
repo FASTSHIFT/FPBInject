@@ -1167,7 +1167,7 @@ input[type="checkbox"] {
 
 .sym-struct-table td {
   padding: 4px 10px;
-  border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.2));
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
 }
 
 .sym-struct-table tr:hover td {
@@ -1193,6 +1193,28 @@ input[type="checkbox"] {
 
 .sym-viewer-hex {
   margin-top: 12px;
+}
+
+.sym-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.sym-viewer-toolbar .vscode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.sym-viewer-status {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-left: auto;
 }
 
 .sym-hex-label {

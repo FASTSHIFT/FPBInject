@@ -1474,9 +1474,24 @@ class TestFPBInjectCoverage(unittest.TestCase):
     def test_get_symbols(self, mock_get_symbols):
         """Test getting symbol table"""
         mock_get_symbols.return_value = {
-            "main": {"addr": 0x08000000, "size": 64, "type": "function", "section": ".text"},
-            "var": {"addr": 0x20000000, "size": 4, "type": "variable", "section": ".data"},
-            "static_func": {"addr": 0x08001000, "size": 32, "type": "function", "section": ".text"},
+            "main": {
+                "addr": 0x08000000,
+                "size": 64,
+                "type": "function",
+                "section": ".text",
+            },
+            "var": {
+                "addr": 0x20000000,
+                "size": 4,
+                "type": "variable",
+                "section": ".data",
+            },
+            "static_func": {
+                "addr": 0x08001000,
+                "size": 32,
+                "type": "function",
+                "section": ".text",
+            },
         }
         self.fpb._toolchain_path = "/usr/bin"
 

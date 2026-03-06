@@ -47,7 +47,9 @@ def api_get_symbols():
     symbol_list = [
         {
             "name": name,
-            "addr": f"0x{info['addr']:08X}" if isinstance(info, dict) else f"0x{info:08X}",
+            "addr": (
+                f"0x{info['addr']:08X}" if isinstance(info, dict) else f"0x{info:08X}"
+            ),
             "size": info.get("size", 0) if isinstance(info, dict) else 0,
             "type": info.get("type", "other") if isinstance(info, dict) else "function",
             "section": info.get("section", "") if isinstance(info, dict) else "",
@@ -122,7 +124,11 @@ def api_search_symbols():
                     addr_str = addr_str[2:]
 
                 # Find symbols matching the address (partial match on hex string)
-                symbols = {k: v for k, v in symbols.items() if addr_str in f"{_get_addr(v):08x}"}
+                symbols = {
+                    k: v
+                    for k, v in symbols.items()
+                    if addr_str in f"{_get_addr(v):08x}"
+                }
             except ValueError:
                 # Invalid hex, fall back to name search
                 query_lower = query.lower()
@@ -399,7 +405,9 @@ def api_get_symbol_value():
 
     addr = _get_addr(sym_info)
     size = sym_info.get("size", 0) if isinstance(sym_info, dict) else 0
-    sym_type = sym_info.get("type", "other") if isinstance(sym_info, dict) else "function"
+    sym_type = (
+        sym_info.get("type", "other") if isinstance(sym_info, dict) else "function"
+    )
     section = sym_info.get("section", "") if isinstance(sym_info, dict) else ""
 
     # Read raw bytes from ELF
@@ -409,13 +417,124 @@ def api_get_symbol_value():
     # Try to get struct layout from DWARF
     struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
 
-    return jsonify({
-        "success": True,
-        "name": sym_name,
-        "addr": f"0x{addr:08X}",
-        "size": size,
-        "type": sym_type,
-        "section": section,
-        "hex_data": hex_data,
-        "struct_layout": struct_layout,
-    })
+    return jsonify(
+        {
+            "success": True,
+            "name": sym_name,
+            "addr": f"0x{addr:08X}",
+            "size": size,
+            "type": sym_type,
+            "section": section,
+            "hex_data": hex_data,
+            "struct_layout": struct_layout,
+        }
+    )
+
+
+@bp.route("/symbols/read", methods=["POST"])
+def api_read_symbol_from_device():
+    """Read symbol value from device memory (live read via serial)."""
+    from core import elf_utils
+
+    data = request.get_json() or {}
+    sym_name = data.get("name", "").strip()
+    if not sym_name:
+        return jsonify({"success": False, "error": "Symbol name not specified"})
+
+    device = state.device
+    if not device.elf_path or not os.path.exists(device.elf_path):
+        return jsonify({"success": False, "error": "ELF file not found"})
+
+    # Look up symbol info
+    if not state.symbols_loaded:
+        fpb = _get_fpb_inject()
+        state.symbols = fpb.get_symbols(device.elf_path)
+        state.symbols_loaded = True
+
+    sym_info = state.symbols.get(sym_name)
+    if not sym_info:
+        return jsonify({"success": False, "error": f"Symbol '{sym_name}' not found"})
+
+    addr = _get_addr(sym_info)
+    size = sym_info.get("size", 0) if isinstance(sym_info, dict) else 0
+    if size <= 0:
+        return jsonify(
+            {"success": False, "error": f"Symbol '{sym_name}' has unknown size"}
+        )
+
+    try:
+        fpb = _get_fpb_inject()
+        raw_data, msg = fpb.read_memory(addr, size)
+        if raw_data is None:
+            return jsonify({"success": False, "error": msg})
+
+        hex_data = raw_data.hex()
+        struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
+
+        return jsonify(
+            {
+                "success": True,
+                "name": sym_name,
+                "addr": f"0x{addr:08X}",
+                "size": size,
+                "hex_data": hex_data,
+                "struct_layout": struct_layout,
+                "source": "device",
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/symbols/write", methods=["POST"])
+def api_write_symbol_to_device():
+    """Write symbol value to device memory (live write via serial)."""
+    data = request.get_json() or {}
+    sym_name = data.get("name", "").strip()
+    hex_data = data.get("hex_data", "").strip()
+
+    if not sym_name:
+        return jsonify({"success": False, "error": "Symbol name not specified"})
+    if not hex_data:
+        return jsonify({"success": False, "error": "hex_data not specified"})
+
+    device = state.device
+    if not device.elf_path or not os.path.exists(device.elf_path):
+        return jsonify({"success": False, "error": "ELF file not found"})
+
+    if not state.symbols_loaded:
+        fpb = _get_fpb_inject()
+        state.symbols = fpb.get_symbols(device.elf_path)
+        state.symbols_loaded = True
+
+    sym_info = state.symbols.get(sym_name)
+    if not sym_info:
+        return jsonify({"success": False, "error": f"Symbol '{sym_name}' not found"})
+
+    addr = _get_addr(sym_info)
+    sym_type = (
+        sym_info.get("type", "other") if isinstance(sym_info, dict) else "function"
+    )
+
+    if sym_type == "const":
+        return jsonify(
+            {"success": False, "error": "Cannot write to const symbol (read-only)"}
+        )
+
+    try:
+        write_bytes = bytes.fromhex(hex_data)
+    except ValueError:
+        return jsonify({"success": False, "error": "Invalid hex_data format"})
+
+    try:
+        fpb = _get_fpb_inject()
+        ok, msg = fpb.write_memory(addr, write_bytes)
+        return jsonify(
+            {
+                "success": ok,
+                "message": msg if ok else None,
+                "error": msg if not ok else None,
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})

@@ -503,6 +503,108 @@ class FPBProtocol:
             "speed": speed,
         }
 
+    def _parse_read_response(self, resp: str) -> Optional[bytes]:
+        """Parse READ response to extract binary data.
+
+        Expected format: [FLOK] READ <n> bytes crc=0x<XXXX> data=<base64>
+        Returns decoded bytes if CRC matches, None on error.
+        """
+        match = re.search(
+            r"\[FLOK\]\s+READ\s+(\d+)\s+bytes\s+crc=0x([0-9A-Fa-f]+)\s+data=(\S+)",
+            resp,
+        )
+        if not match:
+            return None
+
+        expected_len = int(match.group(1))
+        expected_crc = int(match.group(2), 16)
+        b64_data = match.group(3)
+
+        try:
+            raw = base64.b64decode(b64_data)
+        except Exception:
+            logger.error("Failed to decode base64 from read response")
+            return None
+
+        if len(raw) != expected_len:
+            logger.error(
+                f"Read length mismatch: got {len(raw)}, expected {expected_len}"
+            )
+            return None
+
+        actual_crc = crc16(raw)
+        if actual_crc != expected_crc:
+            logger.error(
+                f"Read CRC mismatch: 0x{actual_crc:04X} != 0x{expected_crc:04X}"
+            )
+            return None
+
+        return raw
+
+    def read_memory(
+        self, addr: int, length: int, progress_callback=None
+    ) -> Tuple[Optional[bytes], str]:
+        """Read memory from device in chunks.
+
+        Returns (data_bytes, message) on success, (None, error_msg) on failure.
+        """
+        bytes_per_chunk = self.device.chunk_size if self.device.chunk_size > 0 else 128
+        buf = bytearray()
+        offset = 0
+
+        while offset < length:
+            n = min(bytes_per_chunk, length - offset)
+            cmd = f"-c read --addr 0x{addr + offset:X} --len {n}"
+
+            try:
+                resp = self.send_cmd(cmd, timeout=2.0)
+                data = self._parse_read_response(resp)
+                if data is None:
+                    return None, f"Read failed at offset 0x{offset:X}"
+                buf.extend(data)
+            except Exception as e:
+                return None, f"Read exception at offset 0x{offset:X}: {e}"
+
+            offset += n
+            if progress_callback:
+                progress_callback(offset, length)
+
+        return bytes(buf), f"Read {length} bytes OK"
+
+    def write_memory(
+        self, addr: int, data: bytes, progress_callback=None
+    ) -> Tuple[bool, str]:
+        """Write data to device memory in chunks.
+
+        Returns (success, message).
+        """
+        bytes_per_chunk = self.device.chunk_size if self.device.chunk_size > 0 else 128
+        total = len(data)
+        offset = 0
+
+        while offset < total:
+            chunk = data[offset : offset + bytes_per_chunk]
+            b64 = base64.b64encode(chunk).decode("ascii")
+            crc_val = crc16(chunk)
+            cmd = f"-c write --addr 0x{addr + offset:X} --data {b64} --crc 0x{crc_val:04X}"
+
+            try:
+                resp = self.send_cmd(cmd, timeout=2.0)
+                result = self.parse_response(resp)
+                if not result.get("ok"):
+                    return (
+                        False,
+                        f"Write failed at offset 0x{offset:X}: {result.get('msg')}",
+                    )
+            except Exception as e:
+                return False, f"Write exception at offset 0x{offset:X}: {e}"
+
+            offset += len(chunk)
+            if progress_callback:
+                progress_callback(offset, total)
+
+        return True, f"Write {total} bytes OK"
+
     def patch(self, comp: int, orig: int, target: int) -> Tuple[bool, str]:
         """Set FPB patch (direct mode)."""
         try:
