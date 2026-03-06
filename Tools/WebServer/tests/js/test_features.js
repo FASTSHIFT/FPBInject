@@ -469,6 +469,12 @@ module.exports = function (w) {
       assertTrue(typeof w.searchSymbols === 'function'));
     it('selectSymbol is a function', () =>
       assertTrue(typeof w.selectSymbol === 'function'));
+    it('onSymbolClick is a function', () =>
+      assertTrue(typeof w.onSymbolClick === 'function'));
+    it('onSymbolDblClick is a function', () =>
+      assertTrue(typeof w.onSymbolDblClick === 'function'));
+    it('openSymbolValueTab is a function', () =>
+      assertTrue(typeof w.openSymbolValueTab === 'function'));
   });
 
   describe('searchSymbols Function', () => {
@@ -494,11 +500,73 @@ module.exports = function (w) {
     it('displays found symbols', async () => {
       browserGlobals.document.getElementById('symbolSearch').value = 'test';
       setFetchResponse('/api/symbols/search', {
-        symbols: [{ name: 'test_func', addr: '0x1000' }],
+        symbols: [{ name: 'test_func', addr: '0x1000', type: 'function', size: 100, section: '.text' }],
       });
       await w.searchSymbols();
       const list = browserGlobals.document.getElementById('symbolList');
       assertContains(list.innerHTML, 'test_func');
+    });
+
+    it('displays function symbol with method icon', async () => {
+      browserGlobals.document.getElementById('symbolSearch').value = 'test';
+      setFetchResponse('/api/symbols/search', {
+        symbols: [{ name: 'test_func', addr: '0x1000', type: 'function' }],
+      });
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, 'codicon-symbol-method');
+    });
+
+    it('displays variable symbol with variable icon', async () => {
+      browserGlobals.document.getElementById('symbolSearch').value = 'g_var';
+      setFetchResponse('/api/symbols/search', {
+        symbols: [{ name: 'g_var', addr: '0x20000000', type: 'variable', size: 4, section: '.data' }],
+      });
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, 'codicon-symbol-variable');
+    });
+
+    it('displays const symbol with constant icon', async () => {
+      browserGlobals.document.getElementById('symbolSearch').value = 'k_val';
+      setFetchResponse('/api/symbols/search', {
+        symbols: [{ name: 'k_val', addr: '0x08010000', type: 'const', size: 8, section: '.rodata' }],
+      });
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, 'codicon-symbol-constant');
+    });
+
+    it('passes type to onSymbolClick handler', async () => {
+      browserGlobals.document.getElementById('symbolSearch').value = 'g_var';
+      setFetchResponse('/api/symbols/search', {
+        symbols: [{ name: 'g_var', addr: '0x20000000', type: 'variable' }],
+      });
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, "onSymbolClick('g_var'");
+      assertContains(list.innerHTML, "'variable'");
+    });
+
+    it('passes type to onSymbolDblClick handler', async () => {
+      browserGlobals.document.getElementById('symbolSearch').value = 'g_var';
+      setFetchResponse('/api/symbols/search', {
+        symbols: [{ name: 'g_var', addr: '0x20000000', type: 'variable' }],
+      });
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, "onSymbolDblClick('g_var'");
+      assertContains(list.innerHTML, "'variable'");
+    });
+
+    it('defaults to function type when type not provided', async () => {
+      browserGlobals.document.getElementById('symbolSearch').value = 'test';
+      setFetchResponse('/api/symbols/search', {
+        symbols: [{ name: 'test_func', addr: '0x1000' }],
+      });
+      await w.searchSymbols();
+      const list = browserGlobals.document.getElementById('symbolList');
+      assertContains(list.innerHTML, 'codicon-symbol-method');
     });
 
     it('displays no symbols found message', async () => {

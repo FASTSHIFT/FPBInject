@@ -157,10 +157,6 @@ typedef struct fl_file_ctx_s {
     char path[FL_FILE_PATH_MAX]; /* Current file path */
     size_t offset;               /* Current read/write offset */
     size_t total_size;           /* Total file size (for progress) */
-
-    /* Transfer buffers */
-    uint8_t buf[FL_FILE_BUF_SIZE];      /* Data buffer for read/write */
-    char b64_buf[FL_FILE_B64_BUF_SIZE]; /* Base64 encoding buffer */
 } fl_file_ctx_t;
 
 #if FL_FILE_USE_POSIX

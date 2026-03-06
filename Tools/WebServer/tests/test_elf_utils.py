@@ -8,11 +8,12 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import elf_utils  # noqa: E402
+from elftools.elf.sections import SymbolTableSection  # noqa: E402
 
 
 class TestGetToolPath(unittest.TestCase):
@@ -126,51 +127,324 @@ class TestGetElfBuildTime(unittest.TestCase):
             os.unlink(elf_path)
 
 
+class TestClassifySymbol(unittest.TestCase):
+    """_classify_symbol function tests"""
+
+    def test_function_type(self):
+        self.assertEqual(elf_utils._classify_symbol("STT_FUNC", ".text"), "function")
+
+    def test_variable_data(self):
+        self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".data"), "variable")
+
+    def test_variable_bss(self):
+        self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".bss"), "variable")
+
+    def test_const_rodata(self):
+        self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".rodata"), "const")
+
+    def test_const_rodata_str(self):
+        self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".rodata.str1.1"), "const")
+
+    def test_other_type(self):
+        self.assertEqual(elf_utils._classify_symbol("STT_NOTYPE", ".text"), "other")
+
+    def test_unknown_section_object(self):
+        """STT_OBJECT in unknown section defaults to variable"""
+        self.assertEqual(elf_utils._classify_symbol("STT_OBJECT", ".custom"), "variable")
+
+
+def _make_mock_elf(symbols_data):
+    """Create a mock ELFFile with given symbol data.
+
+    symbols_data: list of (name, addr, size, type_str, shndx, section_name)
+    """
+    mock_elf = MagicMock()
+
+    # Build sections dict
+    sections = {}
+    for _, _, _, _, shndx, sec_name in symbols_data:
+        if isinstance(shndx, int) and shndx not in sections:
+            sec = MagicMock()
+            sec.name = sec_name
+            sections[shndx] = sec
+
+    def get_section(idx):
+        return sections.get(idx)
+
+    mock_elf.get_section = get_section
+
+    # Build symtab — use spec to pass isinstance check
+    mock_symtab = MagicMock(spec=SymbolTableSection)
+
+    mock_symbols = []
+    for name, addr, size, type_str, shndx, _ in symbols_data:
+        sym = MagicMock()
+        sym.name = name
+        sym.__getitem__ = lambda self, key, _a=addr, _s=size, _t=type_str, _sh=shndx: {
+            "st_value": _a,
+            "st_size": _s,
+            "st_info": {"type": _t},
+            "st_shndx": _sh,
+        }[key]
+        mock_symbols.append(sym)
+
+    mock_symtab.iter_symbols.return_value = mock_symbols
+    mock_elf.get_section_by_name.return_value = mock_symtab
+
+    return mock_elf
+
+
 class TestGetSymbols(unittest.TestCase):
-    """get_symbols function tests"""
+    """get_symbols function tests (pyelftools-based)"""
 
-    @patch("subprocess.run")
-    def test_get_symbols_success(self, mock_run):
-        """Test getting symbols successfully"""
-        # First call for mangled names
-        mock_run.side_effect = [
-            Mock(
-                returncode=0,
-                stdout="08000000 T main\n20000000 D var\n08001000 t static_func\n",
-            ),
-            Mock(
-                returncode=0,
-                stdout="08000000 T main\n20000000 D var\n08001000 t static_func\n",
-            ),
-        ]
+    @patch("core.elf_utils.subprocess.run")
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_get_symbols_success(self, mock_open, mock_elffile_cls, mock_run):
+        """Test getting symbols with pyelftools"""
+        mock_elf = _make_mock_elf([
+            ("main", 0x08000000, 100, "STT_FUNC", 1, ".text"),
+            ("g_var", 0x20000000, 4, "STT_OBJECT", 2, ".data"),
+            ("k_const", 0x08010000, 8, "STT_OBJECT", 3, ".rodata"),
+        ])
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
 
-        symbols = elf_utils.get_symbols("/path/to/elf")
+        # nm -C for demangling pass (returns empty — no C++ symbols)
+        mock_run.return_value = Mock(returncode=0, stdout="")
 
-        self.assertIn("main", symbols)
-        self.assertEqual(symbols["main"], 0x08000000)
-        self.assertIn("static_func", symbols)
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
 
-    @patch("subprocess.run")
-    def test_get_symbols_with_demangled(self, mock_run):
-        """Test getting symbols with demangled names"""
-        mock_run.side_effect = [
-            Mock(returncode=0, stdout="08000000 T _Z4testv\n"),
-            Mock(returncode=0, stdout="08000000 T test()\n"),
-        ]
+        try:
+            symbols = elf_utils.get_symbols(elf_path)
 
-        symbols = elf_utils.get_symbols("/path/to/elf")
+            self.assertIn("main", symbols)
+            self.assertEqual(symbols["main"]["addr"], 0x08000000)
+            self.assertEqual(symbols["main"]["type"], "function")
+            self.assertEqual(symbols["main"]["size"], 100)
 
-        self.assertIn("_Z4testv", symbols)
-        self.assertIn("test", symbols)
+            self.assertIn("g_var", symbols)
+            self.assertEqual(symbols["g_var"]["type"], "variable")
 
-    @patch("subprocess.run")
-    def test_get_symbols_error(self, mock_run):
-        """Test getting symbols with error"""
-        mock_run.side_effect = Exception("nm failed")
+            self.assertIn("k_const", symbols)
+            self.assertEqual(symbols["k_const"]["type"], "const")
+        finally:
+            os.unlink(elf_path)
 
-        symbols = elf_utils.get_symbols("/path/to/elf")
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_get_symbols_skips_undefined(self, mock_open, mock_elffile_cls):
+        """Test that undefined and zero-size symbols are skipped"""
+        mock_elf = _make_mock_elf([
+            ("undef_sym", 0, 0, "STT_FUNC", "SHN_UNDEF", ""),
+            ("zero_size", 0x08000000, 0, "STT_FUNC", 1, ".text"),
+            ("valid", 0x08000100, 10, "STT_FUNC", 1, ".text"),
+        ])
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
 
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            symbols = elf_utils.get_symbols(elf_path)
+            self.assertNotIn("undef_sym", symbols)
+            self.assertNotIn("zero_size", symbols)
+            self.assertIn("valid", symbols)
+        finally:
+            os.unlink(elf_path)
+
+    def test_get_symbols_nonexistent_file(self):
+        """Test with nonexistent ELF file"""
+        symbols = elf_utils.get_symbols("/nonexistent/file.elf")
         self.assertEqual(symbols, {})
+
+    def test_get_symbols_empty_path(self):
+        """Test with empty path"""
+        symbols = elf_utils.get_symbols("")
+        self.assertEqual(symbols, {})
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_get_symbols_exception(self, mock_open, mock_elffile_cls):
+        """Test getting symbols when pyelftools raises exception"""
+        mock_elffile_cls.side_effect = Exception("Invalid ELF")
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            symbols = elf_utils.get_symbols(elf_path)
+            self.assertEqual(symbols, {})
+        finally:
+            os.unlink(elf_path)
+
+
+class TestReadSymbolValue(unittest.TestCase):
+    """read_symbol_value function tests"""
+
+    def test_nonexistent_file(self):
+        result = elf_utils.read_symbol_value("/nonexistent.elf", "sym")
+        self.assertIsNone(result)
+
+    def test_empty_path(self):
+        result = elf_utils.read_symbol_value("", "sym")
+        self.assertIsNone(result)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_read_rodata_value(self, mock_open, mock_elffile_cls):
+        """Test reading a .rodata symbol value"""
+        mock_elf = MagicMock()
+        mock_symtab = MagicMock(spec=SymbolTableSection)
+
+        # Create a symbol at addr 0x08010004, size 4, in section starting at 0x08010000
+        sym = MagicMock()
+        sym.name = "my_const"
+        sym.__getitem__ = lambda self, key: {
+            "st_size": 4,
+            "st_value": 0x08010004,
+            "st_shndx": 1,
+        }[key]
+
+        section = MagicMock()
+        section.name = ".rodata"
+        section.__getitem__ = lambda self, key: {
+            "sh_addr": 0x08010000,
+            "sh_type": "SHT_PROGBITS",
+        }[key]
+        section.data.return_value = b"\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06"
+
+        mock_symtab.iter_symbols.return_value = [sym]
+        mock_elf.get_section_by_name.return_value = mock_symtab
+        mock_elf.get_section.return_value = section
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = elf_utils.read_symbol_value(elf_path, "my_const")
+            self.assertEqual(result, b"\x01\x02\x03\x04")
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_read_bss_returns_none(self, mock_open, mock_elffile_cls):
+        """Test that .bss symbols return None"""
+        mock_elf = MagicMock()
+        mock_symtab = MagicMock(spec=SymbolTableSection)
+
+        sym = MagicMock()
+        sym.name = "bss_var"
+        sym.__getitem__ = lambda self, key: {
+            "st_size": 4,
+            "st_value": 0x20000000,
+            "st_shndx": 2,
+        }[key]
+
+        section = MagicMock()
+        section.name = ".bss"
+        section.__getitem__ = lambda self, key: {
+            "sh_addr": 0x20000000,
+            "sh_type": "SHT_NOBITS",
+        }[key]
+
+        mock_symtab.iter_symbols.return_value = [sym]
+        mock_elf.get_section_by_name.return_value = mock_symtab
+        mock_elf.get_section.return_value = section
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = elf_utils.read_symbol_value(elf_path, "bss_var")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_read_symbol_not_found(self, mock_open, mock_elffile_cls):
+        """Test reading a symbol that doesn't exist"""
+        mock_elf = MagicMock()
+        mock_symtab = MagicMock(spec=SymbolTableSection)
+        mock_symtab.iter_symbols.return_value = []
+        mock_elf.get_section_by_name.return_value = mock_symtab
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = elf_utils.read_symbol_value(elf_path, "nonexistent")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
+
+
+class TestGetStructLayout(unittest.TestCase):
+    """get_struct_layout function tests"""
+
+    def test_nonexistent_file(self):
+        result = elf_utils.get_struct_layout("/nonexistent.elf", "sym")
+        self.assertIsNone(result)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_no_dwarf_info(self, mock_open, mock_elffile_cls):
+        """Test when ELF has no DWARF info"""
+        mock_elf = MagicMock()
+        mock_elf.has_dwarf_info.return_value = False
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = elf_utils.get_struct_layout(elf_path, "my_struct")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
+
+    @patch("core.elf_utils.ELFFile")
+    @patch("builtins.open", create=True)
+    def test_variable_not_found(self, mock_open, mock_elffile_cls):
+        """Test when variable not found in DWARF"""
+        mock_elf = MagicMock()
+        mock_elf.has_dwarf_info.return_value = True
+        mock_dwarf = MagicMock()
+        mock_cu = MagicMock()
+        mock_cu.iter_DIEs.return_value = []
+        mock_dwarf.iter_CUs.return_value = [mock_cu]
+        mock_elf.get_dwarf_info.return_value = mock_dwarf
+        mock_elffile_cls.return_value = mock_elf
+        mock_open.return_value.__enter__ = lambda s: MagicMock()
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            elf_path = f.name
+
+        try:
+            result = elf_utils.get_struct_layout(elf_path, "nonexistent")
+            self.assertIsNone(result)
+        finally:
+            os.unlink(elf_path)
 
 
 class TestDisassembleFunction(unittest.TestCase):
@@ -519,34 +793,19 @@ class TestGetElfBuildTimeExtended(unittest.TestCase):
             os.unlink(elf_path)
 
 
-class TestGetSymbolsExtended(unittest.TestCase):
-    """Extended get_symbols tests"""
+class TestGetTypeHelpers(unittest.TestCase):
+    """Tests for DWARF type helper functions"""
 
-    @patch("subprocess.run")
-    def test_get_symbols_with_invalid_address(self, mock_run):
-        """Test getting symbols with invalid address format"""
-        mock_run.side_effect = [
-            Mock(returncode=0, stdout="invalid T main\n"),
-            Mock(returncode=0, stdout=""),
-        ]
+    def test_get_type_name_none(self):
+        self.assertEqual(elf_utils._get_type_name(None), "unknown")
 
-        symbols = elf_utils.get_symbols("/path/to/elf")
+    def test_get_type_name_max_depth(self):
+        self.assertEqual(elf_utils._get_type_name(MagicMock(), max_depth=0), "unknown")
 
-        # Should skip invalid lines
-        self.assertNotIn("main", symbols)
-
-    @patch("subprocess.run")
-    def test_get_symbols_with_function_signature(self, mock_run):
-        """Test getting symbols with C++ function signatures"""
-        mock_run.side_effect = [
-            Mock(returncode=0, stdout="08000000 T _Z4testv\n"),
-            Mock(returncode=0, stdout="08000000 T test(int, char*)\n"),
-        ]
-
-        symbols = elf_utils.get_symbols("/path/to/elf")
-
-        self.assertIn("_Z4testv", symbols)
-        self.assertIn("test", symbols)
+    def test_get_type_size_with_byte_size(self):
+        die = MagicMock()
+        die.attributes = {"DW_AT_byte_size": MagicMock(value=4)}
+        self.assertEqual(elf_utils._get_type_size(die), 4)
 
 
 if __name__ == "__main__":

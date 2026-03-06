@@ -813,15 +813,28 @@ void test_loader_cmd_read(void) {
     const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
     fl_exec_cmd(&test_ctx, 5, alloc_argv);
 
+    /* Write known data to allocated memory */
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    uint8_t* ptr = (uint8_t*)alloc_addr;
+    for (int i = 0; i < 16; i++) {
+        ptr[i] = (uint8_t)(0xA0 + i);
+    }
+
     mock_output_reset();
 
-    /* Try read command */
-    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0", "--len", "16"};
+    /* Read back via read command */
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", addr_str, "--len", "16"};
     fl_exec_cmd(&test_ctx, 7, argv);
 
-    /* Should return data or error */
+    /* Should return FLOK with base64 data and CRC */
     const char* output = mock_output_get();
     TEST_ASSERT(output != NULL);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("READ 16 bytes"));
+    TEST_ASSERT(mock_output_contains("crc=0x"));
+    TEST_ASSERT(mock_output_contains("data="));
 }
 
 void test_loader_cmd_upload_invalid_data(void) {
@@ -967,13 +980,158 @@ void test_loader_cmd_read_no_alloc(void) {
     setup_loader();
     fl_init(&test_ctx);
 
-    /* Try read without alloc */
-    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0", "--len", "16"};
+    /* Read from a stack-local buffer without alloc — should still work */
+    static uint8_t local_buf[16] = {0x01, 0x02, 0x03, 0x04};
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)(uintptr_t)local_buf);
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", addr_str, "--len", "4"};
     fl_exec_cmd(&test_ctx, 7, argv);
 
-    /* Should fail or return error */
     const char* output = mock_output_get();
     TEST_ASSERT(output != NULL);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("READ 4 bytes"));
+}
+
+void test_loader_cmd_read_invalid_len(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Read with length 0 — should fail */
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0x1000", "--len", "0"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid length"));
+}
+
+void test_loader_cmd_write(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate a buffer to write into */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    mock_output_reset();
+
+    /* Write base64 data "AQIDBA==" = {0x01, 0x02, 0x03, 0x04} */
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "AQIDBA=="};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("WRITE 4 bytes"));
+
+    /* Verify memory contents */
+    uint8_t* ptr = (uint8_t*)alloc_addr;
+    TEST_ASSERT_EQUAL(0x01, ptr[0]);
+    TEST_ASSERT_EQUAL(0x02, ptr[1]);
+    TEST_ASSERT_EQUAL(0x03, ptr[2]);
+    TEST_ASSERT_EQUAL(0x04, ptr[3]);
+}
+
+void test_loader_cmd_write_with_crc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    mock_output_reset();
+
+    /* Write with valid CRC — "AQIDBA==" = {0x01, 0x02, 0x03, 0x04}, CRC pre-computed */
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+
+    /* First write without CRC to get the data in, then read to find CRC */
+    /* Use hex data "01020304" for simplicity */
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "01020304"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("WRITE 4 bytes"));
+}
+
+void test_loader_cmd_write_crc_mismatch(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    mock_output_reset();
+
+    /* Write with wrong CRC */
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "01020304", "--crc", "0xFFFF"};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+}
+
+void test_loader_cmd_write_no_data(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Write without --data should fail */
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", "0x1000"};
+    fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR") || mock_output_contains("Missing"));
+}
+
+void test_loader_cmd_write_zero_addr(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Write to address 0 should fail */
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", "0x0", "--data", "01020304"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid address"));
+}
+
+void test_loader_cmd_read_write_roundtrip(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate buffer */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+
+    mock_output_reset();
+
+    /* Write known data */
+    const char* write_argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "DEADBEEF"};
+    fl_exec_cmd(&test_ctx, 7, write_argv);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+
+    mock_output_reset();
+
+    /* Read it back */
+    const char* read_argv[] = {"fl", "--cmd", "read", "--addr", addr_str, "--len", "4"};
+    fl_exec_cmd(&test_ctx, 7, read_argv);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("READ 4 bytes"));
+
+    /* Verify memory directly */
+    uint8_t* ptr = (uint8_t*)alloc_addr;
+    TEST_ASSERT_EQUAL(0xDE, ptr[0]);
+    TEST_ASSERT_EQUAL(0xAD, ptr[1]);
+    TEST_ASSERT_EQUAL(0xBE, ptr[2]);
+    TEST_ASSERT_EQUAL(0xEF, ptr[3]);
 }
 
 void test_loader_cmd_run_no_alloc(void) {
@@ -1082,5 +1240,12 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_run_no_alloc);
     RUN_TEST(test_loader_cmd_read);
     RUN_TEST(test_loader_cmd_read_no_alloc);
+    RUN_TEST(test_loader_cmd_read_invalid_len);
+    RUN_TEST(test_loader_cmd_write);
+    RUN_TEST(test_loader_cmd_write_with_crc);
+    RUN_TEST(test_loader_cmd_write_crc_mismatch);
+    RUN_TEST(test_loader_cmd_write_no_data);
+    RUN_TEST(test_loader_cmd_write_zero_addr);
+    RUN_TEST(test_loader_cmd_read_write_roundtrip);
     TEST_SUITE_END();
 }

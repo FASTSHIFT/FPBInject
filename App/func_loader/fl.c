@@ -152,8 +152,6 @@ static int base64_to_bytes(const char* b64, uint8_t* out, size_t max) {
     return (int)out_len;
 }
 
-#if FL_USE_FILE
-
 static int bytes_to_base64(const uint8_t* data, size_t len, char* out, size_t max) {
     /* Base64 encoding table */
     static const char s_b64_enc[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -180,8 +178,6 @@ static int bytes_to_base64(const uint8_t* data, size_t len, char* out, size_t ma
 
     return (int)j;
 }
-
-#endif /* FL_USE_FILE */
 
 void fl_init_default(fl_context_t* ctx) {
     memset(ctx, 0, sizeof(fl_context_t));
@@ -303,12 +299,11 @@ static void cmd_alloc(fl_context_t* ctx, size_t size) {
 }
 
 static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str, uintptr_t crc, bool verify) {
-    static uint8_t buf[2048];
-    int n;
+    uint8_t* buf = ctx->buf;
 
-    n = base64_to_bytes(data_str, buf, sizeof(buf));
+    int n = base64_to_bytes(data_str, buf, FL_BUF_SIZE);
     if (n < 0) {
-        fl_response(false, "Invalid data encoding");
+        fl_response(false, "Invalid base64 data");
         return;
     }
 
@@ -341,6 +336,68 @@ static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str
     }
 
     fl_response(true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)dest);
+}
+
+static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len) {
+    uint8_t* buf = ctx->buf;
+    char* b64_buf = ctx->b64_buf;
+
+    if (len <= 0 || (size_t)len > FL_BUF_SIZE) {
+        fl_response(false, "Invalid length %d (max %d)", len, (int)FL_BUF_SIZE);
+        return;
+    }
+
+    /* Read memory at the given address */
+    const uint8_t* src = (const uint8_t*)addr;
+    memcpy(buf, src, len);
+
+    /* Base64 encode */
+    if (bytes_to_base64(buf, len, b64_buf, FL_B64_BUF_SIZE) < 0) {
+        fl_response(false, "Base64 encode failed");
+        return;
+    }
+
+    /* CRC-16 for verification */
+    uint16_t crc = calc_crc16(buf, len);
+
+    /* Output in segments to avoid buffer overflow */
+    fl_print("[FLOK] READ %d bytes crc=0x%04X data=", len, (unsigned)crc);
+    fl_print_raw(b64_buf);
+    fl_print_raw("\n");
+}
+
+static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* data_str, uintptr_t crc, bool verify) {
+    uint8_t* buf = ctx->buf;
+
+    if (addr == 0) {
+        fl_response(false, "Invalid address 0x0");
+        return;
+    }
+
+    int n = base64_to_bytes(data_str, buf, FL_BUF_SIZE);
+    if (n < 0) {
+        fl_response(false, "Invalid base64 data");
+        return;
+    }
+
+    if (verify) {
+        uint16_t calc = calc_crc16(buf, n);
+        if (calc != (uint16_t)crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
+            return;
+        }
+    }
+
+    /* Write to the specified address */
+    uint8_t* dest = (uint8_t*)addr;
+    memcpy(dest, buf, n);
+
+    /* Flush data cache */
+    if (ctx->flush_dcache_cb) {
+        ctx->flush_dcache_cb((uintptr_t)dest, (uintptr_t)dest + n);
+    }
+
+    fl_response(true, "WRITE %d bytes to 0x%lX", n, (unsigned long)addr);
 }
 
 static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target) {
@@ -536,15 +593,15 @@ static void cmd_fwrite(fl_context_t* ctx, const char* data_str, int crc) {
     }
 
     /* Decode base64 data */
-    int n = base64_to_bytes(data_str, ctx->file_ctx.buf, sizeof(ctx->file_ctx.buf));
+    int n = base64_to_bytes(data_str, ctx->buf, FL_BUF_SIZE);
     if (n < 0) {
-        fl_response(false, "Invalid data encoding");
+        fl_response(false, "Invalid base64 data");
         return;
     }
 
     /* Verify CRC if provided */
     if (crc >= 0) {
-        uint16_t calc = calc_crc16(ctx->file_ctx.buf, n);
+        uint16_t calc = calc_crc16(ctx->buf, n);
         if (calc != (uint16_t)crc) {
             fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
             return;
@@ -552,7 +609,7 @@ static void cmd_fwrite(fl_context_t* ctx, const char* data_str, int crc) {
     }
 
     /* Write to file */
-    ssize_t written = fl_file_write(&ctx->file_ctx, ctx->file_ctx.buf, n);
+    ssize_t written = fl_file_write(&ctx->file_ctx, ctx->buf, n);
     if (written < 0) {
         fl_response(false, "Write failed");
         return;
@@ -567,11 +624,11 @@ static void cmd_fread(fl_context_t* ctx, int len) {
         return;
     }
 
-    if (len <= 0 || len > (int)sizeof(ctx->file_ctx.buf)) {
-        len = sizeof(ctx->file_ctx.buf);
+    if (len <= 0 || len > (int)FL_BUF_SIZE) {
+        len = FL_BUF_SIZE;
     }
 
-    ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->file_ctx.buf, len);
+    ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->buf, len);
     if (nread < 0) {
         fl_response(false, "Read failed");
         return;
@@ -583,17 +640,17 @@ static void cmd_fread(fl_context_t* ctx, int len) {
     }
 
     /* Encode to base64 */
-    if (bytes_to_base64(ctx->file_ctx.buf, nread, ctx->file_ctx.b64_buf, sizeof(ctx->file_ctx.b64_buf)) < 0) {
+    if (bytes_to_base64(ctx->buf, nread, ctx->b64_buf, FL_B64_BUF_SIZE) < 0) {
         fl_response(false, "Base64 encode failed");
         return;
     }
 
     /* Calculate CRC */
-    uint16_t crc = calc_crc16(ctx->file_ctx.buf, nread);
+    uint16_t crc = calc_crc16(ctx->buf, nread);
 
     /* Output in parts to avoid buffer overflow */
     fl_print("[FLOK] FREAD %d bytes crc=0x%04X data=", (int)nread, (unsigned)crc);
-    fl_print_raw(ctx->file_ctx.b64_buf);
+    fl_print_raw(ctx->b64_buf);
     fl_print_raw("\n[FLEND]\n");
 }
 
@@ -636,12 +693,12 @@ static void cmd_fcrc(fl_context_t* ctx, off_t size) {
     off_t remaining = size > 0 ? size : LLONG_MAX;
 
     while (remaining > 0) {
-        size_t to_read = sizeof(ctx->file_ctx.buf);
+        size_t to_read = FL_BUF_SIZE;
         if ((off_t)to_read > remaining) {
             to_read = (size_t)remaining;
         }
 
-        ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->file_ctx.buf, to_read);
+        ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->buf, to_read);
         if (nread < 0) {
             fl_response(false, "Read failed during CRC calculation");
             return;
@@ -651,7 +708,7 @@ static void cmd_fcrc(fl_context_t* ctx, off_t size) {
         }
 
         /* Update CRC incrementally (same algorithm as calc_crc16) */
-        crc = calc_crc16_base(crc, ctx->file_ctx.buf, nread);
+        crc = calc_crc16_base(crc, ctx->buf, nread);
         total_read += nread;
         remaining -= nread;
     }
@@ -877,6 +934,14 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             return -1;
         }
         cmd_upload(ctx, addr, data, crc, crc >= 0);
+    } else if (strcmp(cmd, "read") == 0) {
+        cmd_read(ctx, addr, len);
+    } else if (strcmp(cmd, "write") == 0) {
+        if (!data) {
+            fl_response(false, "Missing --data");
+            return -1;
+        }
+        cmd_write(ctx, addr, data, crc, crc >= 0);
     } else if (strcmp(cmd, "patch") == 0) {
         if (orig == 0 || target == 0) {
             fl_response(false, "Missing --orig/--target");

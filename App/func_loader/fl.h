@@ -41,6 +41,14 @@ extern "C" {
 /* Maximum slot count (FPB v1: 6, v2: 8) */
 #define FL_MAX_SLOTS 8
 
+/* Shared transfer buffer sizes */
+#ifndef FL_BUF_SIZE
+#define FL_BUF_SIZE 2048
+#endif
+#ifndef FL_B64_BUF_SIZE
+#define FL_B64_BUF_SIZE 4096
+#endif
+
 /* Callback types */
 typedef void (*fl_output_cb_t)(void* user, const char* str);
 typedef void* (*fl_malloc_cb_t)(size_t size);
@@ -82,6 +90,10 @@ typedef struct fl_context_s {
 
     /* Slot tracking */
     fl_slot_state_t slots[FL_MAX_SLOTS];
+
+    /* Shared transfer buffers (used by upload/read/write/file commands) */
+    uint8_t buf[FL_BUF_SIZE];
+    char b64_buf[FL_B64_BUF_SIZE];
 
 #if FL_USE_FILE
     /* File transfer context (embedded, no dynamic allocation) */

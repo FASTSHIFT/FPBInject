@@ -13,11 +13,42 @@ import logging
 import os
 import re
 import subprocess
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from elftools.elf.elffile import ELFFile
+from elftools.elf.sections import SymbolTableSection
 
 from utils.toolchain import get_tool_path, get_subprocess_env
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Symbol type classification helpers
+# ---------------------------------------------------------------------------
+
+def _classify_symbol(sym_type: str, section_name: str) -> str:
+    """Classify a symbol as 'function', 'variable', or 'const'.
+
+    Args:
+        sym_type: ELF symbol type string (STT_FUNC, STT_OBJECT, etc.)
+        section_name: Name of the section the symbol belongs to
+
+    Returns:
+        One of 'function', 'variable', 'const', or 'other'
+    """
+    if sym_type == "STT_FUNC":
+        return "function"
+    if sym_type == "STT_OBJECT":
+        if section_name in (".rodata", ".rodata.str1.1", ".rodata.str1.4"):
+            return "const"
+        if section_name in (".data", ".bss"):
+            return "variable"
+        # Fallback: treat unknown sections with STT_OBJECT as variable
+        if section_name.startswith(".rodata"):
+            return "const"
+        return "variable"
+    return "other"
 
 
 def get_elf_build_time(elf_path: str) -> Optional[str]:
@@ -74,40 +105,72 @@ def get_elf_build_time(elf_path: str) -> Optional[str]:
         return None
 
 
-def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str, int]:
-    """Extract symbols from ELF file.
+def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str, dict]:
+    """Extract symbols from ELF file using pyelftools.
 
-    Returns a dictionary with both mangled and demangled names pointing to addresses.
+    Returns a dictionary mapping symbol names to info dicts:
+        {"name": {"addr": int, "size": int, "type": str, "section": str}}
+
+    The 'type' field is one of: 'function', 'variable', 'const', 'other'.
+    Both mangled and demangled names are included when a toolchain is available.
     """
-    symbols = {}
+    symbols: Dict[str, dict] = {}
+
+    if not elf_path or not os.path.exists(elf_path):
+        return symbols
+
+    try:
+        with open(elf_path, "rb") as f:
+            elf = ELFFile(f)
+            symtab = elf.get_section_by_name(".symtab")
+            if not isinstance(symtab, SymbolTableSection):
+                logger.warning("No .symtab section found in ELF")
+                return symbols
+
+            for sym in symtab.iter_symbols():
+                if not sym.name:
+                    continue
+                # Skip undefined and absolute symbols
+                shndx = sym["st_shndx"]
+                if shndx in ("SHN_UNDEF", "SHN_ABS"):
+                    continue
+                # Skip zero-size symbols (labels, etc.)
+                if sym["st_size"] == 0:
+                    continue
+
+                sym_type = sym["st_info"]["type"]
+                # Only keep functions and objects
+                if sym_type not in ("STT_FUNC", "STT_OBJECT"):
+                    continue
+
+                section_name = ""
+                try:
+                    if isinstance(shndx, int):
+                        section = elf.get_section(shndx)
+                        section_name = section.name if section else ""
+                except Exception:
+                    pass
+
+                info = {
+                    "addr": sym["st_value"],
+                    "size": sym["st_size"],
+                    "type": _classify_symbol(sym_type, section_name),
+                    "section": section_name,
+                }
+                symbols[sym.name] = info
+
+    except Exception as e:
+        logger.error(f"Error reading symbols with pyelftools: {e}")
+        return symbols
+
+    # Also add demangled names via nm -C for C++ support
     try:
         nm_tool = get_tool_path("arm-none-eabi-nm", toolchain_path)
         env = get_subprocess_env(toolchain_path)
-
-        # First get mangled names (without -C)
-        result = subprocess.run(
-            [nm_tool, elf_path],
-            capture_output=True,
-            text=True,
-            check=True,
-            env=env,
-        )
-        for line in result.stdout.splitlines():
-            parts = line.split()
-            if len(parts) >= 3:
-                try:
-                    addr = int(parts[0], 16)
-                    name = parts[2]
-                    symbols[name] = addr
-                except ValueError:
-                    pass
-
-        # Also get demangled names (-C) for easier lookup
         result = subprocess.run(
             [nm_tool, "-C", elf_path],
             capture_output=True,
             text=True,
-            check=True,
             env=env,
         )
         for line in result.stdout.splitlines():
@@ -116,15 +179,264 @@ def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str
                 try:
                     addr = int(parts[0], 16)
                     full_name = " ".join(parts[2:])
-                    if "(" in full_name:
-                        short_name = full_name.split("(")[0]
-                        symbols[short_name] = addr
-                    symbols[full_name] = addr
+                    mangled = parts[2] if len(parts) == 3 else None
+
+                    # Find the mangled symbol info to copy
+                    base_info = None
+                    if mangled and mangled in symbols:
+                        base_info = symbols[mangled]
+                    else:
+                        # Search by address
+                        for info in symbols.values():
+                            if info["addr"] == addr:
+                                base_info = info
+                                break
+
+                    if base_info and full_name not in symbols:
+                        symbols[full_name] = dict(base_info)
+                        # Also add short name for C++ functions
+                        if "(" in full_name:
+                            short_name = full_name.split("(")[0]
+                            if short_name not in symbols:
+                                symbols[short_name] = dict(base_info)
                 except ValueError:
                     pass
     except Exception as e:
-        logger.error(f"Error reading symbols: {e}")
+        logger.debug(f"Demangling pass skipped: {e}")
+
     return symbols
+
+
+def read_symbol_value(elf_path: str, sym_name: str) -> Optional[bytes]:
+    """Read the raw bytes of a symbol's value from the ELF section data.
+
+    Returns None for .bss symbols (no initial value) or if symbol not found.
+    """
+    if not elf_path or not os.path.exists(elf_path):
+        return None
+
+    try:
+        with open(elf_path, "rb") as f:
+            elf = ELFFile(f)
+            symtab = elf.get_section_by_name(".symtab")
+            if not isinstance(symtab, SymbolTableSection):
+                return None
+
+            for sym in symtab.iter_symbols():
+                if sym.name == sym_name and sym["st_size"] > 0:
+                    shndx = sym["st_shndx"]
+                    if not isinstance(shndx, int):
+                        continue
+                    section = elf.get_section(shndx)
+                    if not section:
+                        continue
+                    # .bss has no data in ELF
+                    if section.name.startswith(".bss"):
+                        return None
+                    if section["sh_type"] == "SHT_NOBITS":
+                        return None
+                    offset = sym["st_value"] - section["sh_addr"]
+                    data = section.data()
+                    return data[offset : offset + sym["st_size"]]
+    except Exception as e:
+        logger.error(f"Error reading symbol value: {e}")
+    return None
+
+
+# ---------------------------------------------------------------------------
+# DWARF struct layout parsing
+# ---------------------------------------------------------------------------
+
+def _resolve_type_die(die, max_depth=20):
+    """Follow DW_AT_type references to reach the underlying type DIE.
+
+    Traverses through typedef, const, volatile, pointer qualifiers.
+    Returns the terminal type DIE (e.g. DW_TAG_structure_type, DW_TAG_base_type).
+    """
+    visited = set()
+    current = die
+    for _ in range(max_depth):
+        if current is None or current.offset in visited:
+            return current
+        visited.add(current.offset)
+
+        type_attr = current.attributes.get("DW_AT_type")
+        if type_attr is None:
+            return current
+
+        # Tags that are just qualifiers — keep following
+        if current.tag in (
+            "DW_TAG_typedef",
+            "DW_TAG_const_type",
+            "DW_TAG_volatile_type",
+            "DW_TAG_restrict_type",
+        ):
+            ref_offset = type_attr.value
+            try:
+                current = current.cu.get_DIE_from_refaddr(
+                    ref_offset + current.cu.cu_offset
+                    if type_attr.form.startswith("DW_FORM_ref")
+                    and not type_attr.form == "DW_FORM_ref_addr"
+                    else ref_offset
+                )
+            except Exception:
+                return current
+        else:
+            return current
+    return current
+
+
+def _get_type_die_from_attr(die):
+    """Get the type DIE referenced by a DIE's DW_AT_type attribute."""
+    type_attr = die.attributes.get("DW_AT_type")
+    if type_attr is None:
+        return None
+    try:
+        ref_offset = type_attr.value
+        if type_attr.form.startswith("DW_FORM_ref") and type_attr.form != "DW_FORM_ref_addr":
+            ref_offset += die.cu.cu_offset
+        return die.cu.get_DIE_from_refaddr(ref_offset)
+    except Exception:
+        return None
+
+
+def _get_type_name(die, max_depth=20):
+    """Get a human-readable type name from a DWARF type DIE."""
+    if die is None or max_depth <= 0:
+        return "unknown"
+
+    tag = die.tag
+    name_attr = die.attributes.get("DW_AT_name")
+
+    if tag in ("DW_TAG_base_type", "DW_TAG_structure_type",
+               "DW_TAG_union_type", "DW_TAG_enumeration_type"):
+        if name_attr:
+            return name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+        return f"<anon {tag.split('_')[-1]}>"
+
+    if tag == "DW_TAG_typedef":
+        if name_attr:
+            return name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+        child = _get_type_die_from_attr(die)
+        return _get_type_name(child, max_depth - 1)
+
+    if tag in ("DW_TAG_const_type", "DW_TAG_volatile_type", "DW_TAG_restrict_type"):
+        qualifier = tag.replace("DW_TAG_", "").replace("_type", "")
+        child = _get_type_die_from_attr(die)
+        return f"{qualifier} {_get_type_name(child, max_depth - 1)}"
+
+    if tag == "DW_TAG_pointer_type":
+        child = _get_type_die_from_attr(die)
+        if child is None:
+            return "void *"
+        return f"{_get_type_name(child, max_depth - 1)} *"
+
+    if tag == "DW_TAG_array_type":
+        child = _get_type_die_from_attr(die)
+        base_name = _get_type_name(child, max_depth - 1) if child else "unknown"
+        # Get array dimensions
+        for sub in die.iter_children():
+            if sub.tag == "DW_TAG_subrange_type":
+                count_attr = sub.attributes.get("DW_AT_count") or sub.attributes.get("DW_AT_upper_bound")
+                if count_attr:
+                    count = count_attr.value
+                    if sub.attributes.get("DW_AT_upper_bound"):
+                        count += 1
+                    return f"{base_name}[{count}]"
+        return f"{base_name}[]"
+
+    if name_attr:
+        return name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+    return "unknown"
+
+
+def _get_type_size(die):
+    """Get the byte size of a type DIE."""
+    size_attr = die.attributes.get("DW_AT_byte_size")
+    if size_attr:
+        return size_attr.value
+
+    # Follow type reference for typedef/qualifier
+    child = _get_type_die_from_attr(die)
+    if child and child.offset != die.offset:
+        return _get_type_size(child)
+    return 0
+
+
+def _parse_struct_members(struct_die) -> List[dict]:
+    """Parse members of a DW_TAG_structure_type DIE."""
+    members = []
+    for child in struct_die.iter_children():
+        if child.tag != "DW_TAG_member":
+            continue
+
+        name_attr = child.attributes.get("DW_AT_name")
+        name = ""
+        if name_attr:
+            name = name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+
+        offset = 0
+        loc_attr = child.attributes.get("DW_AT_data_member_location")
+        if loc_attr is not None:
+            if isinstance(loc_attr.value, int):
+                offset = loc_attr.value
+            elif isinstance(loc_attr.value, list) and len(loc_attr.value) > 0:
+                # DWARF expression — try to extract constant
+                offset = loc_attr.value[0] if isinstance(loc_attr.value[0], int) else 0
+
+        # Get member type info
+        member_type_die = _get_type_die_from_attr(child)
+        resolved = _resolve_type_die(member_type_die) if member_type_die else None
+        type_name = _get_type_name(member_type_die) if member_type_die else "unknown"
+        size = _get_type_size(resolved) if resolved else 0
+
+        members.append({
+            "name": name,
+            "offset": offset,
+            "size": size,
+            "type_name": type_name,
+        })
+
+    return members
+
+
+def get_struct_layout(elf_path: str, sym_name: str) -> Optional[List[dict]]:
+    """Get struct member layout for a symbol via DWARF debug info.
+
+    Returns a list of member dicts: [{"name", "offset", "size", "type_name"}, ...]
+    Returns None if the symbol is not a struct, or if no DWARF info is available.
+    """
+    if not elf_path or not os.path.exists(elf_path):
+        return None
+
+    try:
+        with open(elf_path, "rb") as f:
+            elf = ELFFile(f)
+            if not elf.has_dwarf_info():
+                return None
+
+            dwarf = elf.get_dwarf_info()
+            for cu in dwarf.iter_CUs():
+                for die in cu.iter_DIEs():
+                    if die.tag != "DW_TAG_variable":
+                        continue
+                    name_attr = die.attributes.get("DW_AT_name")
+                    if not name_attr:
+                        continue
+                    die_name = name_attr.value.decode() if isinstance(name_attr.value, bytes) else str(name_attr.value)
+                    if die_name != sym_name:
+                        continue
+
+                    # Found the variable — resolve its type
+                    type_die = _get_type_die_from_attr(die)
+                    resolved = _resolve_type_die(type_die) if type_die else None
+                    if resolved and resolved.tag == "DW_TAG_structure_type":
+                        return _parse_struct_members(resolved)
+                    # Not a struct
+                    return None
+    except Exception as e:
+        logger.debug(f"DWARF struct layout parse failed for {sym_name}: {e}")
+    return None
 
 
 def disassemble_function(

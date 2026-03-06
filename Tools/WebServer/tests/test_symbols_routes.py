@@ -452,5 +452,120 @@ class TestDecompileStreamEndpoint(SymbolRoutesBase):
                     os.unlink(state.device.elf_path)
 
 
+class TestSymbolValueEndpoint(SymbolRoutesBase):
+    """Test /api/symbols/value endpoint."""
+
+    def test_no_name(self):
+        response = self.client.get("/api/symbols/value")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("not specified", data["error"])
+
+    def test_no_elf(self):
+        response = self.client.get("/api/symbols/value?name=my_var")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("not found", data["error"])
+
+    def test_symbol_not_found(self):
+        state.symbols = {"other": {"addr": 0x08000000, "size": 4, "type": "variable", "section": ".data"}}
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=nonexistent")
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("not found", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.elf_utils.get_struct_layout")
+    @patch("core.elf_utils.read_symbol_value")
+    def test_value_const_symbol(self, mock_read, mock_struct):
+        mock_read.return_value = b"\x01\x02\x03\x04"
+        mock_struct.return_value = []
+        state.symbols = {
+            "my_const": {"addr": 0x08002000, "size": 4, "type": "const", "section": ".rodata"}
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=my_const")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["name"], "my_const")
+            self.assertEqual(data["hex_data"], "01020304")
+            self.assertEqual(data["type"], "const")
+            self.assertEqual(data["section"], ".rodata")
+            self.assertEqual(data["size"], 4)
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.elf_utils.get_struct_layout")
+    @patch("core.elf_utils.read_symbol_value")
+    def test_value_with_struct_layout(self, mock_read, mock_struct):
+        mock_read.return_value = b"\x0a\x00\x00\x00\x14\x00"
+        mock_struct.return_value = [
+            {"name": "x", "type_name": "int16_t", "offset": 0, "size": 2},
+            {"name": "y", "type_name": "int32_t", "offset": 2, "size": 4},
+        ]
+        state.symbols = {
+            "my_struct": {"addr": 0x20000100, "size": 6, "type": "variable", "section": ".data"}
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=my_struct")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(len(data["struct_layout"]), 2)
+            self.assertEqual(data["struct_layout"][0]["name"], "x")
+            self.assertEqual(data["hex_data"], "0a0000001400")
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.elf_utils.get_struct_layout")
+    @patch("core.elf_utils.read_symbol_value")
+    def test_value_bss_no_data(self, mock_read, mock_struct):
+        mock_read.return_value = None
+        mock_struct.return_value = []
+        state.symbols = {
+            "bss_var": {"addr": 0x20001000, "size": 8, "type": "variable", "section": ".bss"}
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=bss_var")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertIsNone(data["hex_data"])
+            self.assertEqual(data["section"], ".bss")
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.elf_utils.get_struct_layout")
+    @patch("core.elf_utils.read_symbol_value")
+    def test_value_old_int_format(self, mock_read, mock_struct):
+        """Backward compat: symbols stored as plain int."""
+        mock_read.return_value = b"\xff"
+        mock_struct.return_value = []
+        state.symbols = {"legacy_sym": 0x08003000}
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=legacy_sym")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["addr"], "0x08003000")
+            self.assertEqual(data["hex_data"], "ff")
+        finally:
+            os.unlink(state.device.elf_path)
+
+
 if __name__ == "__main__":
     unittest.main()

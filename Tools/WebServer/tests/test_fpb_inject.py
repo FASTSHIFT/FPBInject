@@ -1470,28 +1470,27 @@ class TestFPBInjectCoverage(unittest.TestCase):
         finally:
             os.remove(cmd_path)
 
-    @patch("subprocess.run")
-    def test_get_symbols(self, mock_run):
+    @patch("core.elf_utils.get_symbols")
+    def test_get_symbols(self, mock_get_symbols):
         """Test getting symbol table"""
-        mock_output = MagicMock()
-        mock_output.stdout = """
-08000000 T main
-20000000 D var
-08001000 t static_func
-"""
-        mock_run.return_value = mock_output
+        mock_get_symbols.return_value = {
+            "main": {"addr": 0x08000000, "size": 64, "type": "function", "section": ".text"},
+            "var": {"addr": 0x20000000, "size": 4, "type": "variable", "section": ".data"},
+            "static_func": {"addr": 0x08001000, "size": 32, "type": "function", "section": ".text"},
+        }
         self.fpb._toolchain_path = "/usr/bin"
 
         symbols = self.fpb.get_symbols("/path/to/elf")
 
         self.assertIn("main", symbols)
-        self.assertEqual(symbols["main"], 0x08000000)
+        self.assertEqual(symbols["main"]["addr"], 0x08000000)
+        self.assertEqual(symbols["main"]["type"], "function")
         self.assertIn("static_func", symbols)
 
-    @patch("subprocess.run")
-    def test_get_symbols_error(self, mock_run):
+    @patch("core.elf_utils.get_symbols")
+    def test_get_symbols_error(self, mock_get_symbols):
         """Test getting symbol table failure"""
-        mock_run.side_effect = Exception("nm failed")
+        mock_get_symbols.return_value = {}
 
         symbols = self.fpb.get_symbols("/path/to/elf")
 

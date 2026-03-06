@@ -45,8 +45,14 @@ def api_get_symbols():
 
     # Convert to list and limit
     symbol_list = [
-        {"name": name, "addr": f"0x{addr:08X}"}
-        for name, addr in sorted(symbols.items(), key=lambda x: x[0])
+        {
+            "name": name,
+            "addr": f"0x{info['addr']:08X}" if isinstance(info, dict) else f"0x{info:08X}",
+            "size": info.get("size", 0) if isinstance(info, dict) else 0,
+            "type": info.get("type", "other") if isinstance(info, dict) else "function",
+            "section": info.get("section", "") if isinstance(info, dict) else "",
+        }
+        for name, info in sorted(symbols.items(), key=lambda x: x[0])
     ][:limit]
 
     return jsonify(
@@ -57,6 +63,13 @@ def api_get_symbols():
             "filtered": len(symbols),
         }
     )
+
+
+def _get_addr(info):
+    """Get address from symbol info (supports both old int and new dict format)."""
+    if isinstance(info, dict):
+        return info["addr"]
+    return info
 
 
 @bp.route("/symbols/search", methods=["GET"])
@@ -109,7 +122,7 @@ def api_search_symbols():
                     addr_str = addr_str[2:]
 
                 # Find symbols matching the address (partial match on hex string)
-                symbols = {k: v for k, v in symbols.items() if addr_str in f"{v:08x}"}
+                symbols = {k: v for k, v in symbols.items() if addr_str in f"{_get_addr(v):08x}"}
             except ValueError:
                 # Invalid hex, fall back to name search
                 query_lower = query.lower()
@@ -121,8 +134,14 @@ def api_search_symbols():
 
     # Convert to list and limit
     symbol_list = [
-        {"name": name, "addr": f"0x{addr:08X}"}
-        for name, addr in sorted(symbols.items(), key=lambda x: x[0])
+        {
+            "name": name,
+            "addr": f"0x{_get_addr(info):08X}",
+            "size": info.get("size", 0) if isinstance(info, dict) else 0,
+            "type": info.get("type", "other") if isinstance(info, dict) else "function",
+            "section": info.get("section", "") if isinstance(info, dict) else "",
+        }
+        for name, info in sorted(symbols.items(), key=lambda x: x[0])
     ][:limit]
 
     return jsonify(
@@ -350,3 +369,53 @@ def api_decompile_symbol_stream():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@bp.route("/symbols/value", methods=["GET"])
+def api_get_symbol_value():
+    """Get symbol value from ELF file (for const/variable viewing).
+
+    Returns hex data and optional struct layout from DWARF.
+    """
+    from core import elf_utils
+
+    sym_name = request.args.get("name", "").strip()
+    if not sym_name:
+        return jsonify({"success": False, "error": "Symbol name not specified"})
+
+    device = state.device
+    if not device.elf_path or not os.path.exists(device.elf_path):
+        return jsonify({"success": False, "error": "ELF file not found"})
+
+    # Look up symbol info
+    if not state.symbols_loaded:
+        fpb = _get_fpb_inject()
+        state.symbols = fpb.get_symbols(device.elf_path)
+        state.symbols_loaded = True
+
+    sym_info = state.symbols.get(sym_name)
+    if not sym_info:
+        return jsonify({"success": False, "error": f"Symbol '{sym_name}' not found"})
+
+    addr = _get_addr(sym_info)
+    size = sym_info.get("size", 0) if isinstance(sym_info, dict) else 0
+    sym_type = sym_info.get("type", "other") if isinstance(sym_info, dict) else "function"
+    section = sym_info.get("section", "") if isinstance(sym_info, dict) else ""
+
+    # Read raw bytes from ELF
+    raw_data = elf_utils.read_symbol_value(device.elf_path, sym_name)
+    hex_data = raw_data.hex() if raw_data else None
+
+    # Try to get struct layout from DWARF
+    struct_layout = elf_utils.get_struct_layout(device.elf_path, sym_name)
+
+    return jsonify({
+        "success": True,
+        "name": sym_name,
+        "addr": f"0x{addr:08X}",
+        "size": size,
+        "type": sym_type,
+        "section": section,
+        "hex_data": hex_data,
+        "struct_layout": struct_layout,
+    })
