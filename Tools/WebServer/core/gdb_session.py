@@ -331,9 +331,16 @@ class GDBSession:
 
     def _execute_cli(self, cmd: str, timeout: float = GDB_CMD_TIMEOUT) -> Optional[str]:
         """Execute a GDB CLI command and return console output lines."""
+        t0 = time.time()
         raw = self._execute_mi(cmd, timeout)
+        elapsed = time.time() - t0
         if raw is None:
+            logger.warning(f"[GDB] command timed out ({elapsed:.2f}s): {cmd}")
             return None
+        if elapsed > 1.0:
+            logger.warning(f"[GDB] slow command ({elapsed:.2f}s): {cmd}")
+        else:
+            logger.debug(f"[GDB] command ({elapsed:.3f}s): {cmd}")
         return self._extract_console_output(raw)
 
     def _read_until_prompt(self, timeout: float = 5.0) -> Optional[str]:
@@ -415,13 +422,20 @@ class GDBSession:
 
     def _lookup_symbol_impl(self, sym_name: str) -> Optional[dict]:
         """Internal implementation of lookup_symbol."""
+        t_start = time.time()
+        logger.info(f"[GDB] lookup_symbol start: '{sym_name}'")
+
         # Use 'info address' to get symbol address
         output = self._execute_cli(f"info address {sym_name}")
         if not output or "No symbol" in output:
+            logger.info(f"[GDB] lookup_symbol: '{sym_name}' not found")
             return None
 
         addr = self._parse_address_from_info(output)
         if addr is None:
+            logger.warning(
+                f"[GDB] lookup_symbol: cannot parse address for '{sym_name}'"
+            )
             return None
 
         # Get size via 'print sizeof(sym_name)'
@@ -445,6 +459,12 @@ class GDBSession:
                 if ptype_out and re.match(r"type\s*=\s*const\b", ptype_out):
                     sym_type = "const"
 
+        elapsed = time.time() - t_start
+        logger.info(
+            f"[GDB] lookup_symbol done: '{sym_name}' -> "
+            f"0x{addr:08X} size={size} type={sym_type} ({elapsed:.3f}s)"
+        )
+
         return {
             "addr": addr,
             "size": size,
@@ -456,6 +476,8 @@ class GDBSession:
         self, query: str, limit: int = 100
     ) -> Tuple[List[dict], int]:
         """Internal implementation of search_symbols."""
+        t_start = time.time()
+        logger.info(f"[GDB] search_symbols start: query='{query}' limit={limit}")
         query_lower = query.lower().strip()
         is_addr = query_lower.startswith("0x") or (
             len(query_lower) >= 4 and all(c in "0123456789abcdef" for c in query_lower)
@@ -498,10 +520,21 @@ class GDBSession:
                 seen.add(r["name"])
                 unique.append(r)
 
+        t_parse = time.time()
+        logger.info(
+            f"[GDB] search_symbols: found {len(unique)} unique symbols, "
+            f"resolving addresses... (parse took {t_parse - t_start:.3f}s)"
+        )
+
         # Resolve missing addresses via 'info address'
         self._resolve_addresses(unique)
 
         unique.sort(key=lambda x: x["name"])
+        elapsed = time.time() - t_start
+        logger.info(
+            f"[GDB] search_symbols done: query='{query}' -> "
+            f"{len(unique)} results ({elapsed:.3f}s)"
+        )
         return unique[:limit], len(unique)
 
     def _get_symbols_impl(self) -> Dict[str, dict]:
@@ -551,15 +584,27 @@ class GDBSession:
 
         Uses 'ptype /o <sym>' which shows struct members with offsets.
         """
+        t0 = time.time()
+        logger.info(f"[GDB] get_struct_layout start: '{sym_name}'")
+
         output = self._execute_cli(f"ptype /o {sym_name}")
         if not output:
+            logger.info(f"[GDB] get_struct_layout: no output for '{sym_name}'")
             return None
 
         # Check if it's a struct/union
         if "type = struct" not in output and "type = union" not in output:
+            logger.info(f"[GDB] get_struct_layout: '{sym_name}' is not struct/union")
             return None
 
-        return self._parse_ptype_output(output)
+        result = self._parse_ptype_output(output)
+        elapsed = time.time() - t0
+        member_count = len(result) if result else 0
+        logger.info(
+            f"[GDB] get_struct_layout done: '{sym_name}' -> "
+            f"{member_count} members ({elapsed:.3f}s)"
+        )
+        return result
 
     def _read_symbol_value_impl(self, sym_name: str) -> Optional[bytes]:
         """Internal implementation of read_symbol_value.
@@ -627,6 +672,14 @@ class GDBSession:
         addresses. This method queries 'info address <name>' for each symbol
         with addr "0x00000000" to fill in the real address and section.
         """
+        unresolved = [s for s in symbols if s["addr"] == "0x00000000"]
+        if unresolved:
+            logger.info(
+                f"[GDB] _resolve_addresses: {len(unresolved)}/{len(symbols)} "
+                f"symbols need address resolution"
+            )
+        t0 = time.time()
+        resolved_count = 0
         for sym in symbols:
             if sym["addr"] != "0x00000000":
                 continue
@@ -636,6 +689,7 @@ class GDBSession:
             addr = self._parse_address_from_info(output)
             if addr is not None:
                 sym["addr"] = f"0x{addr:08X}"
+                resolved_count += 1
                 # Also fix section and type from info address output
                 section = self._get_symbol_section(output)
                 if section:
@@ -649,6 +703,13 @@ class GDBSession:
                     elif sym["type"] != "const":
                         # Preserve const classification from declaration
                         sym["type"] = "variable"
+
+        if unresolved:
+            elapsed = time.time() - t0
+            logger.info(
+                f"[GDB] _resolve_addresses done: resolved {resolved_count}/{len(unresolved)} "
+                f"({elapsed:.3f}s)"
+            )
 
     @staticmethod
     def _parse_address_from_info(output: str) -> Optional[int]:

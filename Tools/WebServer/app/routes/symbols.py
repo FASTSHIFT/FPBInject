@@ -135,7 +135,14 @@ def _lookup_symbol(sym_name):
         logger.warning("GDB not available, cannot look up symbol")
         return None
 
+    t0 = time.time()
     result = state.gdb_session.lookup_symbol(sym_name)
+    elapsed = time.time() - t0
+
+    if elapsed > 1.0:
+        logger.warning(f"[symbols] GDB lookup_symbol '{sym_name}' took {elapsed:.2f}s")
+    else:
+        logger.info(f"[symbols] GDB lookup_symbol '{sym_name}': {elapsed:.3f}s")
 
     # Cache for future lookups
     if result is not None:
@@ -179,6 +186,8 @@ def api_search_symbols():
 
     query = request.args.get("q", "").strip()
     limit = int(request.args.get("limit", 100))
+    t_start = time.time()
+    logger.info(f"[symbols] search request: query='{query}' limit={limit}")
 
     if not query:
         return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
@@ -220,7 +229,13 @@ def api_search_symbols():
             symbol_list = matched[:limit]
         elif is_gdb_available(state):
             # GDB fast search (~0.01s vs ~3s)
+            logger.info(f"[symbols] delegating search to GDB: '{query}'")
             symbol_list, total = state.gdb_session.search_symbols(query, limit=limit)
+            elapsed = time.time() - t_start
+            logger.info(
+                f"[symbols] GDB search done: '{query}' -> "
+                f"{len(symbol_list)} results ({elapsed:.3f}s)"
+            )
         else:
             symbol_list, total = [], 0
             logger.warning("GDB not available, cannot search symbols")
