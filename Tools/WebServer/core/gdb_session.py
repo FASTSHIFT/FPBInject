@@ -615,14 +615,16 @@ class GDBSession:
         t0 = time.time()
         logger.info(f"[GDB] get_struct_layout start: '{sym_name}'")
 
-        output = self._execute_cli(f"ptype /o {sym_name}")
+        output = self._execute_cli(f"ptype /o {sym_name}", timeout=30.0)
         if not output:
             logger.info(f"[GDB] get_struct_layout: no output for '{sym_name}'")
             return None
 
         # Check if it's a struct/union
         if "type = struct" not in output and "type = union" not in output:
-            logger.info(f"[GDB] get_struct_layout: '{sym_name}' is not struct/union")
+            logger.info(
+                f"[GDB] get_struct_layout: '{sym_name}' is not struct/union "
+                f"(output length={len(output)})")
             return None
 
         result = self._parse_ptype_output(output)
@@ -659,13 +661,21 @@ class GDBSession:
             return None
 
         # Read raw bytes via GDB 'x' command
-        # x/<N>bx <addr> prints N bytes in hex
-        output = self._execute_cli(f"x/{size}bx 0x{addr:x}")
+        # Use word-sized reads (4 bytes per unit) to reduce output volume
+        # and speed up transfer over RSP
+        num_words = (size + 3) // 4
+        # Dynamic timeout: ~0.05s per word, minimum 10s
+        read_timeout = max(10.0, num_words * 0.05)
+        logger.info(
+            f"[GDB] read_symbol_value: reading {size} bytes "
+            f"({num_words} words) from 0x{addr:x}, timeout={read_timeout:.1f}s"
+        )
+        output = self._execute_cli(f"x/{num_words}wx 0x{addr:x}", timeout=read_timeout)
         if not output:
             return None
 
-        # Parse hex bytes from output lines like:
-        # 0x20001000:  0x01  0x02  0x03  0x04  ...
+        # Parse hex words from output lines like:
+        # 0x20001000:  0x04030201  0x08070605  ...
         raw_bytes = bytearray()
         for line in output.split("\n"):
             line = line.strip()
@@ -675,12 +685,14 @@ class GDBSession:
             colon_idx = line.find(":")
             if colon_idx >= 0:
                 line = line[colon_idx + 1 :]
-            # Extract hex values
+            # Extract hex values (each is a 32-bit word)
             for token in line.split():
                 token = token.strip()
                 if token.startswith("0x"):
                     try:
-                        raw_bytes.append(int(token, 16))
+                        word = int(token, 16)
+                        # Little-endian: LSB first
+                        raw_bytes.extend(word.to_bytes(4, byteorder="little"))
                     except ValueError:
                         continue
 
