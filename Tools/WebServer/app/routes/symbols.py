@@ -753,7 +753,7 @@ def api_read_symbol_from_device():
                         deref_gdb_values = None
                         if target_layout:
                             deref_gdb_values = _get_gdb_values(
-                                sym_name, ptr_value, target_layout
+                                f"*{sym_name}", ptr_value, target_layout
                             )
                         resp["deref_data"] = {
                             "addr": f"0x{ptr_value:08X}",
