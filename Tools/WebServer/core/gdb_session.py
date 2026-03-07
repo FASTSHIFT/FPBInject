@@ -786,32 +786,49 @@ class GDBSession:
         """Use GDB print to get decoded field values for a struct at an address.
 
         Returns dict mapping field_name -> display_string, or None on failure.
-        Uses 'print *((<type>*)<addr>)' to let GDB decode all fields natively.
+
+        Strategy:
+        1. Try 'print sym_name' directly (works for normal variables)
+        2. If addr differs from symbol's own address (deref scenario), use
+           whatis to get the real type name and cast: 'print *((type *)addr)'
         """
         if not self.is_alive:
             return None
         with self._lock:
-            return self._parse_struct_values_impl(type_name, addr)
+            return self._parse_struct_values_impl(sym_name, addr)
 
-    def _parse_struct_values_impl(self, type_name: str, addr: int) -> Optional[dict]:
+    def _parse_struct_values_impl(self, sym_name: str, addr: int) -> Optional[dict]:
         """Internal: parse GDB print output into field->value dict."""
-        # Use GDB to print the struct at the given address
-        expr = f"*((struct {type_name} *)0x{addr:x})"
-        output = self._execute_cli(f"print {expr}", timeout=15.0)
-        if not output:
-            # Try without 'struct' keyword (for typedef'd types / C++ classes)
-            expr = f"*(({type_name} *)0x{addr:x})"
+        # Strategy 1: try printing the variable directly
+        output = self._execute_cli(f"print {sym_name}", timeout=15.0)
+        if output:
+            m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
+            if m:
+                body = m.group(1).strip()
+                if body.startswith("{"):
+                    return self._parse_gdb_struct_body(body)
+
+        # Strategy 2: get real type via whatis, then cast to address
+        whatis_out = self._execute_cli(f"whatis {sym_name}")
+        if not whatis_out:
+            return None
+        tm = re.match(r"type\s*=\s*(.+)", whatis_out.strip())
+        if not tm:
+            return None
+        real_type = tm.group(1).strip().rstrip("*").strip()
+
+        # Try with struct prefix first, then without
+        for type_expr in [f"struct {real_type}", real_type]:
+            expr = f"*(({type_expr} *)0x{addr:x})"
             output = self._execute_cli(f"print {expr}", timeout=15.0)
-        if not output:
-            return None
+            if output:
+                m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
+                if m:
+                    body = m.group(1).strip()
+                    if body.startswith("{"):
+                        return self._parse_gdb_struct_body(body)
 
-        # Strip "$N = " prefix
-        m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
-        if not m:
-            return None
-        body = m.group(1).strip()
-
-        return self._parse_gdb_struct_body(body)
+        return None
 
     @staticmethod
     def _parse_gdb_struct_body(body: str) -> Optional[dict]:
