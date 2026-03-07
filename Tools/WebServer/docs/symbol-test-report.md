@@ -1,4 +1,4 @@
-# ELF Symbol Pipeline 测试报告
+# ELF Symbol Pipeline Test Report
 
 生成时间: 2026-03-07  
 ELF: `X-TRACK-EVO-AT32.elf` (12.4 MB)  

@@ -1,4 +1,4 @@
-# Configuration System Refactor Plan
+# Config System Refactor Plan
 
 ## 现状分析
 

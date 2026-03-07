@@ -1,4 +1,4 @@
-# Symbol Variable Viewer 方案评估报告
+# Symbol Variable Viewer Design
 
 > 日期: 2026-03-06
 > 状态: Draft

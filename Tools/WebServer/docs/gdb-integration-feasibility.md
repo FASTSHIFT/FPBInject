@@ -1,4 +1,4 @@
-# GDB 集成可行性分析
+# GDB Integration Feasibility Analysis
 
 ## 背景
 
