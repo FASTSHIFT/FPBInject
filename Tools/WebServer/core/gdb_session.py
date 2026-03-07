@@ -276,6 +276,17 @@ class GDBSession:
         with self._lock:
             return self._get_sizeof(type_or_sym)
 
+    def print_value(self, expr: str) -> Optional[str]:
+        """Use GDB 'print' to get a formatted value string for an expression.
+
+        Returns the raw GDB output string (e.g. "$1 = {x = 1, y = 2}"),
+        or None on failure.
+        """
+        if not self.is_alive:
+            return None
+        with self._lock:
+            return self._print_value_impl(expr)
+
     def get_symbols(self) -> Dict[str, dict]:
         """Get all symbols. Returns dict mapping name to info."""
         if not self.is_alive:
@@ -754,6 +765,90 @@ class GDBSession:
 
         return bytes(raw_bytes[:size])
 
+    def _print_value_impl(self, expr: str) -> Optional[str]:
+        """Use GDB 'print' to get a formatted value string.
+
+        Parses the '$N = ...' output and returns just the value part.
+        For structs, GDB returns e.g. '{x = 1, y = 2, ptr = 0x20001000}'.
+        """
+        output = self._execute_cli(f"print {expr}", timeout=10.0)
+        if not output:
+            return None
+        # Strip the "$N = " prefix
+        m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+        return output.strip()
+
+    def parse_struct_values(
+        self, sym_name: str, addr: int, type_name: str
+    ) -> Optional[dict]:
+        """Use GDB print to get decoded field values for a struct at an address.
+
+        Returns dict mapping field_name -> display_string, or None on failure.
+        Uses 'print *((<type>*)<addr>)' to let GDB decode all fields natively.
+        """
+        if not self.is_alive:
+            return None
+        with self._lock:
+            return self._parse_struct_values_impl(type_name, addr)
+
+    def _parse_struct_values_impl(self, type_name: str, addr: int) -> Optional[dict]:
+        """Internal: parse GDB print output into field->value dict."""
+        # Use GDB to print the struct at the given address
+        expr = f"*((struct {type_name} *)0x{addr:x})"
+        output = self._execute_cli(f"print {expr}", timeout=15.0)
+        if not output:
+            # Try without 'struct' keyword (for typedef'd types / C++ classes)
+            expr = f"*(({type_name} *)0x{addr:x})"
+            output = self._execute_cli(f"print {expr}", timeout=15.0)
+        if not output:
+            return None
+
+        # Strip "$N = " prefix
+        m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
+        if not m:
+            return None
+        body = m.group(1).strip()
+
+        return self._parse_gdb_struct_body(body)
+
+    @staticmethod
+    def _parse_gdb_struct_body(body: str) -> Optional[dict]:
+        """Parse GDB struct print output like '{x = 1, y = 0x20, ...}'.
+
+        Handles nested structs and arrays by tracking brace/bracket depth.
+        Returns dict mapping field_name -> value_string.
+        """
+        if not body.startswith("{"):
+            return None
+
+        # Remove outer braces
+        inner = body[1:]
+        if inner.endswith("}"):
+            inner = inner[:-1]
+
+        result = {}
+        depth = 0
+        current = ""
+        for ch in inner:
+            if ch in ("{", "["):
+                depth += 1
+                current += ch
+            elif ch in ("}", "]"):
+                depth -= 1
+                current += ch
+            elif ch == "," and depth == 0:
+                _parse_gdb_field(current.strip(), result)
+                current = ""
+            else:
+                current += ch
+
+        if current.strip():
+            _parse_gdb_field(current.strip(), result)
+
+        return result if result else None
+
     # ------------------------------------------------------------------
     # Internal: Output parsing helpers
     # ------------------------------------------------------------------
@@ -1009,6 +1104,17 @@ def _extract_name_from_decl(decl: str) -> Optional[str]:
             return None
         return name if name else None
     return None
+
+
+def _parse_gdb_field(field_str: str, result: dict):
+    """Parse a single 'name = value' from GDB struct output into result dict."""
+    eq_idx = field_str.find("=")
+    if eq_idx < 0:
+        return
+    name = field_str[:eq_idx].strip()
+    value = field_str[eq_idx + 1 :].strip()
+    if name:
+        result[name] = value
 
 
 def _split_type_and_name(decl: str) -> Tuple[str, str]:

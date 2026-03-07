@@ -384,6 +384,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 "my_var in section .data",
                 # ptype (non-const)
                 "type = int",
+                # whatis (pointer detection)
+                "type = int",
             ]
             result = self.session.lookup_symbol("my_var")
             self.assertIsNotNone(result)
@@ -414,6 +416,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
             mock_cli.side_effect = [
                 'Symbol "my_const" is static storage at address 0x08002000 in .rodata.',
                 "$1 = 4",
+                # whatis (pointer detection)
+                "type = const uint32_t",
             ]
             result = self.session.lookup_symbol("my_const")
             self.assertIsNotNone(result)
@@ -428,6 +432,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 # info symbol (section fallback)
                 "my_const in section .data",
                 # ptype returns const qualifier
+                "type = const lv_font_t",
+                # whatis (pointer detection) — const already detected, but whatis still called
                 "type = const lv_font_t",
             ]
             result = self.session.lookup_symbol("my_const")
@@ -453,6 +459,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 "$1 = 4",
                 # ptype (non-const)
                 "type = int",
+                # whatis (pointer detection)
+                "type = int",
             ]
             result = self.session.lookup_symbol("bss_var")
             self.assertIsNotNone(result)
@@ -465,6 +473,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 'Symbol "data_var" is static storage at address 0x20003000 in .data.',
                 "$1 = 8",
                 # ptype (non-const)
+                "type = int",
+                # whatis (pointer detection)
                 "type = int",
             ]
             result = self.session.lookup_symbol("data_var")
@@ -481,6 +491,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 "x in section .bss",
                 # ptype (non-const)
                 "type = int",
+                # whatis (pointer detection)
+                "type = int",
             ]
             result = self.session.lookup_symbol("x")
             self.assertIsNotNone(result)
@@ -496,6 +508,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 # info symbol (section fallback)
                 "x in section .bss",
                 # ptype (non-const)
+                "type = int",
+                # whatis (pointer detection)
                 "type = int",
             ]
             result = self.session.lookup_symbol("x")

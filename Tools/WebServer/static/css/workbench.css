@@ -1164,6 +1164,7 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--vscode-panel-border);
   font-weight: 600;
   color: var(--vscode-foreground);
+  white-space: nowrap;
 }
 
 .sym-struct-table td {
@@ -1173,6 +1174,100 @@ input[type="checkbox"] {
 
 .sym-struct-table tr:hover td {
   background: var(--vscode-list-hover);
+}
+
+/* ===========================
+   SYMBOL TREE VIEW (IDE-style)
+   =========================== */
+.sym-tree-view {
+  margin-bottom: 16px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.sym-tree-node {
+  /* padding-left set via inline style for depth */
+}
+
+.sym-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: default;
+  white-space: nowrap;
+  min-height: 22px;
+}
+
+.sym-tree-row:hover {
+  background: var(--vscode-list-hover);
+}
+
+.sym-tree-toggle {
+  font-size: 12px;
+  width: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sym-tree-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+.sym-tree-toggle-placeholder {
+  width: 16px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.sym-tree-name {
+  color: var(--syntax-variable, #9cdcfe);
+  flex-shrink: 0;
+}
+
+.sym-tree-separator {
+  color: var(--vscode-foreground);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.sym-tree-type {
+  color: var(--syntax-type, #4ec9b0);
+  opacity: 0.7;
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+.sym-tree-value {
+  color: var(--syntax-number, #b5cea8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sym-tree-value.sym-tree-summary {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.sym-tree-value.sym-tree-hex {
+  opacity: 0.7;
+}
+
+.sym-tree-value.sym-tree-no-data {
+  opacity: 0.5;
+}
+
+.sym-tree-children {
+  /* toggled via JS display: none/block */
 }
 
 .sym-field-name {

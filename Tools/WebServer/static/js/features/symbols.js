@@ -21,6 +21,11 @@ const _autoReadTimers = new Map();
 const _symTabDataCache = new Map();
 
 /* ===========================
+   DEREF STATE PERSISTENCE
+   =========================== */
+const _symDerefState = new Map();
+
+/* ===========================
    SYMBOL TYPE HELPERS
    =========================== */
 const SYMBOL_TYPE_CONFIG = {
@@ -174,11 +179,12 @@ function _renderSymbolValueContent(data, isConst) {
   let toolbarHtml = '';
   if (!isConst) {
     const escapedName = _escapeHtml(data.name);
-    const derefChecked = data.deref_data ? 'checked' : '';
+    const derefChecked =
+      _symDerefState.get(data.name) || data.deref_data ? 'checked' : '';
     const derefCheckbox = data.is_pointer
       ? `<label class="sym-deref-toggle">
           <input type="checkbox" id="symDerefToggle_${escapedName}" ${derefChecked}
-            onchange="readSymbolFromDevice('${escapedName}', this.checked)" />
+            onchange="_onDerefToggle('${escapedName}', this.checked)" />
           <i class="codicon codicon-type-hierarchy-sub"></i>
           ${t('symbols.deref_pointer', 'Dereference')}
         </label>`
@@ -221,9 +227,14 @@ function _renderSymbolValueContent(data, isConst) {
     </div>`;
   }
 
-  // Struct layout table (for non-pointer structs, or for deref data)
+  // Struct tree view (for non-pointer structs, or for deref data)
   if (data.struct_layout && data.struct_layout.length > 0) {
-    bodyHtml += _renderStructTable(data.struct_layout, data.hex_data, isBss);
+    bodyHtml += _renderStructTree(
+      data.struct_layout,
+      data.hex_data,
+      isBss,
+      data.gdb_values,
+    );
   }
 
   // Deref data section (pointer target)
@@ -236,7 +247,12 @@ function _renderSymbolValueContent(data, isConst) {
         <span class="sym-viewer-meta">${t('symbols.address', 'Address')}: ${dd.addr} &nbsp; ${t('symbols.size', 'Size')}: ${dd.size} ${t('symbols.bytes', 'bytes')}</span>
       </div>`;
     if (dd.struct_layout && dd.struct_layout.length > 0) {
-      bodyHtml += _renderStructTable(dd.struct_layout, dd.hex_data, false);
+      bodyHtml += _renderStructTree(
+        dd.struct_layout,
+        dd.hex_data,
+        false,
+        dd.gdb_values,
+      );
     }
     if (dd.hex_data) {
       bodyHtml += `<div class="sym-viewer-hex">
@@ -270,41 +286,226 @@ function _renderSymbolValueContent(data, isConst) {
 }
 
 /**
- * Render a struct layout table.
+ * Render a struct layout as a collapsible tree (IDE-style variable viewer).
+ * Uses gdb_values as primary display when available, falls back to hex decode.
+ */
+function _renderStructTree(structLayout, hexData, isBss, gdbValues) {
+  let html = '<div class="sym-tree-view">';
+  for (const member of structLayout) {
+    html += _renderTreeNode(member, hexData, isBss, gdbValues, 0);
+  }
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Render a single tree node for a struct member.
+ * Nested structs/arrays from gdb_values are rendered as expandable children.
+ */
+function _renderTreeNode(member, hexData, isBss, gdbValues, depth) {
+  const indent = depth * 16;
+  const gdbVal = gdbValues ? gdbValues[member.name] : null;
+  const isExpandable = _isExpandableValue(gdbVal);
+
+  // Determine display value
+  let displayValue;
+  if (gdbVal !== null && gdbVal !== undefined && !isExpandable) {
+    displayValue = `<span class="sym-tree-value">${_escapeHtml(String(gdbVal))}</span>`;
+  } else if (isExpandable) {
+    // Show a summary for expandable nodes
+    const summary = _getExpandableSummary(gdbVal);
+    displayValue = `<span class="sym-tree-value sym-tree-summary">${_escapeHtml(summary)}</span>`;
+  } else if (hexData) {
+    const decoded = _decodeFieldValue(
+      hexData,
+      member.offset,
+      member.size,
+      member.type_name,
+    );
+    const hex = _extractFieldHex(hexData, member.offset, member.size);
+    displayValue = decoded
+      ? `<span class="sym-tree-value">${_escapeHtml(decoded)}</span> <span class="sym-hex-hint">(${hex})</span>`
+      : `<span class="sym-tree-value sym-tree-hex">${hex}</span>`;
+  } else if (isBss) {
+    displayValue = `<span class="sym-tree-value sym-tree-no-data"><em>${t('symbols.needs_device_read', 'needs device read')}</em></span>`;
+  } else {
+    displayValue = '<span class="sym-tree-value">—</span>';
+  }
+
+  const nodeId = `sym_tree_${depth}_${member.name}_${member.offset}`;
+  const chevron = isExpandable
+    ? `<span class="sym-tree-toggle codicon codicon-chevron-right" onclick="_toggleTreeNode('${nodeId}')"></span>`
+    : '<span class="sym-tree-toggle-placeholder"></span>';
+
+  let html = `<div class="sym-tree-node" id="${nodeId}" style="padding-left: ${indent}px;">
+    <div class="sym-tree-row" ${isExpandable ? `onclick="_toggleTreeNode('${nodeId}')"` : ''}>
+      ${chevron}
+      <span class="sym-tree-name">${_escapeHtml(member.name)}</span>
+      <span class="sym-tree-separator">:</span>
+      <span class="sym-tree-type">${_escapeHtml(member.type_name)}</span>
+      ${displayValue}
+    </div>`;
+
+  // Render children container (hidden by default)
+  if (isExpandable) {
+    html += `<div class="sym-tree-children" style="display: none;">`;
+    html += _renderExpandableChildren(gdbVal, depth + 1);
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Check if a GDB value string represents an expandable node (struct or array).
+ */
+function _isExpandableValue(val) {
+  if (!val || typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  return trimmed.startsWith('{') && trimmed.length > 2;
+}
+
+/**
+ * Get a short summary for an expandable value.
+ */
+function _getExpandableSummary(val) {
+  if (!val) return '{...}';
+  const trimmed = val.trim();
+  // If it's short enough, show it directly
+  if (trimmed.length <= 60) return trimmed;
+  // Show truncated
+  return trimmed.substring(0, 57) + '...}';
+}
+
+/**
+ * Render children of an expandable GDB value (struct body or array).
+ */
+function _renderExpandableChildren(gdbVal, depth) {
+  if (!gdbVal) return '';
+  const trimmed = gdbVal.trim();
+  if (!trimmed.startsWith('{')) return '';
+
+  // Parse the GDB struct/array body
+  const inner = trimmed.slice(1, -1);
+  const fields = _splitGdbFields(inner);
+  let html = '';
+
+  for (const field of fields) {
+    const eqIdx = field.indexOf('=');
+    if (eqIdx < 0) {
+      // Array element or unnamed value
+      const childExpandable = _isExpandableValue(field.trim());
+      const childId = `sym_tree_${depth}_arr_${html.length}`;
+      const indent = depth * 16;
+      const chevron = childExpandable
+        ? `<span class="sym-tree-toggle codicon codicon-chevron-right" onclick="_toggleTreeNode('${childId}')"></span>`
+        : '<span class="sym-tree-toggle-placeholder"></span>';
+      const displayVal = childExpandable
+        ? `<span class="sym-tree-value sym-tree-summary">${_escapeHtml(_getExpandableSummary(field.trim()))}</span>`
+        : `<span class="sym-tree-value">${_escapeHtml(field.trim())}</span>`;
+
+      html += `<div class="sym-tree-node" id="${childId}" style="padding-left: ${indent}px;">
+        <div class="sym-tree-row" ${childExpandable ? `onclick="_toggleTreeNode('${childId}')"` : ''}>
+          ${chevron}
+          ${displayVal}
+        </div>`;
+      if (childExpandable) {
+        html += `<div class="sym-tree-children" style="display: none;">`;
+        html += _renderExpandableChildren(field.trim(), depth + 1);
+        html += '</div>';
+      }
+      html += '</div>';
+      continue;
+    }
+
+    const name = field.substring(0, eqIdx).trim();
+    const value = field.substring(eqIdx + 1).trim();
+    const childExpandable = _isExpandableValue(value);
+    const childId = `sym_tree_${depth}_${name}_${html.length}`;
+    const indent = depth * 16;
+    const chevron = childExpandable
+      ? `<span class="sym-tree-toggle codicon codicon-chevron-right" onclick="_toggleTreeNode('${childId}')"></span>`
+      : '<span class="sym-tree-toggle-placeholder"></span>';
+    const displayVal = childExpandable
+      ? `<span class="sym-tree-value sym-tree-summary">${_escapeHtml(_getExpandableSummary(value))}</span>`
+      : `<span class="sym-tree-value">${_escapeHtml(value)}</span>`;
+
+    html += `<div class="sym-tree-node" id="${childId}" style="padding-left: ${indent}px;">
+      <div class="sym-tree-row" ${childExpandable ? `onclick="_toggleTreeNode('${childId}')"` : ''}>
+        ${chevron}
+        <span class="sym-tree-name">${_escapeHtml(name)}</span>
+        <span class="sym-tree-separator">:</span>
+        ${displayVal}
+      </div>`;
+    if (childExpandable) {
+      html += `<div class="sym-tree-children" style="display: none;">`;
+      html += _renderExpandableChildren(value, depth + 1);
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  return html;
+}
+
+/**
+ * Split a GDB struct/array body into top-level fields, respecting brace depth.
+ */
+function _splitGdbFields(inner) {
+  const fields = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of inner) {
+    if (ch === '{' || ch === '[') {
+      depth++;
+      current += ch;
+    } else if (ch === '}' || ch === ']') {
+      depth--;
+      current += ch;
+    } else if (ch === ',' && depth === 0) {
+      if (current.trim()) fields.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) fields.push(current.trim());
+  return fields;
+}
+
+/**
+ * Toggle a tree node's expanded/collapsed state.
+ */
+function _toggleTreeNode(nodeId) {
+  const node = document.getElementById(nodeId);
+  if (!node) return;
+  const children = node.querySelector(':scope > .sym-tree-children');
+  const toggle = node.querySelector(
+    ':scope > .sym-tree-row > .sym-tree-toggle',
+  );
+  if (!children) return;
+
+  const isOpen = children.style.display !== 'none';
+  children.style.display = isOpen ? 'none' : 'block';
+  if (toggle) {
+    toggle.classList.toggle('expanded', !isOpen);
+  }
+}
+
+/**
+ * Handle deref checkbox toggle — persist state and trigger read.
+ */
+function _onDerefToggle(symName, checked) {
+  _symDerefState.set(symName, checked);
+  readSymbolFromDevice(symName, checked);
+}
+
+/**
+ * Legacy: Render a struct layout table (kept for backward compat / tests).
  */
 function _renderStructTable(structLayout, hexData, isBss) {
-  let html = '<div class="sym-viewer-struct">';
-  html += '<table class="sym-struct-table"><thead><tr>';
-  html += `<th>${t('symbols.field', 'Field')}</th>`;
-  html += `<th>${t('symbols.type', 'Type')}</th>`;
-  html += `<th>${t('symbols.offset', 'Offset')}</th>`;
-  html += `<th>${t('symbols.size', 'Size')}</th>`;
-  html += `<th>${t('symbols.value', 'Value')}</th>`;
-  html += '</tr></thead><tbody>';
-
-  for (const member of structLayout) {
-    const valueHex = hexData
-      ? _extractFieldHex(hexData, member.offset, member.size)
-      : isBss
-        ? `<em>${t('symbols.needs_device_read', 'needs device read')}</em>`
-        : '—';
-    const valueDecoded = hexData
-      ? _decodeFieldValue(hexData, member.offset, member.size, member.type_name)
-      : '';
-    const displayValue = valueDecoded
-      ? `${valueDecoded} <span class="sym-hex-hint">(${valueHex})</span>`
-      : valueHex;
-
-    html += `<tr>
-      <td class="sym-field-name">${_escapeHtml(member.name)}</td>
-      <td class="sym-field-type">${_escapeHtml(member.type_name)}</td>
-      <td>+${member.offset}</td>
-      <td>${member.size}</td>
-      <td class="sym-field-value">${displayValue}</td>
-    </tr>`;
-  }
-  html += '</tbody></table></div>';
-  return html;
+  return _renderStructTree(structLayout, hexData, isBss, null);
 }
 
 /**
@@ -340,6 +541,11 @@ function _decodeFieldValue(hexData, offset, size, typeName) {
   const bytes = [];
   for (let i = start; i < end; i += 2) {
     bytes.push(parseInt(hexData.slice(i, i + 2), 16));
+  }
+
+  // Pointer types — show as hex address
+  if (typeName.includes('*')) {
+    return _decodeLittleEndianHex(hexData.slice(start, end), size);
   }
 
   // Integer types (little-endian ARM)
@@ -405,6 +611,15 @@ function _decodeFieldValue(hexData, offset, size, typeName) {
     const view = new DataView(new ArrayBuffer(8));
     bytes.forEach((b, i) => view.setUint8(i, b));
     return view.getFloat64(0, true).toPrecision(15);
+  }
+
+  // Typedef fallback: if size is 1/2/4/8 and not a known struct, treat as integer
+  if ([1, 2, 4, 8].includes(size) && !typeName.includes('[')) {
+    let val = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      val += bytes[i] * 256 ** i;
+    }
+    return String(val);
   }
 
   return '';
@@ -495,10 +710,14 @@ function selectSymbol(name) {
    DEVICE READ/WRITE
    =========================== */
 async function readSymbolFromDevice(symName, deref) {
-  // If deref not explicitly passed, check the checkbox state
+  // If deref not explicitly passed, check persisted state, then checkbox
   if (deref === undefined) {
-    const toggle = document.getElementById(`symDerefToggle_${symName}`);
-    deref = toggle ? toggle.checked : false;
+    if (_symDerefState.has(symName)) {
+      deref = _symDerefState.get(symName);
+    } else {
+      const toggle = document.getElementById(`symDerefToggle_${symName}`);
+      deref = toggle ? toggle.checked : false;
+    }
   }
 
   const statusEl = document.getElementById(`symStatus_${symName}`);
@@ -803,6 +1022,8 @@ window.writeSymbolToDevice = writeSymbolToDevice;
 window.writeSymbolField = writeSymbolField;
 window.readMemoryAddress = readMemoryAddress;
 window.toggleAutoRead = toggleAutoRead;
+window._toggleTreeNode = _toggleTreeNode;
+window._onDerefToggle = _onDerefToggle;
 // Export helpers for testing
 window._extractFieldHex = _extractFieldHex;
 window._decodeFieldValue = _decodeFieldValue;
@@ -810,7 +1031,12 @@ window._formatHexDump = _formatHexDump;
 window._escapeHtml = _escapeHtml;
 window._renderSymbolValueContent = _renderSymbolValueContent;
 window._renderStructTable = _renderStructTable;
+window._renderStructTree = _renderStructTree;
+window._renderTreeNode = _renderTreeNode;
+window._isExpandableValue = _isExpandableValue;
+window._splitGdbFields = _splitGdbFields;
 window._decodeLittleEndianHex = _decodeLittleEndianHex;
 window._autoReadTimers = _autoReadTimers;
 window._symTabDataCache = _symTabDataCache;
+window._symDerefState = _symDerefState;
 window._rerenderSymbolTabs = _rerenderSymbolTabs;

@@ -106,6 +106,26 @@ def _dynamic_timeout(size):
     return max(10.0, num_chunks * 3.0)
 
 
+def _get_gdb_values(sym_name, addr, struct_layout):
+    """Use GDB to decode struct field values at a device memory address.
+
+    Returns dict mapping field_name -> display_string, or None.
+    Uses GDB's native 'print' to decode all fields including typedefs.
+    """
+    from core.gdb_manager import is_gdb_available
+
+    if not is_gdb_available(state) or not state.gdb_session:
+        return None
+    if not struct_layout:
+        return None
+
+    try:
+        return state.gdb_session.parse_struct_values(sym_name, addr, sym_name)
+    except Exception as e:
+        logger.debug(f"Failed to get GDB values for '{sym_name}': {e}")
+        return None
+
+
 @bp.route("/symbols", methods=["GET"])
 def api_get_symbols():
     """Get symbols from ELF file."""
@@ -683,8 +703,12 @@ def api_read_symbol_from_device():
 
         # For pointer types, skip struct layout of the pointer variable itself
         struct_layout = None
+        gdb_values = None
         if not is_pointer:
             struct_layout = _get_struct_layout_cached(sym_name)
+            # Use GDB to decode struct field values from device memory
+            if struct_layout:
+                gdb_values = _get_gdb_values(sym_name, addr, struct_layout)
 
         resp = {
             "success": True,
@@ -693,6 +717,7 @@ def api_read_symbol_from_device():
             "size": size,
             "hex_data": hex_data,
             "struct_layout": struct_layout,
+            "gdb_values": gdb_values,
             "source": "device",
         }
         if is_pointer:
@@ -725,11 +750,17 @@ def api_read_symbol_from_device():
                         and deref_result[0] is not None
                     ):
                         deref_raw, _ = deref_result
+                        deref_gdb_values = None
+                        if target_layout:
+                            deref_gdb_values = _get_gdb_values(
+                                sym_name, ptr_value, target_layout
+                            )
                         resp["deref_data"] = {
                             "addr": f"0x{ptr_value:08X}",
                             "size": target_size,
                             "hex_data": deref_raw.hex(),
                             "struct_layout": target_layout,
+                            "gdb_values": deref_gdb_values,
                             "type_name": pointer_target,
                         }
                     else:
