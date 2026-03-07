@@ -380,6 +380,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 'Symbol "my_var" is static storage at address 0x20001000.',
                 # sizeof
                 "$1 = 16",
+                # info symbol (section fallback)
+                "my_var in section .data",
                 # ptype (non-const)
                 "type = int",
             ]
@@ -388,6 +390,7 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
             self.assertEqual(result["addr"], 0x20001000)
             self.assertEqual(result["size"], 16)
             self.assertEqual(result["type"], "variable")
+            self.assertEqual(result["section"], ".data")
 
     def test_lookup_function(self):
         with patch.object(self.session, "_execute_cli") as mock_cli:
@@ -422,6 +425,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
             mock_cli.side_effect = [
                 'Symbol "my_const" is static storage at address 0x08002000.',
                 "$1 = 4",
+                # info symbol (section fallback)
+                "my_const in section .data",
                 # ptype returns const qualifier
                 "type = const lv_font_t",
             ]
@@ -472,12 +477,15 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 'Symbol "x" is at address 0x1000.',
                 "No symbol in current context",  # sizeof fails
                 "No symbol matches",  # _resolve_linker_name (info symbol)
+                # info symbol (section fallback) — same addr, may find section
+                "x in section .bss",
                 # ptype (non-const)
                 "type = int",
             ]
             result = self.session.lookup_symbol("x")
             self.assertIsNotNone(result)
             self.assertEqual(result["size"], 0)
+            self.assertEqual(result["section"], ".bss")
 
     def test_sizeof_output_none(self):
         with patch.object(self.session, "_execute_cli") as mock_cli:
@@ -485,6 +493,8 @@ class TestGDBSessionLookupImpl(unittest.TestCase):
                 'Symbol "x" is at address 0x1000.',
                 None,  # sizeof returns None
                 "No symbol matches",  # _resolve_linker_name (info symbol)
+                # info symbol (section fallback)
+                "x in section .bss",
                 # ptype (non-const)
                 "type = int",
             ]
