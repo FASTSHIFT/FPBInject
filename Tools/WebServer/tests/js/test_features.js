@@ -1297,12 +1297,24 @@ module.exports = function (w) {
         [{ name: 'x', type_name: 'lv_coord_t', offset: 0, size: 4 }],
         'AABBCCDD',
         false,
-        { x: '42' },
+        { x: 42 },
       );
       assertContains(html, '42');
     });
 
-    it('renders expandable node for nested struct', () => {
+    it('renders expandable node for nested struct (JSON format)', () => {
+      const html = w._renderStructTree(
+        [{ name: 'pos', type_name: 'lv_point_t', offset: 0, size: 8 }],
+        'AABBCCDD11223344',
+        false,
+        { pos: { x: 10, y: 20 } },
+      );
+      assertContains(html, 'sym-tree-toggle');
+      assertContains(html, 'sym-tree-summary');
+      assertContains(html, 'sym-tree-children');
+    });
+
+    it('renders expandable node for nested struct (legacy string)', () => {
       const html = w._renderStructTree(
         [{ name: 'pos', type_name: 'lv_point_t', offset: 0, size: 8 }],
         'AABBCCDD11223344',
@@ -1310,7 +1322,6 @@ module.exports = function (w) {
         { pos: '{x = 10, y = 20}' },
       );
       assertContains(html, 'sym-tree-toggle');
-      assertContains(html, 'sym-tree-summary');
       assertContains(html, 'sym-tree-children');
     });
 
@@ -1325,9 +1336,18 @@ module.exports = function (w) {
     });
 
     it('_isExpandableValue detects struct bodies', () => {
+      // New JSON format
+      assertTrue(w._isExpandableValue({ x: 1, y: 2 }));
+      assertTrue(w._isExpandableValue([1, 2, 3]));
+      assertTrue(!w._isExpandableValue({ _kind: 'ptr', _addr: '0x0' }));
+      assertTrue(!w._isExpandableValue({ _kind: 'enum', _val: 0 }));
+      assertTrue(!w._isExpandableValue(42));
+      assertTrue(!w._isExpandableValue(null));
+      assertTrue(!w._isExpandableValue({}));
+      assertTrue(!w._isExpandableValue([]));
+      // Legacy string format
       assertTrue(w._isExpandableValue('{x = 1, y = 2}'));
       assertTrue(!w._isExpandableValue('42'));
-      assertTrue(!w._isExpandableValue(null));
       assertTrue(!w._isExpandableValue('{}'));
     });
 
@@ -1368,7 +1388,20 @@ module.exports = function (w) {
       assertContains(html, '—');
     });
 
-    it('_renderExpandableChildren handles array elements', () => {
+    it('_renderExpandableChildren handles array elements (JSON)', () => {
+      const html = w._renderStructTree(
+        [{ name: 'arr', type_name: 'int[3]', offset: 0, size: 12 }],
+        null,
+        false,
+        { arr: [1, 2, 3] },
+      );
+      assertContains(html, 'sym-tree-children');
+      assertContains(html, '[0]');
+      assertContains(html, '[1]');
+      assertContains(html, '[2]');
+    });
+
+    it('_renderExpandableChildren handles array elements (legacy)', () => {
       const html = w._renderStructTree(
         [{ name: 'arr', type_name: 'int[3]', offset: 0, size: 12 }],
         null,
@@ -3112,6 +3145,217 @@ module.exports = function (w) {
     });
   });
 
+  describe('_formatGdbValue Helper', () => {
+    it('formats integer', () => {
+      assertEqual(w._formatGdbValue(42), '42');
+    });
+
+    it('formats float', () => {
+      assertEqual(w._formatGdbValue(3.14), '3.14');
+    });
+
+    it('formats string', () => {
+      assertEqual(w._formatGdbValue('hello'), 'hello');
+    });
+
+    it('formats pointer', () => {
+      assertEqual(
+        w._formatGdbValue({
+          _kind: 'ptr',
+          _addr: '0x20001000',
+          _target: 'int',
+        }),
+        '0x20001000',
+      );
+    });
+
+    it('formats function pointer', () => {
+      const result = w._formatGdbValue({
+        _kind: 'func_ptr',
+        _addr: '0x08001234',
+        _sig: 'void (*)(int, int)',
+      });
+      assertContains(result, '0x08001234');
+      assertContains(result, 'void (*)(int, int)');
+    });
+
+    it('formats NULL function pointer', () => {
+      const result = w._formatGdbValue({
+        _kind: 'func_ptr',
+        _addr: '0x00000000',
+        _sig: 'void (*)(void)',
+      });
+      assertContains(result, 'NULL');
+    });
+
+    it('formats enum', () => {
+      const result = w._formatGdbValue({
+        _kind: 'enum',
+        _val: 0,
+        _name: 'LV_DISP_RENDER_MODE_PARTIAL',
+      });
+      assertEqual(result, 'LV_DISP_RENDER_MODE_PARTIAL');
+    });
+
+    it('formats error', () => {
+      const result = w._formatGdbValue({
+        _kind: 'error',
+        _msg: 'cannot access',
+      });
+      assertContains(result, 'cannot access');
+    });
+
+    it('formats collapsed struct', () => {
+      const result = w._formatGdbValue({
+        _kind: 'struct',
+        _type: 'lv_area_t',
+      });
+      assertEqual(result, 'lv_area_t');
+    });
+
+    it('formats null/undefined', () => {
+      assertEqual(w._formatGdbValue(null), '—');
+      assertEqual(w._formatGdbValue(undefined), '—');
+    });
+
+    it('formats array as length', () => {
+      assertEqual(w._formatGdbValue([1, 2, 3]), '[3]');
+    });
+
+    it('formats plain struct as field count', () => {
+      const result = w._formatGdbValue({ x: 1, y: 2 });
+      assertEqual(result, '{2 fields}');
+    });
+  });
+
+  describe('JSON format tree rendering', () => {
+    it('renders pointer fields correctly', () => {
+      const html = w._renderStructTree(
+        [{ name: 'next', type_name: 'node_t *', offset: 0, size: 4 }],
+        null,
+        false,
+        { next: { _kind: 'ptr', _addr: '0x20003000', _target: 'node_t' } },
+      );
+      assertContains(html, '0x20003000');
+      assertTrue(!html.includes('data-expandable'));
+    });
+
+    it('renders function pointer fields correctly', () => {
+      const html = w._renderStructTree(
+        [
+          {
+            name: 'flush_cb',
+            type_name: 'lv_disp_flush_cb_t',
+            offset: 0,
+            size: 4,
+          },
+        ],
+        null,
+        false,
+        {
+          flush_cb: {
+            _kind: 'func_ptr',
+            _addr: '0x08001234',
+            _sig: 'void (*)(_lv_disp_t *, const lv_area_t *, lv_color_t *)',
+          },
+        },
+      );
+      assertContains(html, '0x08001234');
+      assertContains(html, 'void (*)');
+      assertTrue(!html.includes('data-expandable'));
+    });
+
+    it('renders enum fields correctly', () => {
+      const html = w._renderStructTree(
+        [
+          {
+            name: 'mode',
+            type_name: 'lv_disp_render_mode_t',
+            offset: 0,
+            size: 1,
+          },
+        ],
+        null,
+        false,
+        {
+          mode: {
+            _kind: 'enum',
+            _val: 0,
+            _name: 'LV_DISP_RENDER_MODE_PARTIAL',
+          },
+        },
+      );
+      assertContains(html, 'LV_DISP_RENDER_MODE_PARTIAL');
+    });
+
+    it('renders nested struct as expandable', () => {
+      const html = w._renderStructTree(
+        [{ name: 'pos', type_name: 'lv_point_t', offset: 0, size: 8 }],
+        null,
+        false,
+        { pos: { x: 100, y: 200 } },
+      );
+      assertContains(html, 'data-expandable="1"');
+      assertContains(html, 'sym-tree-children');
+      assertContains(html, 'x');
+      assertContains(html, '100');
+      assertContains(html, 'y');
+      assertContains(html, '200');
+    });
+
+    it('renders array as expandable with indices', () => {
+      const html = w._renderStructTree(
+        [{ name: 'data', type_name: 'uint8_t[3]', offset: 0, size: 3 }],
+        null,
+        false,
+        { data: [10, 20, 30] },
+      );
+      assertContains(html, 'data-expandable="1"');
+      assertContains(html, '[0]');
+      assertContains(html, '[1]');
+      assertContains(html, '[2]');
+      assertContains(html, '10');
+      assertContains(html, '30');
+    });
+
+    it('renders collapsed struct (depth exceeded)', () => {
+      const html = w._renderStructTree(
+        [{ name: 'deep', type_name: 'deep_t', offset: 0, size: 16 }],
+        null,
+        false,
+        { deep: { _kind: 'struct', _type: 'deep_t' } },
+      );
+      assertContains(html, 'deep_t');
+      assertTrue(!html.includes('data-expandable'));
+    });
+
+    it('renders mixed struct with all value types', () => {
+      const html = w._renderStructTree(
+        [
+          { name: 'count', type_name: 'int', offset: 0, size: 4 },
+          { name: 'ratio', type_name: 'float', offset: 4, size: 4 },
+          { name: 'next', type_name: 'node_t *', offset: 8, size: 4 },
+          { name: 'cb', type_name: 'callback_t', offset: 12, size: 4 },
+          { name: 'mode', type_name: 'mode_t', offset: 16, size: 1 },
+        ],
+        null,
+        false,
+        {
+          count: 42,
+          ratio: 3.14,
+          next: { _kind: 'ptr', _addr: '0x20001000', _target: 'node_t' },
+          cb: { _kind: 'func_ptr', _addr: '0x08002000', _sig: 'void (*)(int)' },
+          mode: { _kind: 'enum', _val: 1, _name: 'MODE_ACTIVE' },
+        },
+      );
+      assertContains(html, '42');
+      assertContains(html, '3.14');
+      assertContains(html, '0x20001000');
+      assertContains(html, '0x08002000');
+      assertContains(html, 'MODE_ACTIVE');
+    });
+  });
+
   describe('_splitGdbFields with function pointers', () => {
     it('handles function pointer with comma in signature', () => {
       // GDB output: "cb = 0x8001234 <my_func(int, int)>, next = 0x0"
@@ -3151,12 +3395,12 @@ module.exports = function (w) {
   });
 
   describe('_renderExpandableChildren array index display', () => {
-    it('renders [0], [1], [2] for array elements', () => {
+    it('renders [0], [1], [2] for JSON array elements', () => {
       const html = w._renderStructTree(
         [{ name: 'arr', type_name: 'int[3]', offset: 0, size: 12 }],
         null,
         false,
-        { arr: '{10, 20, 30}' },
+        { arr: [10, 20, 30] },
       );
       assertContains(html, '[0]');
       assertContains(html, '[1]');
@@ -3166,12 +3410,12 @@ module.exports = function (w) {
       assertContains(html, '30');
     });
 
-    it('renders named fields for struct members', () => {
+    it('renders named fields for JSON struct members', () => {
       const html = w._renderStructTree(
         [{ name: 'pos', type_name: 'point_t', offset: 0, size: 8 }],
         null,
         false,
-        { pos: '{x = 100, y = 200}' },
+        { pos: { x: 100, y: 200 } },
       );
       assertContains(html, 'x');
       assertContains(html, '100');
@@ -3184,7 +3428,12 @@ module.exports = function (w) {
         [{ name: 'matrix', type_name: 'int[2][2]', offset: 0, size: 16 }],
         null,
         false,
-        { matrix: '{{1, 2}, {3, 4}}' },
+        {
+          matrix: [
+            [1, 2],
+            [3, 4],
+          ],
+        },
       );
       assertContains(html, '[0]');
       assertContains(html, '[1]');
