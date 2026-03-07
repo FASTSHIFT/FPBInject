@@ -457,6 +457,17 @@ window.i18nResources['zh-TW'] = {
       symbols_decompile: '反編譯',
       symbols_decompile_desc: '使用 Ghidra 產生偽 C 程式碼以便更好理解。',
 
+      watch_title: '監視表達式',
+      watch_desc: '監視區域可以即時監控裝置上的 C/C++ 變數和表達式。',
+      watch_add_expr: '新增表達式',
+      watch_add_expr_desc:
+        '輸入 C/C++ 符號名或型別轉換表達式（如 <code>g_counter</code>、<code>*(struct cfg *)0x20001000</code>）。',
+      watch_live_value: '即時值',
+      watch_live_value_desc:
+        '檢視從裝置記憶體讀取的解碼值、結構體欄位和指標目標。',
+      watch_refresh: '重新整理',
+      watch_refresh_desc: '點擊「全部重新整理」重新從裝置讀取所有監視值。',
+
       config_title: '設定',
       config_desc: '設定區域包含所有工作台設定。',
       config_ui: 'UI 設定',

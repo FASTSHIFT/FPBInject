@@ -456,6 +456,17 @@ window.i18nResources['zh-CN'] = {
       symbols_decompile: '反编译',
       symbols_decompile_desc: '使用 Ghidra 生成伪 C 代码以便更好理解。',
 
+      watch_title: '监视表达式',
+      watch_desc: '监视区域可以实时监控设备上的 C/C++ 变量和表达式。',
+      watch_add_expr: '添加表达式',
+      watch_add_expr_desc:
+        '输入 C/C++ 符号名或类型转换表达式（如 <code>g_counter</code>、<code>*(struct cfg *)0x20001000</code>）。',
+      watch_live_value: '实时值',
+      watch_live_value_desc:
+        '查看从设备内存读取的解码值、结构体字段和指针目标。',
+      watch_refresh: '刷新',
+      watch_refresh_desc: '点击"全部刷新"重新从设备读取所有监视值。',
+
       config_title: '配置',
       config_desc: '配置区域包含所有工作台设置。',
       config_ui: 'UI 设置',

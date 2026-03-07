@@ -320,7 +320,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(12); // complete
+      w.tutorialGoTo(13); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-summary'));
     });
@@ -330,7 +330,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(12); // complete
+      w.tutorialGoTo(13); // complete
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('🎉'));
     });
@@ -359,7 +359,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(12); // last step
+      w.tutorialGoTo(13); // last step
       const skipBtn = getElement('tutorialSkipBtn');
       assertEqual(skipBtn.style.display, 'none');
     });
@@ -369,7 +369,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(12); // last step
+      w.tutorialGoTo(13); // last step
       const skipAllBtn = getElement('tutorialSkipAllBtn');
       assertEqual(skipAllBtn.style.display, 'none');
     });
@@ -380,9 +380,9 @@ module.exports = function (w) {
       setupTutorialDOM();
       w.startTutorial();
       const progress = getElement('tutorialProgress');
-      // 13 steps = 13 dot buttons
+      // 14 steps = 14 dot buttons
       const dotCount = (progress.innerHTML.match(/tutorial-dot/g) || []).length;
-      assertEqual(dotCount, 13);
+      assertEqual(dotCount, 14);
     });
   });
 
@@ -399,7 +399,7 @@ module.exports = function (w) {
       w.tutorialNext(); // marks welcome, moves to step 1 = appearance
       w.tutorialNext(); // marks appearance as configured, moves to step 2
       // Go to complete step to check summary - appearance should be configured
-      w.tutorialGoTo(12);
+      w.tutorialGoTo(13);
       const body = getElement('tutorialBody');
       // connection was marked configured via tutorialNext (welcome is excluded from summary)
       assertTrue(body.innerHTML.includes('configured'));
@@ -417,6 +417,7 @@ module.exports = function (w) {
       w.tutorialSkip(); // skip quickcmd
       w.tutorialSkip(); // skip transfer
       w.tutorialSkip(); // skip symbols
+      w.tutorialSkip(); // skip watch
       w.tutorialSkip(); // skip config
       w.tutorialSkip(); // skip hello_search
       w.tutorialSkip(); // skip hello_inject
@@ -438,7 +439,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(12); // last step
+      w.tutorialGoTo(13); // last step
       w.tutorialNext(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));
@@ -450,7 +451,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(12); // last step
+      w.tutorialGoTo(13); // last step
       w.tutorialSkip(); // should finish
       const overlay = getElement('tutorialOverlay');
       assertFalse(overlay.classList.contains('show'));
@@ -520,7 +521,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(12); // complete (last step)
+      w.tutorialGoTo(13); // complete (last step)
       const nextBtn = getElement('tutorialNextBtn');
       assertTrue(nextBtn.textContent !== 'Next');
     });
@@ -571,7 +572,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // hello_search
+      w.tutorialGoTo(9); // hello_search
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-list'));
     });
@@ -581,7 +582,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // hello_search
+      w.tutorialGoTo(9); // hello_search
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('fl_hello'));
     });
@@ -591,7 +592,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(8); // hello_search
+      w.tutorialGoTo(9); // hello_search
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
@@ -605,7 +606,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(9); // hello_inject
+      w.tutorialGoTo(10); // hello_inject
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-list'));
     });
@@ -615,7 +616,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(9); // hello_inject
+      w.tutorialGoTo(10); // hello_inject
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('Inject'));
     });
@@ -625,7 +626,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(9); // hello_inject
+      w.tutorialGoTo(10); // hello_inject
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
@@ -639,7 +640,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // hello_verify
+      w.tutorialGoTo(11); // hello_verify
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-item'));
     });
@@ -649,7 +650,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // hello_verify
+      w.tutorialGoTo(11); // hello_verify
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('fl -c hello'));
     });
@@ -659,7 +660,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(10); // hello_verify
+      w.tutorialGoTo(11); // hello_verify
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
@@ -674,7 +675,7 @@ module.exports = function (w) {
       const rawBtn = createMockElement('tabBtnRaw');
       mockElements['tabBtnRaw'] = rawBtn;
       w.startTutorial();
-      w.tutorialGoTo(10); // hello_verify
+      w.tutorialGoTo(11); // hello_verify
       const nextBtn = getElement('tutorialNextBtn');
       assertTrue(nextBtn.disabled);
     });
@@ -687,7 +688,7 @@ module.exports = function (w) {
       rawBtn.classList.add('active');
       mockElements['tabBtnRaw'] = rawBtn;
       w.startTutorial();
-      w.tutorialGoTo(10); // hello_verify
+      w.tutorialGoTo(11); // hello_verify
       const nextBtn = getElement('tutorialNextBtn');
       assertFalse(nextBtn.disabled);
     });
@@ -699,7 +700,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(11); // hello_unpatch
+      w.tutorialGoTo(12); // hello_unpatch
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('tutorial-feature-item'));
     });
@@ -709,7 +710,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(11); // hello_unpatch
+      w.tutorialGoTo(12); // hello_unpatch
       const body = getElement('tutorialBody');
       assertTrue(body.innerHTML.includes('fl -c hello'));
     });
@@ -719,7 +720,7 @@ module.exports = function (w) {
       clearTutorialStorage();
       setupTutorialDOM();
       w.startTutorial();
-      w.tutorialGoTo(11); // hello_unpatch
+      w.tutorialGoTo(12); // hello_unpatch
       const body = getElement('tutorialBody');
       const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
         .length;
@@ -739,9 +740,82 @@ module.exports = function (w) {
         code_size: 64,
       };
       w.startTutorial();
-      w.tutorialGoTo(11); // hello_unpatch
+      w.tutorialGoTo(12); // hello_unpatch
       const nextBtn = getElement('tutorialNextBtn');
       assertTrue(nextBtn.disabled);
+    });
+  });
+
+  /* ===========================
+     WATCH STEP
+     =========================== */
+
+  describe('Tutorial - Watch Step', () => {
+    it('watch step renders feature list', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(7); // watch
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('tutorial-feature-list'));
+    });
+
+    it('watch step has 3 feature items', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(7); // watch
+      const body = getElement('tutorialBody');
+      const count = (body.innerHTML.match(/tutorial-feature-item/g) || [])
+        .length;
+      assertEqual(count, 3);
+    });
+
+    it('watch step mentions expression', () => {
+      resetMocks();
+      clearTutorialStorage();
+      setupTutorialDOM();
+      w.startTutorial();
+      w.tutorialGoTo(7); // watch
+      const body = getElement('tutorialBody');
+      assertTrue(body.innerHTML.includes('g_counter'));
+    });
+  });
+
+  /* ===========================
+     SIDEBAR COVERAGE REGRESSION
+     =========================== */
+
+  describe('Tutorial - Sidebar Section Coverage', () => {
+    it('every sidebar section with details-* has a tutorial step', () => {
+      // All sidebar section IDs that exist in the HTML
+      const sidebarSections = [
+        'details-connection',
+        'details-device',
+        'details-quick-commands',
+        'details-transfer',
+        'details-symbols',
+        'details-watch',
+        'details-configuration',
+      ];
+      const steps = w.TUTORIAL_STEPS;
+      assertTrue(Array.isArray(steps));
+      const coveredSidebars = steps
+        .filter((s) => s.sidebar)
+        .map((s) => s.sidebar);
+      for (const section of sidebarSections) {
+        assertTrue(
+          coveredSidebars.includes(section),
+          'Missing tutorial for sidebar: ' + section,
+        );
+      }
+    });
+
+    it('TUTORIAL_STEPS is exported', () => {
+      assertTrue(Array.isArray(w.TUTORIAL_STEPS));
+      assertTrue(w.TUTORIAL_STEPS.length > 0);
     });
   });
 

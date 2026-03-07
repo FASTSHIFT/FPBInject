@@ -29,6 +29,7 @@ const TUTORIAL_STEPS = [
   { id: 'quickcmd', sidebar: 'details-quick-commands' },
   { id: 'transfer', sidebar: 'details-transfer' },
   { id: 'symbols', sidebar: 'details-symbols' },
+  { id: 'watch', sidebar: 'details-watch' },
   {
     id: 'config',
     sidebar: 'details-configuration',
@@ -711,6 +712,35 @@ const stepRenderers = {
     `;
   },
 
+  watch() {
+    return `
+      <p>${t('tutorial.watch_desc', 'The Watch section lets you monitor C/C++ variables and expressions on the device in real time.')}</p>
+      <div class="tutorial-feature-list">
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-add"></i>
+          <div>
+            <strong>${t('tutorial.watch_add_expr', 'Add Expression')}</strong>
+            ${t('tutorial.watch_add_expr_desc', 'Type a C/C++ symbol name or cast expression (e.g. <code>g_counter</code>, <code>*(struct cfg *)0x20001000</code>).')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-eye"></i>
+          <div>
+            <strong>${t('tutorial.watch_live_value', 'Live Value')}</strong>
+            ${t('tutorial.watch_live_value_desc', 'View decoded values, struct fields, and pointer targets read from device memory.')}
+          </div>
+        </div>
+        <div class="tutorial-feature-item">
+          <i class="codicon codicon-refresh"></i>
+          <div>
+            <strong>${t('tutorial.watch_refresh', 'Refresh')}</strong>
+            ${t('tutorial.watch_refresh_desc', 'Click Refresh All to re-read all watched values from the device.')}
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
   config() {
     const step = TUTORIAL_STEPS.find((s) => s.id === 'config');
     return `
@@ -1032,6 +1062,7 @@ document.addEventListener('DOMContentLoaded', initTutorialDrag);
    =========================== */
 
 window.shouldShowTutorial = shouldShowTutorial;
+window.TUTORIAL_STEPS = TUTORIAL_STEPS;
 window.startTutorial = startTutorial;
 window.tutorialNext = tutorialNext;
 window.tutorialPrev = tutorialPrev;
