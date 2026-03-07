@@ -139,6 +139,7 @@ window.i18nResources['en'] = {
       auto_read: 'Auto',
       auto_read_hint: 'Toggle periodic auto-read',
       auto_read_interval_hint: 'Auto-read interval (ms)',
+      invalid_params: 'Invalid address or size',
     },
 
     // Status bar

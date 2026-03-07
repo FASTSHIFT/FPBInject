@@ -888,5 +888,341 @@ class TestWriteSymbolToDevice(SymbolRoutesBase):
             os.unlink(state.device.elf_path)
 
 
+class TestWriteSymbolWithOffset(SymbolRoutesBase):
+    """Test /api/symbols/write with offset parameter."""
+
+    def _setup_var(self):
+        state.symbols = {
+            "my_struct": {
+                "addr": 0x20001000,
+                "size": 12,
+                "type": "variable",
+                "section": ".data",
+            }
+        }
+        state.symbols_loaded = True
+        f = tempfile.NamedTemporaryFile(suffix=".elf", delete=False)
+        state.device.elf_path = f.name
+        f.close()
+        return f.name
+
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_write_with_offset(self, mock_get_fpb, mock_run_serial):
+        mock_fpb = Mock()
+        mock_fpb.write_memory.return_value = (True, "Write 4 bytes OK")
+        mock_get_fpb.return_value = mock_fpb
+        elf = self._setup_var()
+        try:
+            response = self.client.post(
+                "/api/symbols/write",
+                json={"name": "my_struct", "offset": 4, "hex_data": "DEADBEEF"},
+            )
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            # Verify write_memory was called with addr + offset
+            mock_fpb.write_memory.assert_called_once()
+            call_addr = mock_fpb.write_memory.call_args[0][0]
+            self.assertEqual(call_addr, 0x20001004)
+        finally:
+            os.unlink(elf)
+
+    def test_write_offset_exceeds_size(self):
+        elf = self._setup_var()
+        try:
+            response = self.client.post(
+                "/api/symbols/write",
+                json={"name": "my_struct", "offset": 10, "hex_data": "01020304"},
+            )
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("exceeds symbol size", data["error"])
+        finally:
+            os.unlink(elf)
+
+    def test_write_offset_zero_backward_compat(self):
+        """Omitting offset should default to 0 (backward compatible)."""
+        elf = self._setup_var()
+        try:
+            # No offset field — should work like before
+            response = self.client.post(
+                "/api/symbols/write",
+                json={"name": "my_struct", "hex_data": "010203040506070809101112"},
+            )
+            # Will fail because no mock, but should not fail on offset parsing
+            data = response.get_json()
+            # It will fail at fpb_inject level, not at offset validation
+            self.assertFalse(data["success"])
+            self.assertNotIn("offset", data.get("error", "").lower())
+        finally:
+            os.unlink(elf)
+
+    def test_write_invalid_offset(self):
+        elf = self._setup_var()
+        try:
+            response = self.client.post(
+                "/api/symbols/write",
+                json={"name": "my_struct", "offset": "abc", "hex_data": "01"},
+            )
+            data = response.get_json()
+            self.assertFalse(data["success"])
+            self.assertIn("Invalid offset", data["error"])
+        finally:
+            os.unlink(elf)
+
+
+class TestMemoryRead(SymbolRoutesBase):
+    """Test /api/memory/read endpoint."""
+
+    def test_no_addr(self):
+        response = self.client.get("/api/memory/read?size=4")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("addr", data["error"])
+
+    def test_no_size(self):
+        response = self.client.get("/api/memory/read?addr=0x20000000")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("size", data["error"])
+
+    def test_invalid_addr(self):
+        response = self.client.get("/api/memory/read?addr=ZZZZ&size=4")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("addr", data["error"])
+
+    def test_size_too_large(self):
+        response = self.client.get("/api/memory/read?addr=0x20000000&size=100000")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("64KB", data["error"])
+
+    def test_negative_size(self):
+        response = self.client.get("/api/memory/read?addr=0x20000000&size=-1")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_read_success(self, mock_get_fpb, mock_run_serial):
+        mock_fpb = Mock()
+        mock_fpb.read_memory.return_value = (b"\xaa\xbb\xcc\xdd", "Read 4 bytes OK")
+        mock_get_fpb.return_value = mock_fpb
+        response = self.client.get("/api/memory/read?addr=0x20000000&size=4")
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["hex_data"], "aabbccdd")
+        self.assertEqual(data["addr"], "0x20000000")
+        self.assertEqual(data["size"], 4)
+
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_read_failure(self, mock_get_fpb, mock_run_serial):
+        mock_fpb = Mock()
+        mock_fpb.read_memory.return_value = (None, "Read failed")
+        mock_get_fpb.return_value = mock_fpb
+        response = self.client.get("/api/memory/read?addr=0x20000000&size=4")
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("Read failed", data["error"])
+
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_read_decimal_addr(self, mock_get_fpb, mock_run_serial):
+        """Decimal address should also work."""
+        mock_fpb = Mock()
+        mock_fpb.read_memory.return_value = (b"\x01", "OK")
+        mock_get_fpb.return_value = mock_fpb
+        response = self.client.get("/api/memory/read?addr=536870912&size=1")
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["addr"], "0x20000000")
+
+
+class TestMemoryWrite(SymbolRoutesBase):
+    """Test /api/memory/write endpoint."""
+
+    def test_no_addr(self):
+        response = self.client.post("/api/memory/write", json={"hex_data": "01"})
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("addr", data["error"])
+
+    def test_no_hex_data(self):
+        response = self.client.post("/api/memory/write", json={"addr": "0x20000000"})
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("hex_data", data["error"])
+
+    def test_invalid_hex(self):
+        response = self.client.post(
+            "/api/memory/write", json={"addr": "0x20000000", "hex_data": "ZZZZ"}
+        )
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("Invalid hex_data", data["error"])
+
+    def test_data_too_large(self):
+        response = self.client.post(
+            "/api/memory/write",
+            json={"addr": "0x20000000", "hex_data": "AA" * 65537},
+        )
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("64KB", data["error"])
+
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_write_success(self, mock_get_fpb, mock_run_serial):
+        mock_fpb = Mock()
+        mock_fpb.write_memory.return_value = (True, "Write 4 bytes OK")
+        mock_get_fpb.return_value = mock_fpb
+        response = self.client.post(
+            "/api/memory/write",
+            json={"addr": "0x20001000", "hex_data": "DEADBEEF"},
+        )
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["addr"], "0x20001000")
+        self.assertEqual(data["size"], 4)
+
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_write_failure(self, mock_get_fpb, mock_run_serial):
+        mock_fpb = Mock()
+        mock_fpb.write_memory.return_value = (False, "Write failed")
+        mock_get_fpb.return_value = mock_fpb
+        response = self.client.post(
+            "/api/memory/write",
+            json={"addr": "0x20001000", "hex_data": "01020304"},
+        )
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("Write failed", data["error"])
+
+    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_write_int_addr(self, mock_get_fpb, mock_run_serial):
+        """Integer address in JSON should work."""
+        mock_fpb = Mock()
+        mock_fpb.write_memory.return_value = (True, "OK")
+        mock_get_fpb.return_value = mock_fpb
+        response = self.client.post(
+            "/api/memory/write",
+            json={"addr": 0x20001000, "hex_data": "AA"},
+        )
+        data = response.get_json()
+        self.assertTrue(data["success"])
+
+
+class TestMemoryReadStream(SymbolRoutesBase):
+    """Test /api/memory/read/stream SSE endpoint."""
+
+    def test_no_addr(self):
+        response = self.client.post("/api/memory/read/stream", json={"size": 4})
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("addr", data["error"])
+
+    def test_no_size(self):
+        response = self.client.post(
+            "/api/memory/read/stream", json={"addr": "0x20000000"}
+        )
+        data = response.get_json()
+        self.assertFalse(data["success"])
+
+    def test_size_too_large(self):
+        response = self.client.post(
+            "/api/memory/read/stream",
+            json={"addr": "0x20000000", "size": 100000},
+        )
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("64KB", data["error"])
+
+    @patch(
+        "app.routes.symbols.run_in_device_worker",
+        side_effect=lambda device, func, timeout=5.0: (func(), True)[1],
+    )
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_stream_success(self, mock_get_fpb, mock_worker):
+        mock_fpb = Mock()
+        mock_fpb.read_memory.return_value = (b"\xaa\xbb", "OK")
+        mock_get_fpb.return_value = mock_fpb
+
+        response = self.client.post(
+            "/api/memory/read/stream",
+            json={"addr": "0x20000000", "size": 2},
+        )
+        self.assertIn("text/event-stream", response.content_type)
+        text = response.get_data(as_text=True)
+        self.assertIn('"type": "result"', text)
+        self.assertIn('"success": true', text)
+        self.assertIn("aabb", text)
+
+    @patch("app.routes.symbols.run_in_device_worker", return_value=False)
+    @patch("app.routes.symbols._get_fpb_inject")
+    def test_stream_timeout(self, mock_get_fpb, mock_worker):
+        mock_get_fpb.return_value = Mock()
+        response = self.client.post(
+            "/api/memory/read/stream",
+            json={"addr": "0x20000000", "size": 4},
+        )
+        text = response.get_data(as_text=True)
+        self.assertIn("timeout", text.lower())
+
+
+class TestDynamicTimeout(SymbolRoutesBase):
+    """Test _dynamic_timeout helper."""
+
+    def test_small_size(self):
+        from app.routes.symbols import _dynamic_timeout
+
+        # Small reads should get minimum 10s
+        self.assertEqual(_dynamic_timeout(4), 10.0)
+        self.assertEqual(_dynamic_timeout(128), 10.0)
+
+    def test_large_size(self):
+        from app.routes.symbols import _dynamic_timeout
+
+        state.device.chunk_size = 128
+        # 4096 bytes = 32 chunks * 3s = 96s
+        self.assertEqual(_dynamic_timeout(4096), 96.0)
+
+    def test_custom_chunk_size(self):
+        from app.routes.symbols import _dynamic_timeout
+
+        state.device.chunk_size = 256
+        # 1024 bytes = 4 chunks * 3s = 12s
+        self.assertEqual(_dynamic_timeout(1024), 12.0)
+
+
+class TestParseAddr(SymbolRoutesBase):
+    """Test _parse_addr helper."""
+
+    def test_hex_string(self):
+        from app.routes.symbols import _parse_addr
+
+        self.assertEqual(_parse_addr("0x20000000"), 0x20000000)
+
+    def test_decimal_string(self):
+        from app.routes.symbols import _parse_addr
+
+        self.assertEqual(_parse_addr("536870912"), 536870912)
+
+    def test_int(self):
+        from app.routes.symbols import _parse_addr
+
+        self.assertEqual(_parse_addr(0x20000000), 0x20000000)
+
+    def test_invalid(self):
+        from app.routes.symbols import _parse_addr
+
+        self.assertIsNone(_parse_addr("not_a_number"))
+        self.assertIsNone(_parse_addr(""))
+        self.assertIsNone(_parse_addr(None))
+
+
 if __name__ == "__main__":
     unittest.main()

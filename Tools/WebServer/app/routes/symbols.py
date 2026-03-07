@@ -95,6 +95,17 @@ def _run_serial_op(func, timeout=10.0):
     return result["data"]
 
 
+def _dynamic_timeout(size):
+    """Calculate dynamic timeout based on data size.
+
+    Assumes ~128 bytes/chunk with ~2s per chunk worst case,
+    plus generous headroom.
+    """
+    chunk_size = state.device.chunk_size if state.device.chunk_size > 0 else 128
+    num_chunks = max(1, (size + chunk_size - 1) // chunk_size)
+    return max(10.0, num_chunks * 3.0)
+
+
 @bp.route("/symbols", methods=["GET"])
 def api_get_symbols():
     """Get symbols from ELF file."""
@@ -638,7 +649,8 @@ def api_read_symbol_from_device():
         fpb = _get_fpb_inject()
 
         # Dispatch serial read to worker thread to avoid cross-thread access
-        result = _run_serial_op(lambda: fpb.read_memory(addr, size))
+        timeout = _dynamic_timeout(size)
+        result = _run_serial_op(lambda: fpb.read_memory(addr, size), timeout=timeout)
         if isinstance(result, dict) and "error" in result:
             return jsonify({"success": False, "error": result["error"]})
 
@@ -667,10 +679,15 @@ def api_read_symbol_from_device():
 
 @bp.route("/symbols/write", methods=["POST"])
 def api_write_symbol_to_device():
-    """Write symbol value to device memory (live write via serial)."""
+    """Write symbol value to device memory (live write via serial).
+
+    Supports partial writes via optional 'offset' parameter.
+    When offset is provided, writes hex_data at symbol_addr + offset.
+    """
     data = request.get_json() or {}
     sym_name = data.get("name", "").strip()
     hex_data = data.get("hex_data", "").strip()
+    write_offset = data.get("offset", 0)
 
     if not sym_name:
         return jsonify({"success": False, "error": "Symbol name not specified"})
@@ -697,15 +714,36 @@ def api_write_symbol_to_device():
         )
 
     try:
+        write_offset = int(write_offset)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "Invalid offset value"})
+
+    try:
         write_bytes = bytes.fromhex(hex_data)
     except ValueError:
         return jsonify({"success": False, "error": "Invalid hex_data format"})
+
+    # Validate offset + data doesn't exceed symbol size
+    sym_size = sym_info.get("size", 0) if isinstance(sym_info, dict) else 0
+    if sym_size > 0 and write_offset + len(write_bytes) > sym_size:
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Write exceeds symbol size "
+                f"(offset={write_offset} + len={len(write_bytes)} > size={sym_size})",
+            }
+        )
+
+    write_addr = addr + write_offset
 
     try:
         fpb = _get_fpb_inject()
 
         # Dispatch serial write to worker thread to avoid cross-thread access
-        result = _run_serial_op(lambda: fpb.write_memory(addr, write_bytes))
+        timeout = _dynamic_timeout(len(write_bytes))
+        result = _run_serial_op(
+            lambda: fpb.write_memory(write_addr, write_bytes), timeout=timeout
+        )
         if isinstance(result, dict) and "error" in result:
             return jsonify({"success": False, "error": result["error"]})
 
@@ -719,3 +757,223 @@ def api_write_symbol_to_device():
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Generic memory read/write (address-based, no symbol name required)
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _parse_addr(value):
+    """Parse an address from string or int. Returns int or None."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        try:
+            return int(value, 16) if value.startswith("0x") else int(value)
+        except ValueError:
+            return None
+    return None
+
+
+@bp.route("/memory/read", methods=["GET"])
+def api_memory_read():
+    """Read arbitrary memory from device.
+
+    Query params:
+        addr: hex address (e.g. 0x20000000)
+        size: number of bytes to read
+    """
+    addr = _parse_addr(request.args.get("addr", ""))
+    size = request.args.get("size", type=int)
+
+    if addr is None:
+        return jsonify({"success": False, "error": "Invalid or missing 'addr'"})
+    if not size or size <= 0:
+        return jsonify({"success": False, "error": "Invalid or missing 'size'"})
+    if size > 65536:
+        return jsonify({"success": False, "error": "Size exceeds 64KB limit"})
+
+    try:
+        fpb = _get_fpb_inject()
+        timeout = _dynamic_timeout(size)
+        result = _run_serial_op(lambda: fpb.read_memory(addr, size), timeout=timeout)
+        if isinstance(result, dict) and "error" in result:
+            return jsonify({"success": False, "error": result["error"]})
+
+        raw_data, msg = result
+        if raw_data is None:
+            return jsonify({"success": False, "error": msg})
+
+        return jsonify(
+            {
+                "success": True,
+                "addr": f"0x{addr:08X}",
+                "size": len(raw_data),
+                "hex_data": raw_data.hex(),
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/memory/write", methods=["POST"])
+def api_memory_write():
+    """Write arbitrary memory to device.
+
+    JSON body:
+        addr: hex address string or int
+        hex_data: hex string of bytes to write
+    """
+    data = request.get_json() or {}
+    addr = _parse_addr(data.get("addr"))
+    hex_data = data.get("hex_data", "").strip()
+
+    if addr is None:
+        return jsonify({"success": False, "error": "Invalid or missing 'addr'"})
+    if not hex_data:
+        return jsonify({"success": False, "error": "hex_data not specified"})
+
+    try:
+        write_bytes = bytes.fromhex(hex_data)
+    except ValueError:
+        return jsonify({"success": False, "error": "Invalid hex_data format"})
+
+    if len(write_bytes) > 65536:
+        return jsonify({"success": False, "error": "Data exceeds 64KB limit"})
+
+    try:
+        fpb = _get_fpb_inject()
+        timeout = _dynamic_timeout(len(write_bytes))
+        result = _run_serial_op(
+            lambda: fpb.write_memory(addr, write_bytes), timeout=timeout
+        )
+        if isinstance(result, dict) and "error" in result:
+            return jsonify({"success": False, "error": result["error"]})
+
+        ok, msg = result
+        return jsonify(
+            {
+                "success": ok,
+                "addr": f"0x{addr:08X}",
+                "size": len(write_bytes),
+                "message": msg if ok else None,
+                "error": msg if not ok else None,
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/memory/read/stream", methods=["POST"])
+def api_memory_read_stream():
+    """Read memory with SSE progress streaming.
+
+    JSON body:
+        addr: hex address string or int
+        size: number of bytes to read
+
+    Returns: text/event-stream with progress events and final result.
+    """
+    import json as json_mod
+
+    data = request.get_json() or {}
+    addr = _parse_addr(data.get("addr"))
+    size = data.get("size", 0)
+
+    if addr is None:
+        return jsonify({"success": False, "error": "Invalid or missing 'addr'"})
+
+    try:
+        size = int(size)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "Invalid 'size'"})
+
+    if size <= 0:
+        return jsonify({"success": False, "error": "Invalid 'size'"})
+    if size > 65536:
+        return jsonify({"success": False, "error": "Size exceeds 64KB limit"})
+
+    def generate():
+        try:
+            fpb = _get_fpb_inject()
+            progress_state = {"last_pct": -1}
+
+            def on_progress(offset, total):
+                pct = int(offset * 100 / total) if total > 0 else 0
+                # Only emit when percentage changes to avoid flooding
+                if pct != progress_state["last_pct"]:
+                    progress_state["last_pct"] = pct
+                    evt = {"type": "progress", "offset": offset, "total": total}
+                    yield f"data: {json_mod.dumps(evt)}\n\n"
+
+            # We can't yield from inside the worker callback directly,
+            # so we collect progress events and the result, then yield them.
+            events = []
+            result_holder = {"data": None, "error": None}
+
+            def do_read():
+                def cb(offset, total):
+                    pct = int(offset * 100 / total) if total > 0 else 0
+                    if not events or events[-1].get("pct") != pct:
+                        events.append(
+                            {
+                                "type": "progress",
+                                "offset": offset,
+                                "total": total,
+                                "pct": pct,
+                            }
+                        )
+
+                raw, msg = fpb.read_memory(addr, size, progress_callback=cb)
+                result_holder["data"] = raw
+                result_holder["msg"] = msg
+
+            timeout = _dynamic_timeout(size)
+            device = state.device
+            ok = run_in_device_worker(device, do_read, timeout=timeout)
+
+            if not ok:
+                evt = {
+                    "type": "result",
+                    "success": False,
+                    "error": "Operation timeout",
+                }
+                yield f"data: {json_mod.dumps(evt)}\n\n"
+                return
+
+            # Yield collected progress events
+            for evt in events:
+                yield f"data: {json_mod.dumps(evt)}\n\n"
+
+            raw = result_holder["data"]
+            if raw is None:
+                evt = {
+                    "type": "result",
+                    "success": False,
+                    "error": result_holder.get("msg", "Read failed"),
+                }
+                yield f"data: {json_mod.dumps(evt)}\n\n"
+            else:
+                evt = {
+                    "type": "result",
+                    "success": True,
+                    "addr": f"0x{addr:08X}",
+                    "size": len(raw),
+                    "hex_data": raw.hex(),
+                }
+                yield f"data: {json_mod.dumps(evt)}\n\n"
+
+        except Exception as e:
+            evt = {"type": "result", "success": False, "error": str(e)}
+            yield f"data: {json_mod.dumps(evt)}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

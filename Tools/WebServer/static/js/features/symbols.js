@@ -13,8 +13,7 @@ let _symbolClickTimer = null;
 /* ===========================
    AUTO-READ TIMER
    =========================== */
-let _autoReadTimer = null;
-let _autoReadSymName = null;
+const _autoReadTimers = new Map();
 
 /* ===========================
    SYMBOL TYPE HELPERS
@@ -318,6 +317,18 @@ function _decodeFieldValue(hexData, offset, size, typeName) {
     return `"${str}"`;
   }
 
+  // Float types (little-endian ARM)
+  if (typeName.includes('float') && size === 4) {
+    const view = new DataView(new ArrayBuffer(4));
+    bytes.forEach((b, i) => view.setUint8(i, b));
+    return view.getFloat32(0, true).toPrecision(7);
+  }
+  if (typeName.includes('double') && size === 8) {
+    const view = new DataView(new ArrayBuffer(8));
+    bytes.forEach((b, i) => view.setUint8(i, b));
+    return view.getFloat64(0, true).toPrecision(15);
+  }
+
   return '';
 }
 
@@ -430,7 +441,7 @@ async function readSymbolFromDevice(symName) {
     if (contentDiv) {
       contentDiv.innerHTML = _renderSymbolValueContent(data, false);
       // Restore auto-read state if active
-      if (_autoReadSymName === symName && _autoReadTimer) {
+      if (_autoReadTimers.has(symName)) {
         const btn = document.getElementById(`symAutoReadBtn_${symName}`);
         if (btn) btn.classList.add('active');
       }
@@ -511,30 +522,145 @@ function toggleAutoRead(symName) {
     `symAutoReadInterval_${symName}`,
   );
 
-  if (_autoReadTimer && _autoReadSymName === symName) {
-    // Stop auto-read
-    clearInterval(_autoReadTimer);
-    _autoReadTimer = null;
-    _autoReadSymName = null;
+  if (_autoReadTimers.has(symName)) {
+    // Stop auto-read for this symbol
+    clearInterval(_autoReadTimers.get(symName));
+    _autoReadTimers.delete(symName);
     if (btn) btn.classList.remove('active');
     log.info(`Auto-read stopped for ${symName}`);
     return;
   }
 
-  // Stop any existing auto-read for another symbol
-  if (_autoReadTimer) {
-    clearInterval(_autoReadTimer);
-    const oldBtn = document.getElementById(
-      `symAutoReadBtn_${_autoReadSymName}`,
-    );
-    if (oldBtn) oldBtn.classList.remove('active');
-  }
-
-  const interval = parseInt(intervalInput?.value) || 1000;
-  _autoReadSymName = symName;
-  _autoReadTimer = setInterval(() => readSymbolFromDevice(symName), interval);
+  const interval = Math.max(500, parseInt(intervalInput?.value) || 1000);
+  const timerId = setInterval(() => readSymbolFromDevice(symName), interval);
+  _autoReadTimers.set(symName, timerId);
   if (btn) btn.classList.add('active');
   log.info(`Auto-read started for ${symName} (${interval}ms)`);
+}
+
+/* ===========================
+   FIELD-LEVEL WRITE
+   =========================== */
+async function writeSymbolField(symName, offset, size, newHex) {
+  const statusEl = document.getElementById(`symStatus_${symName}`);
+  if (statusEl) statusEl.textContent = t('symbols.writing', 'Writing...');
+
+  try {
+    const res = await fetch('/api/symbols/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: symName, offset: offset, hex_data: newHex }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      log.error(`Field write failed: ${data.error}`);
+      if (statusEl)
+        statusEl.textContent = `${t('symbols.error', 'Error')}: ${data.error}`;
+      return false;
+    }
+
+    const now = new Date().toLocaleTimeString();
+    if (statusEl)
+      statusEl.textContent = `${t('symbols.written_at', 'Written at')} ${now}`;
+    log.success(`Wrote ${size} bytes at offset ${offset} for ${symName}`);
+    return true;
+  } catch (e) {
+    log.error(`Field write exception: ${e}`);
+    if (statusEl)
+      statusEl.textContent = `${t('symbols.error', 'Error')}: ${e.message}`;
+    return false;
+  }
+}
+
+/* ===========================
+   ARBITRARY ADDRESS READ
+   =========================== */
+async function readMemoryAddress(addrStr, size) {
+  const addr = addrStr.trim();
+  if (!addr || !size || size <= 0) {
+    log.error(t('symbols.invalid_params', 'Invalid address or size'));
+    return;
+  }
+
+  const tabId = `memview_${addr}_${size}`;
+  const state = window.FPBState;
+
+  if (state.editorTabs.find((t) => t.id === tabId)) {
+    switchEditorTab(tabId);
+    return;
+  }
+
+  log.debug(`Reading ${size} bytes from ${addr}...`);
+
+  try {
+    const res = await fetch(
+      `/api/memory/read?addr=${encodeURIComponent(addr)}&size=${size}`,
+    );
+    const data = await res.json();
+
+    if (!data.success) {
+      log.error(`Memory read failed: ${data.error}`);
+      return;
+    }
+
+    const tabTitle = `${data.addr} [${data.size}B]`;
+
+    state.editorTabs.push({
+      id: tabId,
+      title: tabTitle,
+      type: 'memory-viewer',
+      closable: true,
+      memAddr: data.addr,
+      memSize: data.size,
+    });
+
+    const tabsHeader = document.getElementById('editorTabsHeader');
+    const tabDiv = document.createElement('div');
+    tabDiv.className = 'tab';
+    tabDiv.setAttribute('data-tab', tabId);
+    tabDiv.innerHTML = `
+      <i class="codicon codicon-file-binary tab-icon" style="color: #c586c0;"></i>
+      <span>${tabTitle}</span>
+      <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
+    `;
+    tabDiv.onclick = () => switchEditorTab(tabId);
+    tabDiv.onmousedown = (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tabId, e);
+      }
+    };
+    tabsHeader.appendChild(tabDiv);
+
+    const tabsContent = document.querySelector('.editor-tabs-content');
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'tab-content';
+    contentDiv.id = `tabContent_${tabId}`;
+    contentDiv.innerHTML = `
+      <div class="sym-viewer-container">
+        <div class="sym-viewer-header">
+          <div class="sym-viewer-title">
+            <i class="codicon codicon-file-binary sym-viewer-icon"></i>
+            <strong>${data.addr}</strong>
+          </div>
+          <div class="sym-viewer-meta">
+            ${t('symbols.size', 'Size')}: ${data.size} ${t('symbols.bytes', 'bytes')}
+          </div>
+        </div>
+        <div class="sym-viewer-hex">
+          <div class="sym-hex-label">${t('symbols.raw_hex', 'Raw Hex')}:</div>
+          <pre class="sym-hex-dump">${_formatHexDump(data.hex_data)}</pre>
+        </div>
+      </div>
+    `;
+    tabsContent.appendChild(contentDiv);
+
+    switchEditorTab(tabId);
+    log.success(`Read ${data.size} bytes from ${data.addr}`);
+  } catch (e) {
+    log.error(`Memory read exception: ${e}`);
+  }
 }
 
 // Export for global access
@@ -545,6 +671,8 @@ window.onSymbolDblClick = onSymbolDblClick;
 window.openSymbolValueTab = openSymbolValueTab;
 window.readSymbolFromDevice = readSymbolFromDevice;
 window.writeSymbolToDevice = writeSymbolToDevice;
+window.writeSymbolField = writeSymbolField;
+window.readMemoryAddress = readMemoryAddress;
 window.toggleAutoRead = toggleAutoRead;
 // Export helpers for testing
 window._extractFieldHex = _extractFieldHex;
@@ -552,3 +680,4 @@ window._decodeFieldValue = _decodeFieldValue;
 window._formatHexDump = _formatHexDump;
 window._escapeHtml = _escapeHtml;
 window._renderSymbolValueContent = _renderSymbolValueContent;
+window._autoReadTimers = _autoReadTimers;

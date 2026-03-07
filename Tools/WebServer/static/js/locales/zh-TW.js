@@ -139,6 +139,7 @@ window.i18nResources['zh-TW'] = {
       auto_read: '自動',
       auto_read_hint: '切換定時自動讀取',
       auto_read_interval_hint: '自動讀取間隔 (ms)',
+      invalid_params: '無效的位址或大小',
     },
 
     // 狀態列

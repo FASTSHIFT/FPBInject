@@ -2562,4 +2562,263 @@ module.exports = function (w) {
       assertEqual(w.localStorage.getItem('clear-test'), null);
     });
   });
+
+  // ===================================================================
+  // Phase 1 Symbol Viewer Improvements
+  // ===================================================================
+
+  describe('_autoReadTimers is a Map', () => {
+    it('is an instance of Map', () => {
+      assertTrue(w._autoReadTimers instanceof Map);
+    });
+
+    it('starts empty', () => {
+      assertEqual(w._autoReadTimers.size, 0);
+    });
+  });
+
+  describe('toggleAutoRead multi-symbol support', () => {
+    it('is a function', () => {
+      assertTrue(typeof w.toggleAutoRead === 'function');
+    });
+
+    it('starts auto-read and adds to Map', () => {
+      // Ensure clean state
+      if (w._autoReadTimers.has('test_sym')) {
+        clearInterval(w._autoReadTimers.get('test_sym'));
+        w._autoReadTimers.delete('test_sym');
+      }
+      // getElementById auto-creates mock elements
+      const btn = browserGlobals.document.getElementById(
+        'symAutoReadBtn_test_sym',
+      );
+      const input = browserGlobals.document.getElementById(
+        'symAutoReadInterval_test_sym',
+      );
+      input.value = '1000';
+
+      w.toggleAutoRead('test_sym');
+      assertTrue(w._autoReadTimers.has('test_sym'));
+
+      // Clean up
+      clearInterval(w._autoReadTimers.get('test_sym'));
+      w._autoReadTimers.delete('test_sym');
+    });
+
+    it('stops auto-read and removes from Map', () => {
+      const btn = browserGlobals.document.getElementById(
+        'symAutoReadBtn_test_sym2',
+      );
+      const input = browserGlobals.document.getElementById(
+        'symAutoReadInterval_test_sym2',
+      );
+      input.value = '1000';
+
+      // Start then stop
+      w.toggleAutoRead('test_sym2');
+      assertTrue(w._autoReadTimers.has('test_sym2'));
+      w.toggleAutoRead('test_sym2');
+      assertTrue(!w._autoReadTimers.has('test_sym2'));
+    });
+
+    it('supports multiple symbols simultaneously', () => {
+      const syms = ['sym_a', 'sym_b', 'sym_c'];
+      syms.forEach((s) => {
+        browserGlobals.document.getElementById(`symAutoReadBtn_${s}`);
+        const input = browserGlobals.document.getElementById(
+          `symAutoReadInterval_${s}`,
+        );
+        input.value = '1000';
+      });
+
+      syms.forEach((s) => w.toggleAutoRead(s));
+      assertEqual(w._autoReadTimers.size, 3);
+
+      // Clean up
+      syms.forEach((s) => {
+        clearInterval(w._autoReadTimers.get(s));
+        w._autoReadTimers.delete(s);
+      });
+    });
+
+    it('enforces 500ms minimum interval', () => {
+      browserGlobals.document.getElementById('symAutoReadBtn_fast_sym');
+      const input = browserGlobals.document.getElementById(
+        'symAutoReadInterval_fast_sym',
+      );
+      input.value = '100'; // Below 500ms minimum
+
+      w.toggleAutoRead('fast_sym');
+      assertTrue(w._autoReadTimers.has('fast_sym'));
+
+      // Clean up
+      clearInterval(w._autoReadTimers.get('fast_sym'));
+      w._autoReadTimers.delete('fast_sym');
+    });
+  });
+
+  describe('writeSymbolField Function', () => {
+    it('is exported to window', () => {
+      assertTrue(typeof w.writeSymbolField === 'function');
+    });
+
+    it('is async function', () => {
+      assertTrue(w.writeSymbolField.constructor.name === 'AsyncFunction');
+    });
+
+    it('sends POST with offset to /api/symbols/write', async () => {
+      setFetchResponse('/api/symbols/write', {
+        success: true,
+        message: 'Write 4 bytes OK',
+      });
+      const result = await w.writeSymbolField('my_struct', 4, 4, 'DEADBEEF');
+      assertTrue(result);
+      const calls = getFetchCalls();
+      const writeCall = calls.find((c) => c.url === '/api/symbols/write');
+      assertTrue(writeCall !== undefined);
+      const body = JSON.parse(writeCall.options.body);
+      assertEqual(body.name, 'my_struct');
+      assertEqual(body.offset, 4);
+      assertEqual(body.hex_data, 'DEADBEEF');
+    });
+
+    it('returns false on failure', async () => {
+      setFetchResponse('/api/symbols/write', {
+        success: false,
+        error: 'Write failed',
+      });
+      const result = await w.writeSymbolField('my_struct', 0, 4, '01020304');
+      assertTrue(!result);
+    });
+
+    it('returns false on exception', async () => {
+      const origFetch = browserGlobals.fetch;
+      browserGlobals.fetch = async () => {
+        throw new Error('Network error');
+      };
+      global.fetch = browserGlobals.fetch;
+      const result = await w.writeSymbolField('my_struct', 0, 4, '01020304');
+      assertTrue(!result);
+      browserGlobals.fetch = origFetch;
+      global.fetch = origFetch;
+    });
+  });
+
+  describe('readMemoryAddress Function', () => {
+    it('is exported to window', () => {
+      assertTrue(typeof w.readMemoryAddress === 'function');
+    });
+
+    it('is async function', () => {
+      assertTrue(w.readMemoryAddress.constructor.name === 'AsyncFunction');
+    });
+
+    it('fetches from /api/memory/read', async () => {
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/memory/read', {
+        success: true,
+        addr: '0x20000000',
+        size: 16,
+        hex_data: '00112233445566778899AABBCCDDEEFF',
+      });
+      await w.readMemoryAddress('0x20000000', 16);
+      assertTrue(
+        w.FPBState.editorTabs.some((t) => t.id === 'memview_0x20000000_16'),
+      );
+      w.FPBState.editorTabs = [];
+    });
+
+    it('reuses existing tab', async () => {
+      w.FPBState.editorTabs = [
+        { id: 'memview_0x20000000_16', title: '0x20000000 [16B]' },
+      ];
+      await w.readMemoryAddress('0x20000000', 16);
+      assertEqual(
+        w.FPBState.editorTabs.filter((t) => t.id === 'memview_0x20000000_16')
+          .length,
+        1,
+      );
+      w.FPBState.editorTabs = [];
+    });
+
+    it('handles API error gracefully', async () => {
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/memory/read', {
+        success: false,
+        error: 'Read failed',
+      });
+      await w.readMemoryAddress('0x20000000', 16);
+      assertTrue(
+        !w.FPBState.editorTabs.some((t) => t.id === 'memview_0x20000000_16'),
+      );
+    });
+
+    it('returns early on invalid params', async () => {
+      w.FPBState.editorTabs = [];
+      await w.readMemoryAddress('', 0);
+      assertEqual(w.FPBState.editorTabs.length, 0);
+    });
+
+    it('creates tab with memory-viewer type', async () => {
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/memory/read', {
+        success: true,
+        addr: '0x08000000',
+        size: 4,
+        hex_data: 'DEADBEEF',
+      });
+      await w.readMemoryAddress('0x08000000', 4);
+      const tab = w.FPBState.editorTabs.find(
+        (t) => t.id === 'memview_0x08000000_4',
+      );
+      assertTrue(tab !== undefined);
+      assertEqual(tab.type, 'memory-viewer');
+      w.FPBState.editorTabs = [];
+    });
+  });
+
+  describe('_decodeFieldValue float/double support', () => {
+    it('decodes float (4 bytes, little-endian)', () => {
+      // float 3.14 in LE: 0xC3F54840 -> bytes: C3 F5 48 40
+      // Actually: 3.14f = 0x4048F5C3 -> LE bytes: C3 F5 48 40
+      const result = w._decodeFieldValue('C3F54840', 0, 4, 'float');
+      assertTrue(result !== '');
+      // Should be approximately 3.14
+      const val = parseFloat(result);
+      assertTrue(Math.abs(val - 3.14) < 0.001);
+    });
+
+    it('decodes double (8 bytes, little-endian)', () => {
+      // double 3.14 = 0x40091EB851EB851F -> LE bytes: 1F 85 EB 51 B8 1E 09 40
+      const result = w._decodeFieldValue('1F85EB51B81E0940', 0, 8, 'double');
+      assertTrue(result !== '');
+      const val = parseFloat(result);
+      assertTrue(Math.abs(val - 3.14) < 0.0001);
+    });
+
+    it('returns empty for float with wrong size', () => {
+      // float requires exactly 4 bytes
+      const result = w._decodeFieldValue('C3F548', 0, 3, 'float');
+      assertEqual(result, '');
+    });
+
+    it('returns empty for double with wrong size', () => {
+      // double requires exactly 8 bytes
+      const result = w._decodeFieldValue('C3F54840', 0, 4, 'double');
+      assertEqual(result, '');
+    });
+
+    it('decodes float zero', () => {
+      const result = w._decodeFieldValue('00000000', 0, 4, 'float');
+      assertTrue(result !== '');
+      assertEqual(parseFloat(result), 0);
+    });
+
+    it('decodes negative float', () => {
+      // -1.0f = 0xBF800000 -> LE: 000080BF
+      const result = w._decodeFieldValue('000080BF', 0, 4, 'float');
+      assertTrue(result !== '');
+      assertEqual(parseFloat(result), -1);
+    });
+  });
 };
