@@ -1201,6 +1201,10 @@ input[type="checkbox"] {
   min-height: 22px;
 }
 
+.sym-tree-node[data-expandable] > .sym-tree-row {
+  cursor: pointer;
+}
+
 .sym-tree-row:hover {
   background: var(--vscode-list-hover);
 }

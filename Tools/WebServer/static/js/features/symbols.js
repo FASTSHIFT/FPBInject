@@ -289,6 +289,8 @@ function _renderSymbolValueContent(data, isConst) {
  * Render a struct layout as a collapsible tree (IDE-style variable viewer).
  * Uses gdb_values as primary display when available, falls back to hex decode.
  */
+let _treeNodeCounter = 0;
+
 function _renderStructTree(structLayout, hexData, isBss, gdbValues) {
   let html = '<div class="sym-tree-view">';
   for (const member of structLayout) {
@@ -332,13 +334,14 @@ function _renderTreeNode(member, hexData, isBss, gdbValues, depth) {
     displayValue = '<span class="sym-tree-value">—</span>';
   }
 
-  const nodeId = `sym_tree_${depth}_${member.name}_${member.offset}`;
+  const nodeId = `stn_${_treeNodeCounter++}`;
   const chevron = isExpandable
-    ? `<span class="sym-tree-toggle codicon codicon-chevron-right" onclick="_toggleTreeNode('${nodeId}')"></span>`
+    ? '<span class="sym-tree-toggle codicon codicon-chevron-right"></span>'
     : '<span class="sym-tree-toggle-placeholder"></span>';
+  const expandAttr = isExpandable ? ' data-expandable="1"' : '';
 
-  let html = `<div class="sym-tree-node" id="${nodeId}" style="padding-left: ${indent}px;">
-    <div class="sym-tree-row" ${isExpandable ? `onclick="_toggleTreeNode('${nodeId}')"` : ''}>
+  let html = `<div class="sym-tree-node" id="${nodeId}"${expandAttr} style="padding-left: ${indent}px;">
+    <div class="sym-tree-row">
       ${chevron}
       <span class="sym-tree-name">${_escapeHtml(member.name)}</span>
       <span class="sym-tree-separator">:</span>
@@ -391,28 +394,33 @@ function _renderExpandableChildren(gdbVal, depth) {
   const fields = _splitGdbFields(inner);
   let html = '';
 
-  for (const field of fields) {
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i];
     const eqIdx = field.indexOf('=');
     if (eqIdx < 0) {
       // Array element or unnamed value
-      const childExpandable = _isExpandableValue(field.trim());
-      const childId = `sym_tree_${depth}_arr_${html.length}`;
+      const val = field.trim();
+      const childExpandable = _isExpandableValue(val);
+      const childId = `stn_${_treeNodeCounter++}`;
       const indent = depth * 16;
       const chevron = childExpandable
-        ? `<span class="sym-tree-toggle codicon codicon-chevron-right" onclick="_toggleTreeNode('${childId}')"></span>`
+        ? '<span class="sym-tree-toggle codicon codicon-chevron-right"></span>'
         : '<span class="sym-tree-toggle-placeholder"></span>';
       const displayVal = childExpandable
-        ? `<span class="sym-tree-value sym-tree-summary">${_escapeHtml(_getExpandableSummary(field.trim()))}</span>`
-        : `<span class="sym-tree-value">${_escapeHtml(field.trim())}</span>`;
+        ? `<span class="sym-tree-value sym-tree-summary">${_escapeHtml(_getExpandableSummary(val))}</span>`
+        : `<span class="sym-tree-value">${_escapeHtml(val)}</span>`;
+      const expandAttr = childExpandable ? ' data-expandable="1"' : '';
 
-      html += `<div class="sym-tree-node" id="${childId}" style="padding-left: ${indent}px;">
-        <div class="sym-tree-row" ${childExpandable ? `onclick="_toggleTreeNode('${childId}')"` : ''}>
+      html += `<div class="sym-tree-node" id="${childId}"${expandAttr} style="padding-left: ${indent}px;">
+        <div class="sym-tree-row">
           ${chevron}
+          <span class="sym-tree-name">[${i}]</span>
+          <span class="sym-tree-separator">:</span>
           ${displayVal}
         </div>`;
       if (childExpandable) {
         html += `<div class="sym-tree-children" style="display: none;">`;
-        html += _renderExpandableChildren(field.trim(), depth + 1);
+        html += _renderExpandableChildren(val, depth + 1);
         html += '</div>';
       }
       html += '</div>';
@@ -422,17 +430,18 @@ function _renderExpandableChildren(gdbVal, depth) {
     const name = field.substring(0, eqIdx).trim();
     const value = field.substring(eqIdx + 1).trim();
     const childExpandable = _isExpandableValue(value);
-    const childId = `sym_tree_${depth}_${name}_${html.length}`;
+    const childId = `stn_${_treeNodeCounter++}`;
     const indent = depth * 16;
     const chevron = childExpandable
-      ? `<span class="sym-tree-toggle codicon codicon-chevron-right" onclick="_toggleTreeNode('${childId}')"></span>`
+      ? '<span class="sym-tree-toggle codicon codicon-chevron-right"></span>'
       : '<span class="sym-tree-toggle-placeholder"></span>';
     const displayVal = childExpandable
       ? `<span class="sym-tree-value sym-tree-summary">${_escapeHtml(_getExpandableSummary(value))}</span>`
       : `<span class="sym-tree-value">${_escapeHtml(value)}</span>`;
+    const expandAttr = childExpandable ? ' data-expandable="1"' : '';
 
-    html += `<div class="sym-tree-node" id="${childId}" style="padding-left: ${indent}px;">
-      <div class="sym-tree-row" ${childExpandable ? `onclick="_toggleTreeNode('${childId}')"` : ''}>
+    html += `<div class="sym-tree-node" id="${childId}"${expandAttr} style="padding-left: ${indent}px;">
+      <div class="sym-tree-row">
         ${chevron}
         <span class="sym-tree-name">${_escapeHtml(name)}</span>
         <span class="sym-tree-separator">:</span>
@@ -450,17 +459,18 @@ function _renderExpandableChildren(gdbVal, depth) {
 }
 
 /**
- * Split a GDB struct/array body into top-level fields, respecting brace depth.
+ * Split a GDB struct/array body into top-level fields,
+ * respecting brace, bracket, and parenthesis depth.
  */
 function _splitGdbFields(inner) {
   const fields = [];
   let depth = 0;
   let current = '';
   for (const ch of inner) {
-    if (ch === '{' || ch === '[') {
+    if (ch === '{' || ch === '[' || ch === '(') {
       depth++;
       current += ch;
-    } else if (ch === '}' || ch === ']') {
+    } else if (ch === '}' || ch === ']' || ch === ')') {
       depth--;
       current += ch;
     } else if (ch === ',' && depth === 0) {
@@ -476,12 +486,12 @@ function _splitGdbFields(inner) {
 
 /**
  * Toggle a tree node's expanded/collapsed state.
+ * Called via event delegation from .sym-tree-view click handler.
  */
-function _toggleTreeNode(nodeId) {
-  const node = document.getElementById(nodeId);
-  if (!node) return;
-  const children = node.querySelector(':scope > .sym-tree-children');
-  const toggle = node.querySelector(
+function _toggleTreeNode(nodeEl) {
+  if (!nodeEl) return;
+  const children = nodeEl.querySelector(':scope > .sym-tree-children');
+  const toggle = nodeEl.querySelector(
     ':scope > .sym-tree-row > .sym-tree-toggle',
   );
   if (!children) return;
@@ -492,6 +502,15 @@ function _toggleTreeNode(nodeId) {
     toggle.classList.toggle('expanded', !isOpen);
   }
 }
+
+// Event delegation for tree node expand/collapse
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('.sym-tree-row');
+  if (!row) return;
+  const node = row.closest('.sym-tree-node[data-expandable]');
+  if (!node) return;
+  _toggleTreeNode(node);
+});
 
 /**
  * Handle deref checkbox toggle — persist state and trigger read.
@@ -1022,7 +1041,6 @@ window.writeSymbolToDevice = writeSymbolToDevice;
 window.writeSymbolField = writeSymbolField;
 window.readMemoryAddress = readMemoryAddress;
 window.toggleAutoRead = toggleAutoRead;
-window._toggleTreeNode = _toggleTreeNode;
 window._onDerefToggle = _onDerefToggle;
 // Export helpers for testing
 window._extractFieldHex = _extractFieldHex;

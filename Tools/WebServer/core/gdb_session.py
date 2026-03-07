@@ -798,24 +798,21 @@ class GDBSession:
             return self._parse_struct_values_impl(sym_name, addr)
 
     def _parse_struct_values_impl(self, sym_name: str, addr: int) -> Optional[dict]:
-        """Internal: parse GDB print output into field->value dict."""
-        # Strategy 1: try printing the variable directly
-        output = self._execute_cli(f"print {sym_name}", timeout=15.0)
-        if output:
-            m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
-            if m:
-                body = m.group(1).strip()
-                if body.startswith("{"):
-                    return self._parse_gdb_struct_body(body)
+        """Internal: parse GDB print output into field->value dict.
 
-        # Strategy 2: get real type via whatis, then cast to address
+        Always uses whatis + address cast to read from device memory,
+        since 'print sym_name' would read ELF initial values, not live data.
+        """
+        # Get real type via whatis
         whatis_out = self._execute_cli(f"whatis {sym_name}")
         if not whatis_out:
             return None
         tm = re.match(r"type\s*=\s*(.+)", whatis_out.strip())
         if not tm:
             return None
-        real_type = tm.group(1).strip().rstrip("*").strip()
+        raw_type = tm.group(1).strip()
+        # Strip pointer suffix for deref case (e.g. "lv_disp_t *" -> "lv_disp_t")
+        real_type = raw_type.rstrip("*").strip()
 
         # Try with struct prefix first, then without
         for type_expr in [f"struct {real_type}", real_type]:
@@ -834,7 +831,8 @@ class GDBSession:
     def _parse_gdb_struct_body(body: str) -> Optional[dict]:
         """Parse GDB struct print output like '{x = 1, y = 0x20, ...}'.
 
-        Handles nested structs and arrays by tracking brace/bracket depth.
+        Handles nested structs, arrays, and function pointer signatures
+        by tracking brace/bracket/parenthesis depth.
         Returns dict mapping field_name -> value_string.
         """
         if not body.startswith("{"):
@@ -849,10 +847,10 @@ class GDBSession:
         depth = 0
         current = ""
         for ch in inner:
-            if ch in ("{", "["):
+            if ch in ("{", "[", "("):
                 depth += 1
                 current += ch
-            elif ch in ("}", "]"):
+            elif ch in ("}", "]", ")"):
                 depth -= 1
                 current += ch
             elif ch == "," and depth == 0:
