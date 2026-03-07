@@ -140,6 +140,9 @@ window.i18nResources['zh-TW'] = {
       auto_read_hint: '切換定時自動讀取',
       auto_read_interval_hint: '自動讀取間隔 (ms)',
       invalid_params: '無效的位址或大小',
+      pointer_value: '指向',
+      pointer_raw: '指標',
+      deref_pointer: '解參考',
     },
 
     // Watch 表達式

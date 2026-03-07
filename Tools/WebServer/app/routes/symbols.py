@@ -588,6 +588,12 @@ def api_get_symbol_value():
         sym_info.get("type", "other") if isinstance(sym_info, dict) else "function"
     )
     section = sym_info.get("section", "") if isinstance(sym_info, dict) else ""
+    is_pointer = (
+        sym_info.get("is_pointer", False) if isinstance(sym_info, dict) else False
+    )
+    pointer_target = (
+        sym_info.get("pointer_target") if isinstance(sym_info, dict) else None
+    )
 
     # Read raw bytes via GDB
     raw_data = state.gdb_session.read_symbol_value(sym_name)
@@ -595,34 +601,43 @@ def api_get_symbol_value():
     logger.info(f"[value] read_symbol_value: {t_read - t_lookup:.2f}s")
     hex_data = raw_data.hex() if raw_data else None
 
-    # Get struct layout via GDB (cached)
-    struct_layout = _get_struct_layout_cached(sym_name)
+    # Get struct layout via GDB (cached) — skip for pointer types
+    struct_layout = None
+    if not is_pointer:
+        struct_layout = _get_struct_layout_cached(sym_name)
     t_struct = time.time()
     logger.info(f"[value] get_struct_layout: {t_struct - t_read:.2f}s")
 
     logger.info(f"[value] Total for '{sym_name}': {t_struct - t_start:.2f}s")
 
-    return jsonify(
-        {
-            "success": True,
-            "name": sym_name,
-            "addr": f"0x{addr:08X}",
-            "size": size,
-            "type": sym_type,
-            "section": section,
-            "hex_data": hex_data,
-            "struct_layout": struct_layout,
-        }
-    )
+    resp = {
+        "success": True,
+        "name": sym_name,
+        "addr": f"0x{addr:08X}",
+        "size": size,
+        "type": sym_type,
+        "section": section,
+        "hex_data": hex_data,
+        "struct_layout": struct_layout,
+    }
+    if is_pointer:
+        resp["is_pointer"] = True
+        resp["pointer_target"] = pointer_target
+    return jsonify(resp)
 
 
 @bp.route("/symbols/read", methods=["POST"])
 def api_read_symbol_from_device():
-    """Read symbol value from device memory (live read via serial)."""
+    """Read symbol value from device memory (live read via serial).
+
+    For pointer types, supports optional 'deref' flag to also read
+    the data at the address the pointer points to.
+    """
     t_start = time.time()
 
     data = request.get_json() or {}
     sym_name = data.get("name", "").strip()
+    deref = data.get("deref", False)
     if not sym_name:
         return jsonify({"success": False, "error": "Symbol name not specified"})
 
@@ -640,6 +655,12 @@ def api_read_symbol_from_device():
 
     addr = _get_addr(sym_info)
     size = sym_info.get("size", 0) if isinstance(sym_info, dict) else 0
+    is_pointer = (
+        sym_info.get("is_pointer", False) if isinstance(sym_info, dict) else False
+    )
+    pointer_target = (
+        sym_info.get("pointer_target") if isinstance(sym_info, dict) else None
+    )
     if size <= 0:
         return jsonify(
             {"success": False, "error": f"Symbol '{sym_name}' has unknown size"}
@@ -660,19 +681,67 @@ def api_read_symbol_from_device():
 
         hex_data = raw_data.hex()
 
-        struct_layout = _get_struct_layout_cached(sym_name)
+        # For pointer types, skip struct layout of the pointer variable itself
+        struct_layout = None
+        if not is_pointer:
+            struct_layout = _get_struct_layout_cached(sym_name)
 
-        return jsonify(
-            {
-                "success": True,
-                "name": sym_name,
-                "addr": f"0x{addr:08X}",
-                "size": size,
-                "hex_data": hex_data,
-                "struct_layout": struct_layout,
-                "source": "device",
-            }
-        )
+        resp = {
+            "success": True,
+            "name": sym_name,
+            "addr": f"0x{addr:08X}",
+            "size": size,
+            "hex_data": hex_data,
+            "struct_layout": struct_layout,
+            "source": "device",
+        }
+        if is_pointer:
+            resp["is_pointer"] = True
+            resp["pointer_target"] = pointer_target
+
+        # Dereference: read the data at the pointer target address
+        if deref and is_pointer and hex_data:
+            ptr_value = int.from_bytes(bytes.fromhex(hex_data), "little")
+            resp["pointer_value"] = f"0x{ptr_value:08X}"
+
+            if ptr_value != 0 and pointer_target:
+                from core.gdb_manager import is_gdb_available
+
+                target_size = 0
+                target_layout = None
+                if is_gdb_available(state) and state.gdb_session:
+                    target_size = state.gdb_session.get_sizeof(pointer_target)
+                    if target_size > 0:
+                        target_layout = state.gdb_session.get_struct_layout(sym_name)
+
+                if target_size > 0:
+                    deref_timeout = _dynamic_timeout(target_size)
+                    deref_result = _run_serial_op(
+                        lambda: fpb.read_memory(ptr_value, target_size),
+                        timeout=deref_timeout,
+                    )
+                    if (
+                        not isinstance(deref_result, dict)
+                        and deref_result[0] is not None
+                    ):
+                        deref_raw, _ = deref_result
+                        resp["deref_data"] = {
+                            "addr": f"0x{ptr_value:08X}",
+                            "size": target_size,
+                            "hex_data": deref_raw.hex(),
+                            "struct_layout": target_layout,
+                            "type_name": pointer_target,
+                        }
+                    else:
+                        resp["deref_error"] = (
+                            f"Failed to read {target_size} bytes at 0x{ptr_value:08X}"
+                        )
+                else:
+                    resp["deref_error"] = f"Cannot determine size of '{pointer_target}'"
+            elif ptr_value == 0:
+                resp["deref_error"] = "NULL pointer"
+
+        return jsonify(resp)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 

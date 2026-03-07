@@ -143,11 +143,17 @@ function _renderSymbolValueContent(data, isConst) {
     : t('symbols.read_write', 'Read-Write');
   const isBss = data.section && data.section.startsWith('.bss');
 
+  // For pointer types, show the pointer type in the header
+  const typeDisplay = data.is_pointer
+    ? `${_escapeHtml(data.pointer_target || '?')} *`
+    : '';
+
   let headerHtml = `
     <div class="sym-viewer-header">
       <div class="sym-viewer-title">
-        <i class="codicon ${isConst ? 'codicon-lock' : 'codicon-symbol-variable'} sym-viewer-icon"></i>
+        <i class="codicon ${isConst ? 'codicon-lock' : data.is_pointer ? 'codicon-references' : 'codicon-symbol-variable'} sym-viewer-icon"></i>
         <strong>${_escapeHtml(data.name)}</strong>
+        ${typeDisplay ? `<span class="sym-viewer-type-badge">${typeDisplay}</span>` : ''}
       </div>
       <div class="sym-viewer-meta">
         ${t('symbols.address', 'Address')}: ${data.addr} &nbsp;
@@ -160,6 +166,15 @@ function _renderSymbolValueContent(data, isConst) {
   let toolbarHtml = '';
   if (!isConst) {
     const escapedName = _escapeHtml(data.name);
+    const derefChecked = data.deref_data ? 'checked' : '';
+    const derefCheckbox = data.is_pointer
+      ? `<label class="sym-deref-toggle">
+          <input type="checkbox" id="symDerefToggle_${escapedName}" ${derefChecked}
+            onchange="readSymbolFromDevice('${escapedName}', this.checked)" />
+          <i class="codicon codicon-type-hierarchy-sub"></i>
+          ${t('symbols.deref_pointer', 'Dereference')}
+        </label>`
+      : '';
     toolbarHtml = `
       <div class="sym-viewer-toolbar">
         <button class="vscode-btn" onclick="readSymbolFromDevice('${escapedName}')">
@@ -168,6 +183,7 @@ function _renderSymbolValueContent(data, isConst) {
         <button class="vscode-btn secondary" onclick="writeSymbolToDevice('${escapedName}')">
           <i class="codicon codicon-cloud-upload"></i> ${t('symbols.write_to_device', 'Write to Device')}
         </button>
+        ${derefCheckbox}
         <div class="sym-auto-read">
           <button class="vscode-btn secondary sym-auto-read-toggle" id="symAutoReadBtn_${escapedName}"
             onclick="toggleAutoRead('${escapedName}')"
@@ -187,49 +203,53 @@ function _renderSymbolValueContent(data, isConst) {
 
   let bodyHtml = '';
 
-  if (data.struct_layout && data.struct_layout.length > 0) {
-    bodyHtml += '<div class="sym-viewer-struct">';
-    bodyHtml += '<table class="sym-struct-table"><thead><tr>';
-    bodyHtml += `<th>${t('symbols.field', 'Field')}</th>`;
-    bodyHtml += `<th>${t('symbols.type', 'Type')}</th>`;
-    bodyHtml += `<th>${t('symbols.offset', 'Offset')}</th>`;
-    bodyHtml += `<th>${t('symbols.size', 'Size')}</th>`;
-    bodyHtml += `<th>${t('symbols.value', 'Value')}</th>`;
-    bodyHtml += '</tr></thead><tbody>';
-
-    for (const member of data.struct_layout) {
-      const valueHex = data.hex_data
-        ? _extractFieldHex(data.hex_data, member.offset, member.size)
-        : isBss
-          ? `<em>${t('symbols.needs_device_read', 'needs device read')}</em>`
-          : '—';
-      const valueDecoded = data.hex_data
-        ? _decodeFieldValue(
-            data.hex_data,
-            member.offset,
-            member.size,
-            member.type_name,
-          )
-        : '';
-      const displayValue = valueDecoded
-        ? `${valueDecoded} <span class="sym-hex-hint">(${valueHex})</span>`
-        : valueHex;
-
-      bodyHtml += `<tr>
-        <td class="sym-field-name">${_escapeHtml(member.name)}</td>
-        <td class="sym-field-type">${_escapeHtml(member.type_name)}</td>
-        <td>+${member.offset}</td>
-        <td>${member.size}</td>
-        <td class="sym-field-value">${displayValue}</td>
-      </tr>`;
-    }
-    bodyHtml += '</tbody></table></div>';
+  // For pointer types, show the pointer value prominently
+  if (data.is_pointer && data.hex_data) {
+    const ptrValue = _decodeLittleEndianHex(data.hex_data, data.size);
+    bodyHtml += `<div class="sym-pointer-value">
+      <span class="sym-pointer-label">${t('symbols.pointer_value', 'Points to')}:</span>
+      <code class="sym-pointer-addr">${ptrValue}</code>
+      ${ptrValue === '0x00000000' ? `<span class="sym-pointer-null">NULL</span>` : ''}
+    </div>`;
   }
 
-  // Raw hex dump
+  // Struct layout table (for non-pointer structs, or for deref data)
+  if (data.struct_layout && data.struct_layout.length > 0) {
+    bodyHtml += _renderStructTable(data.struct_layout, data.hex_data, isBss);
+  }
+
+  // Deref data section (pointer target)
+  if (data.deref_data) {
+    const dd = data.deref_data;
+    bodyHtml += `<div class="sym-deref-section">
+      <div class="sym-deref-header">
+        <i class="codicon codicon-type-hierarchy-sub"></i>
+        <strong>${_escapeHtml(dd.type_name || '?')}</strong>
+        <span class="sym-viewer-meta">${t('symbols.address', 'Address')}: ${dd.addr} &nbsp; ${t('symbols.size', 'Size')}: ${dd.size} ${t('symbols.bytes', 'bytes')}</span>
+      </div>`;
+    if (dd.struct_layout && dd.struct_layout.length > 0) {
+      bodyHtml += _renderStructTable(dd.struct_layout, dd.hex_data, false);
+    }
+    if (dd.hex_data) {
+      bodyHtml += `<div class="sym-viewer-hex">
+        <div class="sym-hex-label">${t('symbols.raw_hex', 'Raw Hex')} (${_escapeHtml(dd.type_name || 'target')}):</div>
+        <pre class="sym-hex-dump">${_formatHexDump(dd.hex_data)}</pre>
+      </div>`;
+    }
+    bodyHtml += '</div>';
+  } else if (data.deref_error) {
+    bodyHtml += `<div class="sym-deref-error">
+      <i class="codicon codicon-warning"></i> ${_escapeHtml(data.deref_error)}
+    </div>`;
+  }
+
+  // Raw hex dump (pointer's own bytes or non-pointer data)
   if (data.hex_data) {
+    const hexLabel = data.is_pointer
+      ? `${t('symbols.raw_hex', 'Raw Hex')} (${t('symbols.pointer_raw', 'pointer')})`
+      : t('symbols.raw_hex', 'Raw Hex');
     bodyHtml += '<div class="sym-viewer-hex">';
-    bodyHtml += `<div class="sym-hex-label">${t('symbols.raw_hex', 'Raw Hex')}:</div>`;
+    bodyHtml += `<div class="sym-hex-label">${hexLabel}:</div>`;
     bodyHtml += `<pre class="sym-hex-dump">${_formatHexDump(data.hex_data)}</pre>`;
     bodyHtml += '</div>';
   } else if (isBss) {
@@ -239,6 +259,56 @@ function _renderSymbolValueContent(data, isConst) {
   }
 
   return `<div class="sym-viewer-container">${headerHtml}${toolbarHtml}${bodyHtml}</div>`;
+}
+
+/**
+ * Render a struct layout table.
+ */
+function _renderStructTable(structLayout, hexData, isBss) {
+  let html = '<div class="sym-viewer-struct">';
+  html += '<table class="sym-struct-table"><thead><tr>';
+  html += `<th>${t('symbols.field', 'Field')}</th>`;
+  html += `<th>${t('symbols.type', 'Type')}</th>`;
+  html += `<th>${t('symbols.offset', 'Offset')}</th>`;
+  html += `<th>${t('symbols.size', 'Size')}</th>`;
+  html += `<th>${t('symbols.value', 'Value')}</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (const member of structLayout) {
+    const valueHex = hexData
+      ? _extractFieldHex(hexData, member.offset, member.size)
+      : isBss
+        ? `<em>${t('symbols.needs_device_read', 'needs device read')}</em>`
+        : '—';
+    const valueDecoded = hexData
+      ? _decodeFieldValue(hexData, member.offset, member.size, member.type_name)
+      : '';
+    const displayValue = valueDecoded
+      ? `${valueDecoded} <span class="sym-hex-hint">(${valueHex})</span>`
+      : valueHex;
+
+    html += `<tr>
+      <td class="sym-field-name">${_escapeHtml(member.name)}</td>
+      <td class="sym-field-type">${_escapeHtml(member.type_name)}</td>
+      <td>+${member.offset}</td>
+      <td>${member.size}</td>
+      <td class="sym-field-value">${displayValue}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+/**
+ * Decode a little-endian hex string to a 0x-prefixed address string.
+ */
+function _decodeLittleEndianHex(hexData, size) {
+  const bytes = [];
+  for (let i = 0; i < size * 2 && i < hexData.length; i += 2) {
+    bytes.push(hexData.substring(i, i + 2));
+  }
+  bytes.reverse();
+  return '0x' + bytes.join('').toUpperCase();
 }
 
 /* ===========================
@@ -416,7 +486,13 @@ function selectSymbol(name) {
 /* ===========================
    DEVICE READ/WRITE
    =========================== */
-async function readSymbolFromDevice(symName) {
+async function readSymbolFromDevice(symName, deref) {
+  // If deref not explicitly passed, check the checkbox state
+  if (deref === undefined) {
+    const toggle = document.getElementById(`symDerefToggle_${symName}`);
+    deref = toggle ? toggle.checked : false;
+  }
+
   const statusEl = document.getElementById(`symStatus_${symName}`);
   if (statusEl) statusEl.textContent = t('symbols.reading', 'Reading...');
 
@@ -424,7 +500,7 @@ async function readSymbolFromDevice(symName) {
     const res = await fetch('/api/symbols/read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: symName }),
+      body: JSON.stringify({ name: symName, deref: !!deref }),
     });
     const data = await res.json();
 
@@ -680,4 +756,6 @@ window._decodeFieldValue = _decodeFieldValue;
 window._formatHexDump = _formatHexDump;
 window._escapeHtml = _escapeHtml;
 window._renderSymbolValueContent = _renderSymbolValueContent;
+window._renderStructTable = _renderStructTable;
+window._decodeLittleEndianHex = _decodeLittleEndianHex;
 window._autoReadTimers = _autoReadTimers;
