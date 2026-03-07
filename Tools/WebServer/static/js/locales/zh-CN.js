@@ -140,6 +140,9 @@ window.i18nResources['zh-CN'] = {
       auto_read_hint: '切换定时自动读取',
       auto_read_interval_hint: '自动读取间隔 (ms)',
       invalid_params: '无效的地址或大小',
+      pointer_value: '指向',
+      pointer_raw: '指针',
+      deref_pointer: '解引用',
     },
 
     // Watch 表达式

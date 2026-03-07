@@ -140,6 +140,9 @@ window.i18nResources['en'] = {
       auto_read_hint: 'Toggle periodic auto-read',
       auto_read_interval_hint: 'Auto-read interval (ms)',
       invalid_params: 'Invalid address or size',
+      pointer_value: 'Points to',
+      pointer_raw: 'pointer',
+      deref_pointer: 'Dereference',
     },
 
     // Watch expressions

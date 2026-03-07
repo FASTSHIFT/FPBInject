@@ -269,6 +269,13 @@ class GDBSession:
         with self._lock:
             return self._get_struct_layout_impl(sym_name)
 
+    def get_sizeof(self, type_or_sym: str) -> int:
+        """Get size of a type or symbol. Returns 0 on failure."""
+        if not self.is_alive:
+            return 0
+        with self._lock:
+            return self._get_sizeof(type_or_sym)
+
     def get_symbols(self) -> Dict[str, dict]:
         """Get all symbols. Returns dict mapping name to info."""
         if not self.is_alive:
@@ -449,18 +456,38 @@ class GDBSession:
                 if ptype_out and re.match(r"type\s*=\s*const\b", ptype_out):
                     sym_type = "const"
 
+        # Detect pointer types via whatis (e.g. "type = lv_disp_t *")
+        is_pointer = False
+        pointer_target = None
+        if sym_type in ("variable", "const"):
+            whatis_out = self._execute_cli(f"whatis {query_name}")
+            if whatis_out:
+                wm = re.match(r"type\s*=\s*(.+)", whatis_out.strip())
+                if wm:
+                    raw_type = wm.group(1).strip()
+                    # Pointer if type ends with '*' (but not function pointer)
+                    if raw_type.endswith("*") and "(" not in raw_type:
+                        is_pointer = True
+                        pointer_target = raw_type[:-1].rstrip()
+
         elapsed = time.time() - t_start
         logger.info(
             f"[GDB] lookup_symbol done: '{sym_name}' -> "
-            f"0x{addr:08X} size={size} type={sym_type} ({elapsed:.3f}s)"
+            f"0x{addr:08X} size={size} type={sym_type}"
+            f"{' ptr->' + pointer_target if is_pointer else ''}"
+            f" ({elapsed:.3f}s)"
         )
 
-        return {
+        result = {
             "addr": addr,
             "size": size,
             "type": sym_type,
             "section": section,
         }
+        if is_pointer:
+            result["is_pointer"] = True
+            result["pointer_target"] = pointer_target
+        return result
 
     def _search_symbols_impl(
         self, query: str, limit: int = 100
