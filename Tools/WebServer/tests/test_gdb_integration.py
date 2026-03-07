@@ -44,81 +44,86 @@ elif not _HAS_SCRIPT:
     _SKIP_REASON = f"gdb_json_print.py not found: {_GDB_JSON_PRINT}"
 
 
-def _run_gdb_commands(commands):
-    """Run a sequence of GDB MI commands and return raw stdout."""
-    input_text = "\n".join(commands) + "\n"
-    result = subprocess.run(
-        ["gdb-multiarch", "--interpreter=mi3", "--nx", "-q"],
-        input=input_text,
-        capture_output=True,
-        text=True,
-        timeout=30,
+# ── Shared GDB session (module-level singleton) ──────────────────────
+# Both test classes share a single persistent GDB process to avoid the
+# ~1s startup cost per test.  The session is created once and torn down
+# after all tests in this module complete.
+
+_shared_session = None
+
+
+def _get_shared_session():
+    """Lazily create and return the shared GDBSession."""
+    global _shared_session
+    if _shared_session is not None:
+        return _shared_session
+
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from core.gdb_session import GDBSession
+    from pygdbmi.IoManager import IoManager
+
+    session = GDBSession(_TEST_ELF)
+    gdb_path = shutil.which("gdb-multiarch")
+    session._proc = subprocess.Popen(
+        [gdb_path, "--interpreter=mi3", "--nx", "-q"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
     )
-    return result.stdout, result.stderr
+    session._io = IoManager(
+        session._proc.stdin,
+        session._proc.stdout,
+        session._proc.stderr,
+        time_to_check_for_additional_output_sec=0.05,
+    )
+    session._io.get_gdb_response(timeout_sec=5.0, raise_error_on_timeout=False)
+    session._write_mi("set architecture arm", timeout=5.0)
+    resp = session._write_mi(f"file {_TEST_ELF}", timeout=30.0)
+    assert resp is not None, "Failed to load ELF"
+    session._write_mi(f"source {_GDB_JSON_PRINT}", timeout=5.0)
+    session._has_json_print = True
+    session._alive = True
+    _shared_session = session
+    return session
 
 
-def _extract_json_from_mi(stdout, command_index):
-    """Extract JSON output from the Nth json-print command in MI output.
+def tearDownModule():
+    """Stop the shared GDB session after all tests."""
+    global _shared_session
+    if _shared_session is not None:
+        _shared_session.stop()
+        _shared_session = None
 
-    MI console output looks like: ~"{\\"x\\": 10, ...}\\n"
-    pygdbmi would parse this, but here we parse raw MI output directly.
-    """
-    # Find all console lines that look like JSON
-    json_outputs = []
-    for line in stdout.split("\n"):
-        line = line.strip()
-        if line.startswith('~"') and "{" in line:
-            # Extract the payload: ~"...\n" -> ...
-            payload = line[2:]  # strip ~"
-            if payload.endswith('"'):
-                payload = payload[:-1]  # strip trailing "
-            if payload.endswith("\\n"):
-                payload = payload[:-2]  # strip \n
-            # Unescape MI string
-            payload = payload.replace('\\"', '"').replace("\\\\", "\\")
-            if payload.startswith("{") or payload.startswith("["):
-                json_outputs.append(payload)
-    if command_index < len(json_outputs):
-        return json.loads(json_outputs[command_index])
-    return None
+
+# ── Test class 1: json-print command output ──────────────────────────
 
 
 @unittest.skipIf(_SKIP_REASON, _SKIP_REASON or "")
 class TestGDBJsonPrintIntegration(unittest.TestCase):
-    """Integration tests: real GDB + json-print + test ELF."""
+    """Integration tests: real GDB + json-print + test ELF.
+
+    Uses the shared persistent GDB session for speed.
+    """
 
     @classmethod
     def setUpClass(cls):
-        """Verify GDB can load the ELF and source the script."""
-        stdout, stderr = _run_gdb_commands(
-            [
-                '-interpreter-exec console "set architecture arm"',
-                f'-interpreter-exec console "file {_TEST_ELF}"',
-                f'-interpreter-exec console "source {_GDB_JSON_PRINT}"',
-                '-interpreter-exec console "json-print \\"g_counter\\" 1"',
-                "-gdb-exit",
-            ]
-        )
-        # Verify json-print command is registered (not "Undefined command")
-        if "Undefined command" in stdout:
-            raise unittest.SkipTest(
-                "json-print command not registered (GDB Python support missing?)"
-            )
-        cls._gdb_works = True
+        cls.session = _get_shared_session()
 
     def _json_print(self, expr, max_depth=2):
-        """Run json-print on a single expression and return parsed result."""
-        escaped_expr = expr.replace('"', '\\"')
-        stdout, _ = _run_gdb_commands(
-            [
-                '-interpreter-exec console "set architecture arm"',
-                f'-interpreter-exec console "file {_TEST_ELF}"',
-                f'-interpreter-exec console "source {_GDB_JSON_PRINT}"',
-                f'-interpreter-exec console "json-print \\"{escaped_expr}\\" {max_depth}"',
-                "-gdb-exit",
-            ]
-        )
-        return _extract_json_from_mi(stdout, 0)
+        """Run json-print via the shared session and parse JSON output."""
+        output = self.session.execute(f'json-print "{expr}" {max_depth}', timeout=10.0)
+        if not output:
+            return None
+        output = output.strip()
+        if output.startswith("{") or output.startswith("["):
+            try:
+                return json.loads(output)
+            except json.JSONDecodeError:
+                return None
+        return None
 
     def test_g_point(self):
         """g_point = {x: 10, y: 20}"""
@@ -164,21 +169,10 @@ class TestGDBJsonPrintIntegration(unittest.TestCase):
         self.assertEqual(result["as_u32"], 0x12345678)
 
     def test_g_counter_scalar(self):
-        """g_counter = 42 (volatile uint32_t, scalar — returns int, not dict)"""
-        # json-print on a scalar returns a plain number, not a JSON object.
-        # _extract_json_from_mi only extracts objects/arrays, so this returns None.
-        # This is expected — parse_struct_values is only used for structs.
-        stdout, _ = _run_gdb_commands(
-            [
-                '-interpreter-exec console "set architecture arm"',
-                f'-interpreter-exec console "file {_TEST_ELF}"',
-                f'-interpreter-exec console "source {_GDB_JSON_PRINT}"',
-                '-interpreter-exec console "json-print \\"g_counter\\" 1"',
-                "-gdb-exit",
-            ]
-        )
-        # Verify the output contains "42"
-        self.assertIn("42", stdout)
+        """g_counter = 42 (scalar — json-print outputs plain number)."""
+        output = self.session.execute('json-print "g_counter" 1', timeout=10.0)
+        self.assertIsNotNone(output)
+        self.assertIn("42", output)
 
     def test_g_const_point(self):
         """g_const_point = {x: 42, y: 84}"""
@@ -189,83 +183,47 @@ class TestGDBJsonPrintIntegration(unittest.TestCase):
 
     def test_pointer_cast_also_works(self):
         """Pointer cast expression works when target is accessible."""
-        # Get the address of g_point first
-        stdout, _ = _run_gdb_commands(
-            [
-                '-interpreter-exec console "set architecture arm"',
-                f'-interpreter-exec console "file {_TEST_ELF}"',
-                '-interpreter-exec console "info address g_point"',
-                "-gdb-exit",
-            ]
-        )
-        # Parse address from output
         import re
 
-        m = re.search(r"0x([0-9a-fA-F]+)", stdout)
+        output = self.session.execute("info address g_point", timeout=5.0)
+        self.assertIsNotNone(output)
+        m = re.search(r"0x([0-9a-fA-F]+)", output)
         self.assertIsNotNone(m, "Could not find g_point address")
         addr = int(m.group(1), 16)
 
-        # Now try pointer cast — this reads from ELF loadable segments
         result = self._json_print(f"*((struct Point *)0x{addr:x})")
-        # This may or may not work depending on GDB version and memory mapping
-        # The important thing is it doesn't crash
         if result is not None:
             self.assertEqual(result.get("x"), 10)
             self.assertEqual(result.get("y"), 20)
 
 
+# ── Test class 2: GDBSession high-level APIs ─────────────────────────
+
+
 @unittest.skipIf(_SKIP_REASON, _SKIP_REASON or "")
 class TestGDBSessionIntegration(unittest.TestCase):
-    """Integration tests using GDBSession class (no RSP connection)."""
+    """Integration tests using GDBSession class (no RSP connection).
+
+    Uses the shared persistent GDB session for speed.
+    """
 
     @classmethod
     def setUpClass(cls):
-        """Create a GDBSession and start it without RSP."""
-        from core.gdb_session import GDBSession
+        cls.session = _get_shared_session()
+        # Pre-cache symbol lookups to avoid repeated GDB queries
+        cls._sym_cache = {}
+        for sym in ("g_point", "g_padded", "g_nested", "g_rect", "g_driver"):
+            info = cls.session.lookup_symbol(sym)
+            if info:
+                cls._sym_cache[sym] = info
 
-        cls.session = GDBSession(_TEST_ELF)
-        # We can't call start() without RSP, so manually set up GDB
-        cls._setup_gdb_manually()
-
-    @classmethod
-    def _setup_gdb_manually(cls):
-        """Start GDB, load ELF, source json-print — without RSP connect."""
-        import subprocess as sp
-        from pygdbmi.IoManager import IoManager
-
-        gdb_path = shutil.which("gdb-multiarch")
-        cls.session._proc = sp.Popen(
-            [gdb_path, "--interpreter=mi3", "--nx", "-q"],
-            stdin=sp.PIPE,
-            stdout=sp.PIPE,
-            stderr=sp.PIPE,
-            bufsize=0,
-        )
-        cls.session._io = IoManager(
-            cls.session._proc.stdin,
-            cls.session._proc.stdout,
-            cls.session._proc.stderr,
-            time_to_check_for_additional_output_sec=0.3,
-        )
-        # Read startup
-        cls.session._io.get_gdb_response(timeout_sec=5.0, raise_error_on_timeout=False)
-        # Set architecture
-        cls.session._write_mi("set architecture arm", timeout=5.0)
-        # Load ELF
-        resp = cls.session._write_mi(f"file {_TEST_ELF}", timeout=30.0)
-        assert resp is not None, "Failed to load ELF"
-        # Source json-print
-        cls.session._write_mi(f"source {_GDB_JSON_PRINT}", timeout=5.0)
-        cls.session._has_json_print = True
-        cls.session._alive = True
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.session.stop()
+    def _lookup(self, sym_name):
+        """Get cached symbol info."""
+        return self._sym_cache.get(sym_name)
 
     def test_lookup_g_point(self):
         """lookup_symbol returns correct info for g_point."""
-        info = self.session.lookup_symbol("g_point")
+        info = self._lookup("g_point")
         self.assertIsNotNone(info)
         self.assertGreater(info["addr"], 0)
         self.assertEqual(info["size"], 8)
@@ -292,7 +250,7 @@ class TestGDBSessionIntegration(unittest.TestCase):
 
     def test_parse_struct_values_g_point(self):
         """parse_struct_values returns {x: 10, y: 20} for g_point."""
-        info = self.session.lookup_symbol("g_point")
+        info = self._lookup("g_point")
         self.assertIsNotNone(info)
         values = self.session.parse_struct_values("g_point", info["addr"], "Point")
         self.assertIsNotNone(values, "parse_struct_values returned None")
@@ -301,7 +259,7 @@ class TestGDBSessionIntegration(unittest.TestCase):
 
     def test_parse_struct_values_g_padded(self):
         """parse_struct_values returns correct values for g_padded."""
-        info = self.session.lookup_symbol("g_padded")
+        info = self._lookup("g_padded")
         self.assertIsNotNone(info)
         values = self.session.parse_struct_values(
             "g_padded", info["addr"], "PaddedStruct"
@@ -314,7 +272,7 @@ class TestGDBSessionIntegration(unittest.TestCase):
 
     def test_parse_struct_values_g_nested(self):
         """parse_struct_values returns nested struct for g_nested."""
-        info = self.session.lookup_symbol("g_nested")
+        info = self._lookup("g_nested")
         self.assertIsNotNone(info)
         values = self.session.parse_struct_values("g_nested", info["addr"], "Nested")
         self.assertIsNotNone(values, "parse_struct_values returned None")
@@ -326,7 +284,7 @@ class TestGDBSessionIntegration(unittest.TestCase):
 
     def test_parse_struct_values_g_rect(self):
         """parse_struct_values returns nested Points for g_rect."""
-        info = self.session.lookup_symbol("g_rect")
+        info = self._lookup("g_rect")
         self.assertIsNotNone(info)
         values = self.session.parse_struct_values("g_rect", info["addr"], "Rect")
         self.assertIsNotNone(values, "parse_struct_values returned None")
@@ -340,7 +298,6 @@ class TestGDBSessionIntegration(unittest.TestCase):
         raw = self.session.read_symbol_value("g_point")
         self.assertIsNotNone(raw)
         self.assertEqual(len(raw), 8)
-        # x=10 (LE: 0a 00 00 00), y=20 (LE: 14 00 00 00)
         x = int.from_bytes(raw[0:4], "little")
         y = int.from_bytes(raw[4:8], "little")
         self.assertEqual(x, 10)
@@ -348,72 +305,52 @@ class TestGDBSessionIntegration(unittest.TestCase):
 
     def test_full_pipeline_g_padded(self):
         """Full pipeline: lookup → layout → values → verify all match."""
-        info = self.session.lookup_symbol("g_padded")
+        info = self._lookup("g_padded")
         self.assertIsNotNone(info)
-
         layout = self.session.get_struct_layout("g_padded")
         self.assertIsNotNone(layout)
-
         values = self.session.parse_struct_values(
             "g_padded", info["addr"], "PaddedStruct"
         )
         self.assertIsNotNone(values)
-
-        # Verify layout field names match value keys
         layout_names = {m["name"] for m in layout}
         value_keys = set(values.keys())
         self.assertEqual(layout_names, value_keys)
 
     def test_struct_layout_g_driver_func_ptr_names(self):
-        """get_struct_layout parses function pointer member names correctly.
-
-        Regression test: void (*init)(void *, int) was parsed as name=')'.
-        """
+        """get_struct_layout parses function pointer member names correctly."""
         layout = self.session.get_struct_layout("g_driver")
         self.assertIsNotNone(layout)
         names = {m["name"] for m in layout}
-        # Function pointer members must have correct names
         self.assertIn("init", names)
         self.assertIn("deinit", names)
         self.assertIn("reset_cb", names)
-        # Must NOT have ")" as a name
         self.assertNotIn(")", names)
-        # Regular members still work
         self.assertIn("id", names)
         self.assertIn("ctx", names)
         self.assertIn("flags", names)
 
     def test_parse_struct_values_g_driver(self):
         """parse_struct_values returns func ptrs for g_driver."""
-        info = self.session.lookup_symbol("g_driver")
+        info = self._lookup("g_driver")
         self.assertIsNotNone(info)
         values = self.session.parse_struct_values("g_driver", info["addr"], "DriverDef")
         self.assertIsNotNone(values, "parse_struct_values returned None")
         self.assertEqual(values["id"], 0x42)
         self.assertEqual(values["flags"], 0x0F)
-        # Function pointer fields should be dicts with _kind
         self.assertEqual(values["init"]["_kind"], "func_ptr")
         self.assertNotEqual(values["init"]["_addr"], "0x00000000")
         self.assertEqual(values["deinit"]["_kind"], "func_ptr")
-        # NULL function pointer
         self.assertEqual(values["reset_cb"]["_addr"], "0x00000000")
 
     def test_full_pipeline_g_driver(self):
-        """Full pipeline for struct with function pointer members.
-
-        Verifies layout field names match gdb_values keys — the exact
-        bug that caused ')' field names and mismatched values.
-        """
-        info = self.session.lookup_symbol("g_driver")
+        """Full pipeline for struct with function pointer members."""
+        info = self._lookup("g_driver")
         self.assertIsNotNone(info)
-
         layout = self.session.get_struct_layout("g_driver")
         self.assertIsNotNone(layout)
-
         values = self.session.parse_struct_values("g_driver", info["addr"], "DriverDef")
         self.assertIsNotNone(values)
-
-        # THE KEY ASSERTION: layout names must match value keys
         layout_names = {m["name"] for m in layout}
         value_keys = set(values.keys())
         self.assertEqual(

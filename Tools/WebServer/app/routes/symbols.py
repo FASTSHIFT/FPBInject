@@ -153,8 +153,9 @@ _INT_TYPE_KEYWORDS = {
 def _decode_field_value(raw_bytes: bytes, type_name: str):
     """Decode a struct field's raw bytes into a display value.
 
-    Handles pointers, integers (signed/unsigned), char arrays, floats,
-    and typedef fallback. Returns the decoded value (int/float/str) or None.
+    Handles pointers, integers (signed/unsigned), char arrays, floats.
+    Returns the decoded value (int/float/str) or None for unknown types.
+    Typedef fallback is handled separately by _decode_field_value_fallback.
 
     All multi-byte values are little-endian (ARM).
     """
@@ -203,15 +204,28 @@ def _decode_field_value(raw_bytes: bytes, type_name: str):
         (val,) = struct_mod.unpack("<d", raw_bytes)
         return float(f"{val:.15g}")
 
-    # Typedef fallback: 1/2/4/8 bytes and not an array → treat as unsigned int
+    # Unknown type — return None so caller can try nested struct layout
+    return None
+
+
+def _decode_field_value_fallback(raw_bytes: bytes, type_name: str):
+    """Typedef fallback: decode unknown types as unsigned integer.
+
+    Only used when _decode_field_value returns None AND no nested struct
+    layout is found. Handles typedef'd scalars like lv_coord_t.
+    """
+    size = len(raw_bytes)
     if size in (1, 2, 4, 8) and "[" not in type_name:
         return int.from_bytes(raw_bytes, "little")
-
     return None
 
 
 def _decode_struct_values(struct_layout, hex_data):
     """Decode all struct fields from hex_data using struct_layout type info.
+
+    For nested structs, recursively queries GDB for sub-struct layout and
+    decodes the corresponding hex sub-range, producing nested dicts that
+    the frontend can render as expandable tree nodes.
 
     Args:
         struct_layout: list of {name, offset, size, type_name}
@@ -237,10 +251,66 @@ def _decode_struct_values(struct_layout, hex_data):
             continue
 
         field_bytes = raw[offset:end]
+
+        # 1) Try known scalar types (int, ptr, float, char, etc.)
         decoded = _decode_field_value(field_bytes, type_name)
-        result[name] = decoded
+        if decoded is not None:
+            result[name] = decoded
+            continue
+
+        # 2) Unknown type → try nested struct via GDB layout
+        sub_layout = _get_nested_struct_layout(type_name)
+        if sub_layout:
+            sub_hex = field_bytes.hex()
+            sub_values = _decode_struct_values(sub_layout, sub_hex)
+            if sub_values:
+                result[name] = sub_values
+                continue
+
+        # 3) Typedef fallback (e.g. lv_coord_t → unsigned int)
+        fallback = _decode_field_value_fallback(field_bytes, type_name)
+        result[name] = fallback
 
     return result
+
+
+# Cache for nested struct layouts (keyed by type_name)
+_nested_layout_cache = {}
+
+
+def _get_nested_struct_layout(type_name):
+    """Get struct layout for a nested type via GDB ptype.
+
+    Tries 'ptype /o struct TYPE' and 'ptype /o TYPE' to resolve the layout.
+    Results are cached since type layouts don't change at runtime.
+    """
+    if type_name in _nested_layout_cache:
+        return _nested_layout_cache[type_name]
+
+    from core.gdb_manager import is_gdb_available
+
+    if not is_gdb_available(state) or not state.gdb_session:
+        _nested_layout_cache[type_name] = None
+        return None
+
+    # Strip qualifiers for lookup
+    clean_type = type_name.strip()
+    for prefix in ("const ", "volatile ", "struct ", "union "):
+        if clean_type.startswith(prefix):
+            clean_type = clean_type[len(prefix) :]
+
+    layout = None
+    try:
+        # Try with struct prefix first, then bare type name
+        for expr in [f"struct {clean_type}", clean_type]:
+            layout = state.gdb_session.get_struct_layout(expr)
+            if layout:
+                break
+    except Exception:
+        pass
+
+    _nested_layout_cache[type_name] = layout
+    return layout
 
 
 @bp.route("/symbols", methods=["GET"])
@@ -477,6 +547,7 @@ def api_reload_symbols():
             state.symbols_loaded = False
             _struct_layout_cache.clear()
             _symbol_detail_cache.clear()
+            _nested_layout_cache.clear()
 
         # Re-load via nm
         _ensure_symbols_loaded()
@@ -709,10 +780,9 @@ def api_get_symbol_value():
     if not device.elf_path or not os.path.exists(device.elf_path):
         return jsonify({"success": False, "error": "ELF file not found"})
 
-    if not is_gdb_available(state):
-        return jsonify({"success": False, "error": "GDB not available"})
+    gdb_ok = is_gdb_available(state)
 
-    # Look up symbol info
+    # Look up symbol info — works with nm cache even without GDB
     sym_info = _lookup_symbol(sym_name)
     t_lookup = time.time()
     logger.info(f"[value] Symbol lookup '{sym_name}': {t_lookup - t_start:.2f}s")
@@ -732,23 +802,28 @@ def api_get_symbol_value():
         sym_info.get("pointer_target") if isinstance(sym_info, dict) else None
     )
 
-    # Read raw bytes via GDB
-    raw_data = state.gdb_session.read_symbol_value(sym_name)
-    t_read = time.time()
-    logger.info(f"[value] read_symbol_value: {t_read - t_lookup:.2f}s")
-    hex_data = raw_data.hex() if raw_data else None
-
-    # Get struct layout via GDB (cached) — skip for pointer types
+    # Read raw bytes and struct layout via GDB (when available)
+    hex_data = None
     struct_layout = None
     gdb_values = None
-    if not is_pointer:
-        struct_layout = _get_struct_layout_cached(sym_name)
-        if struct_layout:
-            gdb_values = _get_gdb_values(sym_name, addr, struct_layout)
-    t_struct = time.time()
-    logger.info(f"[value] get_struct_layout: {t_struct - t_read:.2f}s")
+    if gdb_ok and state.gdb_session:
+        raw_data = state.gdb_session.read_symbol_value(sym_name)
+        t_read = time.time()
+        logger.info(f"[value] read_symbol_value: {t_read - t_lookup:.2f}s")
+        hex_data = raw_data.hex() if raw_data else None
 
-    logger.info(f"[value] Total for '{sym_name}': {t_struct - t_start:.2f}s")
+        if not is_pointer:
+            struct_layout = _get_struct_layout_cached(sym_name)
+            if struct_layout:
+                gdb_values = _get_gdb_values(sym_name, addr, struct_layout)
+        t_struct = time.time()
+        logger.info(f"[value] get_struct_layout: {t_struct - t_read:.2f}s")
+    else:
+        logger.info(
+            f"[value] GDB not available, returning nm-only info for '{sym_name}'"
+        )
+
+    logger.info(f"[value] Total for '{sym_name}': {time.time() - t_start:.2f}s")
 
     resp = {
         "success": True,

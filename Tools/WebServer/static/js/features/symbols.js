@@ -212,6 +212,9 @@ function _renderSymbolValueContent(data, isConst) {
         </div>
         <span class="sym-viewer-status" id="symStatus_${escapedName}"></span>
       </div>
+      <div class="sym-read-progress" id="symProgress_${escapedName}">
+        <div class="sym-read-progress-fill"></div>
+      </div>
     `;
   }
 
@@ -746,6 +749,10 @@ async function readSymbolFromDevice(symName, deref) {
   const statusEl = document.getElementById(`symStatus_${symName}`);
   if (statusEl) statusEl.textContent = t('symbols.reading', 'Reading...');
 
+  // Show progress bar
+  const progressEl = document.getElementById(`symProgress_${symName}`);
+  if (progressEl) progressEl.classList.add('active');
+
   try {
     const res = await fetch('/api/symbols/read', {
       method: 'POST',
@@ -758,6 +765,7 @@ async function readSymbolFromDevice(symName, deref) {
       log.error(`Read failed: ${data.error}`);
       if (statusEl)
         statusEl.textContent = `${t('symbols.error', 'Error')}: ${data.error}`;
+      if (progressEl) progressEl.classList.remove('active');
       return;
     }
 
@@ -789,8 +797,14 @@ async function readSymbolFromDevice(symName, deref) {
     if (newStatusEl)
       newStatusEl.textContent = `${t('symbols.last_read', 'Last read')}: ${now}`;
     log.success(`Read ${data.size} bytes from device for ${symName}`);
+    if (data.deref_data) {
+      log.success(
+        `Read ${data.deref_data.size} bytes (deref ${data.deref_data.type_name || ''}) at ${data.deref_data.addr}`,
+      );
+    }
   } catch (e) {
     log.error(`Read exception: ${e}`);
+    if (progressEl) progressEl.classList.remove('active');
     if (statusEl)
       statusEl.textContent = `${t('symbols.error', 'Error')}: ${e.message}`;
   }

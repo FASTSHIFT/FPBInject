@@ -33,10 +33,15 @@ class SymbolRoutesBase(unittest.TestCase):
         state.symbols_loaded = False
         state.gdb_session = None
         # Clear module-level caches
-        from app.routes.symbols import _struct_layout_cache, _symbol_detail_cache
+        from app.routes.symbols import (
+            _struct_layout_cache,
+            _symbol_detail_cache,
+            _nested_layout_cache,
+        )
 
         _struct_layout_cache.clear()
         _symbol_detail_cache.clear()
+        _nested_layout_cache.clear()
 
 
 class TestGetSymbols(SymbolRoutesBase):
@@ -544,15 +549,39 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
             os.unlink(state.device.elf_path)
 
     @patch("core.gdb_manager.is_gdb_available", return_value=False)
-    def test_no_gdb(self, _mock_gdb):
-        """Returns error when GDB not available."""
+    def test_no_gdb_symbol_not_cached(self, _mock_gdb):
+        """Without GDB and symbol not in nm cache, returns not-found error."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
             response = self.client.get("/api/symbols/value?name=my_var")
             data = response.get_json()
             self.assertFalse(data["success"])
-            self.assertIn("GDB", data["error"])
+            self.assertIn("not found", data["error"])
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    def test_no_gdb_symbol_in_nm_cache(self, _mock_gdb):
+        """Without GDB but symbol in nm cache, returns degraded success."""
+        state.symbols = {
+            "my_var": {
+                "addr": 0x20001000,
+                "sym_type": "variable",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=my_var")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["name"], "my_var")
+            self.assertEqual(data["addr"], "0x20001000")
+            self.assertIsNone(data["hex_data"])
+            self.assertIsNone(data["struct_layout"])
+            self.assertIsNone(data["gdb_values"])
         finally:
             os.unlink(state.device.elf_path)
 
@@ -1277,11 +1306,22 @@ class TestDecodeFieldValue(unittest.TestCase):
         self.assertAlmostEqual(result, 2.718281828, places=6)
 
     def test_typedef_fallback_4bytes(self):
-        # lv_coord_t is a typedef — not in int keywords, but 4 bytes → fallback
-        self.assertEqual(self._decode("F0000000", "lv_coord_t"), 240)
+        # lv_coord_t is a typedef — not in int keywords, _decode_field_value
+        # returns None, but _decode_field_value_fallback handles it
+        from app.routes.symbols import _decode_field_value_fallback
+
+        self.assertIsNone(self._decode("F0000000", "lv_coord_t"))
+        self.assertEqual(
+            _decode_field_value_fallback(bytes.fromhex("F0000000"), "lv_coord_t"), 240
+        )
 
     def test_typedef_fallback_2bytes(self):
-        self.assertEqual(self._decode("0A00", "lv_coord_t"), 10)
+        from app.routes.symbols import _decode_field_value_fallback
+
+        self.assertIsNone(self._decode("0A00", "lv_coord_t"))
+        self.assertEqual(
+            _decode_field_value_fallback(bytes.fromhex("0A00"), "lv_coord_t"), 10
+        )
 
     def test_size_t(self):
         self.assertEqual(self._decode("80000000", "size_t"), 128)
@@ -1386,6 +1426,47 @@ class TestDecodeStructValues(unittest.TestCase):
         # Must NOT be zeros
         self.assertNotEqual(result["hor_res"], 0)
         self.assertNotEqual(result["ver_res"], 0)
+
+    @patch("app.routes.symbols._get_nested_struct_layout")
+    def test_nested_struct_decoded_recursively(self, mock_nested):
+        """Nested struct fields should produce expandable dict values."""
+
+        def side_effect(type_name):
+            if type_name == "InnerStruct":
+                return [
+                    {"name": "a", "offset": 0, "size": 4, "type_name": "uint32_t"},
+                    {"name": "b", "offset": 4, "size": 4, "type_name": "uint32_t"},
+                ]
+            return None
+
+        mock_nested.side_effect = side_effect
+        layout = [
+            {"name": "inner", "offset": 0, "size": 8, "type_name": "InnerStruct"},
+            {"name": "id", "offset": 8, "size": 4, "type_name": "uint32_t"},
+        ]
+        # inner: a=1, b=2; id=99
+        hex_data = "010000000200000063000000"
+        result = self._decode(layout, hex_data)
+        self.assertEqual(result["id"], 99)
+        # inner should be a nested dict (expandable in frontend)
+        self.assertIsInstance(result["inner"], dict)
+        self.assertEqual(result["inner"]["a"], 1)
+        self.assertEqual(result["inner"]["b"], 2)
+
+    @patch("app.routes.symbols._get_nested_struct_layout")
+    def test_nested_struct_no_layout_uses_fallback(self, mock_nested):
+        """Unknown nested type without GDB layout uses typedef fallback."""
+        mock_nested.return_value = None
+        layout = [
+            {"name": "inner", "offset": 0, "size": 8, "type_name": "UnknownType"},
+        ]
+        hex_data = "0102030405060708"
+        result = self._decode(layout, hex_data)
+        # 8 bytes, no array suffix → typedef fallback as unsigned int
+        self.assertEqual(
+            result["inner"],
+            int.from_bytes(bytes.fromhex("0102030405060708"), "little"),
+        )
 
 
 if __name__ == "__main__":
