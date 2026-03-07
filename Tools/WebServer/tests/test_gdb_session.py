@@ -820,67 +820,112 @@ class TestParseStructValuesImpl(unittest.TestCase):
         self.session._proc = MagicMock()
         self.session._proc.poll.return_value = None
 
-    def test_uses_whatis_and_address_cast(self):
-        """Verify it uses whatis + address cast instead of 'print sym_name'."""
+    def test_json_print_path(self):
+        """When _has_json_print is True, uses json-print command."""
+        self.session._has_json_print = True
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
                 # whatis
                 "type = my_struct_t",
-                # print *((struct my_struct_t *)0x20001000)
+                # json-print "*((struct my_struct_t *)0x20001000)" 2
+                '{"x": 1, "y": 2}',
+            ]
+            result = self.session._parse_struct_values_impl("my_var", 0x20001000)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["x"], 1)
+            self.assertEqual(result["y"], 2)
+            calls = [c[0][0] for c in mock_cli.call_args_list]
+            self.assertIn("json-print", calls[1])
+
+    def test_json_print_with_pointer_type(self):
+        """Strips pointer suffix from type before casting."""
+        self.session._has_json_print = True
+        with patch.object(self.session, "_execute_cli") as mock_cli:
+            mock_cli.side_effect = [
+                "type = lv_disp_t *",
+                '{"width": 240, "height": 320}',
+            ]
+            result = self.session._parse_struct_values_impl("disp_ptr", 0x20003000)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["width"], 240)
+
+    def test_json_print_fallback_no_struct_prefix(self):
+        """Falls back to type without 'struct' prefix."""
+        self.session._has_json_print = True
+        with patch.object(self.session, "_execute_cli") as mock_cli:
+            mock_cli.side_effect = [
+                "type = lv_disp_drv_t",
+                '{"_kind": "error", "_msg": "No struct type named lv_disp_drv_t."}',
+                '{"hor_res": 240}',
+            ]
+            result = self.session._parse_struct_values_impl("drv", 0x20002000)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["hor_res"], 240)
+
+    def test_json_print_returns_none_on_all_errors(self):
+        self.session._has_json_print = True
+        with patch.object(self.session, "_execute_cli") as mock_cli:
+            mock_cli.side_effect = [
+                "type = bad_type",
+                '{"_kind": "error", "_msg": "err1"}',
+                '{"_kind": "error", "_msg": "err2"}',
+            ]
+            result = self.session._parse_struct_values_impl("bad", 0x20001000)
+            self.assertIsNone(result)
+
+    def test_legacy_fallback_when_no_json_print(self):
+        """When _has_json_print is False, uses legacy print parsing."""
+        self.session._has_json_print = False
+        with patch.object(self.session, "_execute_cli") as mock_cli:
+            mock_cli.side_effect = [
+                "type = my_struct_t",
                 "$1 = {x = 1, y = 2}",
             ]
             result = self.session._parse_struct_values_impl("my_var", 0x20001000)
             self.assertIsNotNone(result)
             self.assertEqual(result["x"], "1")
             self.assertEqual(result["y"], "2")
-            # Verify the cast expression was used
-            calls = [c[0][0] for c in mock_cli.call_args_list]
-            self.assertEqual(calls[0], "whatis my_var")
-            self.assertIn("0x20001000", calls[1])
-
-    def test_strips_pointer_for_deref(self):
-        """For pointer types, strips '*' from type before casting."""
-        with patch.object(self.session, "_execute_cli") as mock_cli:
-            mock_cli.side_effect = [
-                # whatis returns pointer type
-                "type = lv_disp_t *",
-                # print *((struct lv_disp_t *)0x20003000)
-                "$1 = {width = 240, height = 320}",
-            ]
-            result = self.session._parse_struct_values_impl("disp_ptr", 0x20003000)
-            self.assertIsNotNone(result)
-            self.assertEqual(result["width"], "240")
-
-    def test_fallback_without_struct_prefix(self):
-        """Falls back to type without 'struct' prefix if first attempt fails."""
-        with patch.object(self.session, "_execute_cli") as mock_cli:
-            mock_cli.side_effect = [
-                # whatis
-                "type = lv_disp_drv_t",
-                # print *((struct lv_disp_drv_t *)...) — fails (typedef, not struct)
-                None,
-                # print *((lv_disp_drv_t *)...) — succeeds
-                "$1 = {hor_res = 240, ver_res = 320}",
-            ]
-            result = self.session._parse_struct_values_impl("drv", 0x20002000)
-            self.assertIsNotNone(result)
-            self.assertEqual(result["hor_res"], "240")
 
     def test_returns_none_when_whatis_fails(self):
+        self.session._has_json_print = True
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.return_value = None
             result = self.session._parse_struct_values_impl("bad_sym", 0x20001000)
             self.assertIsNone(result)
 
     def test_returns_none_when_no_struct_body(self):
+        self.session._has_json_print = False
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
                 "type = int",
-                "$1 = 42",  # struct int — not a struct body
-                "$1 = 42",  # int — also not a struct body
+                "$1 = 42",
+                "$1 = 42",
             ]
             result = self.session._parse_struct_values_impl("int_var", 0x20001000)
             self.assertIsNone(result)
+
+    def test_json_print_handles_complex_struct(self):
+        """Handles nested structs, arrays, func ptrs in JSON output."""
+        self.session._has_json_print = True
+        json_output = (
+            '{"hor_res": 240, "flush_cb": {"_kind": "func_ptr", '
+            '"_addr": "0x08001234", "_sig": "void (*)(int)"}, '
+            '"mode": {"_kind": "enum", "_val": 0, "_name": "MODE_PARTIAL"}, '
+            '"pos": {"x": 10, "y": 20}, "data": [1, 2, 3]}'
+        )
+        with patch.object(self.session, "_execute_cli") as mock_cli:
+            mock_cli.side_effect = [
+                "type = my_complex_t",
+                json_output,
+            ]
+            result = self.session._parse_struct_values_impl("obj", 0x20001000)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["hor_res"], 240)
+            self.assertEqual(result["flush_cb"]["_kind"], "func_ptr")
+            self.assertEqual(result["flush_cb"]["_addr"], "0x08001234")
+            self.assertEqual(result["mode"]["_name"], "MODE_PARTIAL")
+            self.assertEqual(result["pos"]["x"], 10)
+            self.assertEqual(result["data"], [1, 2, 3])
 
 
 if __name__ == "__main__":

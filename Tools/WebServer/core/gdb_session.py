@@ -14,6 +14,7 @@ of the MI transport layer. High-level command output (ptype, info address, etc.)
 is still parsed from console text since GDB/MI has no native equivalents.
 """
 
+import json
 import logging
 import os
 import re
@@ -67,6 +68,7 @@ class GDBSession:
         self._alive = False
         self._rsp_port: Optional[int] = None
         self._search_generation = 0
+        self._has_json_print = False
 
     @property
     def is_alive(self) -> bool:
@@ -148,6 +150,18 @@ class GDBSession:
 
             t_elf = time.time()
             logger.info(f"GDB loaded ELF in {t_elf - t_start:.2f}s")
+
+            # Source json-print helper (GDB Python command for structured output)
+            json_print_script = os.path.join(
+                os.path.dirname(__file__), "gdb_json_print.py"
+            )
+            if os.path.exists(json_print_script):
+                self._write_mi(f"source {json_print_script}", timeout=5.0)
+                logger.info("Loaded json-print GDB command")
+                self._has_json_print = True
+            else:
+                logger.warning(f"json-print script not found: {json_print_script}")
+                self._has_json_print = False
 
             # Connect to RSP bridge
             logger.info(f"Connecting to RSP bridge on port {rsp_port}...")
@@ -798,10 +812,13 @@ class GDBSession:
             return self._parse_struct_values_impl(sym_name, addr)
 
     def _parse_struct_values_impl(self, sym_name: str, addr: int) -> Optional[dict]:
-        """Internal: parse GDB print output into field->value dict.
+        """Internal: get struct field values as a structured dict via json-print.
 
-        Always uses whatis + address cast to read from device memory,
-        since 'print sym_name' would read ELF initial values, not live data.
+        Uses the custom GDB Python command 'json-print' which outputs JSON
+        by recursively traversing gdb.Value via the GDB Python API.
+        Falls back to legacy text parsing if json-print is not available.
+
+        Returns dict mapping field_name -> value (int/float/str/dict/list).
         """
         # Get real type via whatis
         whatis_out = self._execute_cli(f"whatis {sym_name}")
@@ -814,7 +831,33 @@ class GDBSession:
         # Strip pointer suffix for deref case (e.g. "lv_disp_t *" -> "lv_disp_t")
         real_type = raw_type.rstrip("*").strip()
 
-        # Try with struct prefix first, then without
+        # Try json-print (structured output via GDB Python API)
+        if self._has_json_print:
+            for type_expr in [f"struct {real_type}", real_type]:
+                expr = f"*(({type_expr} *)0x{addr:x})"
+                output = self._execute_cli(f'json-print "{expr}" 2', timeout=15.0)
+                if output:
+                    output = output.strip()
+                    if output.startswith("{"):
+                        try:
+                            result = json.loads(output)
+                            if isinstance(result, dict):
+                                # Check for error response
+                                if result.get("_kind") == "error":
+                                    logger.debug(
+                                        f"json-print error for {type_expr}: "
+                                        f"{result.get('_msg', '')}"
+                                    )
+                                    continue
+                                return result
+                        except json.JSONDecodeError as e:
+                            logger.warning(
+                                f"json-print JSON parse error: {e}, "
+                                f"raw={output[:200]}"
+                            )
+            return None
+
+        # Fallback: legacy text parsing via 'print'
         for type_expr in [f"struct {real_type}", real_type]:
             expr = f"*(({type_expr} *)0x{addr:x})"
             output = self._execute_cli(f"print {expr}", timeout=15.0)
