@@ -923,9 +923,9 @@ class TestRoutesExtended(TestRoutesBase):
     def test_get_symbols_with_query(self):
         """Test getting symbols with search criteria"""
         state.symbols = {
-            "main": 0x08000000,
-            "test_func": 0x08001000,
-            "helper": 0x08002000,
+            "main": {"addr": 0x08000000, "sym_type": "function"},
+            "test_func": {"addr": 0x08001000, "sym_type": "function"},
+            "helper": {"addr": 0x08002000, "sym_type": "function"},
         }
         state.symbols_loaded = True
 
@@ -938,9 +938,9 @@ class TestRoutesExtended(TestRoutesBase):
     def test_get_symbols_search_by_address(self):
         """Test searching symbols by address (0x prefix)"""
         state.symbols = {
-            "test_func": 0x08001000,
-            "other_func": 0x08002000,
-            "helper": 0x08003000,
+            "test_func": {"addr": 0x08001000, "sym_type": "function"},
+            "other_func": {"addr": 0x08002000, "sym_type": "function"},
+            "helper": {"addr": 0x08003000, "sym_type": "function"},
         }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -959,9 +959,9 @@ class TestRoutesExtended(TestRoutesBase):
     def test_get_symbols_search_by_address_partial(self):
         """Test searching symbols by partial address"""
         state.symbols = {
-            "test_func": 0x08001000,
-            "other_func": 0x08002000,
-            "helper": 0x08003000,
+            "test_func": {"addr": 0x08001000, "sym_type": "function"},
+            "other_func": {"addr": 0x08002000, "sym_type": "function"},
+            "helper": {"addr": 0x08003000, "sym_type": "function"},
         }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -1736,10 +1736,10 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertEqual(data["symbols"], [])
 
     def test_get_symbols_with_data(self):
-        """Test getting symbols with data (GDB-only: symbols pre-populated)"""
+        """Test getting symbols with data (nm-loaded dict format)"""
         state.symbols = {
-            "func_a": 0x08001000,
-            "func_b": 0x08002000,
+            "func_a": {"addr": 0x08001000, "sym_type": "function"},
+            "func_b": {"addr": 0x08002000, "sym_type": "function"},
         }
         state.symbols_loaded = True
 
@@ -1753,9 +1753,9 @@ class TestSymbolsAPI(TestRoutesBase):
     def test_get_symbols_with_query(self, mock_get_fpb):
         """Test getting symbols with search query"""
         state.symbols = {
-            "gpio_init": 0x08001000,
-            "gpio_read": 0x08002000,
-            "uart_init": 0x08003000,
+            "gpio_init": {"addr": 0x08001000, "sym_type": "function"},
+            "gpio_read": {"addr": 0x08002000, "sym_type": "function"},
+            "uart_init": {"addr": 0x08003000, "sym_type": "function"},
         }
         state.symbols_loaded = True
 
@@ -1768,9 +1768,9 @@ class TestSymbolsAPI(TestRoutesBase):
     def test_search_symbols_by_name(self):
         """Test searching symbols by name"""
         state.symbols = {
-            "gpio_init": 0x08001000,
-            "gpio_read": 0x08002000,
-            "main": 0x08000000,
+            "gpio_init": {"addr": 0x08001000, "sym_type": "function"},
+            "gpio_read": {"addr": 0x08002000, "sym_type": "function"},
+            "main": {"addr": 0x08000000, "sym_type": "function"},
         }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -1787,8 +1787,8 @@ class TestSymbolsAPI(TestRoutesBase):
     def test_search_symbols_by_address(self):
         """Test searching symbols by address"""
         state.symbols = {
-            "func_a": 0x08001000,
-            "func_b": 0x08002000,
+            "func_a": {"addr": 0x08001000, "sym_type": "function"},
+            "func_b": {"addr": 0x08002000, "sym_type": "function"},
         }
         state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:

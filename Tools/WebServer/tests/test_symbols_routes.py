@@ -62,9 +62,9 @@ class TestGetSymbols(SymbolRoutesBase):
 
     def test_symbols_with_query_filter(self):
         state.symbols = {
-            "main": 0x08000000,
-            "gpio_init": 0x08001000,
-            "gpio_set": 0x08002000,
+            "main": {"addr": 0x08000000, "sym_type": "function"},
+            "gpio_init": {"addr": 0x08001000, "sym_type": "function"},
+            "gpio_set": {"addr": 0x08002000, "sym_type": "function"},
         }
         state.symbols_loaded = True
         response = self.client.get("/api/symbols?q=gpio&limit=10")
@@ -73,7 +73,10 @@ class TestGetSymbols(SymbolRoutesBase):
         self.assertEqual(data["filtered"], 2)
 
     def test_symbols_with_limit(self):
-        state.symbols = {f"func_{i}": 0x08000000 + i * 4 for i in range(200)}
+        state.symbols = {
+            f"func_{i}": {"addr": 0x08000000 + i * 4, "sym_type": "function"}
+            for i in range(200)
+        }
         state.symbols_loaded = True
         response = self.client.get("/api/symbols?limit=5")
         data = response.get_json()

@@ -235,7 +235,7 @@ class FPBInject:
         """Get build time from ELF file."""
         return elf_utils.get_elf_build_time(elf_path)
 
-    def get_symbols(self, elf_path: str) -> Dict[str, int]:
+    def get_symbols(self, elf_path: str) -> Dict[str, dict]:
         """Extract symbols from ELF file using nm."""
         return elf_utils.get_symbols(elf_path, self._toolchain_path)
 

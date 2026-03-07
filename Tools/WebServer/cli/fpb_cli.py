@@ -138,16 +138,17 @@ class FPBCLI:
             error_data["exception"] = str(error)
         self.output_json(error_data)
 
+    
     def analyze(self, elf_path: str, func_name: str) -> None:
         """Analyze function in ELF file"""
         try:
             symbols = self._fpb.get_symbols(elf_path)
 
-            # symbols is a dict: {name: addr}
             if func_name not in symbols:
                 raise FPBCLIError(f"Function '{func_name}' not found")
 
-            addr = symbols[func_name]
+            info = symbols[func_name]
+            addr = info["addr"] if isinstance(info, dict) else info
             # Get disassembly for analysis
             success, disasm = self._fpb.disassemble_function(elf_path, func_name)
             signature = self._fpb.get_signature(elf_path, func_name)
@@ -157,7 +158,7 @@ class FPBCLI:
                     "success": True,
                     "analysis": {
                         "func_name": func_name,
-                        "addr": hex(addr) if isinstance(addr, int) else addr,
+                        "addr": hex(addr),
                         "signature": signature,
                         "asm_lines": len(disasm.split("\n")) if disasm else 0,
                     },
@@ -165,6 +166,7 @@ class FPBCLI:
             )
         except Exception as e:
             self.output_error(f"Analysis failed: {str(e)}", e)
+
 
     def disasm(self, elf_path: str, func_name: str) -> None:
         """Get disassembly for function"""
@@ -220,10 +222,13 @@ class FPBCLI:
         try:
             symbols = self._fpb.get_symbols(elf_path)
 
-            # Simple pattern matching - symbols is dict {name: addr}
             matches = [
-                {"name": name, "addr": hex(addr) if isinstance(addr, int) else addr}
-                for name, addr in symbols.items()
+                {
+                    "name": name,
+                    "addr": hex(info["addr"]) if isinstance(info, dict) else hex(info),
+                    "type": info.get("sym_type", "other") if isinstance(info, dict) else "other",
+                }
+                for name, info in symbols.items()
                 if pattern.lower() in name.lower()
             ]
 
@@ -232,7 +237,7 @@ class FPBCLI:
                     "success": True,
                     "pattern": pattern,
                     "count": len(matches),
-                    "symbols": matches[:20],  # Limit to 20 results
+                    "symbols": matches[:20],
                 }
             )
         except Exception as e:
@@ -248,8 +253,12 @@ class FPBCLI:
                 symbols = {k: v for k, v in symbols.items() if pat in k.lower()}
 
             result_list = [
-                {"name": name, "addr": hex(addr) if isinstance(addr, int) else addr}
-                for name, addr in sorted(symbols.items(), key=lambda x: x[0])
+                {
+                    "name": name,
+                    "addr": hex(info["addr"]) if isinstance(info, dict) else hex(info),
+                    "type": info.get("sym_type", "other") if isinstance(info, dict) else "other",
+                }
+                for name, info in sorted(symbols.items(), key=lambda x: x[0])
             ]
 
             if limit > 0:
@@ -265,6 +274,8 @@ class FPBCLI:
             )
         except Exception as e:
             self.output_error(f"Get symbols failed: {str(e)}", e)
+
+
 
 
     def compile(

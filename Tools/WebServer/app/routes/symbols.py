@@ -108,13 +108,12 @@ def api_get_symbols():
     if query:
         symbols = {k: v for k, v in symbols.items() if query in k.lower()}
 
-    # Convert to list and limit — state.symbols is {name: int_addr} from nm
+    # Convert to list and limit — state.symbols is {name: {addr, sym_type}} from nm
     symbol_list = [
         {
             "name": name,
-            "addr": (
-                f"0x{info['addr']:08X}" if isinstance(info, dict) else f"0x{info:08X}"
-            ),
+            "addr": f"0x{_get_addr(info):08X}",
+            "type": info.get("sym_type", "other") if isinstance(info, dict) else "other",
         }
         for name, info in sorted(symbols.items(), key=lambda x: x[0])
     ][:limit]
@@ -129,46 +128,53 @@ def api_get_symbols():
     )
 
 
+
+
 def _get_addr(info):
-    """Get address from symbol info (supports both old int and new dict format)."""
+    """Get address from symbol info (supports int, nm dict, and GDB detail dict)."""
     if isinstance(info, dict):
-        return info["addr"]
+        return info.get("addr", 0)
     return info
+
+
 
 
 def _lookup_symbol(sym_name):
     """Look up symbol detail (addr, size, type, section) via GDB with caching.
 
-    The nm-loaded state.symbols only has {name: addr}. This function uses
-    GDB to get full detail (size, type, section) and caches the result in
-    _symbol_detail_cache for subsequent calls.
-
-    Also handles backward-compat where state.symbols may contain dict values.
+    The nm-loaded state.symbols has {name: {"addr": int, "sym_type": str}}.
+    This function uses GDB to get full detail (size, type, section) and caches
+    the result in _symbol_detail_cache for subsequent calls.
     """
     from core.gdb_manager import is_gdb_available
 
-    # Try detail cache first (dict with addr/size/type/section)
+    # Try detail cache first (dict with addr/size/type/section from GDB)
     if sym_name in _symbol_detail_cache:
         return _symbol_detail_cache[sym_name]
 
-    # Backward compat: state.symbols may contain dict values from tests
-    if sym_name in state.symbols and isinstance(state.symbols[sym_name], dict):
-        result = state.symbols[sym_name]
-        _symbol_detail_cache[sym_name] = result
-        return result
+    # Check if nm has this symbol
+    nm_info = state.symbols.get(sym_name)
+    nm_addr = None
+    nm_sym_type = "other"
+    if nm_info is not None:
+        if isinstance(nm_info, dict):
+            nm_addr = nm_info.get("addr")
+            nm_sym_type = nm_info.get("sym_type", "other")
+            # If nm dict already has "size" key, it's a GDB-style detail dict (from tests)
+            if "size" in nm_info:
+                _symbol_detail_cache[sym_name] = nm_info
+                return nm_info
+        elif isinstance(nm_info, int):
+            # Backward compat: old int format
+            nm_addr = nm_info
 
     device = state.device
     if not device.elf_path or not os.path.exists(device.elf_path):
         return None
 
-    # nm-loaded int address: try GDB for full detail, fallback to minimal
-    nm_addr = None
-    if sym_name in state.symbols and isinstance(state.symbols[sym_name], int):
-        nm_addr = state.symbols[sym_name]
-
     if not is_gdb_available(state) or state.gdb_session is None:
         if nm_addr is not None:
-            result = {"addr": nm_addr, "size": 0, "type": "variable", "section": ""}
+            result = {"addr": nm_addr, "size": 0, "type": nm_sym_type, "section": ""}
             _symbol_detail_cache[sym_name] = result
             return result
         logger.warning("GDB not available, cannot look up symbol detail")
@@ -189,11 +195,12 @@ def _lookup_symbol(sym_name):
 
     # GDB returned None but nm has the address — return minimal info
     if nm_addr is not None:
-        result = {"addr": nm_addr, "size": 0, "type": "variable", "section": ""}
+        result = {"addr": nm_addr, "size": 0, "type": nm_sym_type, "section": ""}
         _symbol_detail_cache[sym_name] = result
         return result
 
     return None
+
 
 
 def _ensure_symbols_loaded():
@@ -271,12 +278,9 @@ def api_search_symbols():
         addr_str = query_lower[2:] if query_lower.startswith("0x") else query_lower
 
         matched = []
-        for name, addr in state.symbols.items():
-            # state.symbols is {name: int_addr} from nm
-            if isinstance(addr, dict):
-                addr_val = addr.get("addr", 0)
-            else:
-                addr_val = addr
+        for name, info in state.symbols.items():
+            addr_val = _get_addr(info)
+            sym_type = info.get("sym_type", "other") if isinstance(info, dict) else "other"
 
             if is_addr:
                 if addr_str not in f"{addr_val:08x}":
@@ -288,6 +292,7 @@ def api_search_symbols():
                 {
                     "name": name,
                     "addr": f"0x{addr_val:08X}",
+                    "type": sym_type,
                 }
             )
 
@@ -310,6 +315,7 @@ def api_search_symbols():
             "filtered": len(symbol_list),
         }
     )
+
 
 
 @bp.route("/symbols/reload", methods=["POST"])

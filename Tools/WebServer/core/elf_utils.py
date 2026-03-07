@@ -23,12 +23,43 @@ from utils.toolchain import get_tool_path, get_subprocess_env
 logger = logging.getLogger(__name__)
 
 
-def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str, int]:
+
+# nm symbol type code -> category mapping
+_NM_TYPE_MAP = {
+    "T": "function",
+    "t": "function",
+    "W": "function",  # weak (usually function)
+    "w": "function",
+    "D": "variable",  # initialized data
+    "d": "variable",
+    "B": "variable",  # BSS (uninitialized)
+    "b": "variable",
+    "G": "variable",  # small data
+    "g": "variable",
+    "S": "variable",  # small BSS
+    "s": "variable",
+    "C": "variable",  # common
+    "R": "const",  # read-only data
+    "r": "const",
+    "V": "variable",  # weak object
+    "v": "variable",
+}
+
+
+def _nm_type_to_category(nm_type: str) -> str:
+    """Convert nm symbol type code to category string."""
+    return _NM_TYPE_MAP.get(nm_type, "other")
+
+
+def get_symbols(
+    elf_path: str, toolchain_path: Optional[str] = None
+) -> Dict[str, dict]:
     """Extract symbols from ELF file using nm.
 
-    Returns a dictionary with both mangled and demangled names pointing to addresses.
+    Returns a dictionary: {name: {"addr": int, "sym_type": str}}
+    where sym_type is one of: "function", "variable", "const", "other".
     """
-    symbols: Dict[str, int] = {}
+    symbols: Dict[str, dict] = {}
     try:
         nm_tool = get_tool_path("arm-none-eabi-nm", toolchain_path)
         env = get_subprocess_env(toolchain_path)
@@ -46,8 +77,9 @@ def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str
             if len(parts) >= 3:
                 try:
                     addr = int(parts[0], 16)
+                    sym_type = _nm_type_to_category(parts[1])
                     name = parts[2]
-                    symbols[name] = addr
+                    symbols[name] = {"addr": addr, "sym_type": sym_type}
                 except ValueError:
                     pass
 
@@ -64,16 +96,19 @@ def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str
             if len(parts) >= 3:
                 try:
                     addr = int(parts[0], 16)
+                    sym_type = _nm_type_to_category(parts[1])
+                    info = {"addr": addr, "sym_type": sym_type}
                     full_name = " ".join(parts[2:])
                     if "(" in full_name:
                         short_name = full_name.split("(")[0]
-                        symbols[short_name] = addr
-                    symbols[full_name] = addr
+                        symbols[short_name] = info
+                    symbols[full_name] = info
                 except ValueError:
                     pass
     except Exception as e:
         logger.error(f"Error reading symbols via nm: {e}")
     return symbols
+
 
 
 def get_elf_build_time(elf_path: str) -> Optional[str]:

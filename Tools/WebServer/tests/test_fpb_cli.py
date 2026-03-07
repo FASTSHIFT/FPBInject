@@ -220,7 +220,7 @@ class TestFPBCLIAnalyze(unittest.TestCase):
         with patch.object(self.cli._fpb, "get_symbols") as mock_symbols, patch.object(
             self.cli._fpb, "disassemble_function"
         ) as mock_disasm, patch.object(self.cli._fpb, "get_signature") as mock_sig:
-            mock_symbols.return_value = {"main": 0x08001000}
+            mock_symbols.return_value = {"main": {"addr": 0x08001000, "sym_type": "function"}}
             mock_disasm.return_value = (True, "push {r7, lr}\nmov r7, sp")
             mock_sig.return_value = "int main(void)"
 
@@ -237,7 +237,7 @@ class TestFPBCLIAnalyze(unittest.TestCase):
     def test_analyze_function_not_found(self):
         """Test analyze with non-existent function"""
         with patch.object(self.cli._fpb, "get_symbols") as mock_symbols:
-            mock_symbols.return_value = {"other": 0x08001000}
+            mock_symbols.return_value = {"other": {"addr": 0x08001000, "sym_type": "function"}}
 
             f = io.StringIO()
             with redirect_stdout(f):
@@ -394,9 +394,9 @@ class TestFPBCLISearch(unittest.TestCase):
         """Test successful search"""
         with patch.object(self.cli._fpb, "get_symbols") as mock_symbols:
             mock_symbols.return_value = {
-                "gpio_init": 0x08001000,
-                "gpio_write": 0x08001020,
-                "main": 0x08001100,
+                "gpio_init": {"addr": 0x08001000, "sym_type": "function"},
+                "gpio_write": {"addr": 0x08001020, "sym_type": "function"},
+                "main": {"addr": 0x08001100, "sym_type": "function"},
             }
 
             f = io.StringIO()
@@ -410,7 +410,7 @@ class TestFPBCLISearch(unittest.TestCase):
     def test_search_no_results(self):
         """Test search with no matches"""
         with patch.object(self.cli._fpb, "get_symbols") as mock_symbols:
-            mock_symbols.return_value = {"main": 0x08001100}
+            mock_symbols.return_value = {"main": {"addr": 0x08001100, "sym_type": "function"}}
 
             f = io.StringIO()
             with redirect_stdout(f):
@@ -423,7 +423,7 @@ class TestFPBCLISearch(unittest.TestCase):
     def test_search_case_insensitive(self):
         """Test case-insensitive search"""
         with patch.object(self.cli._fpb, "get_symbols") as mock_symbols:
-            mock_symbols.return_value = {"GPIO_Init": 0x08001000}
+            mock_symbols.return_value = {"GPIO_Init": {"addr": 0x08001000, "sym_type": "function"}}
 
             f = io.StringIO()
             with redirect_stdout(f):
@@ -437,7 +437,10 @@ class TestFPBCLISearch(unittest.TestCase):
         """Test search limits to 20 results"""
         with patch.object(self.cli._fpb, "get_symbols") as mock_symbols:
             # Create 30 symbols
-            mock_symbols.return_value = {f"gpio_{i}": 0x08001000 + i for i in range(30)}
+            mock_symbols.return_value = {
+                f"gpio_{i}": {"addr": 0x08001000 + i, "sym_type": "function"}
+                for i in range(30)
+            }
 
             f = io.StringIO()
             with redirect_stdout(f):
@@ -1477,10 +1480,10 @@ class TestCppMemberFunctionHijacking(unittest.TestCase):
         with patch.object(self.cli, "_fpb") as mock_fpb:
             # Mock get_symbols to return C++ mangled names
             mock_fpb.get_symbols.return_value = {
-                "_ZN5Print5printEPKc": 0x08008792,
-                "_ZN5Print5writeEPKc": 0x080086D8,
-                "_ZN14HardwareSerial5beginEm": 0x08008500,
-                "blink_led": 0x080087D0,
+                "_ZN5Print5printEPKc": {"addr": 0x08008792, "sym_type": "function"},
+                "_ZN5Print5writeEPKc": {"addr": 0x080086D8, "sym_type": "function"},
+                "_ZN14HardwareSerial5beginEm": {"addr": 0x08008500, "sym_type": "function"},
+                "blink_led": {"addr": 0x080087D0, "sym_type": "function"},
             }
 
             # Capture output
@@ -1497,9 +1500,9 @@ class TestCppMemberFunctionHijacking(unittest.TestCase):
         """Test searching using partial C++ class names"""
         with patch.object(self.cli, "_fpb") as mock_fpb:
             mock_fpb.get_symbols.return_value = {
-                "_ZN5Print5printEPKc": 0x08008792,
-                "_ZN5Print5writeEPKc": 0x080086D8,
-                "_ZN14HardwareSerial5beginEm": 0x08008500,
+                "_ZN5Print5printEPKc": {"addr": 0x08008792, "sym_type": "function"},
+                "_ZN5Print5writeEPKc": {"addr": 0x080086D8, "sym_type": "function"},
+                "_ZN14HardwareSerial5beginEm": {"addr": 0x08008500, "sym_type": "function"},
             }
 
             with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
@@ -1771,9 +1774,9 @@ class TestFPBCLIClass(unittest.TestCase):
     def test_search_success(self):
         """Test symbol search"""
         mock_symbols = {
-            "gpio_init": 0x08000100,
-            "gpio_read": 0x08000200,
-            "uart_init": 0x08000300,
+            "gpio_init": {"addr": 0x08000100, "sym_type": "function"},
+            "gpio_read": {"addr": 0x08000200, "sym_type": "function"},
+            "uart_init": {"addr": 0x08000300, "sym_type": "function"},
         }
         with patch.object(self.cli._fpb, "get_symbols", return_value=mock_symbols):
             with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
