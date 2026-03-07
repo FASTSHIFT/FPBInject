@@ -16,6 +16,11 @@ let _symbolClickTimer = null;
 const _autoReadTimers = new Map();
 
 /* ===========================
+   CACHED TAB DATA (for language re-render)
+   =========================== */
+const _symTabDataCache = new Map();
+
+/* ===========================
    SYMBOL TYPE HELPERS
    =========================== */
 const SYMBOL_TYPE_CONFIG = {
@@ -127,6 +132,9 @@ async function openSymbolValueTab(symName, symType) {
     contentDiv.id = `tabContent_${tabId}`;
     contentDiv.innerHTML = _renderSymbolValueContent(data, isConst);
     tabsContent.appendChild(contentDiv);
+
+    // Cache data for language re-render
+    _symTabDataCache.set(symName, { data, isConst });
 
     switchEditorTab(tabId);
     log.success(
@@ -511,17 +519,28 @@ async function readSymbolFromDevice(symName, deref) {
       return;
     }
 
-    // Update the tab content with fresh data
+    // Update the tab content with fresh data (preserve scroll position)
     const tabId = `symval_${symName}`;
     const contentDiv = document.getElementById(`tabContent_${tabId}`);
     if (contentDiv) {
+      const container = contentDiv.querySelector('.sym-viewer-container');
+      const scrollTop = container ? container.scrollTop : 0;
+
       contentDiv.innerHTML = _renderSymbolValueContent(data, false);
+
+      // Restore scroll position
+      const newContainer = contentDiv.querySelector('.sym-viewer-container');
+      if (newContainer) newContainer.scrollTop = scrollTop;
+
       // Restore auto-read state if active
       if (_autoReadTimers.has(symName)) {
         const btn = document.getElementById(`symAutoReadBtn_${symName}`);
         if (btn) btn.classList.add('active');
       }
     }
+
+    // Update cache for language re-render
+    _symTabDataCache.set(symName, { data, isConst: false });
 
     const now = new Date().toLocaleTimeString();
     const newStatusEl = document.getElementById(`symStatus_${symName}`);
@@ -739,6 +758,40 @@ async function readMemoryAddress(addrStr, size) {
   }
 }
 
+// Re-render all open symbol viewer tabs on language change
+function _rerenderSymbolTabs() {
+  const state = window.FPBState;
+  if (!state || !state.editorTabs) return;
+
+  for (const tab of state.editorTabs) {
+    if (tab.type !== 'var-viewer' && tab.type !== 'const-viewer') continue;
+    const cached = _symTabDataCache.get(tab.symName);
+    if (!cached) continue;
+
+    const contentDiv = document.getElementById(`tabContent_${tab.id}`);
+    if (!contentDiv) continue;
+
+    const container = contentDiv.querySelector('.sym-viewer-container');
+    const scrollTop = container ? container.scrollTop : 0;
+
+    contentDiv.innerHTML = _renderSymbolValueContent(
+      cached.data,
+      cached.isConst,
+    );
+
+    const newContainer = contentDiv.querySelector('.sym-viewer-container');
+    if (newContainer) newContainer.scrollTop = scrollTop;
+
+    // Restore auto-read state
+    if (_autoReadTimers.has(tab.symName)) {
+      const btn = document.getElementById(`symAutoReadBtn_${tab.symName}`);
+      if (btn) btn.classList.add('active');
+    }
+  }
+}
+
+document.addEventListener('i18n:translated', _rerenderSymbolTabs);
+
 // Export for global access
 window.searchSymbols = searchSymbols;
 window.selectSymbol = selectSymbol;
@@ -759,3 +812,5 @@ window._renderSymbolValueContent = _renderSymbolValueContent;
 window._renderStructTable = _renderStructTable;
 window._decodeLittleEndianHex = _decodeLittleEndianHex;
 window._autoReadTimers = _autoReadTimers;
+window._symTabDataCache = _symTabDataCache;
+window._rerenderSymbolTabs = _rerenderSymbolTabs;

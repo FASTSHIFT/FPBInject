@@ -1084,6 +1084,216 @@ module.exports = function (w) {
     });
   });
 
+  describe('_renderSymbolValueContent Pointer Support', () => {
+    it('renders pointer type badge for pointer variables', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'disp_def',
+          addr: '0x20001000',
+          size: 4,
+          section: '.bss',
+          is_pointer: true,
+          pointer_target: 'lv_disp_t',
+        },
+        false,
+      );
+      assertContains(html, 'sym-viewer-type-badge');
+      assertContains(html, 'lv_disp_t');
+    });
+
+    it('renders pointer value when hex_data present', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'disp_def',
+          addr: '0x20001000',
+          size: 4,
+          section: '.data',
+          hex_data: '00300020',
+          is_pointer: true,
+          pointer_target: 'lv_disp_t',
+        },
+        false,
+      );
+      assertContains(html, 'sym-pointer-value');
+      assertContains(html, '0x20003000');
+    });
+
+    it('shows NULL label for null pointer', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'p_null',
+          addr: '0x20001000',
+          size: 4,
+          section: '.bss',
+          hex_data: '00000000',
+          is_pointer: true,
+          pointer_target: 'int',
+        },
+        false,
+      );
+      assertContains(html, 'sym-pointer-null');
+      assertContains(html, 'NULL');
+    });
+
+    it('renders dereference checkbox for pointer', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'my_ptr',
+          addr: '0x20001000',
+          size: 4,
+          section: '.data',
+          is_pointer: true,
+          pointer_target: 'my_struct',
+        },
+        false,
+      );
+      assertContains(html, 'symDerefToggle_my_ptr');
+      assertContains(html, 'sym-deref-toggle');
+    });
+
+    it('does not render dereference checkbox for non-pointer', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_val',
+          addr: '0x20001000',
+          size: 4,
+          section: '.data',
+        },
+        false,
+      );
+      assertTrue(!html.includes('sym-deref-toggle'));
+    });
+
+    it('renders deref data section when deref_data present', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'my_ptr',
+          addr: '0x20001000',
+          size: 4,
+          section: '.data',
+          hex_data: '00200020',
+          is_pointer: true,
+          pointer_target: 'my_struct',
+          deref_data: {
+            addr: '0x20002000',
+            size: 8,
+            hex_data: 'AABBCCDD11223344',
+            type_name: 'my_struct',
+            struct_layout: [
+              { name: 'x', type_name: 'int', offset: 0, size: 4 },
+              { name: 'y', type_name: 'int', offset: 4, size: 4 },
+            ],
+          },
+        },
+        false,
+      );
+      assertContains(html, 'sym-deref-section');
+      assertContains(html, 'my_struct');
+      assertContains(html, 'sym-struct-table');
+    });
+
+    it('renders deref error when deref_error present', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'my_ptr',
+          addr: '0x20001000',
+          size: 4,
+          section: '.data',
+          hex_data: '00000000',
+          is_pointer: true,
+          pointer_target: 'my_struct',
+          deref_error: 'NULL pointer',
+        },
+        false,
+      );
+      assertContains(html, 'sym-deref-error');
+      assertContains(html, 'NULL pointer');
+    });
+
+    it('renders pointer raw hex label', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'my_ptr',
+          addr: '0x20001000',
+          size: 4,
+          section: '.data',
+          hex_data: '00300020',
+          is_pointer: true,
+          pointer_target: 'int',
+        },
+        false,
+      );
+      assertContains(html, 'sym-hex-dump');
+    });
+
+    it('does not render struct layout for pointer without deref', () => {
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'my_ptr',
+          addr: '0x20001000',
+          size: 4,
+          section: '.data',
+          hex_data: '00300020',
+          is_pointer: true,
+          pointer_target: 'my_struct',
+          struct_layout: null,
+        },
+        false,
+      );
+      assertTrue(!html.includes('sym-struct-table'));
+    });
+  });
+
+  describe('_decodeLittleEndianHex Helper', () => {
+    it('decodes 4-byte LE hex to address', () => {
+      assertEqual(w._decodeLittleEndianHex('00300020', 4), '0x20003000');
+    });
+
+    it('decodes zero pointer', () => {
+      assertEqual(w._decodeLittleEndianHex('00000000', 4), '0x00000000');
+    });
+
+    it('decodes 2-byte LE hex', () => {
+      assertEqual(w._decodeLittleEndianHex('3412', 2), '0x1234');
+    });
+  });
+
+  describe('_renderStructTable Helper', () => {
+    it('renders table with field rows', () => {
+      const html = w._renderStructTable(
+        [{ name: 'x', type_name: 'int', offset: 0, size: 4 }],
+        'AABBCCDD',
+        false,
+      );
+      assertContains(html, 'sym-struct-table');
+      assertContains(html, 'sym-field-name');
+    });
+
+    it('renders bss hint when no hex data', () => {
+      const html = w._renderStructTable(
+        [{ name: 'x', type_name: 'int', offset: 0, size: 4 }],
+        null,
+        true,
+      );
+      assertContains(html, 'needs device read');
+    });
+  });
+
+  describe('Symbol Tab Data Cache', () => {
+    it('_symTabDataCache is a Map', () => {
+      assertTrue(w._symTabDataCache instanceof Map);
+    });
+
+    it('_rerenderSymbolTabs is a function', () => {
+      assertTrue(typeof w._rerenderSymbolTabs === 'function');
+    });
+
+    it('_rerenderSymbolTabs does not throw when no tabs', () => {
+      w._rerenderSymbolTabs();
+      assertTrue(true);
+    });
+  });
+
   describe('Auto-Inject Functions (features/autoinject.js)', () => {
     it('startAutoInjectPolling is a function', () =>
       assertTrue(typeof w.startAutoInjectPolling === 'function'));
