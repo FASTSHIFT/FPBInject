@@ -238,6 +238,35 @@ class FPBCLI:
         except Exception as e:
             self.output_error(f"Search failed: {str(e)}", e)
 
+    def get_symbols(self, elf_path: str, pattern: str = "", limit: int = 0) -> None:
+        """Get all symbols from ELF file via nm"""
+        try:
+            symbols = self._fpb.get_symbols(elf_path)
+
+            if pattern:
+                pat = pattern.lower()
+                symbols = {k: v for k, v in symbols.items() if pat in k.lower()}
+
+            result_list = [
+                {"name": name, "addr": hex(addr) if isinstance(addr, int) else addr}
+                for name, addr in sorted(symbols.items(), key=lambda x: x[0])
+            ]
+
+            if limit > 0:
+                result_list = result_list[:limit]
+
+            self.output_json(
+                {
+                    "success": True,
+                    "count": len(result_list),
+                    "total": len(symbols),
+                    "symbols": result_list,
+                }
+            )
+        except Exception as e:
+            self.output_error(f"Get symbols failed: {str(e)}", e)
+
+
     def compile(
         self,
         source_file: str,
@@ -563,6 +592,9 @@ Examples:
   # Search functions (no device needed)
   fpb_cli.py search firmware.elf "gpio"
 
+  # Get all symbols (no device needed)
+  fpb_cli.py get-symbols firmware.elf --filter "gpio" --limit 50
+
   # Compile patch (no device needed)
   fpb_cli.py compile my_patch.c --elf firmware.elf --compile-commands build/compile_commands.json
 
@@ -641,6 +673,18 @@ Examples:
     search_parser = subparsers.add_parser("search", help="Search functions")
     search_parser.add_argument("elf_path", help="Path to ELF file")
     search_parser.add_argument("pattern", help="Search pattern")
+
+    # get-symbols command
+    symbols_parser = subparsers.add_parser(
+        "get-symbols", help="Get all symbols from ELF file (via nm)"
+    )
+    symbols_parser.add_argument("elf_path", help="Path to ELF file")
+    symbols_parser.add_argument(
+        "--filter", default="", help="Filter pattern (case-insensitive)"
+    )
+    symbols_parser.add_argument(
+        "--limit", type=int, default=0, help="Max results (0=unlimited)"
+    )
 
     # compile command
     compile_parser = subparsers.add_parser("compile", help="Compile patch source")
@@ -740,6 +784,8 @@ Examples:
             cli.signature(args.elf_path, args.func_name)
         elif args.command == "search":
             cli.search(args.elf_path, args.pattern)
+        elif args.command == "get-symbols":
+            cli.get_symbols(args.elf_path, args.filter, args.limit)
         elif args.command == "compile":
             # Use global --elf and --compile-commands
             cli.compile(args.source_file, elf_path, args.addr, args.compile_commands)
