@@ -142,6 +142,19 @@ window.i18nResources['zh-CN'] = {
       invalid_params: '无效的地址或大小',
     },
 
+    // Watch 表达式
+    watch: {
+      title: '监视',
+      add_placeholder: '添加表达式...',
+      refresh_all: '全部刷新',
+      clear_all: '全部清除',
+      no_watches: '无监视表达式',
+      add_tooltip: '添加',
+      refresh_tooltip: '刷新',
+      remove_tooltip: '移除',
+      deref_tooltip: '解引用',
+    },
+
     // 状态栏
     statusbar: {
       ready: '就绪',
@@ -323,6 +336,7 @@ window.i18nResources['zh-CN'] = {
       activity_symbols: '符号',
       activity_config: '配置',
       activity_quick_commands: '快捷指令',
+      activity_watch: '监视',
       more_actions: '更多操作',
       // 设备
       ping: '检测设备是否已连接并响应',

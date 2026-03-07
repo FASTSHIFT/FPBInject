@@ -176,6 +176,7 @@ const modules = [
   'features/transfer.js',
   'features/quick-commands.js',
   'features/tutorial.js',
+  'features/watch.js',
 ];
 
 console.log('Loading application modules...');

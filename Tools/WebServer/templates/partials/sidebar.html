@@ -152,6 +152,52 @@
     </details>
   </div>
 
+  <!-- Watch Expression Section -->
+  <div class="sidebar-section" data-section-id="watch">
+    <details id="details-watch">
+      <summary class="sidebar-header">
+        <i class="codicon codicon-chevron-right"></i>
+        <span data-i18n="watch.title">WATCH</span>
+      </summary>
+      <div class="sidebar-content" style="display: flex; flex-direction: column; padding: 0">
+        <div class="watch-input-bar">
+          <input
+            type="text"
+            id="watchExprInput"
+            class="vscode-input"
+            placeholder="Add expression..."
+            data-i18n="[placeholder]watch.add_placeholder"
+            onkeydown="if (event.key === 'Enter') watchAddFromInput();"
+            style="height: 22px; font-size: 11px; flex: 1"
+          />
+          <button
+            class="vscode-btn icon-only secondary"
+            onclick="watchAddFromInput()"
+            title="Add"
+            data-i18n="[title]watch.add_tooltip"
+            style="height: 22px; width: 22px; min-width: 22px; padding: 0"
+          >
+            <i class="codicon codicon-add"></i>
+          </button>
+        </div>
+        <div id="watchPanel" class="watch-panel">
+          <div class="watch-empty" data-i18n="watch.no_watches">No watch expressions</div>
+        </div>
+        <div class="watch-toolbar">
+          <button class="vscode-btn secondary" onclick="watchRefreshAll()" style="font-size: 11px">
+            <i class="codicon codicon-refresh"></i>
+            <span data-i18n="watch.refresh_all">Refresh All</span>
+          </button>
+          <button class="vscode-btn secondary" onclick="watchClearAll()" style="font-size: 11px">
+            <i class="codicon codicon-clear-all"></i>
+            <span data-i18n="watch.clear_all">Clear All</span>
+          </button>
+        </div>
+      </div>
+      <div class="sidebar-section-resize-handle"></div>
+    </details>
+  </div>
+
   <!-- Configuration Section -->
   {% include 'partials/sidebar_config.html' %}
 </div>

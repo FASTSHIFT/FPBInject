@@ -76,6 +76,27 @@ class TestTemplateRendering(unittest.TestCase):
             self.assertIn("codicon-search", html)
             self.assertIn("codicon-settings-gear", html)
 
+    def test_activitybar_has_all_sidebar_sections(self):
+        """Every sidebar section must have a corresponding activity bar button."""
+        import re
+
+        with self.app.app_context():
+            from flask import render_template
+
+            html = render_template("index.html")
+
+            # Extract all sidebar section detail ids
+            sidebar_ids = set(re.findall(r'<details\s+id="(details-[^"]+)"', html))
+            # Extract all activity bar data-section targets
+            activity_targets = set(re.findall(r'data-section="(details-[^"]+)"', html))
+
+            missing = sidebar_ids - activity_targets
+            self.assertEqual(
+                missing,
+                set(),
+                f"Sidebar sections missing activity bar buttons: {missing}",
+            )
+
     def test_sidebar_partial(self):
         """Test that sidebar partial is included with all sections."""
         with self.app.app_context():

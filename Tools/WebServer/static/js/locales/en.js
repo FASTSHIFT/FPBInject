@@ -142,6 +142,19 @@ window.i18nResources['en'] = {
       invalid_params: 'Invalid address or size',
     },
 
+    // Watch expressions
+    watch: {
+      title: 'WATCH',
+      add_placeholder: 'Add expression...',
+      refresh_all: 'Refresh All',
+      clear_all: 'Clear All',
+      no_watches: 'No watch expressions',
+      add_tooltip: 'Add',
+      refresh_tooltip: 'Refresh',
+      remove_tooltip: 'Remove',
+      deref_tooltip: 'Dereference',
+    },
+
     // Status bar
     // Status bar
     statusbar: {
@@ -330,6 +343,7 @@ window.i18nResources['en'] = {
       activity_symbols: 'Symbols',
       activity_config: 'Configuration',
       activity_quick_commands: 'Quick Commands',
+      activity_watch: 'Watch',
       more_actions: 'More Actions',
       // Device
       ping: 'Detect if device is connected and responsive',

@@ -15,7 +15,17 @@ from flask import Flask
 
 def register_blueprints(app: Flask):
     """Register all route blueprints with the Flask app."""
-    from . import connection, files, fpb, logs, patch, symbols, transfer, watch
+    from . import (
+        connection,
+        files,
+        fpb,
+        logs,
+        patch,
+        symbols,
+        transfer,
+        watch,
+        watch_expr,
+    )
 
     # Register blueprints with /api prefix
     app.register_blueprint(connection.bp, url_prefix="/api")
@@ -26,6 +36,7 @@ def register_blueprints(app: Flask):
     app.register_blueprint(patch.bp, url_prefix="/api")
     app.register_blueprint(symbols.bp, url_prefix="/api")
     app.register_blueprint(transfer.bp, url_prefix="/api")
+    app.register_blueprint(watch_expr.bp, url_prefix="/api")
 
 
 __all__ = ["register_blueprints"]

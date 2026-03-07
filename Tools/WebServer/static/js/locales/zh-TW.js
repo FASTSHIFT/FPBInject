@@ -142,6 +142,19 @@ window.i18nResources['zh-TW'] = {
       invalid_params: '無效的位址或大小',
     },
 
+    // Watch 表達式
+    watch: {
+      title: '監視',
+      add_placeholder: '新增表達式...',
+      refresh_all: '全部重新整理',
+      clear_all: '全部清除',
+      no_watches: '無監視表達式',
+      add_tooltip: '新增',
+      refresh_tooltip: '重新整理',
+      remove_tooltip: '移除',
+      deref_tooltip: '解參考',
+    },
+
     // 狀態列
     statusbar: {
       ready: '就緒',
@@ -323,6 +336,7 @@ window.i18nResources['zh-TW'] = {
       activity_symbols: '符號',
       activity_config: '設定',
       activity_quick_commands: '快捷指令',
+      activity_watch: '監視',
       more_actions: '更多操作',
       // 裝置
       ping: '檢測裝置是否已連線並回應',

@@ -1285,6 +1285,169 @@ input[type="checkbox"] {
 }
 
 /* ===========================
+   WATCH EXPRESSION PANEL
+   =========================== */
+.watch-input-bar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.watch-panel {
+  overflow-y: auto;
+  min-height: 40px;
+  max-height: 300px;
+}
+
+.watch-empty {
+  padding: 8px;
+  font-size: 11px;
+  opacity: 0.7;
+  text-align: center;
+}
+
+.watch-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.watch-entry {
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+  font-size: 12px;
+}
+
+.watch-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  background: var(--vscode-editor-lineHighlightBackground);
+  cursor: default;
+}
+
+.watch-expr {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--syntax-variable, #9cdcfe);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.watch-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.watch-entry:hover .watch-actions {
+  opacity: 1;
+}
+
+.watch-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 1px 3px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+.watch-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.watch-entry-value {
+  padding: 2px 8px 4px 16px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.watch-decoded {
+  color: var(--syntax-number, #b5cea8);
+}
+
+.watch-hex {
+  color: var(--vscode-descriptionForeground);
+}
+
+.watch-hex-hint {
+  opacity: 0.5;
+  font-size: 11px;
+}
+
+.watch-error {
+  color: var(--vscode-errorForeground, #f44336);
+  font-size: 11px;
+}
+
+.watch-no-data {
+  opacity: 0.5;
+}
+
+.watch-struct-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: "Consolas", "Courier New", monospace;
+}
+
+.watch-struct-table th {
+  text-align: left;
+  padding: 3px 6px;
+  background: var(--vscode-editor-lineHighlightBackground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.watch-struct-table td {
+  padding: 2px 6px;
+  border-bottom: 1px solid
+    var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+}
+
+.watch-struct-table tr:hover td {
+  background: var(--vscode-list-hover);
+}
+
+.watch-field-name {
+  color: var(--syntax-variable, #9cdcfe);
+}
+
+.watch-field-type {
+  color: var(--syntax-type, #4ec9b0);
+}
+
+.watch-field-value {
+  color: var(--syntax-number, #b5cea8);
+}
+
+.watch-deref-btn {
+  background: none;
+  border: 1px solid var(--vscode-descriptionForeground);
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 10px;
+  border-radius: 2px;
+  margin-left: 4px;
+}
+
+.watch-deref-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-foreground);
+}
+
+/* ===========================
    FILE TRANSFER
    =========================== */
 .device-file-list {
