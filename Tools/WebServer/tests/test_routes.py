@@ -935,23 +935,14 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["filtered"], 1)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
-    def test_get_symbols_search_by_address(self, mock_gdb_avail):
+    def test_get_symbols_search_by_address(self):
         """Test searching symbols by address (0x prefix)"""
-        mock_session = Mock()
-        mock_session.search_symbols.return_value = (
-            [
-                {
-                    "name": "test_func",
-                    "addr": "0x08001000",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                }
-            ],
-            3,
-        )
-        state.gdb_session = mock_session
+        state.symbols = {
+            "test_func": 0x08001000,
+            "other_func": 0x08002000,
+            "helper": 0x08003000,
+        }
+        state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -965,23 +956,14 @@ class TestRoutesExtended(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
-    def test_get_symbols_search_by_address_partial(self, mock_gdb_avail):
+    def test_get_symbols_search_by_address_partial(self):
         """Test searching symbols by partial address"""
-        mock_session = Mock()
-        mock_session.search_symbols.return_value = (
-            [
-                {
-                    "name": "test_func",
-                    "addr": "0x08001000",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                }
-            ],
-            3,
-        )
-        state.gdb_session = mock_session
+        state.symbols = {
+            "test_func": 0x08001000,
+            "other_func": 0x08002000,
+            "helper": 0x08003000,
+        }
+        state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -1783,30 +1765,14 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["filtered"], 2)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
-    def test_search_symbols_by_name(self, mock_gdb_avail):
+    def test_search_symbols_by_name(self):
         """Test searching symbols by name"""
-        mock_session = Mock()
-        mock_session.search_symbols.return_value = (
-            [
-                {
-                    "name": "gpio_init",
-                    "addr": "0x08001000",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                },
-                {
-                    "name": "gpio_read",
-                    "addr": "0x08002000",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                },
-            ],
-            3,
-        )
-        state.gdb_session = mock_session
+        state.symbols = {
+            "gpio_init": 0x08001000,
+            "gpio_read": 0x08002000,
+            "main": 0x08000000,
+        }
+        state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:
@@ -1818,23 +1784,13 @@ class TestSymbolsAPI(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
-    def test_search_symbols_by_address(self, mock_gdb_avail):
+    def test_search_symbols_by_address(self):
         """Test searching symbols by address"""
-        mock_session = Mock()
-        mock_session.search_symbols.return_value = (
-            [
-                {
-                    "name": "func_a",
-                    "addr": "0x08001000",
-                    "size": 0,
-                    "type": "function",
-                    "section": ".text",
-                }
-            ],
-            2,
-        )
-        state.gdb_session = mock_session
+        state.symbols = {
+            "func_a": 0x08001000,
+            "func_b": 0x08002000,
+        }
+        state.symbols_loaded = True
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
             state.device.elf_path = f.name
         try:

@@ -27,6 +27,10 @@ bp = Blueprint("symbols", __name__)
 # so we cache it to avoid repeated GDB queries on every auto-read.
 _struct_layout_cache = {}
 
+# Cache for symbol detail results from GDB (addr, size, type, section).
+# nm only provides {name: addr}; GDB provides full detail on first access.
+_symbol_detail_cache = {}
+
 
 def _get_struct_layout_cached(sym_name):
     """Get struct layout with caching. Returns cached result on subsequent calls."""
@@ -104,16 +108,13 @@ def api_get_symbols():
     if query:
         symbols = {k: v for k, v in symbols.items() if query in k.lower()}
 
-    # Convert to list and limit
+    # Convert to list and limit — state.symbols is {name: int_addr} from nm
     symbol_list = [
         {
             "name": name,
             "addr": (
                 f"0x{info['addr']:08X}" if isinstance(info, dict) else f"0x{info:08X}"
             ),
-            "size": info.get("size", 0) if isinstance(info, dict) else 0,
-            "type": info.get("type", "other") if isinstance(info, dict) else "function",
-            "section": info.get("section", "") if isinstance(info, dict) else "",
         }
         for name, info in sorted(symbols.items(), key=lambda x: x[0])
     ][:limit]
@@ -136,26 +137,41 @@ def _get_addr(info):
 
 
 def _lookup_symbol(sym_name):
-    """Look up a symbol via GDB or cache.
+    """Look up symbol detail (addr, size, type, section) via GDB with caching.
 
-    Results are cached in state.symbols for subsequent lookups.
+    The nm-loaded state.symbols only has {name: addr}. This function uses
+    GDB to get full detail (size, type, section) and caches the result in
+    _symbol_detail_cache for subsequent calls.
+
+    Also handles backward-compat where state.symbols may contain dict values.
     """
     from core.gdb_manager import is_gdb_available
 
-    # Try cache first
-    if sym_name in state.symbols:
-        return state.symbols[sym_name]
+    # Try detail cache first (dict with addr/size/type/section)
+    if sym_name in _symbol_detail_cache:
+        return _symbol_detail_cache[sym_name]
 
-    # If full symbols already loaded, it's definitely not there
-    if state.symbols_loaded:
-        return None
+    # Backward compat: state.symbols may contain dict values from tests
+    if sym_name in state.symbols and isinstance(state.symbols[sym_name], dict):
+        result = state.symbols[sym_name]
+        _symbol_detail_cache[sym_name] = result
+        return result
 
     device = state.device
     if not device.elf_path or not os.path.exists(device.elf_path):
         return None
 
-    if not is_gdb_available(state):
-        logger.warning("GDB not available, cannot look up symbol")
+    # nm-loaded int address: try GDB for full detail, fallback to minimal
+    nm_addr = None
+    if sym_name in state.symbols and isinstance(state.symbols[sym_name], int):
+        nm_addr = state.symbols[sym_name]
+
+    if not is_gdb_available(state) or state.gdb_session is None:
+        if nm_addr is not None:
+            result = {"addr": nm_addr, "size": 0, "type": "variable", "section": ""}
+            _symbol_detail_cache[sym_name] = result
+            return result
+        logger.warning("GDB not available, cannot look up symbol detail")
         return None
 
     t0 = time.time()
@@ -167,35 +183,54 @@ def _lookup_symbol(sym_name):
     else:
         logger.info(f"[symbols] GDB lookup_symbol '{sym_name}': {elapsed:.3f}s")
 
-    # Cache for future lookups
     if result is not None:
-        state.symbols[sym_name] = result
+        _symbol_detail_cache[sym_name] = result
+        return result
 
-    return result
+    # GDB returned None but nm has the address — return minimal info
+    if nm_addr is not None:
+        result = {"addr": nm_addr, "size": 0, "type": "variable", "section": ""}
+        _symbol_detail_cache[sym_name] = result
+        return result
+
+    return None
 
 
 def _ensure_symbols_loaded():
-    """Ensure symbols are loaded exactly once (thread-safe).
+    """Ensure symbols are loaded exactly once (thread-safe) via nm.
 
-    When GDB is available, skip full preloading — GDB handles per-query
-    search in milliseconds. Full dump (info variables/functions) would
-    timeout on large ELFs (200k+ symbols).
+    nm is fast (~1s for 200k+ symbols) and loads the full symbol table
+    into memory for instant search. GDB is only used for per-symbol
+    detail queries (ptype, sizeof, struct layout).
     """
-    from core.gdb_manager import is_gdb_available
-
-    # GDB available: no need to preload, per-query search is fast enough
-    if is_gdb_available(state):
-        return
-
     if state.symbols_loaded:
         return
 
-    logger.warning("GDB not available, symbol preloading skipped")
+    with state._symbols_load_lock:
+        if state.symbols_loaded:
+            return
+
+        device = state.device
+        if not device.elf_path or not os.path.exists(device.elf_path):
+            logger.warning("ELF file not found, symbol preloading skipped")
+            return
+
+        try:
+            fpb = _get_fpb_inject()
+            t0 = time.time()
+            state.symbols = fpb.get_symbols(device.elf_path)
+            state.symbols_loaded = True
+            elapsed = time.time() - t0
+            logger.info(
+                f"[symbols] nm loaded {len(state.symbols)} symbols in {elapsed:.2f}s"
+            )
+        except Exception as e:
+            logger.error(f"Failed to load symbols via nm: {e}")
 
 
 @bp.route("/symbols/search", methods=["GET"])
 def api_search_symbols():
-    """Search symbols from ELF file. Uses cache when available."""
+    """Search symbols from ELF file. Uses nm-loaded cache for fast search."""
     device = state.device
     if not device.elf_path or not os.path.exists(device.elf_path):
         elf_path = device.elf_path if device.elf_path else "(not set)"
@@ -209,66 +244,55 @@ def api_search_symbols():
 
     query = request.args.get("q", "").strip()
     limit = int(request.args.get("limit", 100))
-    t_start = time.time()
-    logger.info(f"[symbols] search request: query='{query}' limit={limit}")
 
     if not query:
         return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
 
-    # Minimum query length to avoid overly broad GDB searches
-    if len(query) < 3:
-        logger.info(
-            f"[symbols] query too short ({len(query)} chars), skipping GDB search"
-        )
+    if len(query) < 2:
         return jsonify({"success": True, "symbols": [], "total": 0, "filtered": 0})
 
+    # Ensure symbols are loaded via nm
+    _ensure_symbols_loaded()
+
+    if not state.symbols_loaded:
+        return jsonify(
+            {
+                "success": False,
+                "error": "Symbols not loaded (nm unavailable or ELF missing)",
+                "symbols": [],
+            }
+        )
+
     try:
-        from core.gdb_manager import is_gdb_available
+        query_lower = query.lower()
+        is_addr = query_lower.startswith("0x") or (
+            len(query_lower) >= 4 and all(c in "0123456789abcdef" for c in query_lower)
+        )
+        addr_str = query_lower[2:] if query_lower.startswith("0x") else query_lower
 
-        # Use cached symbols if already loaded (instant search)
-        if state.symbols_loaded:
-            query_lower = query.lower()
-            is_addr = query_lower.startswith("0x") or (
-                len(query_lower) >= 4
-                and all(c in "0123456789abcdef" for c in query_lower)
-            )
-            addr_str = query_lower[2:] if query_lower.startswith("0x") else query_lower
+        matched = []
+        for name, addr in state.symbols.items():
+            # state.symbols is {name: int_addr} from nm
+            if isinstance(addr, dict):
+                addr_val = addr.get("addr", 0)
+            else:
+                addr_val = addr
 
-            matched = []
-            for name, info in state.symbols.items():
-                if not isinstance(info, dict):
+            if is_addr:
+                if addr_str not in f"{addr_val:08x}":
                     continue
-                if is_addr:
-                    if addr_str not in f"{info.get('addr', 0):08x}":
-                        continue
-                else:
-                    if query_lower not in name.lower():
-                        continue
-                matched.append(
-                    {
-                        "name": name,
-                        "addr": f"0x{info['addr']:08X}",
-                        "size": info.get("size", 0),
-                        "type": info.get("type", "other"),
-                        "section": info.get("section", ""),
-                    }
-                )
-
-            matched.sort(key=lambda x: x["name"])
-            total = len(state.symbols)
-            symbol_list = matched[:limit]
-        elif is_gdb_available(state):
-            # GDB fast search (~0.01s vs ~3s)
-            logger.info(f"[symbols] delegating search to GDB: '{query}'")
-            symbol_list, total = state.gdb_session.search_symbols(query, limit=limit)
-            elapsed = time.time() - t_start
-            logger.info(
-                f"[symbols] GDB search done: '{query}' -> "
-                f"{len(symbol_list)} results ({elapsed:.3f}s)"
+            else:
+                if query_lower not in name.lower():
+                    continue
+            matched.append(
+                {
+                    "name": name,
+                    "addr": f"0x{addr_val:08X}",
+                }
             )
-        else:
-            symbol_list, total = [], 0
-            logger.warning("GDB not available, cannot search symbols")
+
+        matched.sort(key=lambda x: x["name"])
+        symbol_list = matched[:limit]
     except Exception as e:
         return jsonify(
             {
@@ -282,7 +306,7 @@ def api_search_symbols():
         {
             "success": True,
             "symbols": symbol_list,
-            "total": total,
+            "total": len(state.symbols),
             "filtered": len(symbol_list),
         }
     )
@@ -290,39 +314,29 @@ def api_search_symbols():
 
 @bp.route("/symbols/reload", methods=["POST"])
 def api_reload_symbols():
-    """Reload symbols from ELF file."""
+    """Reload symbols from ELF file via nm."""
     device = state.device
     if not device.elf_path or not os.path.exists(device.elf_path):
         return jsonify({"success": False, "error": "ELF file not found"})
 
     try:
         with state._symbols_load_lock:
-            from core.gdb_manager import is_gdb_available
-
             state.symbols = {}
             state.symbols_loaded = False
             _struct_layout_cache.clear()
+            _symbol_detail_cache.clear()
 
-            if is_gdb_available(state):
-                return jsonify(
-                    {
-                        "success": True,
-                        "count": 0,
-                        "message": "GDB active, symbols queried on demand",
-                    }
-                )
-            else:
-                return jsonify(
-                    {
-                        "success": True,
-                        "count": 0,
-                        "message": "Cache cleared (GDB not available)",
-                    }
-                )
+        # Re-load via nm
+        _ensure_symbols_loaded()
+
+        return jsonify(
+            {
+                "success": True,
+                "count": len(state.symbols),
+            }
+        )
     except Exception as e:
         return jsonify({"success": False, "error": f"Failed to reload symbols: {e}"})
-
-    return jsonify({"success": True, "count": len(state.symbols)})
 
 
 @bp.route("/symbols/signature", methods=["GET"])

@@ -235,12 +235,9 @@ class FPBInject:
         """Get build time from ELF file."""
         return elf_utils.get_elf_build_time(elf_path)
 
-    def get_symbols(self, elf_path: str) -> Dict[str, dict]:
-        """Deprecated: symbol queries now go through GDB session.
-
-        Kept as stub for backward compatibility with CLI tests.
-        """
-        return {}
+    def get_symbols(self, elf_path: str) -> Dict[str, int]:
+        """Extract symbols from ELF file using nm."""
+        return elf_utils.get_symbols(elf_path, self._toolchain_path)
 
     def _resolve_symbol_addr(self, sym_name: str) -> Optional[int]:
         """Resolve a symbol name to its address via GDB session.

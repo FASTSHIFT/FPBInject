@@ -16,11 +16,64 @@ import logging
 import os
 import re
 import subprocess
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from utils.toolchain import get_tool_path, get_subprocess_env
 
 logger = logging.getLogger(__name__)
+
+
+def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str, int]:
+    """Extract symbols from ELF file using nm.
+
+    Returns a dictionary with both mangled and demangled names pointing to addresses.
+    """
+    symbols: Dict[str, int] = {}
+    try:
+        nm_tool = get_tool_path("arm-none-eabi-nm", toolchain_path)
+        env = get_subprocess_env(toolchain_path)
+
+        # Get mangled names
+        result = subprocess.run(
+            [nm_tool, elf_path],
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                try:
+                    addr = int(parts[0], 16)
+                    name = parts[2]
+                    symbols[name] = addr
+                except ValueError:
+                    pass
+
+        # Also get demangled names (-C) for easier lookup
+        result = subprocess.run(
+            [nm_tool, "-C", elf_path],
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                try:
+                    addr = int(parts[0], 16)
+                    full_name = " ".join(parts[2:])
+                    if "(" in full_name:
+                        short_name = full_name.split("(")[0]
+                        symbols[short_name] = addr
+                    symbols[full_name] = addr
+                except ValueError:
+                    pass
+    except Exception as e:
+        logger.error(f"Error reading symbols via nm: {e}")
+    return symbols
 
 
 def get_elf_build_time(elf_path: str) -> Optional[str]:
