@@ -593,6 +593,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         mock_session.get_struct_layout.return_value = [
             {"name": "x", "offset": 0, "size": 4, "type_name": "int"},
         ]
+        mock_session.parse_struct_values.return_value = {"x": 10}
         state.gdb_session = mock_session
         state.symbols = {
             "my_struct": {
@@ -611,6 +612,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
             self.assertTrue(data["success"])
             self.assertIsNotNone(data["struct_layout"])
             self.assertEqual(data["hex_data"], "0a0000001400")
+            self.assertEqual(data["gdb_values"], {"x": 10})
         finally:
             os.unlink(state.device.elf_path)
 
@@ -1222,6 +1224,168 @@ class TestParseAddr(SymbolRoutesBase):
         self.assertIsNone(_parse_addr("not_a_number"))
         self.assertIsNone(_parse_addr(""))
         self.assertIsNone(_parse_addr(None))
+
+
+class TestDecodeFieldValue(unittest.TestCase):
+    """Tests for _decode_field_value (hex bytes → display value)."""
+
+    def _decode(self, hex_str, type_name):
+        from app.routes.symbols import _decode_field_value
+
+        return _decode_field_value(bytes.fromhex(hex_str), type_name)
+
+    def test_uint8(self):
+        self.assertEqual(self._decode("FF", "uint8_t"), 255)
+
+    def test_int8_signed(self):
+        self.assertEqual(self._decode("FF", "int8_t"), -1)
+
+    def test_uint32_le(self):
+        # 0x01000000 LE = 1
+        self.assertEqual(self._decode("01000000", "uint32_t"), 1)
+
+    def test_uint16_le(self):
+        # 0x0001 LE = 256
+        self.assertEqual(self._decode("0001", "uint16_t"), 256)
+
+    def test_int32_signed(self):
+        # 0xFFFFFFFF LE = -1
+        self.assertEqual(self._decode("FFFFFFFF", "int32_t"), -1)
+
+    def test_pointer(self):
+        self.assertEqual(self._decode("00300020", "lv_disp_t *"), "0x20003000")
+
+    def test_void_pointer(self):
+        self.assertEqual(self._decode("00000120", "void *"), "0x20010000")
+
+    def test_char_array(self):
+        # "Hi\0"
+        self.assertEqual(self._decode("486900", "char[3]"), '"Hi"')
+
+    def test_float(self):
+        import struct
+
+        raw = struct.pack("<f", 3.14)
+        result = self._decode(raw.hex(), "float")
+        self.assertAlmostEqual(result, 3.14, places=2)
+
+    def test_double(self):
+        import struct
+
+        raw = struct.pack("<d", 2.718281828)
+        result = self._decode(raw.hex(), "double")
+        self.assertAlmostEqual(result, 2.718281828, places=6)
+
+    def test_typedef_fallback_4bytes(self):
+        # lv_coord_t is a typedef — not in int keywords, but 4 bytes → fallback
+        self.assertEqual(self._decode("F0000000", "lv_coord_t"), 240)
+
+    def test_typedef_fallback_2bytes(self):
+        self.assertEqual(self._decode("0A00", "lv_coord_t"), 10)
+
+    def test_size_t(self):
+        self.assertEqual(self._decode("80000000", "size_t"), 128)
+
+    def test_empty_bytes(self):
+        from app.routes.symbols import _decode_field_value
+
+        self.assertIsNone(_decode_field_value(b"", "uint32_t"))
+
+    def test_array_type_no_fallback(self):
+        # Array types like "my_struct_t[2]" should not use typedef fallback
+        self.assertIsNone(self._decode("01020304", "my_struct_t[2]"))
+
+    def test_func_ptr_type(self):
+        # Function pointer type contains '*'
+        result = self._decode("61D30108", "void (*)(_lv_disp_t *, lv_draw_ctx_t *)")
+        self.assertEqual(result, "0x0801D361")
+
+
+class TestDecodeStructValues(unittest.TestCase):
+    """Tests for _decode_struct_values (struct_layout + hex → field values)."""
+
+    def _decode(self, layout, hex_data):
+        from app.routes.symbols import _decode_struct_values
+
+        return _decode_struct_values(layout, hex_data)
+
+    def test_simple_struct(self):
+        layout = [
+            {"name": "x", "offset": 0, "size": 4, "type_name": "uint32_t"},
+            {"name": "y", "offset": 4, "size": 4, "type_name": "uint32_t"},
+        ]
+        result = self._decode(layout, "0A00000014000000")
+        self.assertEqual(result, {"x": 10, "y": 20})
+
+    def test_padded_struct(self):
+        # a(1) + pad(3) + b(4) + c(2) + d(1)
+        layout = [
+            {"name": "a", "offset": 0, "size": 1, "type_name": "uint8_t"},
+            {"name": "b", "offset": 4, "size": 4, "type_name": "uint32_t"},
+            {"name": "c", "offset": 8, "size": 2, "type_name": "uint16_t"},
+            {"name": "d", "offset": 10, "size": 1, "type_name": "uint8_t"},
+        ]
+        hex_data = "01000000EFBEADDE3412FF"
+        result = self._decode(layout, hex_data)
+        self.assertEqual(result["a"], 1)
+        self.assertEqual(result["b"], 0xDEADBEEF)
+        self.assertEqual(result["c"], 0x1234)
+        self.assertEqual(result["d"], 0xFF)
+
+    def test_disp_def_like_struct(self):
+        """Simulates lv_disp_t with mixed types including pointers."""
+        layout = [
+            {"name": "hor_res", "offset": 0, "size": 4, "type_name": "lv_coord_t"},
+            {"name": "ver_res", "offset": 4, "size": 4, "type_name": "lv_coord_t"},
+            {"name": "draw_buf", "offset": 8, "size": 4, "type_name": "void *"},
+            {
+                "name": "flush_cb",
+                "offset": 12,
+                "size": 4,
+                "type_name": "void (*)(lv_disp_t *, const lv_area_t *, lv_color_t *)",
+            },
+        ]
+        hex_data = "F000000040010000000001206100000008"
+        result = self._decode(layout, hex_data)
+        self.assertEqual(result["hor_res"], 240)
+        self.assertEqual(result["ver_res"], 320)
+        self.assertEqual(result["draw_buf"], "0x20010000")
+        # flush_cb is a func ptr type (contains '*')
+        self.assertIn("0x", result["flush_cb"])
+
+    def test_none_layout(self):
+        self.assertIsNone(self._decode(None, "01020304"))
+
+    def test_none_hex(self):
+        layout = [{"name": "x", "offset": 0, "size": 4, "type_name": "uint32_t"}]
+        self.assertIsNone(self._decode(layout, None))
+
+    def test_empty_layout(self):
+        self.assertIsNone(self._decode([], "01020304"))
+
+    def test_field_out_of_bounds(self):
+        layout = [
+            {"name": "x", "offset": 0, "size": 4, "type_name": "uint32_t"},
+            {"name": "y", "offset": 4, "size": 4, "type_name": "uint32_t"},
+        ]
+        # Only 4 bytes of hex, y is out of bounds
+        result = self._decode(layout, "01000000")
+        self.assertEqual(result["x"], 1)
+        self.assertIsNone(result["y"])
+
+    def test_values_not_all_zeros(self):
+        """Regression: device read should show live values, not ELF zeros."""
+        layout = [
+            {"name": "hor_res", "offset": 0, "size": 4, "type_name": "lv_coord_t"},
+            {"name": "ver_res", "offset": 4, "size": 4, "type_name": "lv_coord_t"},
+        ]
+        hex_data = "F000000040010000"  # 240, 320
+        result = self._decode(layout, hex_data)
+        self.assertEqual(result["hor_res"], 240)
+        self.assertEqual(result["ver_res"], 320)
+        # Must NOT be zeros
+        self.assertNotEqual(result["hor_res"], 0)
+        self.assertNotEqual(result["ver_res"], 0)
 
 
 if __name__ == "__main__":

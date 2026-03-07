@@ -290,17 +290,6 @@ class GDBSession:
         with self._lock:
             return self._get_sizeof(type_or_sym)
 
-    def print_value(self, expr: str) -> Optional[str]:
-        """Use GDB 'print' to get a formatted value string for an expression.
-
-        Returns the raw GDB output string (e.g. "$1 = {x = 1, y = 2}"),
-        or None on failure.
-        """
-        if not self.is_alive:
-            return None
-        with self._lock:
-            return self._print_value_impl(expr)
-
     def get_symbols(self) -> Dict[str, dict]:
         """Get all symbols. Returns dict mapping name to info."""
         if not self.is_alive:
@@ -334,7 +323,8 @@ class GDBSession:
         if not self._io:
             return None
 
-        mi_cmd = f'-interpreter-exec console "{cmd}"'
+        escaped = cmd.replace('"', '\\"')
+        mi_cmd = f'-interpreter-exec console "{escaped}"'
         try:
             responses = self._io.write(
                 mi_cmd,
@@ -779,32 +769,13 @@ class GDBSession:
 
         return bytes(raw_bytes[:size])
 
-    def _print_value_impl(self, expr: str) -> Optional[str]:
-        """Use GDB 'print' to get a formatted value string.
-
-        Parses the '$N = ...' output and returns just the value part.
-        For structs, GDB returns e.g. '{x = 1, y = 2, ptr = 0x20001000}'.
-        """
-        output = self._execute_cli(f"print {expr}", timeout=10.0)
-        if not output:
-            return None
-        # Strip the "$N = " prefix
-        m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
-        if m:
-            return m.group(1).strip()
-        return output.strip()
-
     def parse_struct_values(
         self, sym_name: str, addr: int, type_name: str
     ) -> Optional[dict]:
-        """Use GDB print to get decoded field values for a struct at an address.
+        """Use json-print to get decoded field values for a struct at an address.
 
-        Returns dict mapping field_name -> display_string, or None on failure.
-
-        Strategy:
-        1. Try 'print sym_name' directly (works for normal variables)
-        2. If addr differs from symbol's own address (deref scenario), use
-           whatis to get the real type name and cast: 'print *((type *)addr)'
+        Returns dict mapping field_name -> value (int/float/str/dict/list),
+        or None on failure.
         """
         if not self.is_alive:
             return None
@@ -816,11 +787,22 @@ class GDBSession:
 
         Uses the custom GDB Python command 'json-print' which outputs JSON
         by recursively traversing gdb.Value via the GDB Python API.
-        Falls back to legacy text parsing if json-print is not available.
+
+        Strategy:
+          1. Try json-print with the symbol name directly — works for ELF
+             initial values and when connected to a live target.
+          2. Fall back to pointer-cast expression — needed for deref cases
+             (e.g. "*ptr_name") or when the symbol name is not directly
+             accessible by GDB.
 
         Returns dict mapping field_name -> value (int/float/str/dict/list).
         """
-        # Get real type via whatis
+        # 1) Try symbol name directly (most reliable for ELF + live target)
+        result = self._try_json_print(sym_name)
+        if result is not None:
+            return result
+
+        # 2) Fall back to pointer-cast via type + address
         whatis_out = self._execute_cli(f"whatis {sym_name}")
         if not whatis_out:
             return None
@@ -831,81 +813,42 @@ class GDBSession:
         # Strip pointer suffix for deref case (e.g. "lv_disp_t *" -> "lv_disp_t")
         real_type = raw_type.rstrip("*").strip()
 
-        # Try json-print (structured output via GDB Python API)
-        if self._has_json_print:
-            for type_expr in [f"struct {real_type}", real_type]:
-                expr = f"*(({type_expr} *)0x{addr:x})"
-                output = self._execute_cli(f'json-print "{expr}" 2', timeout=15.0)
-                if output:
-                    output = output.strip()
-                    if output.startswith("{"):
-                        try:
-                            result = json.loads(output)
-                            if isinstance(result, dict):
-                                # Check for error response
-                                if result.get("_kind") == "error":
-                                    logger.debug(
-                                        f"json-print error for {type_expr}: "
-                                        f"{result.get('_msg', '')}"
-                                    )
-                                    continue
-                                return result
-                        except json.JSONDecodeError as e:
-                            logger.warning(
-                                f"json-print JSON parse error: {e}, "
-                                f"raw={output[:200]}"
-                            )
-            return None
-
-        # Fallback: legacy text parsing via 'print'
         for type_expr in [f"struct {real_type}", real_type]:
             expr = f"*(({type_expr} *)0x{addr:x})"
-            output = self._execute_cli(f"print {expr}", timeout=15.0)
-            if output:
-                m = re.match(r"\$\d+\s*=\s*(.*)", output, re.DOTALL)
-                if m:
-                    body = m.group(1).strip()
-                    if body.startswith("{"):
-                        return self._parse_gdb_struct_body(body)
-
+            result = self._try_json_print(expr)
+            if result is not None:
+                return result
         return None
 
-    @staticmethod
-    def _parse_gdb_struct_body(body: str) -> Optional[dict]:
-        """Parse GDB struct print output like '{x = 1, y = 0x20, ...}'.
-
-        Handles nested structs, arrays, and function pointer signatures
-        by tracking brace/bracket/parenthesis depth.
-        Returns dict mapping field_name -> value_string.
-        """
-        if not body.startswith("{"):
+    def _try_json_print(self, expr: str) -> Optional[dict]:
+        """Try json-print with a given expression. Returns dict or None."""
+        output = self._execute_cli(f'json-print "{expr}" 2', timeout=15.0)
+        if not output:
             return None
-
-        # Remove outer braces
-        inner = body[1:]
-        if inner.endswith("}"):
-            inner = inner[:-1]
-
-        result = {}
-        depth = 0
-        current = ""
-        for ch in inner:
-            if ch in ("{", "[", "("):
-                depth += 1
-                current += ch
-            elif ch in ("}", "]", ")"):
-                depth -= 1
-                current += ch
-            elif ch == "," and depth == 0:
-                _parse_gdb_field(current.strip(), result)
-                current = ""
-            else:
-                current += ch
-
-        if current.strip():
-            _parse_gdb_field(current.strip(), result)
-
-        return result if result else None
+        output = output.strip()
+        if not output.startswith("{"):
+            return None
+        try:
+            result = json.loads(output)
+            if isinstance(result, dict):
+                if result.get("_kind") == "error":
+                    logger.debug(
+                        f"json-print error for '{expr}': " f"{result.get('_msg', '')}"
+                    )
+                    return None
+                # Check if ALL fields are errors (e.g. no target connected)
+                if result and all(
+                    isinstance(v, dict) and v.get("_kind") == "error"
+                    for v in result.values()
+                ):
+                    logger.debug(
+                        f"json-print all fields errored for '{expr}', skipping"
+                    )
+                    return None
+                return result
+        except json.JSONDecodeError as e:
+            logger.warning(f"json-print JSON parse error: {e}, raw={output[:200]}")
+        return None
 
     # ------------------------------------------------------------------
     # Internal: Output parsing helpers
@@ -1164,20 +1107,26 @@ def _extract_name_from_decl(decl: str) -> Optional[str]:
     return None
 
 
-def _parse_gdb_field(field_str: str, result: dict):
-    """Parse a single 'name = value' from GDB struct output into result dict."""
-    eq_idx = field_str.find("=")
-    if eq_idx < 0:
-        return
-    name = field_str[:eq_idx].strip()
-    value = field_str[eq_idx + 1 :].strip()
-    if name:
-        result[name] = value
-
-
 def _split_type_and_name(decl: str) -> Tuple[str, str]:
-    """Split a C member declaration into (type_name, member_name)."""
+    """Split a C member declaration into (type_name, member_name).
+
+    Handles:
+      - Simple: "int x"
+      - Pointer: "int *ptr"
+      - Array: "char buf[64]"
+      - Bitfield: "unsigned int flags : 3"
+      - Function pointer: "void (*draw_ctx_init)(_lv_disp_t *, lv_draw_ctx_t *)"
+    """
     decl = decl.strip()
+
+    # Function pointer: ret (*name)(args)
+    fp_match = re.match(r"(.+?)\(\*(\w+)\)\s*(\(.*\))", decl)
+    if fp_match:
+        ret_type = fp_match.group(1).strip()
+        name = fp_match.group(2)
+        args = fp_match.group(3)
+        type_str = f"{ret_type}(*){args}"
+        return (type_str, name)
 
     bracket = decl.rfind("[")
     if bracket >= 0:

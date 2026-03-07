@@ -98,6 +98,34 @@ class TestSplitTypeAndName(unittest.TestCase):
         t, n = _split_type_and_name("unsigned int flags : 3")
         self.assertEqual(n, "flags")
 
+    def test_function_pointer(self):
+        """Function pointer: void (*name)(args)"""
+        t, n = _split_type_and_name(
+            "void (*draw_ctx_init)(_lv_disp_t *, lv_draw_ctx_t *)"
+        )
+        self.assertEqual(n, "draw_ctx_init")
+        self.assertIn("void", t)
+        self.assertIn("(*)", t)
+
+    def test_function_pointer_with_return(self):
+        """Function pointer with non-void return."""
+        t, n = _split_type_and_name("int (*callback)(int, int)")
+        self.assertEqual(n, "callback")
+        self.assertIn("int", t)
+        self.assertIn("(*)", t)
+
+    def test_function_pointer_no_args(self):
+        """Function pointer with void args."""
+        t, n = _split_type_and_name("void (*handler)(void)")
+        self.assertEqual(n, "handler")
+        self.assertIn("void", t)
+
+    def test_function_pointer_single_arg(self):
+        """Function pointer: void (*wait_cb)(_lv_disp_t *)"""
+        t, n = _split_type_and_name("void (*wait_cb)(_lv_disp_t *)")
+        self.assertEqual(n, "wait_cb")
+        self.assertIn("(*)", t)
+
 
 class TestGDBSessionParseHelpers(unittest.TestCase):
     """Test GDB output parsing static methods."""
@@ -211,6 +239,40 @@ File src/main.c:
         self.assertIsNotNone(members)
         self.assertEqual(len(members), 2)
         self.assertEqual(members[1]["name"], "next")
+
+    def test_parse_ptype_output_function_pointer(self):
+        """Function pointer members: void (*name)(args) — from real lv_disp_t."""
+        output = """type = struct _lv_disp_t {
+/*      0      |       4 */    lv_coord_t hor_res;
+/*      4      |       4 */    lv_coord_t ver_res;
+/*     44      |       4 */    lv_disp_flush_cb_t flush_cb;
+/*    612      |       4 */    lv_draw_ctx_t *draw_ctx;
+/*    616      |       4 */    void (*draw_ctx_init)(_lv_disp_t *, lv_draw_ctx_t *);
+/*    620      |       4 */    void (*draw_ctx_deinit)(_lv_disp_t *, lv_draw_ctx_t *);
+/*    624      |       4 */    size_t draw_ctx_size;
+/*    696      |       4 */    void (*wait_cb)(_lv_disp_t *);
+
+                               /* total size (bytes):  704 */
+                             }"""
+        members = GDBSession._parse_ptype_output(output)
+        self.assertIsNotNone(members)
+        names = {m["name"] for m in members}
+        # Function pointer members must be parsed correctly
+        self.assertIn("draw_ctx_init", names)
+        self.assertIn("draw_ctx_deinit", names)
+        self.assertIn("wait_cb", names)
+        # Must NOT have ")" as a name
+        self.assertNotIn(")", names)
+        # Regular members still work
+        self.assertIn("hor_res", names)
+        self.assertIn("draw_ctx", names)
+        self.assertIn("draw_ctx_size", names)
+        # Check offsets
+        init_member = next(m for m in members if m["name"] == "draw_ctx_init")
+        self.assertEqual(init_member["offset"], 616)
+        self.assertEqual(init_member["size"], 4)
+        # Check type contains function pointer syntax
+        self.assertIn("(*)", init_member["type_name"])
 
     def test_extract_console_output(self):
         responses = [
@@ -752,65 +814,6 @@ class TestGDBSessionMICommunication(unittest.TestCase):
         self.assertEqual(GDBSession._get_symbol_section("something else"), "")
 
 
-class TestParseGdbStructBody(unittest.TestCase):
-    """Test _parse_gdb_struct_body with various GDB output formats."""
-
-    def test_simple_struct(self):
-        body = "{x = 1, y = 2, z = 3}"
-        result = GDBSession._parse_gdb_struct_body(body)
-        self.assertIsNotNone(result)
-        self.assertEqual(result["x"], "1")
-        self.assertEqual(result["y"], "2")
-        self.assertEqual(result["z"], "3")
-
-    def test_nested_struct(self):
-        body = "{pos = {x = 10, y = 20}, size = 4}"
-        result = GDBSession._parse_gdb_struct_body(body)
-        self.assertIsNotNone(result)
-        self.assertEqual(result["pos"], "{x = 10, y = 20}")
-        self.assertEqual(result["size"], "4")
-
-    def test_function_pointer_with_commas(self):
-        """Function pointer signatures contain commas that should not split fields."""
-        body = "{cb = 0x8001234 <my_func(int, int)>, next = 0x0}"
-        result = GDBSession._parse_gdb_struct_body(body)
-        self.assertIsNotNone(result)
-        self.assertEqual(result["cb"], "0x8001234 <my_func(int, int)>")
-        self.assertEqual(result["next"], "0x0")
-
-    def test_multiple_function_pointers(self):
-        body = "{init = 0x8001000 <init(void *, int)>, deinit = 0x8002000 <deinit(void *)>, flags = 3}"
-        result = GDBSession._parse_gdb_struct_body(body)
-        self.assertIsNotNone(result)
-        self.assertEqual(len(result), 3)
-        self.assertIn("init(void *, int)", result["init"])
-        self.assertIn("deinit(void *)", result["deinit"])
-        self.assertEqual(result["flags"], "3")
-
-    def test_mixed_nested_and_function_pointers(self):
-        body = "{pos = {x = 1, y = 2}, cb = 0x0 <handler(int, char *)>, val = 42}"
-        result = GDBSession._parse_gdb_struct_body(body)
-        self.assertIsNotNone(result)
-        self.assertEqual(result["pos"], "{x = 1, y = 2}")
-        self.assertIn("handler(int, char *)", result["cb"])
-        self.assertEqual(result["val"], "42")
-
-    def test_empty_body(self):
-        result = GDBSession._parse_gdb_struct_body("{}")
-        self.assertIsNone(result)
-
-    def test_not_a_struct(self):
-        result = GDBSession._parse_gdb_struct_body("42")
-        self.assertIsNone(result)
-
-    def test_array_in_struct(self):
-        body = "{arr = {1, 2, 3}, count = 3}"
-        result = GDBSession._parse_gdb_struct_body(body)
-        self.assertIsNotNone(result)
-        self.assertEqual(result["arr"], "{1, 2, 3}")
-        self.assertEqual(result["count"], "3")
-
-
 class TestParseStructValuesImpl(unittest.TestCase):
     """Test _parse_struct_values_impl with mocked GDB commands."""
 
@@ -820,14 +823,11 @@ class TestParseStructValuesImpl(unittest.TestCase):
         self.session._proc = MagicMock()
         self.session._proc.poll.return_value = None
 
-    def test_json_print_path(self):
-        """When _has_json_print is True, uses json-print command."""
-        self.session._has_json_print = True
+    def test_json_print_direct_symbol(self):
+        """First tries json-print with symbol name directly."""
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
-                # whatis
-                "type = my_struct_t",
-                # json-print "*((struct my_struct_t *)0x20001000)" 2
+                # json-print "my_var" 2 — direct symbol name
                 '{"x": 1, "y": 2}',
             ]
             result = self.session._parse_struct_values_impl("my_var", 0x20001000)
@@ -835,14 +835,18 @@ class TestParseStructValuesImpl(unittest.TestCase):
             self.assertEqual(result["x"], 1)
             self.assertEqual(result["y"], 2)
             calls = [c[0][0] for c in mock_cli.call_args_list]
-            self.assertIn("json-print", calls[1])
+            self.assertIn("json-print", calls[0])
+            self.assertIn("my_var", calls[0])
 
-    def test_json_print_with_pointer_type(self):
-        """Strips pointer suffix from type before casting."""
-        self.session._has_json_print = True
+    def test_json_print_fallback_to_pointer_cast(self):
+        """Falls back to pointer cast when direct symbol fails."""
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
+                # json-print "disp_ptr" — fails (e.g. pointer type)
+                '{"_kind": "error", "_msg": "not a struct"}',
+                # whatis disp_ptr
                 "type = lv_disp_t *",
+                # json-print "*((struct lv_disp_t *)0x20003000)" 2
                 '{"width": 240, "height": 320}',
             ]
             result = self.session._parse_struct_values_impl("disp_ptr", 0x20003000)
@@ -851,11 +855,15 @@ class TestParseStructValuesImpl(unittest.TestCase):
 
     def test_json_print_fallback_no_struct_prefix(self):
         """Falls back to type without 'struct' prefix."""
-        self.session._has_json_print = True
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
+                # json-print "drv" — fails
+                '{"_kind": "error", "_msg": "not found"}',
+                # whatis drv
                 "type = lv_disp_drv_t",
+                # json-print "*((struct lv_disp_drv_t *)0x20002000)" — fails
                 '{"_kind": "error", "_msg": "No struct type named lv_disp_drv_t."}',
+                # json-print "*((lv_disp_drv_t *)0x20002000)" — works
                 '{"hor_res": 240}',
             ]
             result = self.session._parse_struct_values_impl("drv", 0x20002000)
@@ -863,50 +871,64 @@ class TestParseStructValuesImpl(unittest.TestCase):
             self.assertEqual(result["hor_res"], 240)
 
     def test_json_print_returns_none_on_all_errors(self):
-        self.session._has_json_print = True
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
+                # json-print "bad" — fails
+                '{"_kind": "error", "_msg": "err0"}',
+                # whatis bad
                 "type = bad_type",
+                # json-print "*((struct bad_type *)0x20001000)" — fails
                 '{"_kind": "error", "_msg": "err1"}',
+                # json-print "*((bad_type *)0x20001000)" — fails
                 '{"_kind": "error", "_msg": "err2"}',
             ]
             result = self.session._parse_struct_values_impl("bad", 0x20001000)
             self.assertIsNone(result)
 
-    def test_legacy_fallback_when_no_json_print(self):
-        """When _has_json_print is False, uses legacy print parsing."""
-        self.session._has_json_print = False
+    def test_returns_none_when_all_fields_error(self):
+        """Returns None when json-print returns all error fields (no target)."""
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
+                # json-print "my_var" — all fields are errors
+                '{"x": {"_kind": "error", "_msg": "Cannot access memory"}, '
+                '"y": {"_kind": "error", "_msg": "Cannot access memory"}}',
+                # whatis my_var
                 "type = my_struct_t",
-                "$1 = {x = 1, y = 2}",
+                # pointer cast also fails
+                '{"_kind": "error", "_msg": "err"}',
+                '{"_kind": "error", "_msg": "err"}',
             ]
             result = self.session._parse_struct_values_impl("my_var", 0x20001000)
-            self.assertIsNotNone(result)
-            self.assertEqual(result["x"], "1")
-            self.assertEqual(result["y"], "2")
+            self.assertIsNone(result)
 
-    def test_returns_none_when_whatis_fails(self):
-        self.session._has_json_print = True
+    def test_returns_none_when_direct_fails_and_whatis_fails(self):
         with patch.object(self.session, "_execute_cli") as mock_cli:
-            mock_cli.return_value = None
+            mock_cli.side_effect = [
+                # json-print "bad_sym" — fails
+                None,
+                # whatis bad_sym — also fails
+                None,
+            ]
             result = self.session._parse_struct_values_impl("bad_sym", 0x20001000)
             self.assertIsNone(result)
 
-    def test_returns_none_when_no_struct_body(self):
-        self.session._has_json_print = False
+    def test_returns_none_when_json_not_struct(self):
+        """Returns None when json-print output is not a struct."""
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
+                # json-print "int_var" — not JSON object
+                "42",
+                # whatis int_var
                 "type = int",
-                "$1 = 42",
-                "$1 = 42",
+                # pointer cast also not JSON
+                "42",
+                "42",
             ]
             result = self.session._parse_struct_values_impl("int_var", 0x20001000)
             self.assertIsNone(result)
 
     def test_json_print_handles_complex_struct(self):
         """Handles nested structs, arrays, func ptrs in JSON output."""
-        self.session._has_json_print = True
         json_output = (
             '{"hor_res": 240, "flush_cb": {"_kind": "func_ptr", '
             '"_addr": "0x08001234", "_sig": "void (*)(int)"}, '
@@ -915,7 +937,7 @@ class TestParseStructValuesImpl(unittest.TestCase):
         )
         with patch.object(self.session, "_execute_cli") as mock_cli:
             mock_cli.side_effect = [
-                "type = my_complex_t",
+                # json-print "obj" — works directly
                 json_output,
             ]
             result = self.session._parse_struct_values_impl("obj", 0x20001000)
@@ -926,6 +948,41 @@ class TestParseStructValuesImpl(unittest.TestCase):
             self.assertEqual(result["mode"]["_name"], "MODE_PARTIAL")
             self.assertEqual(result["pos"]["x"], 10)
             self.assertEqual(result["data"], [1, 2, 3])
+
+
+class TestMIQuoteEscaping(unittest.TestCase):
+    """Test that _write_mi properly escapes double quotes in commands."""
+
+    def setUp(self):
+        self.session = GDBSession("/fake/elf")
+        self.session._proc = MagicMock()
+        self.session._io = MagicMock()
+
+    def test_quotes_escaped_in_mi_command(self):
+        """Inner double quotes are escaped for MI transport."""
+        self.session._io.write.return_value = [
+            {"type": "result", "message": "done", "payload": None}
+        ]
+        self.session._write_mi('json-print "*((struct foo *)0x1000)" 2')
+        call_args = self.session._io.write.call_args
+        mi_cmd = call_args[0][0]
+        # The inner quotes should be escaped as \"
+        self.assertIn('\\"', mi_cmd)
+        # Verify the full MI command structure
+        expected = (
+            '-interpreter-exec console "json-print \\"*((struct foo *)0x1000)\\" 2"'
+        )
+        self.assertEqual(mi_cmd, expected)
+
+    def test_no_quotes_no_escaping(self):
+        """Commands without quotes pass through unchanged."""
+        self.session._io.write.return_value = [
+            {"type": "result", "message": "done", "payload": None}
+        ]
+        self.session._write_mi("info address foo")
+        call_args = self.session._io.write.call_args
+        mi_cmd = call_args[0][0]
+        self.assertEqual(mi_cmd, '-interpreter-exec console "info address foo"')
 
 
 if __name__ == "__main__":

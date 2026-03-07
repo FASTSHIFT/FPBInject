@@ -126,6 +126,123 @@ def _get_gdb_values(sym_name, addr, struct_layout):
         return None
 
 
+# Integer type keywords for hex decode (lowercase matching)
+_INT_TYPE_KEYWORDS = {
+    "int",
+    "uint",
+    "int8",
+    "uint8",
+    "int16",
+    "uint16",
+    "int32",
+    "uint32",
+    "int64",
+    "uint64",
+    "short",
+    "long",
+    "size_t",
+    "int8_t",
+    "uint8_t",
+    "int16_t",
+    "uint16_t",
+    "int32_t",
+    "uint32_t",
+}
+
+
+def _decode_field_value(raw_bytes: bytes, type_name: str):
+    """Decode a struct field's raw bytes into a display value.
+
+    Handles pointers, integers (signed/unsigned), char arrays, floats,
+    and typedef fallback. Returns the decoded value (int/float/str) or None.
+
+    All multi-byte values are little-endian (ARM).
+    """
+    import struct as struct_mod
+
+    size = len(raw_bytes)
+    if size == 0:
+        return None
+
+    # Pointer types → hex address
+    if "*" in type_name:
+        val = int.from_bytes(raw_bytes, "little")
+        return f"0x{val:08X}"
+
+    type_lower = type_name.lower()
+
+    # Integer types
+    is_int = any(kw in type_lower for kw in _INT_TYPE_KEYWORDS)
+    if is_int and size <= 8:
+        val = int.from_bytes(raw_bytes, "little")
+        # Signed check: type doesn't start with 'u'/'U' and doesn't contain 'uint'
+        if (
+            not type_name.startswith("u")
+            and not type_name.startswith("U")
+            and "uint" not in type_name
+        ):
+            max_signed = 1 << (size * 8 - 1)
+            if val >= max_signed:
+                val -= 1 << (size * 8)
+        return val
+
+    # char array → string
+    if "char" in type_lower:
+        null_idx = raw_bytes.find(b"\x00")
+        str_bytes = raw_bytes[:null_idx] if null_idx >= 0 else raw_bytes
+        s = "".join(chr(b) if 32 <= b < 127 else "." for b in str_bytes)
+        return f'"{s}"'
+
+    # float (4 bytes, little-endian)
+    if "float" in type_lower and size == 4:
+        (val,) = struct_mod.unpack("<f", raw_bytes)
+        return float(f"{val:.7g}")
+
+    # double (8 bytes, little-endian)
+    if "double" in type_lower and size == 8:
+        (val,) = struct_mod.unpack("<d", raw_bytes)
+        return float(f"{val:.15g}")
+
+    # Typedef fallback: 1/2/4/8 bytes and not an array → treat as unsigned int
+    if size in (1, 2, 4, 8) and "[" not in type_name:
+        return int.from_bytes(raw_bytes, "little")
+
+    return None
+
+
+def _decode_struct_values(struct_layout, hex_data):
+    """Decode all struct fields from hex_data using struct_layout type info.
+
+    Args:
+        struct_layout: list of {name, offset, size, type_name}
+        hex_data: hex string of the raw bytes
+
+    Returns:
+        dict mapping field_name -> decoded value, or None if no layout.
+    """
+    if not struct_layout or not hex_data:
+        return None
+
+    raw = bytes.fromhex(hex_data)
+    result = {}
+    for member in struct_layout:
+        offset = member["offset"]
+        size = member["size"]
+        type_name = member["type_name"]
+        name = member["name"]
+
+        end = offset + size
+        if end > len(raw):
+            result[name] = None
+            continue
+
+        field_bytes = raw[offset:end]
+        decoded = _decode_field_value(field_bytes, type_name)
+        result[name] = decoded
+
+    return result
+
+
 @bp.route("/symbols", methods=["GET"])
 def api_get_symbols():
     """Get symbols from ELF file."""
@@ -623,8 +740,11 @@ def api_get_symbol_value():
 
     # Get struct layout via GDB (cached) — skip for pointer types
     struct_layout = None
+    gdb_values = None
     if not is_pointer:
         struct_layout = _get_struct_layout_cached(sym_name)
+        if struct_layout:
+            gdb_values = _get_gdb_values(sym_name, addr, struct_layout)
     t_struct = time.time()
     logger.info(f"[value] get_struct_layout: {t_struct - t_read:.2f}s")
 
@@ -639,6 +759,7 @@ def api_get_symbol_value():
         "section": section,
         "hex_data": hex_data,
         "struct_layout": struct_layout,
+        "gdb_values": gdb_values,
     }
     if is_pointer:
         resp["is_pointer"] = True
@@ -701,14 +822,16 @@ def api_read_symbol_from_device():
 
         hex_data = raw_data.hex()
 
-        # For pointer types, skip struct layout of the pointer variable itself
+        # For pointer types, skip struct layout of the pointer variable itself.
+        # NOTE: For device reads, values are decoded from hex_data on the backend
+        # using struct_layout type info. GDB is NOT re-queried (would return stale
+        # ELF initial values instead of live device values).
         struct_layout = None
         gdb_values = None
         if not is_pointer:
             struct_layout = _get_struct_layout_cached(sym_name)
-            # Use GDB to decode struct field values from device memory
             if struct_layout:
-                gdb_values = _get_gdb_values(sym_name, addr, struct_layout)
+                gdb_values = _decode_struct_values(struct_layout, hex_data)
 
         resp = {
             "success": True,
@@ -750,15 +873,16 @@ def api_read_symbol_from_device():
                         and deref_result[0] is not None
                     ):
                         deref_raw, _ = deref_result
+                        deref_hex = deref_raw.hex()
                         deref_gdb_values = None
                         if target_layout:
-                            deref_gdb_values = _get_gdb_values(
-                                f"*{sym_name}", ptr_value, target_layout
+                            deref_gdb_values = _decode_struct_values(
+                                target_layout, deref_hex
                             )
                         resp["deref_data"] = {
                             "addr": f"0x{ptr_value:08X}",
                             "size": target_size,
-                            "hex_data": deref_raw.hex(),
+                            "hex_data": deref_hex,
                             "struct_layout": target_layout,
                             "gdb_values": deref_gdb_values,
                             "type_name": pointer_target,
