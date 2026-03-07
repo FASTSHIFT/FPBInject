@@ -1,4 +1,4 @@
-# SSE连接阻塞问题分析与解决
+# SSE Connection Blocking Issue
 
 ## 问题现象
 

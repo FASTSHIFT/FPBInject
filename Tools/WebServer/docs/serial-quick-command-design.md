@@ -1,4 +1,4 @@
-# 串口快捷指令功能 — 技术评估与交互设计
+# Serial Quick Command Design
 
 ## 1. 背景与动机
 

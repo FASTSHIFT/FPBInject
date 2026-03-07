@@ -1,4 +1,4 @@
-# 重新注入功能设计方案
+# Auto Re-inject Design
 
 ## 问题描述
 

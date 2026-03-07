@@ -1,4 +1,4 @@
-# Tutorial: 手动注入 fl_hello 体验教学设计
+# Tutorial: Inject Demo Design
 
 > 日期: 2026-03-05
 > 状态: Draft
