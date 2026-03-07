@@ -42,6 +42,8 @@ _NM_TYPE_MAP = {
     "r": "const",
     "V": "variable",  # weak object
     "v": "variable",
+    "A": "other",  # absolute (linker script symbols)
+    "a": "other",
 }
 
 

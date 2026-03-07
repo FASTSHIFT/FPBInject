@@ -425,6 +425,22 @@ class GDBSession:
 
         section = self._get_symbol_section(output)
 
+        # Fallback: 'info address' often lacks section for non-function symbols
+        # (e.g. "static storage at address 0x...").  Use 'info symbol <addr>'
+        # which reliably returns "NAME in section .XXXX".
+        if not section and addr:
+            sym_output = self._execute_cli(f"info symbol 0x{addr:x}")
+            if sym_output and "in section" in sym_output:
+                m = re.search(r"in section (\.\w+)", sym_output)
+                if m:
+                    section = m.group(1)
+
+        # Re-check type based on resolved section — mangled C++ function names
+        # may not contain "is a function" in 'info address' output, but their
+        # section will be .text.
+        if sym_type == "variable" and section == ".text":
+            sym_type = "function"
+
         if sym_type == "variable":
             if section.startswith(".rodata"):
                 sym_type = "const"
@@ -585,9 +601,10 @@ class GDBSession:
                         output = self._execute_cli(
                             f"ptype /o {linker_name}", timeout=30.0
                         )
-                        # If not struct, try getting type name via whatis
+                        # If not struct/class, try getting type name via whatis
                         if not output or (
                             "type = struct" not in output
+                            and "type = class" not in output
                             and "type = union" not in output
                         ):
                             whatis_out = self._execute_cli(f"whatis {linker_name}")
@@ -604,7 +621,10 @@ class GDBSession:
                                         f"ptype /o struct {type_name}",
                                         timeout=30.0,
                                     )
-                                    if not output or "type = struct" not in output:
+                                    if not output or (
+                                        "type = struct" not in output
+                                        and "type = class" not in output
+                                    ):
                                         output = self._execute_cli(
                                             f"ptype /o {type_name}",
                                             timeout=30.0,
@@ -614,7 +634,14 @@ class GDBSession:
             logger.info(f"[GDB] get_struct_layout: no output for '{sym_name}'")
             return None
 
-        if "type = struct" not in output and "type = union" not in output:
+        # Check if output describes a struct, union, or class.  The "type = ..."
+        # line may have qualifiers like "const" before the keyword.
+        # C++ classes use "type = class ..." instead of "type = struct ...".
+        has_struct = re.search(
+            r"type\s*=\s*(?:const\s+|volatile\s+)*(?:struct|class)\b", output
+        )
+        has_union = re.search(r"type\s*=\s*(?:const\s+|volatile\s+)*union\b", output)
+        if not has_struct and not has_union:
             logger.info(
                 f"[GDB] get_struct_layout: '{sym_name}' is not struct/union, raw={output!r}"
             )
@@ -772,6 +799,17 @@ class GDBSession:
             logger.debug(
                 f"[GDB] _get_sizeof: cannot parse for '{sym_name}', raw={output!r}"
             )
+
+        # Fallback: strip ".N" suffix from local static variables
+        # (e.g. "sm_pdu_size.1" -> "sm_pdu_size")
+        if re.search(r"\.\d+$", sym_name):
+            base_name = re.sub(r"\.\d+$", "", sym_name)
+            output = self._execute_cli(f"print sizeof({base_name})")
+            if output:
+                m = re.search(r"\$\d+\s*=\s*(\d+)", output)
+                if m:
+                    return int(m.group(1))
+
         return 0
 
     @staticmethod
