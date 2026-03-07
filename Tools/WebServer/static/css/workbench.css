@@ -1298,6 +1298,7 @@ input[type="checkbox"] {
   overflow-y: auto;
   min-height: 40px;
   max-height: 300px;
+  user-select: text;
 }
 
 .watch-empty {
@@ -1336,6 +1337,7 @@ input[type="checkbox"] {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  user-select: text;
 }
 
 .watch-actions {
@@ -1368,6 +1370,7 @@ input[type="checkbox"] {
   padding: 2px 8px 4px 16px;
   font-family: "Consolas", "Courier New", monospace;
   font-size: 12px;
+  user-select: text;
 }
 
 .watch-decoded {
