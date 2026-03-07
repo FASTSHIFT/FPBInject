@@ -369,25 +369,16 @@ function _renderTreeNode(member, hexData, isBss, gdbValues, depth) {
 
 /**
  * Check if a GDB value is expandable (struct dict or array).
- * New JSON format: objects without _kind are structs, arrays are arrays.
- * Legacy string format: strings starting with '{' are expandable.
+ * JSON format: objects without _kind are structs, arrays are arrays.
  */
 function _isExpandableValue(val) {
   if (val === null || val === undefined) return false;
-  // New JSON format: plain object (struct) or array
-  if (typeof val === 'object') {
-    if (Array.isArray(val)) return val.length > 0;
-    // Objects with _kind are leaf nodes (ptr, func_ptr, enum, error, collapsed struct)
-    if (val._kind) return false;
-    // Plain object = struct with fields
-    return Object.keys(val).length > 0;
-  }
-  // Legacy string format fallback
-  if (typeof val === 'string') {
-    const trimmed = val.trim();
-    return trimmed.startsWith('{') && trimmed.length > 2;
-  }
-  return false;
+  if (typeof val !== 'object') return false;
+  if (Array.isArray(val)) return val.length > 0;
+  // Objects with _kind are leaf nodes (ptr, func_ptr, enum, error, collapsed struct)
+  if (val._kind) return false;
+  // Plain object = struct with fields
+  return Object.keys(val).length > 0;
 }
 
 /**
@@ -406,10 +397,7 @@ function _getExpandableSummary(val) {
     }
     return `{${keys.length} fields}`;
   }
-  // Legacy string format
-  const trimmed = String(val).trim();
-  if (trimmed.length <= 60) return trimmed;
-  return trimmed.substring(0, 57) + '...}';
+  return '{...}';
 }
 
 /**
@@ -442,26 +430,14 @@ function _formatGdbValue(val) {
 
 /**
  * Render children of an expandable GDB value (struct or array).
- * Handles both new JSON format and legacy string format.
  */
 function _renderExpandableChildren(gdbVal, depth) {
-  if (!gdbVal) return '';
-
-  // New JSON format: object (struct) or array
-  if (typeof gdbVal === 'object') {
-    if (Array.isArray(gdbVal)) {
-      return _renderArrayChildren(gdbVal, depth);
-    }
-    // Plain struct object (no _kind)
-    if (!gdbVal._kind) {
-      return _renderStructChildren(gdbVal, depth);
-    }
-    return '';
+  if (!gdbVal || typeof gdbVal !== 'object') return '';
+  if (Array.isArray(gdbVal)) {
+    return _renderArrayChildren(gdbVal, depth);
   }
-
-  // Legacy string format fallback
-  if (typeof gdbVal === 'string') {
-    return _renderLegacyExpandableChildren(gdbVal, depth);
+  if (!gdbVal._kind) {
+    return _renderStructChildren(gdbVal, depth);
   }
   return '';
 }
@@ -520,60 +496,6 @@ function _renderJsonChildNode(name, value, depth) {
 }
 
 /**
- * Legacy: render children from a GDB text string like "{x = 1, y = 2}".
- * Kept for backward compatibility when json-print is not available.
- */
-function _renderLegacyExpandableChildren(gdbVal, depth) {
-  const trimmed = gdbVal.trim();
-  if (!trimmed.startsWith('{')) return '';
-
-  const inner = trimmed.slice(1, -1);
-  const fields = _splitGdbFields(inner);
-  let html = '';
-
-  for (let i = 0; i < fields.length; i++) {
-    const field = fields[i];
-    const eqIdx = field.indexOf('=');
-    if (eqIdx < 0) {
-      // Array element
-      html += _renderJsonChildNode(`[${i}]`, field.trim(), depth);
-    } else {
-      const name = field.substring(0, eqIdx).trim();
-      const value = field.substring(eqIdx + 1).trim();
-      html += _renderJsonChildNode(name, value, depth);
-    }
-  }
-  return html;
-}
-
-/**
- * Split a GDB struct/array body into top-level fields,
- * respecting brace, bracket, and parenthesis depth.
- * (Legacy helper, kept for backward compat with text-format fallback.)
- */
-function _splitGdbFields(inner) {
-  const fields = [];
-  let depth = 0;
-  let current = '';
-  for (const ch of inner) {
-    if (ch === '{' || ch === '[' || ch === '(') {
-      depth++;
-      current += ch;
-    } else if (ch === '}' || ch === ']' || ch === ')') {
-      depth--;
-      current += ch;
-    } else if (ch === ',' && depth === 0) {
-      if (current.trim()) fields.push(current.trim());
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  if (current.trim()) fields.push(current.trim());
-  return fields;
-}
-
-/**
  * Toggle a tree node's expanded/collapsed state.
  * Called via event delegation from .sym-tree-view click handler.
  */
@@ -596,8 +518,8 @@ function _toggleTreeNode(nodeEl) {
 document.addEventListener('click', (e) => {
   const row = e.target.closest('.sym-tree-row');
   if (!row) return;
-  const node = row.closest('.sym-tree-node[data-expandable]');
-  if (!node) return;
+  const node = row.parentElement;
+  if (!node || !node.hasAttribute('data-expandable')) return;
   _toggleTreeNode(node);
 });
 
@@ -607,13 +529,6 @@ document.addEventListener('click', (e) => {
 function _onDerefToggle(symName, checked) {
   _symDerefState.set(symName, checked);
   readSymbolFromDevice(symName, checked);
-}
-
-/**
- * Legacy: Render a struct layout table (kept for backward compat / tests).
- */
-function _renderStructTable(structLayout, hexData, isBss) {
-  return _renderStructTree(structLayout, hexData, isBss, null);
 }
 
 /**
@@ -1137,11 +1052,9 @@ window._decodeFieldValue = _decodeFieldValue;
 window._formatHexDump = _formatHexDump;
 window._escapeHtml = _escapeHtml;
 window._renderSymbolValueContent = _renderSymbolValueContent;
-window._renderStructTable = _renderStructTable;
 window._renderStructTree = _renderStructTree;
 window._renderTreeNode = _renderTreeNode;
 window._isExpandableValue = _isExpandableValue;
-window._splitGdbFields = _splitGdbFields;
 window._formatGdbValue = _formatGdbValue;
 window._decodeLittleEndianHex = _decodeLittleEndianHex;
 window._autoReadTimers = _autoReadTimers;

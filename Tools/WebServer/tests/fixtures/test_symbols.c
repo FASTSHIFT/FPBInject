@@ -55,6 +55,18 @@ typedef struct {
     uint8_t     channel;
 } PinMap_t;
 
+/* Struct with function pointer members (simulates lv_disp_t) */
+typedef void (*init_cb_t)(void *, int);
+
+struct DriverDef {
+    uint32_t    id;
+    void       *ctx;
+    void       (*init)(void *, int);
+    void       (*deinit)(void *);
+    init_cb_t   reset_cb;
+    uint32_t    flags;
+};
+
 /* ── Global variables (.data section — initialized) ────── */
 
 volatile uint32_t g_counter = 42;
@@ -64,6 +76,19 @@ struct Rect g_rect = { .origin = {0, 0}, .size = {100, 200} };
 struct PaddedStruct g_padded = { .a = 1, .b = 0xDEADBEEF, .c = 0x1234, .d = 0xFF };
 struct Nested g_nested = { .inner = { 2, 0xCAFE, 3, 4 }, .id = 999 };
 union MixedUnion g_union = { .as_u32 = 0x12345678 };
+
+/* Function pointer targets for DriverDef */
+static void _drv_init(void *ctx, int mode) { (void)ctx; (void)mode; }
+static void _drv_deinit(void *ctx) { (void)ctx; }
+
+struct DriverDef g_driver = {
+    .id = 0x42,
+    .ctx = (void *)0,
+    .init = _drv_init,
+    .deinit = _drv_deinit,
+    .reset_cb = (init_cb_t)0,
+    .flags = 0x0F,
+};
 
 /* ── BSS variables (.bss section — zero-initialized) ───── */
 

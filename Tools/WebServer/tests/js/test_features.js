@@ -1258,27 +1258,6 @@ module.exports = function (w) {
     });
   });
 
-  describe('_renderStructTable Helper', () => {
-    it('renders tree view with field rows', () => {
-      const html = w._renderStructTable(
-        [{ name: 'x', type_name: 'int', offset: 0, size: 4 }],
-        'AABBCCDD',
-        false,
-      );
-      assertContains(html, 'sym-tree-view');
-      assertContains(html, 'sym-tree-name');
-    });
-
-    it('renders bss hint when no hex data', () => {
-      const html = w._renderStructTable(
-        [{ name: 'x', type_name: 'int', offset: 0, size: 4 }],
-        null,
-        true,
-      );
-      assertContains(html, 'needs device read');
-    });
-  });
-
   describe('Tree View Rendering', () => {
     it('_renderStructTree renders sym-tree-view container', () => {
       const html = w._renderStructTree(
@@ -1314,17 +1293,6 @@ module.exports = function (w) {
       assertContains(html, 'sym-tree-children');
     });
 
-    it('renders expandable node for nested struct (legacy string)', () => {
-      const html = w._renderStructTree(
-        [{ name: 'pos', type_name: 'lv_point_t', offset: 0, size: 8 }],
-        'AABBCCDD11223344',
-        false,
-        { pos: '{x = 10, y = 20}' },
-      );
-      assertContains(html, 'sym-tree-toggle');
-      assertContains(html, 'sym-tree-children');
-    });
-
     it('falls back to hex decode when no gdb_values', () => {
       const html = w._renderStructTree(
         [{ name: 'val', type_name: 'uint32_t', offset: 0, size: 4 }],
@@ -1333,6 +1301,67 @@ module.exports = function (w) {
         null,
       );
       assertContains(html, '1');
+    });
+
+    it('device read: decodes non-zero values from backend gdb_values', () => {
+      // Backend decodes hex_data → gdb_values; frontend just renders
+      const html = w._renderStructTree(
+        [
+          { name: 'a', type_name: 'uint8_t', offset: 0, size: 1 },
+          { name: 'b', type_name: 'uint32_t', offset: 4, size: 4 },
+          { name: 'c', type_name: 'uint16_t', offset: 8, size: 2 },
+          { name: 'd', type_name: 'uint8_t', offset: 10, size: 1 },
+        ],
+        'AABBCCDD',
+        false,
+        { a: 10, b: 3735928559, c: 4660, d: 255 },
+      );
+      assertContains(html, '10');
+      assertContains(html, '3735928559');
+      assertContains(html, '4660');
+      assertContains(html, '255');
+    });
+
+    it('device read: disp_def-like struct with backend-decoded values', () => {
+      // Backend decodes hex → gdb_values for device reads
+      const html = w._renderStructTree(
+        [
+          { name: 'hor_res', type_name: 'lv_coord_t', offset: 0, size: 4 },
+          { name: 'ver_res', type_name: 'lv_coord_t', offset: 4, size: 4 },
+          { name: 'dpi', type_name: 'uint32_t', offset: 24, size: 4 },
+          { name: 'draw_buf_1', type_name: 'void *', offset: 28, size: 4 },
+        ],
+        'AABBCCDD',
+        false,
+        { hor_res: 240, ver_res: 320, dpi: 130, draw_buf_1: '0x20010000' },
+      );
+      assertContains(html, '240');
+      assertContains(html, '320');
+      assertContains(html, '130');
+      assertContains(html, '0x20010000');
+    });
+
+    it('device read: _renderSymbolValueContent with backend-decoded gdb_values', () => {
+      // Backend now decodes hex_data → gdb_values using struct_layout
+      const html = w._renderSymbolValueContent(
+        {
+          name: 'g_cfg',
+          addr: '0x20000000',
+          size: 8,
+          section: '.data',
+          hex_data: '0A000000140000000',
+          struct_layout: [
+            { name: 'x', type_name: 'uint32_t', offset: 0, size: 4 },
+            { name: 'y', type_name: 'uint32_t', offset: 4, size: 4 },
+          ],
+          gdb_values: { x: 10, y: 20 },
+          source: 'device',
+        },
+        false,
+      );
+      assertContains(html, 'sym-tree-view');
+      assertContains(html, '10');
+      assertContains(html, '20');
     });
 
     it('_isExpandableValue detects struct bodies', () => {
@@ -1345,23 +1374,8 @@ module.exports = function (w) {
       assertTrue(!w._isExpandableValue(null));
       assertTrue(!w._isExpandableValue({}));
       assertTrue(!w._isExpandableValue([]));
-      // Legacy string format
-      assertTrue(w._isExpandableValue('{x = 1, y = 2}'));
-      assertTrue(!w._isExpandableValue('42'));
-      assertTrue(!w._isExpandableValue('{}'));
-    });
-
-    it('_splitGdbFields splits top-level fields', () => {
-      const fields = w._splitGdbFields('x = 1, y = {a = 2, b = 3}, z = 4');
-      assertEqual(fields.length, 3);
-      assertEqual(fields[0], 'x = 1');
-      assertContains(fields[1], 'y = {a = 2, b = 3}');
-      assertEqual(fields[2], 'z = 4');
-    });
-
-    it('_splitGdbFields handles nested braces', () => {
-      const fields = w._splitGdbFields('a = {b = {c = 1}}, d = 2');
-      assertEqual(fields.length, 2);
+      assertTrue(!w._isExpandableValue('some string'));
+      assertTrue(!w._isExpandableValue('{x = 1, y = 2}'));
     });
 
     it('_symDerefState is a Map', () => {
@@ -1401,19 +1415,10 @@ module.exports = function (w) {
       assertContains(html, '[2]');
     });
 
-    it('_renderExpandableChildren handles array elements (legacy)', () => {
-      const html = w._renderStructTree(
-        [{ name: 'arr', type_name: 'int[3]', offset: 0, size: 12 }],
-        null,
-        false,
-        { arr: '{1, 2, 3}' },
-      );
-      assertContains(html, 'sym-tree-children');
-    });
-
     it('_getExpandableSummary truncates long values', () => {
-      const longVal = '{' + 'x = 1, '.repeat(20) + 'y = 2}';
-      assertTrue(w._isExpandableValue(longVal));
+      const bigObj = {};
+      for (let i = 0; i < 10; i++) bigObj[`field_${i}`] = i;
+      assertTrue(w._isExpandableValue(bigObj));
     });
 
     it('_toggleTreeNode handles missing node via delegation', () => {
@@ -3356,44 +3361,6 @@ module.exports = function (w) {
     });
   });
 
-  describe('_splitGdbFields with function pointers', () => {
-    it('handles function pointer with comma in signature', () => {
-      // GDB output: "cb = 0x8001234 <my_func(int, int)>, next = 0x0"
-      const fields = w._splitGdbFields(
-        'cb = 0x8001234 <my_func(int, int)>, next = 0x0',
-      );
-      assertEqual(fields.length, 2);
-      assertEqual(fields[0], 'cb = 0x8001234 <my_func(int, int)>');
-      assertEqual(fields[1], 'next = 0x0');
-    });
-
-    it('handles multiple function pointers with commas', () => {
-      const fields = w._splitGdbFields(
-        'init = 0x8001000 <init(void *, int)>, deinit = 0x8002000 <deinit(void *)>, flags = 3',
-      );
-      assertEqual(fields.length, 3);
-      assertContains(fields[0], 'init(void *, int)');
-      assertContains(fields[1], 'deinit(void *)');
-      assertEqual(fields[2], 'flags = 3');
-    });
-
-    it('handles nested braces and parentheses together', () => {
-      const fields = w._splitGdbFields(
-        'pos = {x = 1, y = 2}, cb = 0x0 <handler(int, char *)>, val = 42',
-      );
-      assertEqual(fields.length, 3);
-      assertContains(fields[0], '{x = 1, y = 2}');
-      assertContains(fields[1], 'handler(int, char *)');
-      assertEqual(fields[2], 'val = 42');
-    });
-
-    it('handles empty parentheses in function pointer', () => {
-      const fields = w._splitGdbFields('cb = 0x8001000 <my_func()>, val = 0');
-      assertEqual(fields.length, 2);
-      assertContains(fields[0], 'my_func()');
-    });
-  });
-
   describe('_renderExpandableChildren array index display', () => {
     it('renders [0], [1], [2] for JSON array elements', () => {
       const html = w._renderStructTree(
@@ -3473,7 +3440,7 @@ module.exports = function (w) {
         [{ name: 'obj', type_name: 'my_struct', offset: 0, size: 8 }],
         null,
         false,
-        { obj: '{a = 1, b = 2}' },
+        { obj: { a: 1, b: 2 } },
       );
       assertContains(html, 'data-expandable="1"');
     });
@@ -3493,7 +3460,7 @@ module.exports = function (w) {
         [{ name: 'obj', type_name: 'my_struct', offset: 0, size: 8 }],
         null,
         false,
-        { obj: '{a = 1, b = 2}' },
+        { obj: { a: 1, b: 2 } },
       );
       assertContains(html, 'codicon-chevron-right');
     });
@@ -3503,7 +3470,7 @@ module.exports = function (w) {
         [{ name: 'val', type_name: 'int', offset: 0, size: 4 }],
         null,
         false,
-        { val: '42' },
+        { val: 42 },
       );
       assertContains(html, 'sym-tree-toggle-placeholder');
       assertTrue(!html.includes('codicon-chevron-right'));
@@ -3564,6 +3531,285 @@ module.exports = function (w) {
       const result = w._decodeFieldValue('000080BF', 0, 4, 'float');
       assertTrue(result !== '');
       assertEqual(parseFloat(result), -1);
+    });
+  });
+
+  describe('No legacy artifacts in JSON rendering', () => {
+    it('function pointer value has no trailing )', () => {
+      const html = w._renderStructTree(
+        [
+          {
+            name: 'flush_cb',
+            type_name: 'void (*)(lv_disp_t *, const lv_area_t *, lv_color_t *)',
+            offset: 0,
+            size: 4,
+          },
+        ],
+        null,
+        false,
+        {
+          flush_cb: {
+            _kind: 'func_ptr',
+            _addr: '0x08001234',
+            _sig: 'void (*)(lv_disp_t *, const lv_area_t *, lv_color_t *)',
+          },
+        },
+      );
+      // The rendered value should contain the address and signature
+      assertContains(html, '0x08001234');
+      // Must NOT have a bare ) outside of the signature context
+      // Count occurrences of ) in the value span — should only be from the sig
+      const valueMatch = html.match(/sym-tree-value">[^<]*/g);
+      if (valueMatch) {
+        for (const m of valueMatch) {
+          // Every ) should be part of a function signature, not a stray artifact
+          const content = m.replace('sym-tree-value">', '');
+          if (content.includes(')')) {
+            // Must also contain ( — balanced parens from signature
+            assertTrue(
+              content.includes('('),
+              `Stray ) found without matching (: "${content}"`,
+            );
+          }
+        }
+      }
+    });
+
+    it('struct values are not all zeros when gdb_values provided', () => {
+      const html = w._renderStructTree(
+        [
+          { name: 'x', type_name: 'int32_t', offset: 0, size: 4 },
+          { name: 'y', type_name: 'int32_t', offset: 4, size: 4 },
+        ],
+        '0A000000140000000', // hex for x=10, y=20
+        false,
+        { x: 10, y: 20 },
+      );
+      assertContains(html, '10');
+      assertContains(html, '20');
+      // Should NOT show "0" as the value (the old bug)
+      const valueSpans = html.match(/sym-tree-value">([^<]*)<\/span>/g);
+      if (valueSpans) {
+        const values = valueSpans.map((s) =>
+          s.replace(/sym-tree-value">|<\/span>/g, ''),
+        );
+        // At least one value should be non-zero
+        assertTrue(
+          values.some((v) => v !== '0' && v !== ''),
+          `All values are zero or empty: ${values}`,
+        );
+      }
+    });
+
+    it('renders realistic g_padded struct correctly', () => {
+      // Simulates the real g_padded = {a:1, b:0xDEADBEEF, c:0x1234, d:0xFF}
+      const html = w._renderStructTree(
+        [
+          { name: 'a', type_name: 'uint8_t', offset: 0, size: 1 },
+          { name: 'b', type_name: 'uint32_t', offset: 4, size: 4 },
+          { name: 'c', type_name: 'uint16_t', offset: 8, size: 2 },
+          { name: 'd', type_name: 'uint8_t', offset: 10, size: 1 },
+        ],
+        null,
+        false,
+        { a: 1, b: 3735928559, c: 4660, d: 255 },
+      );
+      assertContains(html, '1');
+      assertContains(html, '3735928559');
+      assertContains(html, '4660');
+      assertContains(html, '255');
+    });
+
+    it('renders realistic nested struct correctly', () => {
+      // Simulates g_nested = {inner: {a:2, b:0xCAFE, c:3, d:4}, id:999}
+      const html = w._renderStructTree(
+        [
+          {
+            name: 'inner',
+            type_name: 'struct PaddedStruct',
+            offset: 0,
+            size: 12,
+          },
+          { name: 'id', type_name: 'uint32_t', offset: 12, size: 4 },
+        ],
+        null,
+        false,
+        { inner: { a: 2, b: 51966, c: 3, d: 4 }, id: 999 },
+      );
+      // id should be a leaf value
+      assertContains(html, '999');
+      // inner should be expandable
+      assertContains(html, 'data-expandable="1"');
+      // inner's children should contain the nested values
+      assertContains(html, '51966');
+    });
+
+    it('no stray ) in any rendered value', () => {
+      // Comprehensive test with all value types
+      const html = w._renderStructTree(
+        [
+          { name: 'count', type_name: 'int', offset: 0, size: 4 },
+          { name: 'ptr', type_name: 'void *', offset: 4, size: 4 },
+          { name: 'cb', type_name: 'callback_t', offset: 8, size: 4 },
+          { name: 'mode', type_name: 'mode_t', offset: 12, size: 1 },
+          { name: 'pos', type_name: 'point_t', offset: 16, size: 8 },
+          { name: 'data', type_name: 'uint8_t[3]', offset: 24, size: 3 },
+        ],
+        null,
+        false,
+        {
+          count: 42,
+          ptr: { _kind: 'ptr', _addr: '0x20001000', _target: 'void' },
+          cb: {
+            _kind: 'func_ptr',
+            _addr: '0x08002000',
+            _sig: 'void (*)(int)',
+          },
+          mode: { _kind: 'enum', _val: 1, _name: 'MODE_ACTIVE' },
+          pos: { x: 10, y: 20 },
+          data: [1, 2, 3],
+        },
+      );
+      // Extract all leaf value text (non-expandable values)
+      const leafValues = html.match(/sym-tree-value">[^<]*<\/span>/g);
+      if (leafValues) {
+        for (const lv of leafValues) {
+          const text = lv
+            .replace('sym-tree-value">', '')
+            .replace('</span>', '')
+            .trim();
+          // A bare ) without ( is a legacy artifact
+          if (text === ')' || (text.endsWith(')') && !text.includes('('))) {
+            assertTrue(false, `Stray ) artifact found in value: "${text}"`);
+          }
+        }
+      }
+    });
+
+    it('renders disp_def-like struct with func ptr members correctly', () => {
+      // Simulates the real lv_disp_t struct from the screenshot
+      const layout = [
+        { name: 'hor_res', type_name: 'lv_coord_t', offset: 0, size: 4 },
+        { name: 'ver_res', type_name: 'lv_coord_t', offset: 4, size: 4 },
+        { name: 'dpi', type_name: 'uint32_t', offset: 24, size: 4 },
+        { name: 'draw_buf_1', type_name: 'void *', offset: 28, size: 4 },
+        {
+          name: 'flush_cb',
+          type_name: 'lv_disp_flush_cb_t',
+          offset: 44,
+          size: 4,
+        },
+        {
+          name: 'render_mode',
+          type_name: 'lv_disp_render_mode_t',
+          offset: 57,
+          size: 1,
+        },
+        {
+          name: 'draw_ctx',
+          type_name: 'lv_draw_ctx_t *',
+          offset: 612,
+          size: 4,
+        },
+        {
+          name: 'draw_ctx_init',
+          type_name: 'void (*)(_lv_disp_t *, lv_draw_ctx_t *)',
+          offset: 616,
+          size: 4,
+        },
+        {
+          name: 'draw_ctx_deinit',
+          type_name: 'void (*)(_lv_disp_t *, lv_draw_ctx_t *)',
+          offset: 620,
+          size: 4,
+        },
+        {
+          name: 'draw_ctx_size',
+          type_name: 'size_t',
+          offset: 624,
+          size: 4,
+        },
+        {
+          name: 'wait_cb',
+          type_name: 'void (*)(_lv_disp_t *)',
+          offset: 696,
+          size: 4,
+        },
+      ];
+      const gdbValues = {
+        hor_res: 240,
+        ver_res: 320,
+        dpi: 130,
+        draw_buf_1: { _kind: 'ptr', _addr: '0x20010000', _target: 'void' },
+        flush_cb: {
+          _kind: 'func_ptr',
+          _addr: '0x00000000',
+          _sig: 'void (*)(_lv_disp_t *, const lv_area_t *, lv_color_t *)',
+        },
+        render_mode: {
+          _kind: 'enum',
+          _val: 0,
+          _name: 'LV_DISP_RENDER_MODE_PARTIAL',
+        },
+        draw_ctx: {
+          _kind: 'ptr',
+          _addr: '0x20005000',
+          _target: 'lv_draw_ctx_t',
+        },
+        draw_ctx_init: {
+          _kind: 'func_ptr',
+          _addr: '0x0801d361',
+          _sig: 'void (*)(_lv_disp_t *, lv_draw_ctx_t *)',
+        },
+        draw_ctx_deinit: {
+          _kind: 'func_ptr',
+          _addr: '0x0801d3f5',
+          _sig: 'void (*)(_lv_disp_t *, lv_draw_ctx_t *)',
+        },
+        draw_ctx_size: 128,
+        wait_cb: {
+          _kind: 'func_ptr',
+          _addr: '0x00000000',
+          _sig: 'void (*)(_lv_disp_t *)',
+        },
+      };
+      const html = w._renderStructTree(layout, null, false, gdbValues);
+
+      // Field names must appear correctly
+      assertContains(html, 'hor_res');
+      assertContains(html, 'draw_ctx_init');
+      assertContains(html, 'draw_ctx_deinit');
+      assertContains(html, 'wait_cb');
+      assertContains(html, 'flush_cb');
+
+      // Values must appear
+      assertContains(html, '240');
+      assertContains(html, '320');
+      assertContains(html, '0x0801d361');
+      assertContains(html, '0x0801d3f5');
+      assertContains(html, 'LV_DISP_RENDER_MODE_PARTIAL');
+
+      // NULL func ptr should show NULL
+      assertContains(html, 'NULL');
+
+      // Must NOT have bare ) as a field name
+      const nameMatches = html.match(/sym-tree-name">[^<]*<\/span>/g);
+      if (nameMatches) {
+        for (const nm of nameMatches) {
+          const name = nm
+            .replace('sym-tree-name">', '')
+            .replace('</span>', '')
+            .trim();
+          assertTrue(
+            name !== ')' && name !== '(' && name.length > 1,
+            `Invalid field name found: "${name}"`,
+          );
+        }
+      }
+
+      // No func ptr should be expandable (they have _kind)
+      const expandableCount = (html.match(/data-expandable="1"/g) || []).length;
+      assertEqual(expandableCount, 0);
     });
   });
 };
