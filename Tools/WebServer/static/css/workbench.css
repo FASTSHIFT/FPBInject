@@ -1119,6 +1119,7 @@ input[type="checkbox"] {
   color: var(--vscode-foreground);
   overflow-y: auto;
   height: 100%;
+  user-select: text;
 }
 
 .sym-viewer-header {
