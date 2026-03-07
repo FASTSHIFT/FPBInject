@@ -490,6 +490,19 @@ window.i18nResources['en'] = {
       symbols_decompile_desc:
         'Generate pseudo-C code using Ghidra for better understanding.',
 
+      watch_title: 'Watch Expressions',
+      watch_desc:
+        'The Watch section lets you monitor C/C++ variables and expressions on the device in real time.',
+      watch_add_expr: 'Add Expression',
+      watch_add_expr_desc:
+        'Type a C/C++ symbol name or cast expression (e.g. <code>g_counter</code>, <code>*(struct cfg *)0x20001000</code>).',
+      watch_live_value: 'Live Value',
+      watch_live_value_desc:
+        'View decoded values, struct fields, and pointer targets read from device memory.',
+      watch_refresh: 'Refresh',
+      watch_refresh_desc:
+        'Click Refresh All to re-read all watched values from the device.',
+
       config_title: 'Configuration',
       config_desc: 'The Configuration section contains all workbench settings.',
       config_ui: 'UI Settings',
