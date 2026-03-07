@@ -113,7 +113,9 @@ def api_get_symbols():
         {
             "name": name,
             "addr": f"0x{_get_addr(info):08X}",
-            "type": info.get("sym_type", "other") if isinstance(info, dict) else "other",
+            "type": (
+                info.get("sym_type", "other") if isinstance(info, dict) else "other"
+            ),
         }
         for name, info in sorted(symbols.items(), key=lambda x: x[0])
     ][:limit]
@@ -128,15 +130,11 @@ def api_get_symbols():
     )
 
 
-
-
 def _get_addr(info):
     """Get address from symbol info (supports int, nm dict, and GDB detail dict)."""
     if isinstance(info, dict):
         return info.get("addr", 0)
     return info
-
-
 
 
 def _lookup_symbol(sym_name):
@@ -200,7 +198,6 @@ def _lookup_symbol(sym_name):
         return result
 
     return None
-
 
 
 def _ensure_symbols_loaded():
@@ -280,7 +277,9 @@ def api_search_symbols():
         matched = []
         for name, info in state.symbols.items():
             addr_val = _get_addr(info)
-            sym_type = info.get("sym_type", "other") if isinstance(info, dict) else "other"
+            sym_type = (
+                info.get("sym_type", "other") if isinstance(info, dict) else "other"
+            )
 
             if is_addr:
                 if addr_str not in f"{addr_val:08x}":
@@ -315,7 +314,6 @@ def api_search_symbols():
             "filtered": len(symbol_list),
         }
     )
-
 
 
 @bp.route("/symbols/reload", methods=["POST"])

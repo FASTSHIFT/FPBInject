@@ -23,7 +23,6 @@ from utils.toolchain import get_tool_path, get_subprocess_env
 logger = logging.getLogger(__name__)
 
 
-
 # nm symbol type code -> category mapping
 _NM_TYPE_MAP = {
     "T": "function",
@@ -51,9 +50,7 @@ def _nm_type_to_category(nm_type: str) -> str:
     return _NM_TYPE_MAP.get(nm_type, "other")
 
 
-def get_symbols(
-    elf_path: str, toolchain_path: Optional[str] = None
-) -> Dict[str, dict]:
+def get_symbols(elf_path: str, toolchain_path: Optional[str] = None) -> Dict[str, dict]:
     """Extract symbols from ELF file using nm.
 
     Returns a dictionary: {name: {"addr": int, "sym_type": str}}
@@ -108,7 +105,6 @@ def get_symbols(
     except Exception as e:
         logger.error(f"Error reading symbols via nm: {e}")
     return symbols
-
 
 
 def get_elf_build_time(elf_path: str) -> Optional[str]:

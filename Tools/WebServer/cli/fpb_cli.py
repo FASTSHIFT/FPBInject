@@ -138,7 +138,6 @@ class FPBCLI:
             error_data["exception"] = str(error)
         self.output_json(error_data)
 
-    
     def analyze(self, elf_path: str, func_name: str) -> None:
         """Analyze function in ELF file"""
         try:
@@ -166,7 +165,6 @@ class FPBCLI:
             )
         except Exception as e:
             self.output_error(f"Analysis failed: {str(e)}", e)
-
 
     def disasm(self, elf_path: str, func_name: str) -> None:
         """Get disassembly for function"""
@@ -226,7 +224,11 @@ class FPBCLI:
                 {
                     "name": name,
                     "addr": hex(info["addr"]) if isinstance(info, dict) else hex(info),
-                    "type": info.get("sym_type", "other") if isinstance(info, dict) else "other",
+                    "type": (
+                        info.get("sym_type", "other")
+                        if isinstance(info, dict)
+                        else "other"
+                    ),
                 }
                 for name, info in symbols.items()
                 if pattern.lower() in name.lower()
@@ -256,7 +258,11 @@ class FPBCLI:
                 {
                     "name": name,
                     "addr": hex(info["addr"]) if isinstance(info, dict) else hex(info),
-                    "type": info.get("sym_type", "other") if isinstance(info, dict) else "other",
+                    "type": (
+                        info.get("sym_type", "other")
+                        if isinstance(info, dict)
+                        else "other"
+                    ),
                 }
                 for name, info in sorted(symbols.items(), key=lambda x: x[0])
             ]
@@ -274,9 +280,6 @@ class FPBCLI:
             )
         except Exception as e:
             self.output_error(f"Get symbols failed: {str(e)}", e)
-
-
-
 
     def compile(
         self,
