@@ -513,21 +513,18 @@ window.i18nResources['zh-CN'] = {
       hello_search_title: '搜索目标函数',
       hello_search_desc: '实际体验一次注入流程。',
       hello_search_input: '搜索符号',
-      hello_search_input_desc:
-        '搜索框输入 <code>fl_hello</code> → 回车',
+      hello_search_input_desc: '搜索框输入 <code>fl_hello</code> → 回车',
       hello_search_result: '查看结果',
       hello_search_result_desc: '列表显示函数地址和名称',
       hello_search_dblclick: '双击创建补丁',
       hello_search_dblclick_desc: '双击符号 → 自动生成补丁模板',
-      gate_hello_search:
-        '搜索 <code>fl_hello</code> → 双击创建补丁',
+      gate_hello_search: '搜索 <code>fl_hello</code> → 双击创建补丁',
       gate_hello_search_ok: '✅ 补丁标签页已创建！',
 
       hello_inject_title: '编辑并注入补丁',
       hello_inject_desc: '修改代码后点击注入。',
       hello_inject_edit: '修改代码',
-      hello_inject_edit_desc:
-        '修改 <code>fl_println</code> 中的字符串',
+      hello_inject_edit_desc: '修改 <code>fl_println</code> 中的字符串',
       hello_inject_slot: '选择 Slot',
       hello_inject_slot_desc: '工具栏选择可用槽位',
       hello_inject_run: '点击「注入」',
@@ -544,17 +541,14 @@ window.i18nResources['zh-CN'] = {
       hello_verify_send_cmd_desc:
         '串口终端输入 <code>fl -c hello</code> → 回车',
       hello_verify_check_output: '查看输出',
-      hello_verify_check_output_desc:
-        '输出应显示注入后的消息',
+      hello_verify_check_output_desc: '输出应显示注入后的消息',
 
       hello_unpatch_title: '取消注入',
       hello_unpatch_desc: '移除注入，恢复原始函数。',
       hello_unpatch_click: '点击 ✕ 取消',
-      hello_unpatch_click_desc:
-        '热补丁面板 → 点击槽位的 ✕ 按钮',
+      hello_unpatch_click_desc: '热补丁面板 → 点击槽位的 ✕ 按钮',
       hello_unpatch_verify: '验证恢复',
-      hello_unpatch_verify_desc:
-        '再次发送 <code>fl -c hello</code> 验证',
+      hello_unpatch_verify_desc: '再次发送 <code>fl -c hello</code> 验证',
       gate_hello_unpatch: '点击槽位的 ✕ 按钮取消注入',
       gate_hello_unpatch_ok: '✅ 已取消注入！',
       hello_unpatch_hint:

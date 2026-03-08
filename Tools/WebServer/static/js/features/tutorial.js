@@ -510,7 +510,10 @@ function renderGateBanner(step) {
   const { gated, passed } = getStepGateStatus(step);
   if (!gated || passed) return '';
 
-  const hintText = t(step.gateHint || 'tutorial.gate_waiting', 'Complete the action to continue');
+  const hintText = t(
+    step.gateHint || 'tutorial.gate_waiting',
+    'Complete the action to continue',
+  );
   return `<div class="tutorial-gate-banner"><i class="codicon codicon-arrow-right tutorial-gate-arrow"></i><span>${hintText}</span></div>`;
 }
 
@@ -548,7 +551,8 @@ function updateGateBannerArrow() {
   const targetY = targetRect.top + targetRect.height / 2;
 
   // Calculate angle in degrees
-  const angle = Math.atan2(targetY - arrowY, targetX - arrowX) * (180 / Math.PI);
+  const angle =
+    Math.atan2(targetY - arrowY, targetX - arrowX) * (180 / Math.PI);
 
   arrow.style.transform = `rotate(${angle}deg)`;
 }
