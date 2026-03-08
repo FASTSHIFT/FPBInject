@@ -137,6 +137,11 @@
   --syntax-function: #795e26;
   --syntax-variable: #001080;
   --syntax-type: #267f99;
+
+  /* Debug/Watch Token Colors Light */
+  --vscode-debugTokenExpression-name: #001080;
+  --vscode-debugTokenExpression-type: #267f99;
+  --vscode-debugTokenExpression-value: #098658;
 }
 
 /* ===========================
