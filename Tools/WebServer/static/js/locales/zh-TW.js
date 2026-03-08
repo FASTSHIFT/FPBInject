@@ -141,6 +141,7 @@ window.i18nResources['zh-TW'] = {
       deref_pointer: '解參考',
       reading_symbol: '正在讀取 {{name}}...',
       reading_symbol_size: '正在讀取 {{name}} ({{size}} 位元組)...',
+      loading_symbol: '正在載入 {{name}}...',
     },
 
     // Watch 表達式

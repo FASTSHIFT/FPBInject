@@ -882,8 +882,9 @@ module.exports = function (w) {
         error: 'Not found',
       });
       await w.openSymbolValueTab('missing_sym', 'variable');
+      // Tab is created immediately (shows loading then error)
       assertTrue(
-        !w.FPBState.editorTabs.some((t) => t.id === 'symval_missing_sym'),
+        w.FPBState.editorTabs.some((t) => t.id === 'symval_missing_sym'),
       );
     });
 

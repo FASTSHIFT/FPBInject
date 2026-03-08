@@ -141,6 +141,7 @@ window.i18nResources['zh-CN'] = {
       deref_pointer: '解引用',
       reading_symbol: '正在读取 {{name}}...',
       reading_symbol_size: '正在读取 {{name}} ({{size}} 字节)...',
+      loading_symbol: '正在加载 {{name}}...',
     },
 
     // Watch 表达式

@@ -141,6 +141,7 @@ window.i18nResources['en'] = {
       deref_pointer: 'Dereference',
       reading_symbol: 'Reading {{name}}...',
       reading_symbol_size: 'Reading {{name}} ({{size}} bytes)...',
+      loading_symbol: 'Loading {{name}}...',
     },
 
     // Watch expressions

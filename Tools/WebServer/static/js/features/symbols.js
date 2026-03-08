@@ -86,6 +86,53 @@ async function openSymbolValueTab(symName, symType) {
 
   log.debug(`Loading value for ${symName}...`);
 
+  const isConst = symType === 'const';
+  const tabTitle = `${symName} [${isConst ? 'const' : 'var'}]`;
+  const tabIcon = isConst
+    ? 'codicon-symbol-constant'
+    : 'codicon-symbol-variable';
+  const tabColor = isConst ? '#4fc1ff' : '#75beff';
+
+  // Create tab immediately with loading placeholder
+  state.editorTabs.push({
+    id: tabId,
+    title: tabTitle,
+    type: isConst ? 'const-viewer' : 'var-viewer',
+    closable: true,
+    symName: symName,
+    symType: symType,
+  });
+
+  const tabsHeader = document.getElementById('editorTabsHeader');
+  const tabDiv = document.createElement('div');
+  tabDiv.className = 'tab';
+  tabDiv.setAttribute('data-tab', tabId);
+  tabDiv.innerHTML = `
+    <i class="codicon ${tabIcon} tab-icon" style="color: ${tabColor};"></i>
+    <span>${tabTitle}</span>
+    <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
+  `;
+  tabDiv.onclick = () => switchEditorTab(tabId);
+  tabDiv.onmousedown = (e) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      closeTab(tabId, e);
+    }
+  };
+  tabsHeader.appendChild(tabDiv);
+
+  const tabsContent = document.querySelector('.editor-tabs-content');
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'tab-content';
+  contentDiv.id = `tabContent_${tabId}`;
+  contentDiv.innerHTML = `<div class="sym-loading-container">
+    <div class="sym-loading-spinner"></div>
+    <div class="sym-loading-text">${t('symbols.loading_symbol', 'Loading {{name}}...', { name: symName })}</div>
+  </div>`;
+  tabsContent.appendChild(contentDiv);
+
+  switchEditorTab(tabId);
+
   try {
     const res = await fetch(
       `/api/symbols/value?name=${encodeURIComponent(symName)}`,
@@ -94,59 +141,27 @@ async function openSymbolValueTab(symName, symType) {
 
     if (!data.success) {
       log.error(`Failed to load symbol value: ${data.error}`);
+      contentDiv.innerHTML = `<div class="sym-loading-container">
+        <i class="codicon codicon-error" style="font-size: 2rem; color: var(--vscode-errorForeground, #f44336); margin-bottom: 12px;"></i>
+        <div class="sym-loading-text">${_escapeHtml(data.error)}</div>
+      </div>`;
       return;
     }
 
-    const isConst = symType === 'const';
-    const tabTitle = `${symName} [${isConst ? 'const' : 'var'}]`;
-    const tabIcon = isConst
-      ? 'codicon-symbol-constant'
-      : 'codicon-symbol-variable';
-    const tabColor = isConst ? '#4fc1ff' : '#75beff';
-
-    state.editorTabs.push({
-      id: tabId,
-      title: tabTitle,
-      type: isConst ? 'const-viewer' : 'var-viewer',
-      closable: true,
-      symName: symName,
-      symType: symType,
-    });
-
-    const tabsHeader = document.getElementById('editorTabsHeader');
-    const tabDiv = document.createElement('div');
-    tabDiv.className = 'tab';
-    tabDiv.setAttribute('data-tab', tabId);
-    tabDiv.innerHTML = `
-      <i class="codicon ${tabIcon} tab-icon" style="color: ${tabColor};"></i>
-      <span>${tabTitle}</span>
-      <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
-    `;
-    tabDiv.onclick = () => switchEditorTab(tabId);
-    tabDiv.onmousedown = (e) => {
-      if (e.button === 1) {
-        e.preventDefault();
-        closeTab(tabId, e);
-      }
-    };
-    tabsHeader.appendChild(tabDiv);
-
-    const tabsContent = document.querySelector('.editor-tabs-content');
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'tab-content';
-    contentDiv.id = `tabContent_${tabId}`;
     contentDiv.innerHTML = _renderSymbolValueContent(data, isConst);
-    tabsContent.appendChild(contentDiv);
 
     // Cache data for language re-render
     _symTabDataCache.set(symName, { data, isConst });
 
-    switchEditorTab(tabId);
     log.success(
       `Opened ${isConst ? 'const' : 'variable'} viewer for ${symName}`,
     );
   } catch (e) {
     log.error(`Failed to load symbol value: ${e}`);
+    contentDiv.innerHTML = `<div class="sym-loading-container">
+      <i class="codicon codicon-error" style="font-size: 2rem; color: var(--vscode-errorForeground, #f44336); margin-bottom: 12px;"></i>
+      <div class="sym-loading-text">${_escapeHtml(e.message)}</div>
+    </div>`;
   }
 }
 
