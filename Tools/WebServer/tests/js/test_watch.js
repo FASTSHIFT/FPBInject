@@ -314,6 +314,31 @@ module.exports = function (w) {
       assertEqual(w._watchExpandedState.get('b'), false);
       w._watchExpandedState.clear();
     });
+
+    it('collapses DOM nodes not yet tracked', () => {
+      // Mock document.querySelectorAll to return nodes
+      const origQuerySelectorAll = browserGlobals.document.querySelectorAll;
+      browserGlobals.document.querySelectorAll = (selector) => {
+        if (selector === '.watch-tree-node[data-depth="0"]') {
+          return [
+            {
+              getAttribute: (name) => (name === 'data-watch-id' ? '30' : null),
+            },
+            {
+              getAttribute: (name) => (name === 'data-watch-id' ? '40' : null),
+            },
+          ];
+        }
+        return origQuerySelectorAll.call(browserGlobals.document, selector);
+      };
+      w._watchExpandedState.clear();
+      w.watchCollapseAll();
+      assertEqual(w._watchExpandedState.get('30'), false);
+      assertEqual(w._watchExpandedState.get('40'), false);
+      // Cleanup
+      w._watchExpandedState.clear();
+      browserGlobals.document.querySelectorAll = origQuerySelectorAll;
+    });
   });
 
   describe('watchExpandAll Function', () => {
@@ -321,6 +346,31 @@ module.exports = function (w) {
       assertTrue(typeof w.watchExpandAll === 'function');
       // Just verify it doesn't throw
       w.watchExpandAll();
+    });
+
+    it('sets all expanded states to true for DOM nodes', () => {
+      // Mock document.querySelectorAll to return nodes
+      const origQuerySelectorAll = browserGlobals.document.querySelectorAll;
+      browserGlobals.document.querySelectorAll = (selector) => {
+        if (selector === '.watch-tree-node[data-depth="0"]') {
+          return [
+            {
+              getAttribute: (name) => (name === 'data-watch-id' ? '10' : null),
+            },
+            {
+              getAttribute: (name) => (name === 'data-watch-id' ? '20' : null),
+            },
+          ];
+        }
+        return origQuerySelectorAll.call(browserGlobals.document, selector);
+      };
+      w._watchExpandedState.clear();
+      w.watchExpandAll();
+      assertEqual(w._watchExpandedState.get('10'), true);
+      assertEqual(w._watchExpandedState.get('20'), true);
+      // Cleanup
+      w._watchExpandedState.clear();
+      browserGlobals.document.querySelectorAll = origQuerySelectorAll;
     });
   });
 
@@ -543,6 +593,55 @@ module.exports = function (w) {
   describe('watchAddFromInput Function', () => {
     it('is async function', () =>
       assertTrue(w.watchAddFromInput.constructor.name === 'AsyncFunction'));
+
+    it('returns early if input element not found', async () => {
+      const origGetElementById = browserGlobals.document.getElementById;
+      browserGlobals.document.getElementById = (id) => {
+        if (id === 'watchExprInput') return null;
+        return origGetElementById.call(browserGlobals.document, id);
+      };
+      await w.watchAddFromInput();
+      browserGlobals.document.getElementById = origGetElementById;
+      assertTrue(true);
+    });
+
+    it('returns early if input is empty', async () => {
+      const input = browserGlobals.document.getElementById('watchExprInput');
+      input.value = '   ';
+      await w.watchAddFromInput();
+      assertTrue(true);
+    });
+
+    it('adds expression and renders node', async () => {
+      const input = browserGlobals.document.getElementById('watchExprInput');
+      input.value = 'new_expr';
+      setFetchResponse('/api/watch_expr/add', { success: true, id: 200 });
+      setFetchResponse('/api/watch_expr/evaluate', {
+        success: true,
+        hex_data: 'AABBCCDD',
+        size: 4,
+        type_name: 'int',
+        is_aggregate: false,
+      });
+      const panel = browserGlobals.document.getElementById('watchPanel');
+      panel.innerHTML = '<div class="watch-empty">No watches</div>';
+      panel.insertAdjacentHTML = (pos, html) => {
+        panel.innerHTML += html;
+      };
+      panel.querySelector = (sel) => {
+        if (sel === '.watch-empty') {
+          const el = { remove: () => {} };
+          return el;
+        }
+        return null;
+      };
+      await w.watchAddFromInput();
+      assertEqual(input.value, '');
+      const cached = w._watchDataCache.get(200);
+      assertTrue(cached !== undefined);
+      assertEqual(cached.expr, 'new_expr');
+      w._watchDataCache.delete(200);
+    });
   });
 
   describe('Watch LocalStorage Persistence', () => {
