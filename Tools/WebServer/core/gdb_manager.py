@@ -135,7 +135,7 @@ def start_gdb_async(state, read_memory_fn=None, write_memory_fn=None):
         if ok:
             logger.info("GDB background startup completed successfully")
         else:
-            logger.warning("GDB background startup failed (pyelftools fallback active)")
+            logger.warning("GDB background startup failed")
 
     thread = threading.Thread(target=_start, name="gdb-startup", daemon=True)
     thread.start()

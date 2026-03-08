@@ -10,7 +10,7 @@ Implements a minimal GDB Remote Serial Protocol (RSP) server that bridges
 GDB memory read/write requests to the device's fl serial commands.
 
 This allows GDB to connect and use its native ELF/DWARF parsing capabilities
-(symbol lookup, type resolution, struct layout) instead of pyelftools.
+(symbol lookup, type resolution, struct layout).
 """
 
 import logging

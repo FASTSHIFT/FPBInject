@@ -258,7 +258,7 @@ class GDBSession:
             return self._execute_cli(cmd, timeout)
 
     # ------------------------------------------------------------------
-    # High-level APIs (replace pyelftools functions)
+    # High-level APIs for symbol/type operations
     # ------------------------------------------------------------------
 
     def lookup_symbol(self, sym_name: str) -> Optional[dict]:
