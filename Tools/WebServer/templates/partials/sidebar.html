@@ -184,20 +184,43 @@
           <div class="watch-empty" data-i18n="watch.no_watches">No watch expressions</div>
         </div>
         <div class="watch-toolbar">
-          <select id="watchAutoRefreshSelect" class="vscode-select" style="height: 22px; font-size: 10px; width: 70px;" onchange="watchSetAutoRefresh(parseInt(this.value))">
+          <select
+            id="watchAutoRefreshSelect"
+            class="vscode-select"
+            style="height: 22px; font-size: 10px; width: 70px"
+            onchange="watchSetAutoRefresh(parseInt(this.value))"
+          >
             <option value="0" data-i18n="watch.auto_off">Off</option>
             <option value="500">500ms</option>
             <option value="1000">1s</option>
             <option value="2000">2s</option>
             <option value="5000">5s</option>
           </select>
-          <button class="vscode-btn icon-only secondary" onclick="watchRefreshAll()" title="Refresh All" data-i18n="[title]watch.refresh_all" style="height: 22px; width: 22px; min-width: 22px; padding: 0">
+          <button
+            class="vscode-btn icon-only secondary"
+            onclick="watchRefreshAll()"
+            title="Refresh All"
+            data-i18n="[title]watch.refresh_all"
+            style="height: 22px; width: 22px; min-width: 22px; padding: 0"
+          >
             <i class="codicon codicon-refresh"></i>
           </button>
-          <button class="vscode-btn icon-only secondary" onclick="watchCollapseAll()" title="Collapse All" data-i18n="[title]watch.collapse_all" style="height: 22px; width: 22px; min-width: 22px; padding: 0">
+          <button
+            class="vscode-btn icon-only secondary"
+            onclick="watchCollapseAll()"
+            title="Collapse All"
+            data-i18n="[title]watch.collapse_all"
+            style="height: 22px; width: 22px; min-width: 22px; padding: 0"
+          >
             <i class="codicon codicon-collapse-all"></i>
           </button>
-          <button class="vscode-btn icon-only secondary" onclick="watchClearAll()" title="Clear All" data-i18n="[title]watch.clear_all" style="height: 22px; width: 22px; min-width: 22px; padding: 0">
+          <button
+            class="vscode-btn icon-only secondary"
+            onclick="watchClearAll()"
+            title="Clear All"
+            data-i18n="[title]watch.clear_all"
+            style="height: 22px; width: 22px; min-width: 22px; padding: 0"
+          >
             <i class="codicon codicon-clear-all"></i>
           </button>
         </div>

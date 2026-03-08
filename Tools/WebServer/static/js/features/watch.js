@@ -22,7 +22,7 @@ function _saveWatchesToStorage() {
   try {
     const watches = [];
     const nodes = document.querySelectorAll('.watch-tree-node[data-depth="0"]');
-    nodes.forEach(node => {
+    nodes.forEach((node) => {
       const id = node.getAttribute('data-watch-id');
       const cached = _watchDataCache.get(parseInt(id));
       if (cached && cached.expr) {
@@ -160,7 +160,11 @@ function _renderWatchValue(data) {
   }
 
   // For aggregate types, return summary (children shown in tree)
-  if (data.is_aggregate && data.struct_layout && data.struct_layout.length > 0) {
+  if (
+    data.is_aggregate &&
+    data.struct_layout &&
+    data.struct_layout.length > 0
+  ) {
     const typeName = data.type_name || 'struct';
     return `<span class="watch-type-summary">{${data.struct_layout.length} fields}</span>`;
   }
@@ -228,7 +232,11 @@ function _renderWatchStructTable(hexData, layout) {
 function _buildWatchTreeNode(id, expr, name, data, depth = 0) {
   const hasData = data && data.success;
   const typeName = hasData ? data.type_name : '';
-  const isExpandable = hasData && data.is_aggregate && data.struct_layout && data.struct_layout.length > 0;
+  const isExpandable =
+    hasData &&
+    data.is_aggregate &&
+    data.struct_layout &&
+    data.struct_layout.length > 0;
   const nodeId = `${id}`;
   const isExpanded = _watchExpandedState.get(nodeId) !== false; // Default expanded
 
@@ -263,8 +271,12 @@ function _buildWatchTreeNode(id, expr, name, data, depth = 0) {
 
   // Actions (only for root nodes)
   if (depth === 0) {
-    const refreshTitle = typeof t === 'function' ? t('watch.refresh_tooltip', 'Refresh') : 'Refresh';
-    const removeTitle = typeof t === 'function' ? t('watch.remove_tooltip', 'Remove') : 'Remove';
+    const refreshTitle =
+      typeof t === 'function'
+        ? t('watch.refresh_tooltip', 'Refresh')
+        : 'Refresh';
+    const removeTitle =
+      typeof t === 'function' ? t('watch.remove_tooltip', 'Remove') : 'Remove';
     html += `<span class="watch-node-actions">`;
     html += `<button class="watch-btn" onclick="watchRefreshOne(${id}, '${expr.replace(/'/g, "\\'")}')" title="${refreshTitle}"><i class="codicon codicon-refresh"></i></button>`;
     html += `<button class="watch-btn" onclick="watchRemoveEntry(${id})" title="${removeTitle}"><i class="codicon codicon-close"></i></button>`;
@@ -304,15 +316,19 @@ function _buildWatchTreeChildNode(nodeId, member, value, depth) {
   html += `<span class="watch-node-type">${escapeHtml(typeName)}</span>`;
 
   // Value
-  const valueHtml = value !== null
-    ? `<span class="watch-decoded">${value.decoded}</span> <span class="watch-hex-hint">(${value.hex})</span>`
-    : '<span class="watch-no-data">—</span>';
+  const valueHtml =
+    value !== null
+      ? `<span class="watch-decoded">${value.decoded}</span> <span class="watch-hex-hint">(${value.hex})</span>`
+      : '<span class="watch-no-data">—</span>';
 
   html += `<span class="watch-node-value" data-node-id="${nodeId}">${valueHtml}</span>`;
 
   // Deref button for pointers
   if (isPtr && value && value.decoded !== '0x00000000') {
-    const derefTitle = typeof t === 'function' ? t('watch.deref_tooltip', 'Dereference') : 'Dereference';
+    const derefTitle =
+      typeof t === 'function'
+        ? t('watch.deref_tooltip', 'Dereference')
+        : 'Dereference';
     html += `<button class="watch-deref-btn" onclick="watchDerefField('${nodeId}', '${value.decoded}', '${typeName}')" title="${derefTitle}">→</button>`;
   }
 
@@ -323,13 +339,15 @@ function _buildWatchTreeChildNode(nodeId, member, value, depth) {
 function _extractMemberValue(hexData, member) {
   if (!hexData) return null;
 
-  const fieldHex = typeof _extractFieldHex === 'function'
-    ? _extractFieldHex(hexData, member.offset, member.size)
-    : '';
+  const fieldHex =
+    typeof _extractFieldHex === 'function'
+      ? _extractFieldHex(hexData, member.offset, member.size)
+      : '';
 
-  const decoded = typeof _decodeFieldValue === 'function'
-    ? _decodeFieldValue(hexData, member.offset, member.size, member.type_name)
-    : fieldHex;
+  const decoded =
+    typeof _decodeFieldValue === 'function'
+      ? _decodeFieldValue(hexData, member.offset, member.size, member.type_name)
+      : fieldHex;
 
   return { hex: fieldHex, decoded: decoded };
 }
@@ -378,9 +396,10 @@ async function watchRenderAll() {
   if (!listResult.success) return;
 
   if (listResult.watches.length === 0) {
-    const noWatchesText = typeof t === 'function'
-      ? t('watch.no_watches', 'No watch expressions')
-      : 'No watch expressions';
+    const noWatchesText =
+      typeof t === 'function'
+        ? t('watch.no_watches', 'No watch expressions')
+        : 'No watch expressions';
     panel.innerHTML = `<div class="watch-empty">${noWatchesText}</div>`;
     return;
   }
@@ -412,13 +431,17 @@ async function watchRefreshOne(id, expr) {
   _watchDataCache.set(id, { expr, data });
 
   // Re-render just this entry
-  const node = document.querySelector(`.watch-tree-node[data-watch-id="${id}"][data-depth="0"]`);
+  const node = document.querySelector(
+    `.watch-tree-node[data-watch-id="${id}"][data-depth="0"]`,
+  );
   if (node) {
     const parent = node.parentElement;
     const newHtml = _buildWatchTreeNode(id, expr, expr, data, 0);
 
     // Find and remove children container if exists
-    const childrenContainer = parent.querySelector(`.watch-tree-children[data-parent="${id}"]`);
+    const childrenContainer = parent.querySelector(
+      `.watch-tree-children[data-parent="${id}"]`,
+    );
     if (childrenContainer) {
       childrenContainer.remove();
     }
@@ -432,7 +455,9 @@ function _checkAndHighlightChanges(id, oldData, newData) {
   // Compare hex_data for changes
   if (oldData.hex_data !== newData.hex_data) {
     setTimeout(() => {
-      const valueEl = document.querySelector(`.watch-node-value[data-node-id="${id}"]`);
+      const valueEl = document.querySelector(
+        `.watch-node-value[data-node-id="${id}"]`,
+      );
       if (valueEl) {
         valueEl.classList.add('changed');
         setTimeout(() => valueEl.classList.remove('changed'), 1000);
@@ -447,10 +472,14 @@ async function watchRemoveEntry(id) {
   _watchExpandedState.delete(String(id));
 
   // Remove from DOM
-  const node = document.querySelector(`.watch-tree-node[data-watch-id="${id}"][data-depth="0"]`);
+  const node = document.querySelector(
+    `.watch-tree-node[data-watch-id="${id}"][data-depth="0"]`,
+  );
   if (node) {
     // Also remove children container
-    const childrenContainer = node.parentElement.querySelector(`.watch-tree-children[data-parent="${id}"]`);
+    const childrenContainer = node.parentElement.querySelector(
+      `.watch-tree-children[data-parent="${id}"]`,
+    );
     if (childrenContainer) {
       childrenContainer.remove();
     }
@@ -459,10 +488,14 @@ async function watchRemoveEntry(id) {
 
   // Show empty message if no watches left
   const panel = document.getElementById('watchPanel');
-  if (panel && panel.querySelectorAll('.watch-tree-node[data-depth="0"]').length === 0) {
-    const noWatchesText = typeof t === 'function'
-      ? t('watch.no_watches', 'No watch expressions')
-      : 'No watch expressions';
+  if (
+    panel &&
+    panel.querySelectorAll('.watch-tree-node[data-depth="0"]').length === 0
+  ) {
+    const noWatchesText =
+      typeof t === 'function'
+        ? t('watch.no_watches', 'No watch expressions')
+        : 'No watch expressions';
     panel.innerHTML = `<div class="watch-empty">${noWatchesText}</div>`;
   }
 
@@ -584,7 +617,7 @@ function watchCollapseAll() {
   }
   // Also collapse any that aren't tracked yet
   const nodes = document.querySelectorAll('.watch-tree-node[data-depth="0"]');
-  nodes.forEach(node => {
+  nodes.forEach((node) => {
     const id = node.getAttribute('data-watch-id');
     if (id) _watchExpandedState.set(id, false);
   });
@@ -593,7 +626,7 @@ function watchCollapseAll() {
 
 function watchExpandAll() {
   const nodes = document.querySelectorAll('.watch-tree-node[data-depth="0"]');
-  nodes.forEach(node => {
+  nodes.forEach((node) => {
     const id = node.getAttribute('data-watch-id');
     if (id) _watchExpandedState.set(id, true);
   });

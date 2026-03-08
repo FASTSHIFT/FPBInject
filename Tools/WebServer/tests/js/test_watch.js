@@ -342,42 +342,60 @@ module.exports = function (w) {
 
   describe('_buildWatchTreeNode Function', () => {
     it('builds node for scalar value', () => {
-      const html = w._buildWatchTreeNode(1, 'g_counter', 'counter', {
-        success: true,
-        hex_data: '2A000000',
-        size: 4,
-        type_name: 'uint32_t',
-        is_aggregate: false,
-      }, 0);
+      const html = w._buildWatchTreeNode(
+        1,
+        'g_counter',
+        'counter',
+        {
+          success: true,
+          hex_data: '2A000000',
+          size: 4,
+          type_name: 'uint32_t',
+          is_aggregate: false,
+        },
+        0,
+      );
       assertContains(html, 'watch-tree-node');
       assertContains(html, 'counter');
       assertContains(html, 'watch-node-type');
     });
 
     it('builds expandable node for struct', () => {
-      const html = w._buildWatchTreeNode(2, 'g_point', 'point', {
-        success: true,
-        hex_data: '0100000002000000',
-        size: 8,
-        type_name: 'struct point',
-        is_aggregate: true,
-        struct_layout: [
-          { name: 'x', type_name: 'uint32_t', offset: 0, size: 4 },
-          { name: 'y', type_name: 'uint32_t', offset: 4, size: 4 },
-        ],
-      }, 0);
+      const html = w._buildWatchTreeNode(
+        2,
+        'g_point',
+        'point',
+        {
+          success: true,
+          hex_data: '0100000002000000',
+          size: 8,
+          type_name: 'struct point',
+          is_aggregate: true,
+          struct_layout: [
+            { name: 'x', type_name: 'uint32_t', offset: 0, size: 4 },
+            { name: 'y', type_name: 'uint32_t', offset: 4, size: 4 },
+          ],
+        },
+        0,
+      );
       assertContains(html, 'watch-tree-node');
       assertContains(html, 'watch-expand-icon');
     });
 
     it('applies depth via CSS variable', () => {
-      const html = w._buildWatchTreeNode(3, 'a.b.c', 'nested', {
-        success: true,
-        hex_data: '01',
-        size: 1,
-        type_name: 'uint8_t',
-        is_aggregate: false,
-      }, 2);
+      const html = w._buildWatchTreeNode(
+        3,
+        'a.b.c',
+        'nested',
+        {
+          success: true,
+          hex_data: '01',
+          size: 1,
+          type_name: 'uint8_t',
+          is_aggregate: false,
+        },
+        2,
+      );
       assertContains(html, '--depth: 2');
     });
 
@@ -388,10 +406,16 @@ module.exports = function (w) {
     });
 
     it('handles error data', () => {
-      const html = w._buildWatchTreeNode(5, 'bad_expr', 'bad', {
-        success: false,
-        error: 'Symbol not found',
-      }, 0);
+      const html = w._buildWatchTreeNode(
+        5,
+        'bad_expr',
+        'bad',
+        {
+          success: false,
+          error: 'Symbol not found',
+        },
+        0,
+      );
       assertContains(html, 'watch-tree-node');
       assertContains(html, 'watch-error');
     });
@@ -411,7 +435,11 @@ module.exports = function (w) {
       });
       setFetchResponse('/api/watch_expr/add', { success: true, id: 99 });
       setFetchResponse('/api/watch_expr/list', { success: true, watches: [] });
-      const result = await w.watchDerefField('node1', '0x20003000', 'uint8_t *');
+      const result = await w.watchDerefField(
+        'node1',
+        '0x20003000',
+        'uint8_t *',
+      );
       // Function doesn't return result directly, just verify no error
       assertTrue(true);
     });
@@ -419,7 +447,10 @@ module.exports = function (w) {
 
   describe('Value Change Detection', () => {
     it('_watchDataCache stores previous values', () => {
-      w._watchDataCache.set('test_expr', { expr: 'test', data: { hex_data: 'AABBCCDD' } });
+      w._watchDataCache.set('test_expr', {
+        expr: 'test',
+        data: { hex_data: 'AABBCCDD' },
+      });
       assertEqual(w._watchDataCache.get('test_expr').data.hex_data, 'AABBCCDD');
       w._watchDataCache.delete('test_expr');
     });
@@ -525,7 +556,9 @@ module.exports = function (w) {
       assertTrue(typeof w.watchRestoreFromStorage === 'function'));
 
     it('watchRestoreFromStorage is async function', () =>
-      assertTrue(w.watchRestoreFromStorage.constructor.name === 'AsyncFunction'));
+      assertTrue(
+        w.watchRestoreFromStorage.constructor.name === 'AsyncFunction',
+      ));
 
     it('_loadWatchesFromStorage returns empty array when no data', () => {
       browserGlobals.localStorage.removeItem('fpbinject_watch_expressions');
@@ -535,7 +568,10 @@ module.exports = function (w) {
     });
 
     it('_loadWatchesFromStorage returns stored expressions', () => {
-      browserGlobals.localStorage.setItem('fpbinject_watch_expressions', JSON.stringify(['expr1', 'expr2']));
+      browserGlobals.localStorage.setItem(
+        'fpbinject_watch_expressions',
+        JSON.stringify(['expr1', 'expr2']),
+      );
       const result = w._loadWatchesFromStorage();
       assertEqual(result.length, 2);
       assertEqual(result[0], 'expr1');
@@ -544,7 +580,10 @@ module.exports = function (w) {
     });
 
     it('_loadWatchesFromStorage handles invalid JSON gracefully', () => {
-      browserGlobals.localStorage.setItem('fpbinject_watch_expressions', 'invalid json');
+      browserGlobals.localStorage.setItem(
+        'fpbinject_watch_expressions',
+        'invalid json',
+      );
       const result = w._loadWatchesFromStorage();
       assertTrue(Array.isArray(result));
       assertEqual(result.length, 0);
@@ -560,14 +599,16 @@ module.exports = function (w) {
       browserGlobals.document.querySelectorAll = (selector) => {
         if (selector === '.watch-tree-node[data-depth="0"]') {
           return [
-            { getAttribute: (name) => name === 'data-watch-id' ? '1' : null },
-            { getAttribute: (name) => name === 'data-watch-id' ? '2' : null },
+            { getAttribute: (name) => (name === 'data-watch-id' ? '1' : null) },
+            { getAttribute: (name) => (name === 'data-watch-id' ? '2' : null) },
           ];
         }
         return origQuerySelectorAll.call(browserGlobals.document, selector);
       };
       w._saveWatchesToStorage();
-      const stored = browserGlobals.localStorage.getItem('fpbinject_watch_expressions');
+      const stored = browserGlobals.localStorage.getItem(
+        'fpbinject_watch_expressions',
+      );
       assertTrue(stored !== null);
       const parsed = JSON.parse(stored);
       assertEqual(parsed.length, 2);
@@ -579,7 +620,10 @@ module.exports = function (w) {
     });
 
     it('watchRestoreFromStorage restores expressions without evaluating', async () => {
-      browserGlobals.localStorage.setItem('fpbinject_watch_expressions', JSON.stringify(['restored_expr']));
+      browserGlobals.localStorage.setItem(
+        'fpbinject_watch_expressions',
+        JSON.stringify(['restored_expr']),
+      );
       setFetchResponse('/api/watch_expr/add', { success: true, id: 100 });
       const panel = browserGlobals.document.getElementById('watchPanel');
       // Add insertAdjacentHTML mock

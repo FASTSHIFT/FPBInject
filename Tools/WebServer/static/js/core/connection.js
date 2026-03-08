@@ -256,11 +256,12 @@ async function checkBackendHealth() {
   } catch (e) {
     // Check if we've received data from SSE/polling recently
     // If we have, the backend is still alive (just /api/status is slow due to load)
-    const lastDataTime = typeof getLastDataReceivedTime === 'function' 
-      ? getLastDataReceivedTime() 
-      : 0;
+    const lastDataTime =
+      typeof getLastDataReceivedTime === 'function'
+        ? getLastDataReceivedTime()
+        : 0;
     const timeSinceLastData = Date.now() - lastDataTime;
-    
+
     // If we received data within the last 10 seconds, backend is still alive
     if (lastDataTime > 0 && timeSinceLastData < 10000) {
       backendDisconnectAlertShown = false;

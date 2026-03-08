@@ -1739,13 +1739,23 @@ input[type="checkbox"] {
 
 /* Value change highlight animation */
 .watch-node-value.changed {
-  background: var(--vscode-debugView-valueChangedHighlight, rgba(206, 145, 120, 0.3));
+  background: var(
+    --vscode-debugView-valueChangedHighlight,
+    rgba(206, 145, 120, 0.3)
+  );
   animation: watch-value-flash 1s ease-out;
 }
 
 @keyframes watch-value-flash {
-  0% { background: var(--vscode-debugView-valueChangedHighlight, rgba(206, 145, 120, 0.5)); }
-  100% { background: transparent; }
+  0% {
+    background: var(
+      --vscode-debugView-valueChangedHighlight,
+      rgba(206, 145, 120, 0.5)
+    );
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 /* Node actions (refresh, remove) */
