@@ -648,6 +648,41 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
             os.unlink(state.device.elf_path)
 
     @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    def test_value_large_symbol_skips_layout(self, _mock_gdb_avail):
+        """Large symbols should skip ptype/layout path to avoid long stalls."""
+        mock_session = Mock()
+        mock_session.read_symbol_value.return_value = b"\x00" * 16
+        mock_session.read_symbol_value_and_layout.return_value = (
+            b"\x00" * 16,
+            [{"name": "x", "offset": 0, "size": 4, "type_name": "int"}],
+        )
+        state.gdb_session = mock_session
+        state.symbols = {
+            "__framebuffer_start__": {
+                "addr": 0x2001E000,
+                "size": 1789440,
+                "type": "variable",
+                "section": ".bss",
+            }
+        }
+        state.symbols_loaded = True
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            state.device.elf_path = f.name
+        try:
+            response = self.client.get("/api/symbols/value?name=__framebuffer_start__")
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["name"], "__framebuffer_start__")
+            self.assertIsNone(data["struct_layout"])
+            self.assertIsNone(data["gdb_values"])
+            mock_session.read_symbol_value.assert_called_once_with(
+                "__framebuffer_start__"
+            )
+            mock_session.read_symbol_value_and_layout.assert_not_called()
+        finally:
+            os.unlink(state.device.elf_path)
+
+    @patch("core.gdb_manager.is_gdb_available", return_value=True)
     def test_value_bss_no_data(self, mock_gdb_avail):
         mock_session = Mock()
         mock_session.read_symbol_value_and_layout.return_value = (None, None)

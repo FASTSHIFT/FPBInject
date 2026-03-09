@@ -32,6 +32,11 @@ _struct_layout_cache = {}
 # nm only provides {name: addr}; GDB provides full detail on first access.
 _symbol_detail_cache = {}
 
+# For very large symbols (e.g. framebuffers), running "ptype /o" is expensive
+# and provides little value. Skip layout parsing above this size to keep
+# /symbols/value responsive.
+MAX_LAYOUT_ANALYSIS_SIZE = 256 * 1024
+
 
 def _get_struct_layout_cached(sym_name):
     """Get struct layout with caching. Returns cached result on subsequent calls."""
@@ -802,6 +807,7 @@ def api_get_symbol_value():
     hex_data = None
     struct_layout = None
     gdb_values = None
+    read_mode = "read_symbol_value"
     if gdb_ok and state.gdb_session:
         if is_pointer:
             raw_data = state.gdb_session.read_symbol_value(sym_name)
@@ -812,13 +818,21 @@ def api_get_symbol_value():
         else:
             # Combined read: hold GDB lock across x/Nwx + ptype /o to
             # prevent pipe cross-talk between the two commands.
-            raw_data, struct_layout = state.gdb_session.read_symbol_value_and_layout(
-                sym_name
-            )
+            if size > MAX_LAYOUT_ANALYSIS_SIZE:
+                logger.warning(
+                    f"[value] skip struct layout for large symbol '{sym_name}' "
+                    f"(size={size} > {MAX_LAYOUT_ANALYSIS_SIZE})"
+                )
+                raw_data = state.gdb_session.read_symbol_value(sym_name)
+                struct_layout = None
+                read_mode = "read_symbol_value"
+            else:
+                raw_data, struct_layout = (
+                    state.gdb_session.read_symbol_value_and_layout(sym_name)
+                )
+                read_mode = "read_symbol_value_and_layout"
             t_read = time.time()
-            logger.info(
-                f"[value] read_symbol_value_and_layout: {t_read - t_lookup:.2f}s"
-            )
+            logger.info(f"[value] {read_mode}: {t_read - t_lookup:.2f}s")
             hex_data = raw_data.hex() if raw_data else None
             if struct_layout:
                 gdb_values = _get_gdb_values(sym_name, addr, struct_layout)
