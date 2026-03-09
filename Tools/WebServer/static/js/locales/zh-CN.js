@@ -151,6 +151,17 @@ window.i18nResources['zh-CN'] = {
       save_file_error: '保存文件失败: {{error}}',
     },
 
+    // 内联值编辑
+    inline_edit: {
+      empty_value: '值不能为空',
+      invalid_bool: '请输入 true/false',
+      invalid_float: '无效的浮点数',
+      invalid_number: '无效的数字',
+      overflow: '溢出: {{min}} ~ {{max}}',
+      encode_error: '编码错误: {{msg}}',
+      write_failed: '写入失败',
+    },
+
     // Watch 表达式
     watch: {
       title: '监视',

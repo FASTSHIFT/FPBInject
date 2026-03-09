@@ -1299,6 +1299,65 @@ input[type="checkbox"] {
   opacity: 0.5;
 }
 
+.sym-tree-value[data-editable="true"] {
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.sym-tree-value[data-editable="true"]:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+.watch-node-value[data-editable="true"] {
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.watch-node-value[data-editable="true"]:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+.inline-value-input {
+  font-family: var(--vscode-editor-font-family, "Consolas", monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  padding: 0 4px;
+  outline: none;
+  border-radius: 2px;
+  height: 18px;
+  line-height: 18px;
+}
+
+@keyframes flash-write-success {
+  0% {
+    background: rgba(0, 200, 0, 0.3);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@keyframes flash-write-error {
+  0% {
+    background: rgba(255, 0, 0, 0.3);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.flash-write-success {
+  animation: flash-write-success 0.8s ease-out;
+}
+
+.flash-write-error {
+  animation: flash-write-error 0.8s ease-out;
+}
+
 .sym-tree-children {
   /* toggled via JS display: none/block */
 }

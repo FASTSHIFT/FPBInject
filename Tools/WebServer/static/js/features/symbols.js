@@ -252,6 +252,7 @@ function _renderSymbolValueContent(data, isConst) {
       data.hex_data,
       isBss,
       data.gdb_values,
+      data.name,
     );
   }
 
@@ -309,8 +310,9 @@ function _renderSymbolValueContent(data, isConst) {
  */
 let _treeNodeCounter = 0;
 
-function _renderStructTree(structLayout, hexData, isBss, gdbValues) {
-  let html = '<div class="sym-tree-view">';
+function _renderStructTree(structLayout, hexData, isBss, gdbValues, symName) {
+  const nameAttr = symName ? ` data-sym-name="${_escapeHtml(symName)}"` : '';
+  let html = `<div class="sym-tree-view"${nameAttr}>`;
   for (const member of structLayout) {
     html += _renderTreeNode(member, hexData, isBss, gdbValues, 0);
   }
@@ -336,9 +338,15 @@ function _renderTreeNode(member, hexData, isBss, gdbValues, depth) {
   const isExpandable = _isExpandableValue(gdbVal);
 
   // Determine display value
+  const isLeaf = !isExpandable;
+  const editable = isLeaf && !member.type_name.includes('const ');
+  const editAttrs = editable
+    ? ` data-offset="${member.offset}" data-size="${member.size}" data-type="${_escapeHtml(member.type_name)}" data-editable="true"`
+    : '';
+
   let displayValue;
   if (gdbVal !== null && gdbVal !== undefined && !isExpandable) {
-    displayValue = `<span class="sym-tree-value">${_escapeHtml(_formatGdbValue(gdbVal))}</span>`;
+    displayValue = `<span class="sym-tree-value"${editAttrs}>${_escapeHtml(_formatGdbValue(gdbVal))}</span>`;
   } else if (isExpandable) {
     const summary = _getExpandableSummary(gdbVal);
     displayValue = `<span class="sym-tree-value sym-tree-summary">${_escapeHtml(summary)}</span>`;
@@ -351,8 +359,8 @@ function _renderTreeNode(member, hexData, isBss, gdbValues, depth) {
     );
     const hex = _extractFieldHex(hexData, member.offset, member.size);
     displayValue = decoded
-      ? `<span class="sym-tree-value">${_escapeHtml(decoded)}</span> <span class="sym-hex-hint">(${hex})</span>`
-      : `<span class="sym-tree-value sym-tree-hex">${hex}</span>`;
+      ? `<span class="sym-tree-value"${editAttrs}>${_escapeHtml(decoded)}</span> <span class="sym-hex-hint">(${hex})</span>`
+      : `<span class="sym-tree-value sym-tree-hex"${editAttrs}>${hex}</span>`;
   } else if (isBss) {
     displayValue = `<span class="sym-tree-value sym-tree-no-data"><em>${t('symbols.needs_device_read', 'needs device read')}</em></span>`;
   } else {
@@ -539,6 +547,45 @@ document.addEventListener('click', (e) => {
   const node = row.parentElement;
   if (!node || !node.hasAttribute('data-expandable')) return;
   _toggleTreeNode(node);
+});
+
+// Event delegation for inline value editing (double-click)
+document.addEventListener('dblclick', (e) => {
+  const valueEl = e.target.closest('.sym-tree-value[data-editable="true"]');
+  if (!valueEl) return;
+
+  // Find the parent sym-tree-view to get the symbol name
+  const treeView = valueEl.closest('.sym-tree-view');
+  const symName = treeView ? treeView.dataset.symName : null;
+  if (!symName) return;
+
+  const offset = parseInt(valueEl.dataset.offset, 10);
+  const size = parseInt(valueEl.dataset.size, 10);
+  const typeName = valueEl.dataset.type;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  startInlineEdit(valueEl, {
+    type: typeName,
+    size: size,
+    onCommit: async (hexBytes) => {
+      const res = await fetch('/api/symbols/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: symName,
+          offset: offset,
+          hex_data: hexBytes,
+        }),
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      // Re-read symbol to refresh all values
+      readSymbolFromDevice(symName, _symDerefState.get(symName) || false);
+    },
+  });
 });
 
 /**

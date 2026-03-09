@@ -151,6 +151,17 @@ window.i18nResources['en'] = {
       save_file_error: 'Failed to save file: {{error}}',
     },
 
+    // Inline value editing
+    inline_edit: {
+      empty_value: 'Empty value',
+      invalid_bool: 'Expected true/false',
+      invalid_float: 'Invalid float',
+      invalid_number: 'Invalid number',
+      overflow: 'Overflow: {{min}} ~ {{max}}',
+      encode_error: 'Encode error: {{msg}}',
+      write_failed: 'Write failed',
+    },
+
     // Watch expressions
     watch: {
       title: 'WATCH',

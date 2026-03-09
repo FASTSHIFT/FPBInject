@@ -151,6 +151,17 @@ window.i18nResources['zh-TW'] = {
       save_file_error: '儲存檔案失敗: {{error}}',
     },
 
+    // 內聯值編輯
+    inline_edit: {
+      empty_value: '值不能為空',
+      invalid_bool: '請輸入 true/false',
+      invalid_float: '無效的浮點數',
+      invalid_number: '無效的數字',
+      overflow: '溢出: {{min}} ~ {{max}}',
+      encode_error: '編碼錯誤: {{msg}}',
+      write_failed: '寫入失敗',
+    },
+
     // Watch 表達式
     watch: {
       title: '監視',

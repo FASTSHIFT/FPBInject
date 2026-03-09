@@ -3962,4 +3962,526 @@ module.exports = function (w) {
       assertEqual(expandableCount, 0);
     });
   });
+
+  /* ===========================
+     INLINE EDIT MODULE TESTS
+     =========================== */
+
+  describe('encodeValue Function', () => {
+    it('is exported', () => assertTrue(typeof w.encodeValue === 'function'));
+
+    it('encodes positive int32', () => {
+      const r = w.encodeValue('42', 'int32_t', 4);
+      assertEqual(r.hex, '2a000000');
+    });
+
+    it('encodes negative int8', () => {
+      const r = w.encodeValue('-1', 'int8_t', 1);
+      assertEqual(r.hex, 'ff');
+    });
+
+    it('encodes uint8 hex input', () => {
+      const r = w.encodeValue('0xFF', 'uint8_t', 1);
+      assertEqual(r.hex, 'ff');
+    });
+
+    it('encodes zero', () => {
+      const r = w.encodeValue('0', 'uint32_t', 4);
+      assertEqual(r.hex, '00000000');
+    });
+
+    it('encodes bool true', () => {
+      const r = w.encodeValue('true', 'bool', 1);
+      assertEqual(r.hex, '01');
+    });
+
+    it('encodes bool false', () => {
+      const r = w.encodeValue('false', 'bool', 1);
+      assertEqual(r.hex, '00');
+    });
+
+    it('encodes bool 1', () => {
+      const r = w.encodeValue('1', '_Bool', 1);
+      assertEqual(r.hex, '01');
+    });
+
+    it('returns error for invalid bool', () => {
+      const r = w.encodeValue('maybe', 'bool', 1);
+      assertTrue(!!r.error);
+    });
+
+    it('encodes float', () => {
+      const r = w.encodeValue('1.0', 'float', 4);
+      assertTrue(!!r.hex);
+      assertEqual(r.hex.length, 8);
+    });
+
+    it('encodes double', () => {
+      const r = w.encodeValue('1.0', 'double', 8);
+      assertTrue(!!r.hex);
+      assertEqual(r.hex.length, 16);
+    });
+
+    it('returns error for invalid float', () => {
+      const r = w.encodeValue('abc', 'float', 4);
+      assertTrue(!!r.error);
+    });
+
+    it('returns error for invalid double', () => {
+      const r = w.encodeValue('xyz', 'double', 8);
+      assertTrue(!!r.error);
+    });
+
+    it('returns error for empty value', () => {
+      const r = w.encodeValue('', 'int32_t', 4);
+      assertTrue(!!r.error);
+    });
+
+    it('returns error for overflow', () => {
+      const r = w.encodeValue('256', 'uint8_t', 1);
+      assertTrue(!!r.error);
+    });
+
+    it('returns error for signed overflow', () => {
+      const r = w.encodeValue('128', 'int8_t', 1);
+      assertTrue(!!r.error);
+    });
+
+    it('returns error for negative unsigned', () => {
+      const r = w.encodeValue('-1', 'uint8_t', 1);
+      assertTrue(!!r.error);
+    });
+
+    it('returns error for invalid number', () => {
+      const r = w.encodeValue('abc', 'int32_t', 4);
+      assertTrue(!!r.error);
+    });
+
+    it('encodes pointer hex address', () => {
+      const r = w.encodeValue('0x3C000000', 'void *', 4);
+      assertEqual(r.hex, '0000003c');
+    });
+
+    it('encodes uint16', () => {
+      const r = w.encodeValue('1000', 'uint16_t', 2);
+      assertEqual(r.hex, 'e803');
+    });
+
+    it('encodes negative int16', () => {
+      const r = w.encodeValue('-100', 'int16_t', 2);
+      assertEqual(r.hex, '9cff');
+    });
+  });
+
+  describe('_bufToHex helper', () => {
+    it('is exported', () => assertTrue(typeof w._bufToHex === 'function'));
+
+    it('converts ArrayBuffer to hex', () => {
+      const buf = new ArrayBuffer(2);
+      new Uint8Array(buf).set([0xab, 0xcd]);
+      assertEqual(w._bufToHex(buf), 'abcd');
+    });
+  });
+
+  describe('startInlineEdit Function', () => {
+    it('is exported', () =>
+      assertTrue(typeof w.startInlineEdit === 'function'));
+
+    it('creates input element in value span', () => {
+      const span = document.createElement('span');
+      span.textContent = '42';
+      span.offsetWidth = 50;
+      document.body.appendChild(span);
+
+      w.startInlineEdit(span, {
+        type: 'int32_t',
+        size: 4,
+        onCommit: async () => ({ success: true }),
+      });
+
+      const input = span._children.find(
+        (c) => c.className === 'inline-value-input',
+      );
+      assertTrue(!!input, 'Input should be created');
+      assertEqual(input.value, '42');
+      document.body.removeChild(span);
+    });
+
+    it('prevents double activation', () => {
+      const span = document.createElement('span');
+      span.textContent = '10';
+      span.offsetWidth = 50;
+      // Override querySelector to find child inputs
+      span.querySelector = (sel) => {
+        if (sel === '.inline-value-input') {
+          return span._children.find(
+            (c) => c.className === 'inline-value-input',
+          );
+        }
+        return null;
+      };
+      document.body.appendChild(span);
+
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async () => ({ success: true }),
+      });
+      // Second call should not create another input
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async () => ({ success: true }),
+      });
+
+      const inputs = span._children.filter(
+        (c) => c.className === 'inline-value-input',
+      );
+      assertEqual(inputs.length, 1);
+      document.body.removeChild(span);
+    });
+  });
+
+  describe('flashFeedback Function', () => {
+    it('is exported', () => assertTrue(typeof w.flashFeedback === 'function'));
+
+    it('adds success class', () => {
+      const el = document.createElement('span');
+      let addedClass = null;
+      el.classList.add = (cls) => {
+        addedClass = cls;
+        el.classList._classes.add(cls);
+      };
+      document.body.appendChild(el);
+      w.flashFeedback(el, 'success');
+      assertEqual(addedClass, 'flash-write-success');
+      document.body.removeChild(el);
+    });
+
+    it('adds error class with message', () => {
+      const el = document.createElement('span');
+      let addedClass = null;
+      let titleSet = null;
+      el.classList.add = (cls) => {
+        addedClass = cls;
+        el.classList._classes.add(cls);
+      };
+      el.classList.remove = (cls) => {
+        el.classList._classes.delete(cls);
+      };
+      // Capture title before setTimeout mock clears it
+      const origSetter = Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(el) || el,
+        'title',
+      );
+      Object.defineProperty(el, 'title', {
+        get() {
+          return this._title || '';
+        },
+        set(v) {
+          if (v && !titleSet) titleSet = v;
+          this._title = v;
+        },
+        configurable: true,
+      });
+      document.body.appendChild(el);
+      w.flashFeedback(el, 'error', 'test error');
+      assertEqual(addedClass, 'flash-write-error');
+      assertEqual(titleSet, 'test error');
+      document.body.removeChild(el);
+    });
+
+    it('adds error class without message', () => {
+      const el = document.createElement('span');
+      let addedClass = null;
+      el.classList.add = (cls) => {
+        addedClass = cls;
+      };
+      el.classList.remove = () => {};
+      w.flashFeedback(el, 'error');
+      assertEqual(addedClass, 'flash-write-error');
+    });
+  });
+
+  describe('startInlineEdit commit and cancel', () => {
+    function makeEditableSpan() {
+      const span = document.createElement('span');
+      span.textContent = '42';
+      span.offsetWidth = 50;
+      span.querySelector = (sel) => {
+        if (sel === '.inline-value-input') {
+          return span._children.find(
+            (c) => c.className === 'inline-value-input',
+          );
+        }
+        return null;
+      };
+      document.body.appendChild(span);
+      return span;
+    }
+
+    it('commits on Enter key and calls onCommit', async () => {
+      const span = makeEditableSpan();
+      let commitHex = null;
+      let successCalled = false;
+
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async (hex) => {
+          commitHex = hex;
+          return { success: true };
+        },
+        onSuccess: () => {
+          successCalled = true;
+        },
+      });
+
+      const input = span._children.find(
+        (c) => c.className === 'inline-value-input',
+      );
+      assertTrue(!!input, 'Input should exist');
+
+      // Simulate Enter key
+      const keyHandler = input._eventListeners['keydown'];
+      assertTrue(!!keyHandler && keyHandler.length > 0, 'keydown handler');
+      await keyHandler[0]({
+        key: 'Enter',
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      assertEqual(commitHex, '2a', 'Should encode 42 as 0x2a');
+      document.body.removeChild(span);
+    });
+
+    it('cancels on Escape key', () => {
+      const span = makeEditableSpan();
+
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async () => ({ success: true }),
+      });
+
+      const input = span._children.find(
+        (c) => c.className === 'inline-value-input',
+      );
+      assertTrue(!!input, 'Input should exist');
+
+      // Simulate Escape key
+      const keyHandler = input._eventListeners['keydown'];
+      keyHandler[0]({
+        key: 'Escape',
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      // Should restore original text
+      assertTrue(
+        !span._children.find((c) => c.className === 'inline-value-input'),
+        'Input should be removed after cancel',
+      );
+      document.body.removeChild(span);
+    });
+
+    it('cancels on blur', () => {
+      const span = makeEditableSpan();
+
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async () => ({ success: true }),
+      });
+
+      const input = span._children.find(
+        (c) => c.className === 'inline-value-input',
+      );
+      assertTrue(!!input, 'Input should exist');
+
+      // Simulate blur
+      const blurHandler = input._eventListeners['blur'];
+      assertTrue(!!blurHandler && blurHandler.length > 0, 'blur handler');
+      blurHandler[0]();
+
+      document.body.removeChild(span);
+    });
+
+    it('shows error feedback on encode failure', async () => {
+      const span = makeEditableSpan();
+      span.textContent = 'not_a_number';
+      let addedClass = null;
+      span.classList.add = (cls) => {
+        addedClass = cls;
+      };
+      span.classList.remove = () => {};
+
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async () => ({ success: true }),
+      });
+
+      const input = span._children.find(
+        (c) => c.className === 'inline-value-input',
+      );
+      input.value = 'not_a_number';
+
+      const keyHandler = input._eventListeners['keydown'];
+      await keyHandler[0]({
+        key: 'Enter',
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      assertEqual(addedClass, 'flash-write-error');
+      document.body.removeChild(span);
+    });
+
+    it('shows error feedback on commit failure', async () => {
+      const span = makeEditableSpan();
+      let addedClass = null;
+      span.classList.add = (cls) => {
+        addedClass = cls;
+      };
+      span.classList.remove = () => {};
+
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async () => ({ success: false, error: 'device error' }),
+      });
+
+      const input = span._children.find(
+        (c) => c.className === 'inline-value-input',
+      );
+
+      const keyHandler = input._eventListeners['keydown'];
+      await keyHandler[0]({
+        key: 'Enter',
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      assertEqual(addedClass, 'flash-write-error');
+      document.body.removeChild(span);
+    });
+
+    it('shows error feedback on commit exception', async () => {
+      const span = makeEditableSpan();
+      let addedClass = null;
+      span.classList.add = (cls) => {
+        addedClass = cls;
+      };
+      span.classList.remove = () => {};
+
+      w.startInlineEdit(span, {
+        type: 'uint8_t',
+        size: 1,
+        onCommit: async () => {
+          throw new Error('network error');
+        },
+      });
+
+      const input = span._children.find(
+        (c) => c.className === 'inline-value-input',
+      );
+
+      const keyHandler = input._eventListeners['keydown'];
+      await keyHandler[0]({
+        key: 'Enter',
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      assertEqual(addedClass, 'flash-write-error');
+      document.body.removeChild(span);
+    });
+  });
+
+  describe('Symbols tree data-editable attributes', () => {
+    it('renders data-editable on leaf nodes', () => {
+      const html = w._renderTreeNode(
+        { name: 'counter', type_name: 'uint32_t', offset: 0, size: 4 },
+        'deadbeef',
+        false,
+        null,
+        0,
+      );
+      assertContains(html, 'data-editable="true"');
+      assertContains(html, 'data-offset="0"');
+      assertContains(html, 'data-size="4"');
+      assertContains(html, 'data-type="uint32_t"');
+    });
+
+    it('does not render data-editable on expandable nodes', () => {
+      const html = w._renderTreeNode(
+        { name: 'nested', type_name: 'struct_t', offset: 0, size: 8 },
+        null,
+        false,
+        { nested: { a: 1, b: 2 } },
+        0,
+      );
+      assertTrue(!html.includes('data-editable="true"'));
+    });
+
+    it('_renderStructTree includes data-sym-name', () => {
+      const html = w._renderStructTree(
+        [{ name: 'x', type_name: 'int', offset: 0, size: 4 }],
+        '01000000',
+        false,
+        null,
+        'my_var',
+      );
+      assertContains(html, 'data-sym-name="my_var"');
+    });
+  });
+
+  describe('Watch tree data-editable attributes', () => {
+    it('renders data-editable on scalar root watch node', () => {
+      const html = w._buildWatchTreeNode(
+        1,
+        'g_counter',
+        'g_counter',
+        {
+          success: true,
+          type_name: 'uint32_t',
+          is_aggregate: false,
+          hex_data: '2a000000',
+          size: 4,
+          addr: '0x20000000',
+        },
+        0,
+      );
+      assertContains(html, 'data-editable="true"');
+      assertContains(html, 'data-addr="0x20000000"');
+      assertContains(html, 'data-size="4"');
+    });
+
+    it('does not render data-editable on aggregate root', () => {
+      const html = w._buildWatchTreeNode(
+        2,
+        'g_struct',
+        'g_struct',
+        {
+          success: true,
+          type_name: 'my_struct_t',
+          is_aggregate: true,
+          struct_layout: [{ name: 'a', type_name: 'int', offset: 0, size: 4 }],
+          hex_data: '01000000',
+          size: 4,
+          addr: '0x20000000',
+        },
+        0,
+      );
+      // Root value span should not be editable (it's aggregate)
+      const valueMatch = html.match(
+        /watch-node-value[^>]*data-node-id="2"[^>]*/,
+      );
+      assertTrue(
+        !valueMatch || !valueMatch[0].includes('data-editable'),
+        'Aggregate root should not be editable',
+      );
+    });
+  });
 };

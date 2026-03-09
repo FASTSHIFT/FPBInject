@@ -169,6 +169,7 @@ const modules = [
   'features/fpb.js',
   'features/patch.js',
   'features/symbols.js',
+  'features/inline-edit.js',
   'features/editor.js',
   'features/config.js',
   'features/autoinject.js',

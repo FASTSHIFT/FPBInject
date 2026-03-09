@@ -270,8 +270,12 @@ function _buildWatchTreeNode(id, expr, name, data, depth = 0) {
     html += `<span class="watch-node-type">${escapeHtml(typeName)}</span>`;
   }
 
-  // Value
-  html += `<span class="watch-node-value" data-node-id="${nodeId}">${valueHtml}</span>`;
+  // Value — add edit attributes for scalar root nodes
+  const isScalarRoot = depth === 0 && hasData && !isExpandable && data.addr;
+  const rootEditAttrs = isScalarRoot
+    ? ` data-addr="${data.addr}" data-size="${data.size}" data-type="${escapeHtml(typeName)}" data-editable="true" data-watch-expr="${escapeHtml(expr)}"`
+    : '';
+  html += `<span class="watch-node-value" data-node-id="${nodeId}"${rootEditAttrs}>${valueHtml}</span>`;
 
   // Actions (only for root nodes)
   if (depth === 0) {
@@ -296,7 +300,15 @@ function _buildWatchTreeNode(id, expr, name, data, depth = 0) {
       const member = data.struct_layout[i];
       const childId = `${id}.${i}`;
       const childValue = _extractMemberValue(data.hex_data, member);
-      html += _buildWatchTreeChildNode(childId, member, childValue, depth + 1);
+      html += _buildWatchTreeChildNode(
+        childId,
+        member,
+        childValue,
+        depth + 1,
+        data.addr,
+        id,
+        expr,
+      );
     }
     html += `</div>`;
   }
@@ -304,7 +316,15 @@ function _buildWatchTreeNode(id, expr, name, data, depth = 0) {
   return html;
 }
 
-function _buildWatchTreeChildNode(nodeId, member, value, depth) {
+function _buildWatchTreeChildNode(
+  nodeId,
+  member,
+  value,
+  depth,
+  baseAddr,
+  watchId,
+  watchExpr,
+) {
   const typeName = member.type_name || '';
   const isPtr = typeName.trim().endsWith('*');
 
@@ -319,13 +339,21 @@ function _buildWatchTreeChildNode(nodeId, member, value, depth) {
   // Type
   html += `<span class="watch-node-type">${escapeHtml(typeName)}</span>`;
 
-  // Value
+  // Value — add edit attributes for writable fields
+  const fieldAddr = baseAddr
+    ? '0x' +
+      (parseInt(baseAddr, 16) + member.offset).toString(16).padStart(8, '0')
+    : '';
+  const editAttrs =
+    fieldAddr && !isPtr
+      ? ` data-addr="${fieldAddr}" data-size="${member.size}" data-type="${escapeHtml(typeName)}" data-editable="true" data-watch-id="${watchId}" data-watch-expr="${escapeHtml(watchExpr || '')}"`
+      : '';
   const valueHtml =
     value !== null
       ? `<span class="watch-decoded">${value.decoded}</span> <span class="watch-hex-hint">(${value.hex})</span>`
       : '<span class="watch-no-data">—</span>';
 
-  html += `<span class="watch-node-value" data-node-id="${nodeId}">${valueHtml}</span>`;
+  html += `<span class="watch-node-value" data-node-id="${nodeId}"${editAttrs}>${valueHtml}</span>`;
 
   // Deref button for pointers
   if (isPtr && value && value.decoded !== '0x00000000') {
@@ -695,6 +723,41 @@ function watchGetAutoRefreshInterval() {
 /* ===========================
    COLLAPSE/EXPAND ALL
    =========================== */
+
+// Event delegation for watch inline value editing (double-click)
+document.addEventListener('dblclick', (e) => {
+  const valueEl = e.target.closest('.watch-node-value[data-editable="true"]');
+  if (!valueEl) return;
+
+  const addr = valueEl.dataset.addr;
+  const size = parseInt(valueEl.dataset.size, 10);
+  const typeName = valueEl.dataset.type;
+  const watchId = valueEl.dataset.watchId;
+  const watchExpr = valueEl.dataset.watchExpr;
+  if (!addr) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  startInlineEdit(valueEl, {
+    type: typeName,
+    size: size,
+    onCommit: async (hexBytes) => {
+      const res = await fetch('/api/memory/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addr: addr, hex_data: hexBytes }),
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      // Re-evaluate the watch expression to refresh values
+      if (watchId && watchExpr) {
+        watchRefreshOne(parseInt(watchId, 10), watchExpr);
+      }
+    },
+  });
+});
 
 function watchCollapseAll() {
   for (const [key] of _watchExpandedState) {
