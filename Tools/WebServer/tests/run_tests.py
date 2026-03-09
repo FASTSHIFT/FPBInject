@@ -7,18 +7,15 @@ Supports coverage statistics and HTML report generation.
 
 Usage:
     ./tests/run_tests.py              # Run all tests
-    ./tests/run_tests.py -v           # Verbose output
     ./tests/run_tests.py --coverage   # Run tests and generate coverage report
     ./tests/run_tests.py --html       # Generate HTML coverage report
     ./tests/run_tests.py --target 80  # Set coverage target to 80%
 """
 
 import argparse
-import logging
 import os
 import sys
 import tempfile
-import unittest
 
 # Add parent directory to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +24,7 @@ sys.path.insert(0, PARENT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 # Default coverage target
-DEFAULT_COVERAGE_TARGET = 80
+DEFAULT_COVERAGE_TARGET = 85
 
 
 def run_scan_chinese():
@@ -55,7 +52,6 @@ def run_api_check():
 
 
 def run_tests(
-    verbosity=2,
     with_coverage=False,
     html_report=False,
     coverage_target=DEFAULT_COVERAGE_TARGET,
@@ -64,7 +60,6 @@ def run_tests(
     Run all tests.
 
     Args:
-        verbosity: Output verbosity level (0-2)
         with_coverage: Whether to enable coverage statistics
         html_report: Whether to generate HTML report
         coverage_target: Coverage target percentage
@@ -80,9 +75,6 @@ def run_tests(
     original_config_file = state_module.CONFIG_FILE
     state_module.CONFIG_FILE = test_config_file
     print(f"Using test config file: {test_config_file}")
-
-    # Suppress noisy log output during tests
-    logging.disable(logging.CRITICAL)
 
     try:
         if with_coverage:
@@ -105,15 +97,20 @@ def run_tests(
             )
             cov.start()
 
-        # Discover and load tests
-        loader = unittest.TestLoader()
-        suite = loader.discover(SCRIPT_DIR, pattern="test_*.py")
+        # Use pytest for real-time progress and per-test timing
+        import pytest as _pytest
 
-        # Run tests
-        runner = unittest.TextTestRunner(verbosity=verbosity)
-        result = runner.run(suite)
+        pytest_args = [
+            SCRIPT_DIR,
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            "--durations=0",
+            "-v",
+        ]
 
-        tests_passed = result.wasSuccessful()
+        exit_code = _pytest.main(pytest_args)
+        tests_passed = exit_code == 0
 
         if with_coverage:
             cov.stop()
@@ -146,9 +143,6 @@ def run_tests(
 
         return tests_passed
     finally:
-        # Re-enable logging
-        logging.disable(logging.NOTSET)
-
         # Restore original config file path
         state_module.CONFIG_FILE = original_config_file
 
@@ -162,7 +156,6 @@ def run_tests(
 
 def main():
     parser = argparse.ArgumentParser(description="FPBInject WebServer Test Runner")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
         "--coverage", action="store_true", help="Enable coverage statistics"
     )
@@ -197,12 +190,10 @@ def main():
             print("\n❌ API consistency check failed!")
             all_passed = False
 
-    verbosity = 2 if args.verbose else 1
     with_coverage = args.coverage or args.html
 
     # Run unit tests
     test_success = run_tests(
-        verbosity=verbosity,
         with_coverage=with_coverage,
         html_report=args.html,
         coverage_target=args.target,
