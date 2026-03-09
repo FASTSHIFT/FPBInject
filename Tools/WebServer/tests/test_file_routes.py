@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for app/routes/files.py"""
 
-import json
 import os
 import sys
 import tempfile
@@ -147,7 +146,7 @@ class TestFileWrite(FileRoutesBase):
         try:
             res = self.client.post(
                 "/api/file/write",
-                json={"path": f"~/fpbinject_test_write.tmp", "content": "test"},
+                json={"path": "~/fpbinject_test_write.tmp", "content": "test"},
             )
             data = res.get_json()
             self.assertTrue(data["success"])
@@ -157,11 +156,10 @@ class TestFileWrite(FileRoutesBase):
 
     def test_write_not_allowed_path(self):
         state.device.watch_dirs = []
-        res = self.client.post(
+        self.client.post(
             "/api/file/write",
             json={"path": "/tmp/not_allowed.txt", "content": "x"},
         )
-        data = res.get_json()
         # /tmp is not under home, so may be rejected
         # (depends on home dir, but test the logic path)
 
@@ -281,7 +279,7 @@ class TestFileWriteBinary(FileRoutesBase):
 
     def test_write_binary_not_allowed(self):
         state.device.watch_dirs = []
-        res = self.client.post(
+        self.client.post(
             "/api/file/write/binary",
             json={"path": "/tmp/not_allowed.bin", "hex_data": "aa"},
         )
