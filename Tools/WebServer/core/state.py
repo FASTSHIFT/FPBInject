@@ -28,6 +28,37 @@ CONFIG_FILE = os.path.join(
 CONFIG_VERSION = 1
 
 
+class ToolLogHandler(logging.Handler):
+    """Logging handler that forwards log records to the frontend OUTPUT panel.
+
+    Attach this to any Python logger to bridge its messages into the
+    tool_log system (SSE-streamed to the browser).
+    """
+
+    # Map Python log levels to tool_log level strings
+    _LEVEL_MAP = {
+        logging.DEBUG: "DEBUG",
+        logging.INFO: "INFO",
+        logging.WARNING: "WARN",
+        logging.ERROR: "ERROR",
+        logging.CRITICAL: "ERROR",
+    }
+
+    def __init__(self, device, prefix="", level=logging.INFO):
+        super().__init__(level)
+        self._device = device
+        self._prefix = prefix
+
+    def emit(self, record):
+        try:
+            level = self._LEVEL_MAP.get(record.levelno, "INFO")
+            msg = self.format(record)
+            tag = f"{self._prefix}: " if self._prefix else ""
+            self._device.add_tool_log(f"[{level}] {tag}{msg}")
+        except Exception:
+            self.handleError(record)
+
+
 class DeviceState:
     """State container for FPBInject device."""
 

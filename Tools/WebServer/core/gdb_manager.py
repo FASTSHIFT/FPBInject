@@ -17,8 +17,12 @@ import time
 
 from core.gdb_bridge import GDBRSPBridge
 from core.gdb_session import GDBSession
+from core.state import ToolLogHandler
 
 logger = logging.getLogger(__name__)
+
+# Handler instance for forwarding GDB logs to frontend
+_gdb_tool_log_handler = None
 
 # Default RSP port (0 = auto-assign)
 DEFAULT_RSP_PORT = 0
@@ -92,6 +96,11 @@ def start_gdb(state, read_memory_fn=None, write_memory_fn=None) -> bool:
 
         state.gdb_session = session
 
+        # Attach log handler to forward GDB session logs to frontend OUTPUT
+        global _gdb_tool_log_handler
+        _gdb_tool_log_handler = ToolLogHandler(device, prefix="GDB", level=logging.INFO)
+        logging.getLogger("core.gdb_session").addHandler(_gdb_tool_log_handler)
+
         elapsed = time.time() - t_start
         logger.info(f"GDB integration ready in {elapsed:.2f}s")
         return True
@@ -104,6 +113,11 @@ def start_gdb(state, read_memory_fn=None, write_memory_fn=None) -> bool:
 
 def stop_gdb(state):
     """Stop GDB Session and RSP Bridge."""
+    global _gdb_tool_log_handler
+    if _gdb_tool_log_handler:
+        logging.getLogger("core.gdb_session").removeHandler(_gdb_tool_log_handler)
+        _gdb_tool_log_handler = None
+
     if state.gdb_session:
         try:
             state.gdb_session.stop()
