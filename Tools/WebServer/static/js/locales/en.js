@@ -142,6 +142,10 @@ window.i18nResources['en'] = {
       reading_symbol: 'Reading {{name}}...',
       reading_symbol_size: 'Reading {{name}} ({{size}} bytes)...',
       loading_symbol: 'Loading {{name}}...',
+      save_to_file: 'Save',
+      saved_to_file: 'Saved {{size}} bytes to: {{path}}',
+      save_failed: 'Failed to save: {{error}}',
+      save_file_error: 'Failed to save file: {{error}}',
     },
 
     // Watch expressions

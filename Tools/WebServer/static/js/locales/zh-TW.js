@@ -142,6 +142,10 @@ window.i18nResources['zh-TW'] = {
       reading_symbol: '正在讀取 {{name}}...',
       reading_symbol_size: '正在讀取 {{name}} ({{size}} 位元組)...',
       loading_symbol: '正在載入 {{name}}...',
+      save_to_file: '儲存',
+      saved_to_file: '已儲存 {{size}} 位元組到: {{path}}',
+      save_failed: '儲存失敗: {{error}}',
+      save_file_error: '儲存檔案失敗: {{error}}',
     },
 
     // Watch 表達式

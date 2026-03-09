@@ -142,6 +142,10 @@ window.i18nResources['zh-CN'] = {
       reading_symbol: '正在读取 {{name}}...',
       reading_symbol_size: '正在读取 {{name}} ({{size}} 字节)...',
       loading_symbol: '正在加载 {{name}}...',
+      save_to_file: '保存',
+      saved_to_file: '已保存 {{size}} 字节到: {{path}}',
+      save_failed: '保存失败: {{error}}',
+      save_file_error: '保存文件失败: {{error}}',
     },
 
     // Watch 表达式

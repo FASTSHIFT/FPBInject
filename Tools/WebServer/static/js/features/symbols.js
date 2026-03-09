@@ -990,12 +990,24 @@ async function saveSymbolData(symName) {
       const data = await res.json();
 
       if (data.success) {
-        log.success(`Saved ${data.size} bytes to: ${fullPath}`);
+        log.success(
+          t(
+            'symbols.saved_to_file',
+            `Saved ${data.size} bytes to: ${fullPath}`,
+            { size: data.size, path: fullPath },
+          ),
+        );
       } else {
-        log.error(`Failed to save: ${data.error}`);
+        log.error(
+          t('symbols.save_failed', `Failed to save: ${data.error}`, {
+            error: data.error,
+          }),
+        );
       }
     } catch (e) {
-      log.error(`Failed to save file: ${e}`);
+      log.error(
+        t('symbols.save_file_error', `Failed to save file: ${e}`, { error: e }),
+      );
     }
   };
   state.fileBrowserFilter = '';
