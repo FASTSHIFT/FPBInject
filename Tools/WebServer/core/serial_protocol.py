@@ -542,9 +542,9 @@ class FPBProtocol:
         return raw
 
     def read_memory(
-        self, addr: int, length: int, progress_callback=None
+        self, addr: int, length: int, progress_callback=None, max_retries: int = 3
     ) -> Tuple[Optional[bytes], str]:
-        """Read memory from device in chunks.
+        """Read memory from device in chunks with retry support.
 
         Returns (data_bytes, message) on success, (None, error_msg) on failure.
         """
@@ -554,16 +554,27 @@ class FPBProtocol:
 
         while offset < length:
             n = min(bytes_per_chunk, length - offset)
-            cmd = f"-c read --addr 0x{addr + offset:X} --len {n}"
+            chunk_addr = addr + offset
+            cmd = f"-c read --addr 0x{chunk_addr:X} --len {n}"
+            last_error = ""
 
-            try:
-                resp = self.send_cmd(cmd, timeout=2.0)
-                data = self._parse_read_response(resp)
-                if data is None:
-                    return None, f"Read failed at offset 0x{offset:X}"
-                buf.extend(data)
-            except Exception as e:
-                return None, f"Read exception at offset 0x{offset:X}: {e}"
+            for attempt in range(max_retries + 1):
+                if attempt > 0:
+                    logger.warning(
+                        f"read_memory retry {attempt}/{max_retries} at 0x{chunk_addr:X}"
+                    )
+
+                try:
+                    resp = self.send_cmd(cmd, timeout=2.0)
+                    data = self._parse_read_response(resp)
+                    if data is not None:
+                        buf.extend(data)
+                        break
+                    last_error = f"Read failed at offset 0x{offset:X}"
+                except Exception as e:
+                    last_error = f"Read exception at offset 0x{offset:X}: {e}"
+            else:
+                return None, last_error
 
             offset += n
             if progress_callback:
@@ -572,9 +583,9 @@ class FPBProtocol:
         return bytes(buf), f"Read {length} bytes OK"
 
     def write_memory(
-        self, addr: int, data: bytes, progress_callback=None
+        self, addr: int, data: bytes, progress_callback=None, max_retries: int = 3
     ) -> Tuple[bool, str]:
-        """Write data to device memory in chunks.
+        """Write data to device memory in chunks with retry support.
 
         Returns (success, message).
         """
@@ -586,18 +597,28 @@ class FPBProtocol:
             chunk = data[offset : offset + bytes_per_chunk]
             b64 = base64.b64encode(chunk).decode("ascii")
             crc_val = crc16(chunk)
-            cmd = f"-c write --addr 0x{addr + offset:X} --data {b64} --crc 0x{crc_val:04X}"
+            chunk_addr = addr + offset
+            cmd = f"-c write --addr 0x{chunk_addr:X} --data {b64} --crc 0x{crc_val:04X}"
+            last_error = ""
 
-            try:
-                resp = self.send_cmd(cmd, timeout=2.0)
-                result = self.parse_response(resp)
-                if not result.get("ok"):
-                    return (
-                        False,
-                        f"Write failed at offset 0x{offset:X}: {result.get('msg')}",
+            for attempt in range(max_retries + 1):
+                if attempt > 0:
+                    logger.warning(
+                        f"write_memory retry {attempt}/{max_retries} at 0x{chunk_addr:X}"
                     )
-            except Exception as e:
-                return False, f"Write exception at offset 0x{offset:X}: {e}"
+
+                try:
+                    resp = self.send_cmd(cmd, timeout=2.0)
+                    result = self.parse_response(resp)
+                    if result.get("ok"):
+                        break
+                    last_error = (
+                        f"Write failed at offset 0x{offset:X}: {result.get('msg')}"
+                    )
+                except Exception as e:
+                    last_error = f"Write exception at offset 0x{offset:X}: {e}"
+            else:
+                return False, last_error
 
             offset += len(chunk)
             if progress_callback:

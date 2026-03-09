@@ -288,21 +288,40 @@ class TestReadMemory(unittest.TestCase):
         # 10 bytes / 4 chunk = 3 calls
         self.assertEqual(self.protocol.send_cmd.call_count, 3)
 
-    def test_read_failure(self):
-        """Return None on read failure."""
+    def test_read_failure_after_retries(self):
+        """Return None after exhausting all retries."""
         self.protocol.send_cmd = MagicMock(return_value="[FLERR] Read failed")
 
-        data, msg = self.protocol.read_memory(0x20000000, 16)
+        data, msg = self.protocol.read_memory(0x20000000, 16, max_retries=2)
         self.assertIsNone(data)
         self.assertIn("failed", msg.lower())
+        # 1 initial + 2 retries = 3 attempts
+        self.assertEqual(self.protocol.send_cmd.call_count, 3)
 
-    def test_read_exception(self):
-        """Return None on exception."""
+    def test_read_exception_after_retries(self):
+        """Return None after retrying exceptions."""
         self.protocol.send_cmd = MagicMock(side_effect=Exception("Timeout"))
 
-        data, msg = self.protocol.read_memory(0x20000000, 16)
+        data, msg = self.protocol.read_memory(0x20000000, 16, max_retries=1)
         self.assertIsNone(data)
         self.assertIn("Timeout", msg)
+        self.assertEqual(self.protocol.send_cmd.call_count, 2)
+
+    def test_read_retry_then_succeed(self):
+        """Succeed after transient failure."""
+        import base64
+        from utils.crc import crc16
+
+        raw = b"\xcc" * 16
+        b64 = base64.b64encode(raw).decode()
+        crc = crc16(raw)
+        good_resp = f"[FLOK] READ 16 bytes crc=0x{crc:04X} data={b64}"
+
+        self.protocol.send_cmd = MagicMock(side_effect=["[FLERR] noise", good_resp])
+
+        data, msg = self.protocol.read_memory(0x20000000, 16)
+        self.assertEqual(data, raw)
+        self.assertEqual(self.protocol.send_cmd.call_count, 2)
 
 
 class TestWriteMemory(unittest.TestCase):
@@ -333,21 +352,33 @@ class TestWriteMemory(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(self.protocol.send_cmd.call_count, 3)
 
-    def test_write_failure(self):
-        """Return False on write failure."""
+    def test_write_failure_after_retries(self):
+        """Return False after exhausting all retries."""
         self.protocol.send_cmd = MagicMock(return_value="[FLERR] Write error")
 
-        ok, msg = self.protocol.write_memory(0x20000000, b"\x01\x02")
+        ok, msg = self.protocol.write_memory(0x20000000, b"\x01\x02", max_retries=2)
         self.assertFalse(ok)
         self.assertIn("failed", msg.lower())
+        self.assertEqual(self.protocol.send_cmd.call_count, 3)
 
-    def test_write_exception(self):
-        """Return False on exception."""
+    def test_write_exception_after_retries(self):
+        """Return False after retrying exceptions."""
         self.protocol.send_cmd = MagicMock(side_effect=Exception("Serial error"))
 
-        ok, msg = self.protocol.write_memory(0x20000000, b"\x01")
+        ok, msg = self.protocol.write_memory(0x20000000, b"\x01", max_retries=1)
         self.assertFalse(ok)
         self.assertIn("Serial error", msg)
+        self.assertEqual(self.protocol.send_cmd.call_count, 2)
+
+    def test_write_retry_then_succeed(self):
+        """Succeed after transient failure."""
+        self.protocol.send_cmd = MagicMock(
+            side_effect=["[FLERR] noise", "[FLOK] WRITE 2 bytes"]
+        )
+
+        ok, msg = self.protocol.write_memory(0x20000000, b"\x01\x02")
+        self.assertTrue(ok)
+        self.assertEqual(self.protocol.send_cmd.call_count, 2)
 
 
 if __name__ == "__main__":
