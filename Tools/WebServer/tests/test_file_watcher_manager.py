@@ -184,6 +184,12 @@ class TestTriggerAutoInject(unittest.TestCase):
         """Reset state before each test"""
         state.device = DeviceState()
 
+    @staticmethod
+    def _run_in_worker_immediate(device, func, timeout=5.0):
+        """Mock run_in_device_worker that executes func immediately."""
+        func()
+        return True
+
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_no_markers(self, mock_gen_class, mock_get_fpb):
@@ -210,10 +216,11 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
+    @patch("services.device_worker.run_in_device_worker")
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_no_markers_with_active_inject(
-        self, mock_gen_class, mock_get_fpb
+        self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Test auto inject clears injection when markers removed"""
         from services.file_watcher_manager import _trigger_auto_inject
@@ -235,6 +242,9 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_fpb = Mock()
             mock_fpb.unpatch.return_value = (True, "")
             mock_get_fpb.return_value = mock_fpb
+
+            # run_in_device_worker executes the callback immediately
+            mock_run_worker.side_effect = self._run_in_worker_immediate
 
             _trigger_auto_inject(temp_path)
 
@@ -307,9 +317,12 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
+    @patch("services.device_worker.run_in_device_worker")
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
-    def test_trigger_auto_inject_success(self, mock_gen_class, mock_get_fpb):
+    def test_trigger_auto_inject_success(
+        self, mock_gen_class, mock_get_fpb, mock_run_worker
+    ):
         """Test successful auto inject"""
         from services.file_watcher_manager import _trigger_auto_inject
 
@@ -347,6 +360,9 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_fpb.info.return_value = ({}, None)
             mock_get_fpb.return_value = mock_fpb
 
+            # run_in_device_worker executes the callback immediately
+            mock_run_worker.side_effect = self._run_in_worker_immediate
+
             _trigger_auto_inject(temp_path)
 
             # Wait for background thread
@@ -360,9 +376,12 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
+    @patch("services.device_worker.run_in_device_worker")
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
-    def test_trigger_auto_inject_partial_success(self, mock_gen_class, mock_get_fpb):
+    def test_trigger_auto_inject_partial_success(
+        self, mock_gen_class, mock_get_fpb, mock_run_worker
+    ):
         """Test auto inject with partial success"""
         from services.file_watcher_manager import _trigger_auto_inject
 
@@ -408,6 +427,9 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_fpb.info.return_value = ({}, None)
             mock_get_fpb.return_value = mock_fpb
 
+            # run_in_device_worker executes the callback immediately
+            mock_run_worker.side_effect = self._run_in_worker_immediate
+
             _trigger_auto_inject(temp_path)
 
             # Wait for background thread
@@ -418,9 +440,12 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
+    @patch("services.device_worker.run_in_device_worker")
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
-    def test_trigger_auto_inject_failure(self, mock_gen_class, mock_get_fpb):
+    def test_trigger_auto_inject_failure(
+        self, mock_gen_class, mock_get_fpb, mock_run_worker
+    ):
         """Test auto inject failure"""
         from services.file_watcher_manager import _trigger_auto_inject
 
@@ -445,6 +470,9 @@ class TestTriggerAutoInject(unittest.TestCase):
                 {"error": "Compile failed", "errors": ["Syntax error"]},
             )
             mock_get_fpb.return_value = mock_fpb
+
+            # run_in_device_worker executes the callback immediately
+            mock_run_worker.side_effect = self._run_in_worker_immediate
 
             _trigger_auto_inject(temp_path)
 
@@ -482,9 +510,12 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
+    @patch("services.device_worker.run_in_device_worker")
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
-    def test_trigger_auto_inject_many_functions(self, mock_gen_class, mock_get_fpb):
+    def test_trigger_auto_inject_many_functions(
+        self, mock_gen_class, mock_get_fpb, mock_run_worker
+    ):
         """Test auto inject with more than 3 functions"""
         from services.file_watcher_manager import _trigger_auto_inject
 
@@ -526,6 +557,9 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_fpb.info.return_value = ({}, None)
             mock_get_fpb.return_value = mock_fpb
 
+            # run_in_device_worker executes the callback immediately
+            mock_run_worker.side_effect = self._run_in_worker_immediate
+
             _trigger_auto_inject(temp_path)
 
             # Wait for background thread
@@ -534,6 +568,43 @@ class TestTriggerAutoInject(unittest.TestCase):
             self.assertEqual(state.device.auto_inject_status, "success")
             # Should show "etc." for more than 3 functions
             self.assertIn("etc", state.device.auto_inject_message)
+        finally:
+            os.unlink(temp_path)
+
+    @patch("services.device_worker.run_in_device_worker")
+    @patch("routes.get_fpb_inject")
+    @patch("core.patch_generator.PatchGenerator")
+    def test_trigger_auto_inject_worker_timeout(
+        self, mock_gen_class, mock_get_fpb, mock_run_worker
+    ):
+        """Test auto inject when DeviceWorker times out"""
+        from services.file_watcher_manager import _trigger_auto_inject
+
+        # Create temp file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
+            f.write("void test_func(void) {}")
+            temp_path = f.name
+
+        try:
+            mock_gen = Mock()
+            mock_gen.generate_patch_inplace.return_value = (temp_path, ["test_func"])
+            mock_gen_class.return_value = mock_gen
+
+            # Mock connected device
+            mock_ser = Mock()
+            mock_ser.isOpen.return_value = True
+            state.device.ser = mock_ser
+
+            # run_in_device_worker returns False (timeout)
+            mock_run_worker.return_value = False
+
+            _trigger_auto_inject(temp_path)
+
+            # Wait for background thread
+            time.sleep(0.3)
+
+            self.assertEqual(state.device.auto_inject_status, "failed")
+            self.assertIn("timeout", state.device.auto_inject_message.lower())
         finally:
             os.unlink(temp_path)
 

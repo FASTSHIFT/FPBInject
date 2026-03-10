@@ -240,23 +240,73 @@ class FPBInject:
         return elf_utils.get_symbols(elf_path, self._toolchain_path)
 
     def _resolve_symbol_addr(self, sym_name: str) -> Optional[int]:
-        """Resolve a symbol name to its address via GDB session.
+        """Resolve a symbol name to its address.
+
+        Uses nm (via elf_utils.get_symbols) for fast offline lookup.
+        Falls back to GDB session if nm lookup fails.
 
         Returns the address as int, or None if not found.
         """
+        # Fast path: use nm to resolve symbol from ELF
+        elf_path = getattr(self.device, "elf_path", None)
+        if elf_path and os.path.exists(elf_path):
+            symbols = self._get_elf_symbols()
+            if sym_name in symbols:
+                addr = symbols[sym_name]["addr"]
+                logger.debug(f"Symbol '{sym_name}' resolved via nm: 0x{addr:08X}")
+                return addr
+
+        # Slow path: fall back to GDB session
         from core.state import state
         from core.gdb_manager import is_gdb_available
 
         if not is_gdb_available(state):
-            logger.warning("GDB not available, cannot resolve symbol address")
+            logger.warning(
+                f"Symbol '{sym_name}' not found via nm and GDB not available"
+            )
             return None
 
+        logger.debug(f"Symbol '{sym_name}' not in nm cache, falling back to GDB")
         info = state.gdb_session.lookup_symbol(sym_name)
         if info is None:
             return None
 
         addr = info["addr"] if isinstance(info, dict) else info
         return addr
+
+    def _get_elf_symbols(self) -> Dict[str, dict]:
+        """Get cached ELF symbols (lazy-loaded, invalidated on ELF change).
+
+        Returns dict: {name: {"addr": int, "sym_type": str}}
+        """
+        elf_path = self.device.elf_path
+        if not elf_path:
+            return {}
+
+        # Check if cache is still valid
+        try:
+            current_mtime = os.path.getmtime(elf_path)
+        except OSError:
+            return {}
+
+        if (
+            hasattr(self, "_elf_symbols_cache")
+            and self._elf_symbols_cache_path == elf_path
+            and self._elf_symbols_cache_mtime == current_mtime
+        ):
+            return self._elf_symbols_cache
+
+        # Rebuild cache
+        logger.info(f"Loading ELF symbols via nm: {elf_path}")
+        t_start = time.time()
+        symbols = elf_utils.get_symbols(elf_path, self._toolchain_path)
+        elapsed = time.time() - t_start
+        logger.info(f"Loaded {len(symbols)} symbols via nm in {elapsed:.3f}s")
+
+        self._elf_symbols_cache = symbols
+        self._elf_symbols_cache_path = elf_path
+        self._elf_symbols_cache_mtime = current_mtime
+        return symbols
 
     def disassemble_function(self, elf_path: str, func_name: str) -> Tuple[bool, str]:
         """Disassemble a specific function from ELF file."""

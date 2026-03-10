@@ -2522,3 +2522,102 @@ class TestFPBv2ModeEnforcement(unittest.TestCase):
         )
         self.assertTrue(success)
         mock_tpatch.assert_called_once()
+
+
+class TestResolveSymbolAddr(unittest.TestCase):
+    """Tests for _resolve_symbol_addr with nm-first strategy."""
+
+    def setUp(self):
+        self.device = DeviceState()
+        self.fpb = FPBInject(self.device)
+
+    def test_resolve_via_nm_fast_path(self):
+        """Symbol found via nm should not invoke GDB."""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            fake_symbols = {
+                "lv_obj_create": {"addr": 0x2C2DD780, "sym_type": "function"},
+            }
+            with patch.object(self.fpb, "_get_elf_symbols", return_value=fake_symbols):
+                addr = self.fpb._resolve_symbol_addr("lv_obj_create")
+                self.assertEqual(addr, 0x2C2DD780)
+        finally:
+            os.remove(self.device.elf_path)
+
+    @patch("fpb_inject.elf_utils.get_symbols")
+    def test_resolve_via_nm_cache_invalidation(self, mock_get_symbols):
+        """Cache should be invalidated when ELF mtime changes."""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            mock_get_symbols.return_value = {
+                "func_a": {"addr": 0x1000, "sym_type": "function"},
+            }
+
+            # First call: cache miss -> calls get_symbols
+            addr = self.fpb._resolve_symbol_addr("func_a")
+            self.assertEqual(addr, 0x1000)
+            self.assertEqual(mock_get_symbols.call_count, 1)
+
+            # Second call: cache hit -> no additional get_symbols call
+            addr = self.fpb._resolve_symbol_addr("func_a")
+            self.assertEqual(addr, 0x1000)
+            self.assertEqual(mock_get_symbols.call_count, 1)
+
+            # Touch file to change mtime -> cache invalidated
+            import time
+
+            time.sleep(0.05)
+            os.utime(self.device.elf_path, None)
+
+            mock_get_symbols.return_value = {
+                "func_a": {"addr": 0x2000, "sym_type": "function"},
+            }
+
+            addr = self.fpb._resolve_symbol_addr("func_a")
+            self.assertEqual(addr, 0x2000)
+            self.assertEqual(mock_get_symbols.call_count, 2)
+        finally:
+            os.remove(self.device.elf_path)
+
+    def test_resolve_falls_back_to_gdb(self):
+        """Symbol not in nm output should fall back to GDB."""
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
+            self.device.elf_path = f.name
+
+        try:
+            with patch.object(self.fpb, "_get_elf_symbols", return_value={}), patch(
+                "core.gdb_manager.is_gdb_available", return_value=True
+            ), patch("core.state.state") as mock_state:
+                mock_session = Mock()
+                mock_session.lookup_symbol.return_value = {"addr": 0x3000}
+                mock_state.gdb_session = mock_session
+
+                addr = self.fpb._resolve_symbol_addr("hidden_sym")
+                self.assertEqual(addr, 0x3000)
+                mock_session.lookup_symbol.assert_called_once_with("hidden_sym")
+        finally:
+            os.remove(self.device.elf_path)
+
+    def test_resolve_no_elf_no_gdb(self):
+        """No ELF and no GDB should return None."""
+        self.device.elf_path = None
+
+        with patch("core.gdb_manager.is_gdb_available", return_value=False), patch(
+            "core.state.state"
+        ):
+            addr = self.fpb._resolve_symbol_addr("any_sym")
+            self.assertIsNone(addr)
+
+    def test_get_elf_symbols_no_elf(self):
+        """_get_elf_symbols with no elf_path returns empty dict."""
+        self.device.elf_path = None
+        self.assertEqual(self.fpb._get_elf_symbols(), {})
+
+    def test_get_elf_symbols_missing_file(self):
+        """_get_elf_symbols with non-existent file returns empty dict."""
+        self.device.elf_path = "/nonexistent/path.elf"
+        self.assertEqual(self.fpb._get_elf_symbols(), {})

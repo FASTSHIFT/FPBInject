@@ -493,9 +493,10 @@ class TestAutoInjectInplace(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    @patch("services.device_worker.run_in_device_worker")
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
-    def test_inplace_flow_success(self, mock_gen_class, mock_get_fpb):
+    def test_inplace_flow_success(self, mock_gen_class, mock_get_fpb, mock_run_worker):
         """Auto inject success path uses in-place mode."""
         from services.file_watcher_manager import _trigger_auto_inject
 
@@ -540,6 +541,13 @@ class TestAutoInjectInplace(unittest.TestCase):
             },
         )
 
+        # run_in_device_worker executes the callback immediately
+        def _run_immediate(device, func, timeout=5.0):
+            func()
+            return True
+
+        mock_run_worker.side_effect = _run_immediate
+
         try:
             _trigger_auto_inject(path)
             time.sleep(0.5)
@@ -559,9 +567,12 @@ class TestAutoInjectInplace(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    @patch("services.device_worker.run_in_device_worker")
     @patch("routes.get_fpb_inject")
     @patch("core.patch_generator.PatchGenerator")
-    def test_inplace_flow_auto_unpatch(self, mock_gen_class, mock_get_fpb):
+    def test_inplace_flow_auto_unpatch(
+        self, mock_gen_class, mock_get_fpb, mock_run_worker
+    ):
         """Auto unpatch when markers are removed."""
         from services.file_watcher_manager import _trigger_auto_inject
 
@@ -577,6 +588,13 @@ class TestAutoInjectInplace(unittest.TestCase):
         mock_fpb.enter_fl_mode.return_value = True
         mock_fpb.exit_fl_mode.return_value = True
         mock_fpb.unpatch.return_value = (True, "OK")
+
+        # run_in_device_worker executes the callback immediately
+        def _run_immediate(device, func, timeout=5.0):
+            func()
+            return True
+
+        mock_run_worker.side_effect = _run_immediate
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
             f.write("void plain(void) {}")

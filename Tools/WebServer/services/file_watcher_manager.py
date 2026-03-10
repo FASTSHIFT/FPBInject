@@ -200,13 +200,20 @@ def _trigger_auto_inject(file_path):
     device.auto_inject_progress = 10
     device.auto_inject_last_update = time.time()
 
+    # Timeout for serial operations dispatched to the fpb-worker thread.
+    # inject_multi involves compile + upload + patch for each function,
+    # so we need a generous timeout.
+    WORKER_TIMEOUT = 120.0
+
     def do_auto_inject():
         try:
             from core.patch_generator import PatchGenerator
+            from services.device_worker import run_in_device_worker
 
             gen = PatchGenerator()
 
             # Step 1: Find FPB_INJECT markers (in-place mode)
+            # This is pure file I/O — no serial access, safe in any thread.
             device.auto_inject_status = "detecting"
             device.auto_inject_message = "Searching for FPB_INJECT markers..."
             device.auto_inject_progress = 20
@@ -222,7 +229,8 @@ def _trigger_auto_inject(file_path):
                 logger.info(f"No FPB_INJECT markers found in {file_path}")
 
                 # Auto unpatch: if the last injected target function is now unmarked,
-                # it means the marker has been removed
+                # it means the marker has been removed.
+                # Serial I/O must go through DeviceWorker.
                 if device.inject_active and device.last_inject_target:
                     logger.info(
                         f"Target function '{device.last_inject_target}' marker removed, auto unpatch..."
@@ -230,29 +238,44 @@ def _trigger_auto_inject(file_path):
                     device.auto_inject_message = (
                         "Markers removed, clearing injection..."
                     )
-                    try:
-                        fpb = get_fpb_inject()
-                        fpb.enter_fl_mode()
+
+                    unpatch_result = {"success": False, "msg": ""}
+
+                    def do_unpatch():
                         try:
-                            success, msg = fpb.unpatch(0)
-                            if success:
-                                device.inject_active = False
-                                device.auto_inject_status = "success"
-                                device.auto_inject_message = (
-                                    "Markers removed, injection automatically cleared"
-                                )
-                                device.auto_inject_progress = 100
-                                logger.info("Auto unpatch successful")
-                            else:
-                                device.auto_inject_message = (
-                                    f"Failed to clear injection: {msg}"
-                                )
-                                logger.warning(f"Auto unpatch failed: {msg}")
-                        finally:
-                            fpb.exit_fl_mode()
-                    except Exception as e:
-                        device.auto_inject_message = f"Error clearing injection: {e}"
-                        logger.warning(f"Auto unpatch error: {e}")
+                            fpb = get_fpb_inject()
+                            fpb.enter_fl_mode()
+                            try:
+                                ok, msg = fpb.unpatch(0)
+                                unpatch_result["success"] = ok
+                                unpatch_result["msg"] = msg
+                            finally:
+                                fpb.exit_fl_mode()
+                        except Exception as e:
+                            unpatch_result["msg"] = str(e)
+
+                    if run_in_device_worker(device, do_unpatch, timeout=WORKER_TIMEOUT):
+                        if unpatch_result["success"]:
+                            device.inject_active = False
+                            device.auto_inject_status = "success"
+                            device.auto_inject_message = (
+                                "Markers removed, injection automatically cleared"
+                            )
+                            device.auto_inject_progress = 100
+                            logger.info("Auto unpatch successful")
+                        else:
+                            device.auto_inject_message = (
+                                f"Failed to clear injection: {unpatch_result['msg']}"
+                            )
+                            logger.warning(
+                                f"Auto unpatch failed: {unpatch_result['msg']}"
+                            )
+                    else:
+                        device.auto_inject_message = (
+                            "Failed to clear injection: DeviceWorker timeout"
+                        )
+                        logger.warning("Auto unpatch: DeviceWorker timeout")
+
                     device.auto_inject_last_update = time.time()
                 else:
                     device.auto_inject_message = "No FPB_INJECT markers found"
@@ -285,108 +308,115 @@ def _trigger_auto_inject(file_path):
                 device.auto_inject_last_update = time.time()
                 return
 
-            # Step 4: Enter fl interactive mode
-            fpb = get_fpb_inject()
+            # Step 4 & 5: Enter fl mode, inject, exit fl mode
+            # All serial I/O is dispatched to the fpb-worker thread via
+            # DeviceWorker to avoid ThreadCheckedSerial violations.
+            inject_result = {"success": False, "result": {}}
 
-            device.auto_inject_status = "compiling"
-            device.auto_inject_message = "Entering fl interactive mode..."
-            device.auto_inject_progress = 55
-            device.auto_inject_last_update = time.time()
+            def do_inject():
+                fpb = get_fpb_inject()
 
-            fpb.enter_fl_mode()
-
-            try:
-                # Step 5: Perform multi-function injection
-                device.auto_inject_message = "Compiling..."
-                device.auto_inject_progress = 60
+                device.auto_inject_status = "compiling"
+                device.auto_inject_message = "Entering fl interactive mode..."
+                device.auto_inject_progress = 55
                 device.auto_inject_last_update = time.time()
 
-                # Get source file extension from the original file
-                source_ext = os.path.splitext(file_path)[1] or ".c"
+                fpb.enter_fl_mode()
 
-                device.auto_inject_status = "injecting"
-                func_list = ", ".join(marked[:3])
-                if len(marked) > 3:
-                    func_list += f" etc. {len(marked)} functions"
-                device.auto_inject_message = f"Injecting: {func_list}"
-                device.auto_inject_progress = 80
-                device.auto_inject_last_update = time.time()
+                try:
+                    device.auto_inject_message = "Compiling..."
+                    device.auto_inject_progress = 60
+                    device.auto_inject_last_update = time.time()
 
-                # Use inject_multi for multi-function injection (in-place mode)
-                # Each inject function gets its own Slot with smart reuse
-                success, result = fpb.inject_multi(
-                    source_file=file_path,
-                    inject_functions=marked,
-                    patch_mode=device.patch_mode,
-                    source_ext=source_ext,
-                    original_source_file=file_path,
-                )
+                    source_ext = os.path.splitext(file_path)[1] or ".c"
 
-                if success:
-                    successful_count = result.get("successful_count", 0)
-                    total_count = result.get("total_count", 0)
-                    injections = result.get("injections", [])
+                    device.auto_inject_status = "injecting"
+                    func_list = ", ".join(marked[:3])
+                    if len(marked) > 3:
+                        func_list += f" etc. {len(marked)} functions"
+                    device.auto_inject_message = f"Injecting: {func_list}"
+                    device.auto_inject_progress = 80
+                    device.auto_inject_last_update = time.time()
 
-                    # Build summary message
-                    if successful_count == total_count:
-                        status_msg = (
-                            f"Injection successful: {successful_count} functions"
-                        )
-                    else:
-                        status_msg = f"Partially successful: {successful_count}/{total_count} functions"
-
-                    # Add injected function names
-                    injected_names = [
-                        inj.get("target_func", "?")
-                        for inj in injections
-                        if inj.get("success", False)
-                    ]
-                    if injected_names:
-                        status_msg += f" ({', '.join(injected_names[:3])})"
-                        if len(injected_names) > 3:
-                            status_msg += " etc."
-
-                    device.auto_inject_status = "success"
-                    device.auto_inject_message = status_msg
-                    device.auto_inject_progress = 100
-                    device.auto_inject_result = result
-                    device.inject_active = True
-                    device.last_inject_time = time.time()
-
-                    # Set last inject target/func from first successful injection
-                    for inj in injections:
-                        if inj.get("success", False):
-                            device.last_inject_target = inj.get("target_func")
-                            device.last_inject_func = inj.get("inject_func")
-                            break
-
-                    logger.info(
-                        f"Auto inject successful: {successful_count}/{total_count} functions"
+                    success, result = fpb.inject_multi(
+                        source_file=file_path,
+                        inject_functions=marked,
+                        patch_mode=device.patch_mode,
+                        source_ext=source_ext,
+                        original_source_file=file_path,
                     )
 
-                    # Log errors if any
-                    errors = result.get("errors", [])
-                    if errors:
-                        for err in errors:
-                            logger.warning(f"Injection warning: {err}")
+                    inject_result["success"] = success
+                    inject_result["result"] = result
 
-                    # Update slot info after successful injection
-                    fpb.info()
-                else:
-                    device.auto_inject_status = "failed"
-                    error_msg = result.get("error", "Unknown error")
-                    errors = result.get("errors", [])
-                    if errors:
-                        error_msg = "; ".join(errors[:3])
-                    device.auto_inject_message = f"Injection failed: {error_msg}"
-                    device.auto_inject_progress = 0
-                    logger.error(f"Auto inject failed: {error_msg}")
+                    # Update slot info after injection attempt
+                    if success:
+                        fpb.info()
+                finally:
+                    fpb.exit_fl_mode()
 
-            finally:
-                # Step 6: Exit fl interactive mode
-                device.auto_inject_message += " (Exiting fl mode)"
+            if not run_in_device_worker(device, do_inject, timeout=WORKER_TIMEOUT):
+                device.auto_inject_status = "failed"
+                device.auto_inject_message = "Injection failed: DeviceWorker timeout"
+                device.auto_inject_progress = 0
                 device.auto_inject_last_update = time.time()
-                fpb.exit_fl_mode()
+                logger.error("Auto inject: DeviceWorker timeout")
+                return
+
+            # Step 6: Process injection result
+            success = inject_result["success"]
+            result = inject_result["result"]
+
+            if success:
+                successful_count = result.get("successful_count", 0)
+                total_count = result.get("total_count", 0)
+                injections = result.get("injections", [])
+
+                if successful_count == total_count:
+                    status_msg = f"Injection successful: {successful_count} functions"
+                else:
+                    status_msg = f"Partially successful: {successful_count}/{total_count} functions"
+
+                injected_names = [
+                    inj.get("target_func", "?")
+                    for inj in injections
+                    if inj.get("success", False)
+                ]
+                if injected_names:
+                    status_msg += f" ({', '.join(injected_names[:3])})"
+                    if len(injected_names) > 3:
+                        status_msg += " etc."
+
+                device.auto_inject_status = "success"
+                device.auto_inject_message = status_msg
+                device.auto_inject_progress = 100
+                device.auto_inject_result = result
+                device.inject_active = True
+                device.last_inject_time = time.time()
+
+                for inj in injections:
+                    if inj.get("success", False):
+                        device.last_inject_target = inj.get("target_func")
+                        device.last_inject_func = inj.get("inject_func")
+                        break
+
+                logger.info(
+                    f"Auto inject successful: {successful_count}/{total_count} functions"
+                )
+
+                errors = result.get("errors", [])
+                if errors:
+                    for err in errors:
+                        logger.warning(f"Injection warning: {err}")
+            else:
+                device.auto_inject_status = "failed"
+                error_msg = result.get("error", "Unknown error")
+                errors = result.get("errors", [])
+                if errors:
+                    error_msg = "; ".join(errors[:3])
+                device.auto_inject_message = f"Injection failed: {error_msg}"
+                device.auto_inject_progress = 0
+                logger.error(f"Auto inject failed: {error_msg}")
 
             device.auto_inject_last_update = time.time()
 
@@ -397,6 +427,8 @@ def _trigger_auto_inject(file_path):
             device.auto_inject_last_update = time.time()
             logger.exception(f"Auto inject error: {e}")
 
-    # Run in background thread to not block the watcher
+    # Run in background thread to not block the watcher.
+    # Note: serial I/O inside do_auto_inject is dispatched to the
+    # fpb-worker thread via run_in_device_worker, so no thread violation.
     thread = threading.Thread(target=do_auto_inject, daemon=True)
     thread.start()
