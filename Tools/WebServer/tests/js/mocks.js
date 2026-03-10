@@ -507,10 +507,13 @@ const browserGlobals = {
   window: null,
   navigator: { clipboard: { writeText: () => Promise.resolve() } },
   console,
-  // i18n translation function mock - returns fallback or key
+  // i18n translation function mock - returns fallback with interpolation
   t: (key, fallbackOrOptions = {}, options = {}) => {
     if (typeof fallbackOrOptions === 'string') {
-      return fallbackOrOptions;
+      const vars = typeof options === 'object' ? options : {};
+      return fallbackOrOptions.replace(/\{\{(\w+)\}\}/g, (_, k) =>
+        vars[k] != null ? vars[k] : `{{${k}}}`,
+      );
     }
     return key;
   },

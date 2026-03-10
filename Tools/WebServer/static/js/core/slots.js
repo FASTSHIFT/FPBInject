@@ -56,8 +56,15 @@ function updateSlotUI() {
 
   document.getElementById('activeSlotCount').textContent =
     `${activeCount}/${maxSlots}`;
-  document.getElementById('currentSlotDisplay').textContent =
-    `Slot: ${state.selectedSlot}`;
+  const slotDisplay = document.getElementById('currentSlotDisplay');
+  const slotValue = state.selectedSlot != null ? state.selectedSlot : '-';
+  slotDisplay.textContent = t('statusbar.slot', 'Slot: {{slot}}', {
+    slot: slotValue,
+  });
+  slotDisplay.setAttribute(
+    'data-i18n-options',
+    JSON.stringify({ slot: slotValue }),
+  );
 
   // Update slotSelect dropdown
   const slotSelect = document.getElementById('slotSelect');
