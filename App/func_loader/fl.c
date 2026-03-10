@@ -400,15 +400,15 @@ static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len, int crc, bool f
     }
 
     /* CRC-16 covers: addr(4B) + len(4B) + data payload */
-    uint32_t addr32 = (uint32_t)addr;
-    uint32_t len32 = (uint32_t)len;
-    uint16_t crc = 0xFFFF;
-    crc = calc_crc16_base(crc, &addr32, sizeof(addr32));
-    crc = calc_crc16_base(crc, &len32, sizeof(len32));
-    crc = calc_crc16_base(crc, buf, len);
+    uint32_t resp_addr32 = (uint32_t)addr;
+    uint32_t resp_len32 = (uint32_t)len;
+    uint16_t resp_crc = 0xFFFF;
+    resp_crc = calc_crc16_base(resp_crc, &resp_addr32, sizeof(resp_addr32));
+    resp_crc = calc_crc16_base(resp_crc, &resp_len32, sizeof(resp_len32));
+    resp_crc = calc_crc16_base(resp_crc, buf, len);
 
     /* Output in segments to avoid buffer overflow */
-    fl_print("[FLOK] READ %d bytes crc=0x%04X data=", len, (unsigned)crc);
+    fl_print("[FLOK] READ %d bytes crc=0x%04X data=", len, (unsigned)resp_crc);
     fl_print_raw(b64_buf);
     fl_print_raw("\n[FLEND]\n");
 }
@@ -539,6 +539,7 @@ static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
     (void)comp;
     (void)orig;
     (void)target;
+    (void)crc;
     fl_response(false, "Trampoline disabled (FPB_NO_TRAMPOLINE)");
 #endif
 }
@@ -584,6 +585,7 @@ static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr
     (void)comp;
     (void)orig;
     (void)target;
+    (void)crc;
     fl_response(false, "DebugMonitor disabled (FPB_NO_DEBUGMON)");
 #endif
 }
