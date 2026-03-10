@@ -976,6 +976,7 @@ body.resizing-panel .sash {
   justify-content: space-between;
   padding: 0 10px;
   font-size: 11px;
+  z-index: 2;
 }
 
 .status-left,
