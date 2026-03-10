@@ -1098,6 +1098,101 @@ void test_loader_cmd_write_zero_addr(void) {
     TEST_ASSERT(mock_output_contains("Invalid address"));
 }
 
+void test_loader_cmd_read_zero_addr(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Read from address 0 should fail */
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0x0", "--len", "4"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid address range"));
+}
+
+void test_loader_cmd_read_zero_addr_force(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Read from address 0 with --force should bypass the check.
+     * Note: actual memcpy from 0x0 may segfault on host, so we use
+     * a valid address but verify the --force flag is accepted.
+     */
+    static uint8_t local_buf[4] = {0x11, 0x22, 0x33, 0x44};
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)(uintptr_t)local_buf);
+
+    /* First verify it works without --force */
+    const char* argv1[] = {"fl", "--cmd", "read", "--addr", addr_str, "--len", "4"};
+    fl_exec_cmd(&test_ctx, 7, argv1);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+
+    mock_output_reset();
+
+    /* Now with --force, should also work */
+    const char* argv2[] = {"fl", "--cmd", "read", "--addr", addr_str, "--len", "4", "--force"};
+    fl_exec_cmd(&test_ctx, 8, argv2);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("READ 4 bytes"));
+}
+
+void test_loader_cmd_write_zero_addr_force(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate a buffer and use --force to write */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+
+    mock_output_reset();
+
+    /* Write with --force should succeed */
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "AQIDBA==", "--force"};
+    fl_exec_cmd(&test_ctx, 8, argv);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("WRITE 4 bytes"));
+}
+
+void test_loader_cmd_write_overflow_addr(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Write to 0xFFFFFFFF with 3 bytes: addr+len-1 wraps past 0xFFFFFFFF */
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", "0xFFFFFFFF", "--data", "AQID"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid address range"));
+}
+
+void test_loader_cmd_read_overflow_addr(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Read from 0xFFFFFFFF with len=2: addr+len-1 wraps past 0xFFFFFFFF */
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0xFFFFFFFF", "--len", "2"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid address range"));
+}
+
+void test_loader_cmd_write_force_hint_in_error(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Error message should hint about --force */
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", "0x0", "--data", "AQIDBA=="};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("--force"));
+}
+
 void test_loader_cmd_read_write_roundtrip(void) {
     setup_loader();
     fl_init(&test_ctx);
@@ -1246,5 +1341,14 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_write_no_data);
     RUN_TEST(test_loader_cmd_write_zero_addr);
     RUN_TEST(test_loader_cmd_read_write_roundtrip);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_loader - Address Range Check");
+    RUN_TEST(test_loader_cmd_read_zero_addr);
+    RUN_TEST(test_loader_cmd_read_zero_addr_force);
+    RUN_TEST(test_loader_cmd_write_zero_addr_force);
+    RUN_TEST(test_loader_cmd_write_overflow_addr);
+    RUN_TEST(test_loader_cmd_read_overflow_addr);
+    RUN_TEST(test_loader_cmd_write_force_hint_in_error);
     TEST_SUITE_END();
 }

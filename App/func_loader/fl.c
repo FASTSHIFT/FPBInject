@@ -195,6 +195,24 @@ static void fl_flush_dcache(fl_context_t* ctx, const void* addr, size_t len) {
     }
 }
 
+/**
+ * @brief  Check if [addr, addr+len) is a safe memory range
+ * @note   Rejects NULL pointer and address overflow (wrapping past 0xFFFFFFFF)
+ * @return true if the range is safe to access
+ */
+static bool fl_check_addr_range(uintptr_t addr, size_t len) {
+    if (addr == 0 || len == 0) {
+        return false;
+    }
+
+    /* Check if addr + len - 1 overflows past 0xFFFFFFFF */
+    if ((uint32_t)(addr + len - 1) < (uint32_t)addr) {
+        return false;
+    }
+
+    return true;
+}
+
 static void cmd_ping(fl_context_t* ctx) {
     (void)ctx;
     fl_response(true, "PONG");
@@ -338,12 +356,17 @@ static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str
     fl_response(true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)dest);
 }
 
-static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len) {
+static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len, bool force) {
     uint8_t* buf = ctx->buf;
     char* b64_buf = ctx->b64_buf;
 
     if (len <= 0 || (size_t)len > FL_BUF_SIZE) {
         fl_response(false, "Invalid length %d (max %d)", len, (int)FL_BUF_SIZE);
+        return;
+    }
+
+    if (!force && !fl_check_addr_range(addr, len)) {
+        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)addr, len);
         return;
     }
 
@@ -366,17 +389,17 @@ static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len) {
     fl_print_raw("\n[FLEND]\n");
 }
 
-static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* data_str, uintptr_t crc, bool verify) {
+static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* data_str, uintptr_t crc, bool verify, bool force) {
     uint8_t* buf = ctx->buf;
-
-    if (addr == 0) {
-        fl_response(false, "Invalid address 0x0");
-        return;
-    }
 
     int n = base64_to_bytes(data_str, buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
+        return;
+    }
+
+    if (!force && !fl_check_addr_range(addr, n)) {
+        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)addr, n);
         return;
     }
 
@@ -875,6 +898,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     int comp = 0;
     int entry = 0;
     int all = 0;
+    int force = 0;
     const char* path = NULL;
     const char* newpath = NULL;
     const char* mode = NULL;
@@ -893,6 +917,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_POINTER(0, "orig", &orig, "Original addr", NULL, 0, 0),
         OPT_POINTER(0, "target", &target, "Target addr", NULL, 0, 0),
         OPT_BOOLEAN(0, "all", &all, "Clear all", NULL, 0, 0),
+        OPT_BOOLEAN(0, "force", &force, "Skip address range check", NULL, 0, 0),
         OPT_STRING(0, "path", &path, "File path", NULL, 0, 0),
         OPT_STRING(0, "newpath", &newpath, "New file path", NULL, 0, 0),
         OPT_STRING('m', "mode", &mode, "File mode (r/w/a)", NULL, 0, 0),
@@ -933,13 +958,13 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         }
         cmd_upload(ctx, addr, data, crc, crc >= 0);
     } else if (strcmp(cmd, "read") == 0) {
-        cmd_read(ctx, addr, len);
+        cmd_read(ctx, addr, len, force);
     } else if (strcmp(cmd, "write") == 0) {
         if (!data) {
             fl_response(false, "Missing --data");
             return -1;
         }
-        cmd_write(ctx, addr, data, crc, crc >= 0);
+        cmd_write(ctx, addr, data, crc, crc >= 0, force);
     } else if (strcmp(cmd, "patch") == 0) {
         if (orig == 0 || target == 0) {
             fl_response(false, "Missing --orig/--target");
