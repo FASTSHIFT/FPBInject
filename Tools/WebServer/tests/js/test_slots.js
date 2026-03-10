@@ -448,12 +448,23 @@ module.exports = function (w) {
     });
 
     it('sets empty text for unoccupied slots', () => {
+      w.FPBState.isConnected = true;
       w.FPBState.slotStates = Array(8)
         .fill()
         .map(() => ({ occupied: false }));
       w.updateSlotUI();
       const funcSpan = browserGlobals.document.getElementById('slot0Func');
       assertEqual(funcSpan.textContent, 'Empty');
+    });
+
+    it('sets dash for unoccupied slots when disconnected', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.slotStates = Array(8)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.updateSlotUI();
+      const funcSpan = browserGlobals.document.getElementById('slot0Func');
+      assertEqual(funcSpan.textContent, '-');
     });
 
     it('toggles occupied class on slot items', () => {

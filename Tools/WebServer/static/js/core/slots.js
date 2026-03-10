@@ -46,7 +46,9 @@ function updateSlotUI() {
         funcSpan.textContent = `${slotState.orig_addr}${funcName} → ${slotState.target_addr}${sizeInfo}`;
         funcSpan.title = `${t('tooltips.slot_original', 'Original')}: ${slotState.orig_addr}${funcName}\n${t('tooltips.slot_target', 'Target')}: ${slotState.target_addr}\n${t('tooltips.slot_code_size', 'Code size')}: ${slotState.code_size || 0} ${t('device.bytes', 'Bytes')}`;
       } else {
-        funcSpan.textContent = t('panels.slot_empty', 'Empty');
+        funcSpan.textContent = state.isConnected
+          ? t('panels.slot_empty', 'Empty')
+          : '-';
         funcSpan.title = '';
       }
     }
