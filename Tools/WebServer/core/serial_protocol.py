@@ -12,11 +12,12 @@ Provides low-level serial communication with FPB loader firmware.
 import base64
 import logging
 import re
+import struct
 import time
 from enum import Enum
 from typing import Dict, Optional, Tuple
 
-from utils.crc import crc16
+from utils.crc import crc16, crc16_update
 from core.state import tool_log
 
 logger = logging.getLogger(__name__)
@@ -471,9 +472,12 @@ class FPBProtocol:
         while data_offset < total:
             chunk = data[data_offset : data_offset + bytes_per_chunk]
             b64_data = base64.b64encode(chunk).decode("ascii")
-            crc = crc16(chunk)
 
             device_offset = start_offset + data_offset
+            # CRC covers: offset(4B LE) + len(4B LE) + data payload
+            crc = crc16_update(0xFFFF, struct.pack('<II', device_offset, len(chunk)))
+            crc = crc16_update(crc, chunk)
+
             cmd = f"-c upload -a 0x{device_offset:X} -d {b64_data} -r 0x{crc:04X}"
 
             try:
@@ -503,10 +507,11 @@ class FPBProtocol:
             "speed": speed,
         }
 
-    def _parse_read_response(self, resp: str) -> Optional[bytes]:
+    def _parse_read_response(self, resp: str, addr: int = 0) -> Optional[bytes]:
         """Parse READ response to extract binary data.
 
         Expected format: [FLOK] READ <n> bytes crc=0x<XXXX> data=<base64>
+        CRC covers: addr(4B LE) + len(4B LE) + data payload.
         Returns decoded bytes if CRC matches, None on error.
         """
         match = re.search(
@@ -532,7 +537,10 @@ class FPBProtocol:
             )
             return None
 
-        actual_crc = crc16(raw)
+        actual_crc = crc16_update(
+            0xFFFF, struct.pack('<II', addr, len(raw))
+        )
+        actual_crc = crc16_update(actual_crc, raw)
         if actual_crc != expected_crc:
             logger.error(
                 f"Read CRC mismatch: 0x{actual_crc:04X} != 0x{expected_crc:04X}"
@@ -566,7 +574,7 @@ class FPBProtocol:
 
                 try:
                     resp = self.send_cmd(cmd, timeout=2.0)
-                    data = self._parse_read_response(resp)
+                    data = self._parse_read_response(resp, addr=chunk_addr)
                     if data is not None:
                         buf.extend(data)
                         break
@@ -596,8 +604,10 @@ class FPBProtocol:
         while offset < total:
             chunk = data[offset : offset + bytes_per_chunk]
             b64 = base64.b64encode(chunk).decode("ascii")
-            crc_val = crc16(chunk)
             chunk_addr = addr + offset
+            # CRC covers: addr(4B LE) + len(4B LE) + data payload
+            crc_val = crc16_update(0xFFFF, struct.pack('<II', chunk_addr, len(chunk)))
+            crc_val = crc16_update(crc_val, chunk)
             cmd = f"-c write --addr 0x{chunk_addr:X} --data {b64} --crc 0x{crc_val:04X}"
             last_error = ""
 

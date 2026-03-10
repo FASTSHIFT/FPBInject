@@ -282,3 +282,18 @@ def crc16(data: bytes) -> int:
     for byte in data:
         crc = ((crc << 8) ^ CRC16_TABLE[(crc >> 8) ^ byte]) & 0xFFFF
     return crc
+
+
+def crc16_update(crc: int, data: bytes) -> int:
+    """Update CRC-16-CCITT incrementally (chain multiple data segments).
+
+    Args:
+        crc: Current CRC value (use 0xFFFF for initial)
+        data: Next data segment
+
+    Returns:
+        Updated 16-bit CRC value
+    """
+    for byte in data:
+        crc = ((crc << 8) ^ CRC16_TABLE[(crc >> 8) ^ byte]) & 0xFFFF
+    return crc

@@ -328,7 +328,13 @@ static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str
     }
 
     if (verify) {
-        uint16_t calc = calc_crc16(buf, n);
+        /* CRC covers: offset(4B) + len(4B) + data payload */
+        uint32_t offset32 = (uint32_t)offset;
+        uint32_t len32 = (uint32_t)n;
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, &offset32, sizeof(offset32));
+        calc = calc_crc16_base(calc, &len32, sizeof(len32));
+        calc = calc_crc16_base(calc, buf, n);
         if (calc != (uint16_t)crc) {
             /* CRC mismatch - free last_alloc in dynamic mode to prevent leak */
             if (ctx->last_alloc != 0 && ctx->free_cb) {
@@ -380,8 +386,13 @@ static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len, bool force) {
         return;
     }
 
-    /* CRC-16 for verification */
-    uint16_t crc = calc_crc16(buf, len);
+    /* CRC-16 covers: addr(4B) + len(4B) + data payload */
+    uint32_t addr32 = (uint32_t)addr;
+    uint32_t len32 = (uint32_t)len;
+    uint16_t crc = 0xFFFF;
+    crc = calc_crc16_base(crc, &addr32, sizeof(addr32));
+    crc = calc_crc16_base(crc, &len32, sizeof(len32));
+    crc = calc_crc16_base(crc, buf, len);
 
     /* Output in segments to avoid buffer overflow */
     fl_print("[FLOK] READ %d bytes crc=0x%04X data=", len, (unsigned)crc);
@@ -404,7 +415,13 @@ static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* data_str, u
     }
 
     if (verify) {
-        uint16_t calc = calc_crc16(buf, n);
+        /* CRC covers: addr(4B) + len(4B) + data payload */
+        uint32_t addr32 = (uint32_t)addr;
+        uint32_t len32 = (uint32_t)n;
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, &addr32, sizeof(addr32));
+        calc = calc_crc16_base(calc, &len32, sizeof(len32));
+        calc = calc_crc16_base(calc, buf, n);
         if (calc != (uint16_t)crc) {
             fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
             return;
@@ -888,7 +905,6 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
 
     const char* cmd = NULL;
     const char* data = NULL;
-    const char* args = NULL;
     uintptr_t addr = 0;
     uintptr_t orig = 0;
     uintptr_t target = 0;
@@ -896,7 +912,6 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     int len = 64;
     int size = 0;
     int comp = 0;
-    int entry = 0;
     int all = 0;
     int force = 0;
     const char* path = NULL;
@@ -910,8 +925,6 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_POINTER('a', "addr", &addr, "Address/offset (hex)", NULL, 0, 0),
         OPT_STRING('d', "data", &data, "Hex data", NULL, 0, 0),
         OPT_INTEGER('r', "crc", &crc, "CRC-16 (hex)", NULL, 0, 0),
-        OPT_INTEGER('e', "entry", &entry, "Entry offset", NULL, 0, 0),
-        OPT_STRING(0, "args", &args, "Arguments", NULL, 0, 0),
         OPT_INTEGER('l', "len", &len, "Read length", NULL, 0, 0),
         OPT_INTEGER(0, "comp", &comp, "Comparator ID", NULL, 0, 0),
         OPT_POINTER(0, "orig", &orig, "Original addr", NULL, 0, 0),

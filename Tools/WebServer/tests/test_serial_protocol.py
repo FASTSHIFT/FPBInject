@@ -194,14 +194,18 @@ class TestParseReadResponse(unittest.TestCase):
     def test_valid_response(self):
         """Parse valid READ response with base64 + CRC."""
         import base64
-        from utils.crc import crc16
+        import struct
+        from utils.crc import crc16_update
 
         raw = b"\x01\x02\x03\x04"
         b64 = base64.b64encode(raw).decode()
-        crc = crc16(raw)
+        # CRC covers: addr(4B LE) + len(4B LE) + data
+        addr = 0x20000000
+        crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        crc = crc16_update(crc, raw)
         resp = f"[FLOK] READ 4 bytes crc=0x{crc:04X} data={b64}"
 
-        result = self.protocol._parse_read_response(resp)
+        result = self.protocol._parse_read_response(resp, addr=addr)
         self.assertEqual(result, raw)
 
     def test_crc_mismatch(self):
@@ -249,40 +253,46 @@ class TestReadMemory(unittest.TestCase):
     def test_single_chunk(self):
         """Read data that fits in one chunk."""
         import base64
-        from utils.crc import crc16
+        import struct
+        from utils.crc import crc16_update
 
+        addr = 0x20000000
         raw = b"\xaa" * 16
         b64 = base64.b64encode(raw).decode()
-        crc = crc16(raw)
+        crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        crc = crc16_update(crc, raw)
         self.protocol.send_cmd = MagicMock(
             return_value=f"[FLOK] READ 16 bytes crc=0x{crc:04X} data={b64}"
         )
 
-        data, msg = self.protocol.read_memory(0x20000000, 16)
+        data, msg = self.protocol.read_memory(addr, 16)
         self.assertEqual(data, raw)
         self.assertIn("OK", msg)
 
     def test_multi_chunk(self):
         """Read data spanning multiple chunks."""
         import base64
-        from utils.crc import crc16
+        import struct
+        from utils.crc import crc16_update
 
         self.device.chunk_size = 4
+        base_addr = 0x20000000
 
         def mock_send(cmd, timeout=0.5):
-            # Extract len from command
             import re
-
-            m = re.search(r"--len (\d+)", cmd)
-            n = int(m.group(1))
+            m_addr = re.search(r"--addr 0x([0-9A-Fa-f]+)", cmd)
+            m_len = re.search(r"--len (\d+)", cmd)
+            chunk_addr = int(m_addr.group(1), 16)
+            n = int(m_len.group(1))
             chunk = b"\xbb" * n
             b64 = base64.b64encode(chunk).decode()
-            crc = crc16(chunk)
+            crc = crc16_update(0xFFFF, struct.pack('<II', chunk_addr, n))
+            crc = crc16_update(crc, chunk)
             return f"[FLOK] READ {n} bytes crc=0x{crc:04X} data={b64}"
 
         self.protocol.send_cmd = MagicMock(side_effect=mock_send)
 
-        data, msg = self.protocol.read_memory(0x20000000, 10)
+        data, msg = self.protocol.read_memory(base_addr, 10)
         self.assertEqual(len(data), 10)
         self.assertEqual(data, b"\xbb" * 10)
         # 10 bytes / 4 chunk = 3 calls
@@ -310,16 +320,19 @@ class TestReadMemory(unittest.TestCase):
     def test_read_retry_then_succeed(self):
         """Succeed after transient failure."""
         import base64
-        from utils.crc import crc16
+        import struct
+        from utils.crc import crc16_update
 
+        addr = 0x20000000
         raw = b"\xcc" * 16
         b64 = base64.b64encode(raw).decode()
-        crc = crc16(raw)
+        crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        crc = crc16_update(crc, raw)
         good_resp = f"[FLOK] READ 16 bytes crc=0x{crc:04X} data={b64}"
 
         self.protocol.send_cmd = MagicMock(side_effect=["[FLERR] noise", good_resp])
 
-        data, msg = self.protocol.read_memory(0x20000000, 16)
+        data, msg = self.protocol.read_memory(addr, 16)
         self.assertEqual(data, raw)
         self.assertEqual(self.protocol.send_cmd.call_count, 2)
 
@@ -379,6 +392,90 @@ class TestWriteMemory(unittest.TestCase):
         ok, msg = self.protocol.write_memory(0x20000000, b"\x01\x02")
         self.assertTrue(ok)
         self.assertEqual(self.protocol.send_cmd.call_count, 2)
+
+
+class TestEnhancedCRC(unittest.TestCase):
+    """Test that CRC includes addr/offset + len + data (not just data)."""
+
+    def setUp(self):
+        self.device = MagicMock()
+        self.device.chunk_size = 128
+        self.protocol = FPBProtocol(self.device)
+
+    def test_write_crc_includes_addr_and_len(self):
+        """write_memory CRC must cover addr + len + data."""
+        import re
+        import struct
+        from utils.crc import crc16_update
+
+        self.protocol.send_cmd = MagicMock(return_value="[FLOK] WRITE 4 bytes")
+
+        addr = 0x20001000
+        data = b"\xDE\xAD\xBE\xEF"
+        self.protocol.write_memory(addr, data)
+
+        cmd_str = self.protocol.send_cmd.call_args[0][0]
+        m = re.search(r"--crc 0x([0-9A-Fa-f]+)", cmd_str)
+        sent_crc = int(m.group(1), 16)
+
+        expected = crc16_update(0xFFFF, struct.pack('<II', addr, len(data)))
+        expected = crc16_update(expected, data)
+        self.assertEqual(sent_crc, expected)
+
+    def test_upload_crc_includes_offset_and_len(self):
+        """upload CRC must cover offset + len + data."""
+        import re
+        import struct
+        from utils.crc import crc16_update
+
+        self.protocol.send_cmd = MagicMock(
+            return_value="[FLOK] Uploaded 4 bytes"
+        )
+
+        offset = 0x100
+        data = b"\x01\x02\x03\x04"
+        self.protocol.upload(data, start_offset=offset)
+
+        cmd_str = self.protocol.send_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", cmd_str)
+        sent_crc = int(m.group(1), 16)
+
+        expected = crc16_update(0xFFFF, struct.pack('<II', offset, len(data)))
+        expected = crc16_update(expected, data)
+        self.assertEqual(sent_crc, expected)
+
+    def test_read_response_crc_includes_addr_and_len(self):
+        """_parse_read_response must verify CRC over addr + len + data."""
+        import base64
+        import struct
+        from utils.crc import crc16, crc16_update
+
+        addr = 0x20002000
+        raw = b"\xAA\xBB\xCC\xDD"
+        b64 = base64.b64encode(raw).decode()
+
+        # Correct CRC (addr + len + data)
+        good_crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        good_crc = crc16_update(good_crc, raw)
+        resp = f"[FLOK] READ 4 bytes crc=0x{good_crc:04X} data={b64}"
+        self.assertEqual(self.protocol._parse_read_response(resp, addr=addr), raw)
+
+        # Old-style CRC (data only) should now fail
+        old_crc = crc16(raw)
+        resp_old = f"[FLOK] READ 4 bytes crc=0x{old_crc:04X} data={b64}"
+        self.assertIsNone(self.protocol._parse_read_response(resp_old, addr=addr))
+
+    def test_crc16_update_chaining(self):
+        """crc16_update chaining must equal crc16 on concatenated data."""
+        from utils.crc import crc16, crc16_update
+
+        a = b"\x01\x02\x03\x04"
+        b = b"\x05\x06\x07\x08"
+
+        combined = crc16(a + b)
+        chained = crc16_update(0xFFFF, a)
+        chained = crc16_update(chained, b)
+        self.assertEqual(combined, chained)
 
 
 if __name__ == "__main__":
