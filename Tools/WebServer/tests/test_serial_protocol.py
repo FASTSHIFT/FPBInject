@@ -201,7 +201,7 @@ class TestParseReadResponse(unittest.TestCase):
         b64 = base64.b64encode(raw).decode()
         # CRC covers: addr(4B LE) + len(4B LE) + data
         addr = 0x20000000
-        crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        crc = crc16_update(0xFFFF, struct.pack("<II", addr, len(raw)))
         crc = crc16_update(crc, raw)
         resp = f"[FLOK] READ 4 bytes crc=0x{crc:04X} data={b64}"
 
@@ -259,7 +259,7 @@ class TestReadMemory(unittest.TestCase):
         addr = 0x20000000
         raw = b"\xaa" * 16
         b64 = base64.b64encode(raw).decode()
-        crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        crc = crc16_update(0xFFFF, struct.pack("<II", addr, len(raw)))
         crc = crc16_update(crc, raw)
         self.protocol.send_cmd = MagicMock(
             return_value=f"[FLOK] READ 16 bytes crc=0x{crc:04X} data={b64}"
@@ -280,13 +280,14 @@ class TestReadMemory(unittest.TestCase):
 
         def mock_send(cmd, timeout=0.5):
             import re
+
             m_addr = re.search(r"--addr 0x([0-9A-Fa-f]+)", cmd)
             m_len = re.search(r"--len (\d+)", cmd)
             chunk_addr = int(m_addr.group(1), 16)
             n = int(m_len.group(1))
             chunk = b"\xbb" * n
             b64 = base64.b64encode(chunk).decode()
-            crc = crc16_update(0xFFFF, struct.pack('<II', chunk_addr, n))
+            crc = crc16_update(0xFFFF, struct.pack("<II", chunk_addr, n))
             crc = crc16_update(crc, chunk)
             return f"[FLOK] READ {n} bytes crc=0x{crc:04X} data={b64}"
 
@@ -326,7 +327,7 @@ class TestReadMemory(unittest.TestCase):
         addr = 0x20000000
         raw = b"\xcc" * 16
         b64 = base64.b64encode(raw).decode()
-        crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        crc = crc16_update(0xFFFF, struct.pack("<II", addr, len(raw)))
         crc = crc16_update(crc, raw)
         good_resp = f"[FLOK] READ 16 bytes crc=0x{crc:04X} data={b64}"
 
@@ -411,14 +412,14 @@ class TestEnhancedCRC(unittest.TestCase):
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] WRITE 4 bytes")
 
         addr = 0x20001000
-        data = b"\xDE\xAD\xBE\xEF"
+        data = b"\xde\xad\xbe\xef"
         self.protocol.write_memory(addr, data)
 
         cmd_str = self.protocol.send_cmd.call_args[0][0]
         m = re.search(r"--crc 0x([0-9A-Fa-f]+)", cmd_str)
         sent_crc = int(m.group(1), 16)
 
-        expected = crc16_update(0xFFFF, struct.pack('<II', addr, len(data)))
+        expected = crc16_update(0xFFFF, struct.pack("<II", addr, len(data)))
         expected = crc16_update(expected, data)
         self.assertEqual(sent_crc, expected)
 
@@ -428,9 +429,7 @@ class TestEnhancedCRC(unittest.TestCase):
         import struct
         from utils.crc import crc16_update
 
-        self.protocol.send_cmd = MagicMock(
-            return_value="[FLOK] Uploaded 4 bytes"
-        )
+        self.protocol.send_cmd = MagicMock(return_value="[FLOK] Uploaded 4 bytes")
 
         offset = 0x100
         data = b"\x01\x02\x03\x04"
@@ -440,7 +439,7 @@ class TestEnhancedCRC(unittest.TestCase):
         m = re.search(r"-r 0x([0-9A-Fa-f]+)", cmd_str)
         sent_crc = int(m.group(1), 16)
 
-        expected = crc16_update(0xFFFF, struct.pack('<II', offset, len(data)))
+        expected = crc16_update(0xFFFF, struct.pack("<II", offset, len(data)))
         expected = crc16_update(expected, data)
         self.assertEqual(sent_crc, expected)
 
@@ -451,11 +450,11 @@ class TestEnhancedCRC(unittest.TestCase):
         from utils.crc import crc16, crc16_update
 
         addr = 0x20002000
-        raw = b"\xAA\xBB\xCC\xDD"
+        raw = b"\xaa\xbb\xcc\xdd"
         b64 = base64.b64encode(raw).decode()
 
         # Correct CRC (addr + len + data)
-        good_crc = crc16_update(0xFFFF, struct.pack('<II', addr, len(raw)))
+        good_crc = crc16_update(0xFFFF, struct.pack("<II", addr, len(raw)))
         good_crc = crc16_update(good_crc, raw)
         resp = f"[FLOK] READ 4 bytes crc=0x{good_crc:04X} data={b64}"
         self.assertEqual(self.protocol._parse_read_response(resp, addr=addr), raw)

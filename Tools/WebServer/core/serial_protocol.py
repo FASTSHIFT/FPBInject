@@ -475,7 +475,7 @@ class FPBProtocol:
 
             device_offset = start_offset + data_offset
             # CRC covers: offset(4B LE) + len(4B LE) + data payload
-            crc = crc16_update(0xFFFF, struct.pack('<II', device_offset, len(chunk)))
+            crc = crc16_update(0xFFFF, struct.pack("<II", device_offset, len(chunk)))
             crc = crc16_update(crc, chunk)
 
             cmd = f"-c upload -a 0x{device_offset:X} -d {b64_data} -r 0x{crc:04X}"
@@ -537,9 +537,7 @@ class FPBProtocol:
             )
             return None
 
-        actual_crc = crc16_update(
-            0xFFFF, struct.pack('<II', addr, len(raw))
-        )
+        actual_crc = crc16_update(0xFFFF, struct.pack("<II", addr, len(raw)))
         actual_crc = crc16_update(actual_crc, raw)
         if actual_crc != expected_crc:
             logger.error(
@@ -608,7 +606,7 @@ class FPBProtocol:
             b64 = base64.b64encode(chunk).decode("ascii")
             chunk_addr = addr + offset
             # CRC covers: addr(4B LE) + len(4B LE) + data payload
-            crc_val = crc16_update(0xFFFF, struct.pack('<II', chunk_addr, len(chunk)))
+            crc_val = crc16_update(0xFFFF, struct.pack("<II", chunk_addr, len(chunk)))
             crc_val = crc16_update(crc_val, chunk)
             cmd = f"-c write --addr 0x{chunk_addr:X} --data {b64} --crc 0x{crc_val:04X}"
             last_error = ""
@@ -640,9 +638,7 @@ class FPBProtocol:
 
     def _patch_crc(self, comp: int, orig: int, target: int) -> int:
         """Compute CRC for patch commands: comp(4B LE) + orig(4B LE) + target(4B LE)."""
-        return crc16_update(
-            0xFFFF, struct.pack("<III", comp, orig, target)
-        )
+        return crc16_update(0xFFFF, struct.pack("<III", comp, orig, target))
 
     def patch(self, comp: int, orig: int, target: int) -> Tuple[bool, str]:
         """Set FPB patch (direct mode)."""
