@@ -130,9 +130,10 @@ ${processedBody}
   let origFuncDef = '';
   if (hasOrigAddr) {
     const argList = paramNames.join(', ');
-    origFuncDef = `/* Original function pointer - call via ORIG_${funcName.toUpperCase()}() to avoid recursion */
+    const macroName = `ORIG_${funcName.toUpperCase()}`;
+    origFuncDef = `/* Original function pointer - call via ${macroName}() to avoid recursion */
 typedef ${returnType} (*${funcName}_fn_t)(${params || 'void'});
-#define ORIG_${funcName.toUpperCase()} ((${funcName}_fn_t)${origAddr})
+static ${funcName}_fn_t const ${macroName} = (${funcName}_fn_t)${origAddr};
 
 `;
     if (returnType === 'void') {
