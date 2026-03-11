@@ -660,9 +660,7 @@ static void cmd_enable(fl_context_t* ctx, uint32_t comp, bool enable, bool all) 
 }
 
 __attribute__((noinline)) void fl_hello(void) {
-    fl_println("Hello from original fl_hello!");
-    fl_println("Inject a new version to change this message.");
-    fl_response(true, "HELLO original");
+    fl_response(true, "HELLO from original fl_hello(%p) function!", (void*)fl_hello);
 }
 
 /* ===========================
