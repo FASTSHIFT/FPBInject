@@ -235,7 +235,7 @@ void test_fpb_enable_patch_state_preserved(void) {
     const fpb_state_t* state = fpb_get_state();
     TEST_ASSERT_EQUAL_HEX(0x08001000, state->comp[0].original_addr);
     TEST_ASSERT_EQUAL_HEX(0x20002000, state->comp[0].patch_addr);
-    TEST_ASSERT_FALSE(state->comp[0].enabled);
+    TEST_ASSERT_FALSE(mock_fpb_comp_is_enabled(0));
 }
 
 void test_fpb_enable_patch_multiple(void) {
@@ -301,7 +301,7 @@ void test_fpb_get_state_after_patch(void) {
     fpb_set_patch(0, 0x08001000, 0x20002000);
 
     const fpb_state_t* state = fpb_get_state();
-    TEST_ASSERT_TRUE(state->comp[0].enabled);
+    TEST_ASSERT_TRUE(mock_fpb_comp_is_enabled(0));
     TEST_ASSERT_EQUAL_HEX(0x08001000, state->comp[0].original_addr);
 }
 

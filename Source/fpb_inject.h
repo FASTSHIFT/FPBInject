@@ -80,7 +80,6 @@ typedef enum {
 typedef struct {
     uint32_t original_addr;
     uint32_t patch_addr;
-    bool enabled;
 } fpb_comp_state_t;
 
 /**

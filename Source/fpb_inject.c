@@ -265,7 +265,6 @@ fpb_result_t fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t pat
 
     g_fpb_state.comp[comp_id].original_addr = original_addr;
     g_fpb_state.comp[comp_id].patch_addr = patch_addr;
-    g_fpb_state.comp[comp_id].enabled = true;
 
     dsb();
     isb();
@@ -289,7 +288,6 @@ fpb_result_t fpb_clear_patch(uint8_t comp_id) {
 
     g_fpb_state.comp[comp_id].original_addr = 0;
     g_fpb_state.comp[comp_id].patch_addr = 0;
-    g_fpb_state.comp[comp_id].enabled = false;
 
     dsb();
     isb();
@@ -321,8 +319,6 @@ fpb_result_t fpb_enable_patch(uint8_t comp_id, bool enable) {
         comp_val &= ~FPB_COMP_ENABLE;
     }
     FPB_COMP(comp_id) = comp_val;
-
-    g_fpb_state.comp[comp_id].enabled = enable;
 
     dsb();
     isb();

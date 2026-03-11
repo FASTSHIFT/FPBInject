@@ -87,9 +87,8 @@ extern int arm_dbgmonitor(int irq, void* context, void* arg);
  * ============================================================================ */
 
 typedef struct {
-    uint32_t original_addr; /* Original function address (without Thumb bit) */
+    uint32_t original_addr; /* Original function address (without Thumb bit), 0 = not used */
     uint32_t redirect_addr; /* Redirect target address (with Thumb bit) */
-    bool enabled;
 } debugmon_redirect_t;
 
 static struct {
@@ -114,7 +113,7 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
 
     debugmon_redirect_t* redirect = (debugmon_redirect_t*)arg;
 
-    if (!redirect || !redirect->enabled) {
+    if (!redirect || redirect->original_addr == 0) {
         syslog(LOG_WARNING, "[DBGMON] callback: no redirect\n");
         return;
     }
@@ -175,7 +174,7 @@ void fpb_debugmon_deinit(void) {
 
     /* Remove all debugpoints */
     for (int i = 0; i < FPB_DEBUGMON_MAX_REDIRECTS; i++) {
-        if (g_debugmon_state.redirects[i].enabled) {
+        if (g_debugmon_state.redirects[i].original_addr != 0) {
             fpb_debugmon_clear_redirect(i);
         }
     }
@@ -198,7 +197,7 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
     }
 
     /* Clear existing redirect if any */
-    if (g_debugmon_state.redirects[comp_id].enabled) {
+    if (g_debugmon_state.redirects[comp_id].original_addr != 0) {
         fpb_debugmon_clear_redirect(comp_id);
     }
 
@@ -208,7 +207,6 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
     /* Store redirect info */
     g_debugmon_state.redirects[comp_id].original_addr = match_addr;
     g_debugmon_state.redirects[comp_id].redirect_addr = redirect_addr | 1; /* Ensure Thumb bit */
-    g_debugmon_state.redirects[comp_id].enabled = true;
 
     /* Determine debugpoint type based on address region:
      * - Code region (0x00000000-0x1FFFFFFF): Use BREAKPOINT (FPB)
@@ -239,7 +237,8 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
                                 &g_debugmon_state.redirects[comp_id]);
     if (ret < 0) {
         syslog(LOG_ERR, "[DBGMON] up_debugpoint_add failed: %d\n", ret);
-        g_debugmon_state.redirects[comp_id].enabled = false;
+        g_debugmon_state.redirects[comp_id].original_addr = 0;
+        g_debugmon_state.redirects[comp_id].redirect_addr = 0;
         return -1;
     }
 
@@ -256,7 +255,7 @@ int fpb_debugmon_clear_redirect(uint8_t comp_id) {
         return -1;
     }
 
-    if (!g_debugmon_state.redirects[comp_id].enabled) {
+    if (g_debugmon_state.redirects[comp_id].original_addr == 0) {
         return 0;
     }
 
@@ -272,7 +271,6 @@ int fpb_debugmon_clear_redirect(uint8_t comp_id) {
     /* Clear redirect entry */
     g_debugmon_state.redirects[comp_id].original_addr = 0;
     g_debugmon_state.redirects[comp_id].redirect_addr = 0;
-    g_debugmon_state.redirects[comp_id].enabled = false;
 
     return 0;
 }
@@ -281,7 +279,7 @@ uint32_t fpb_debugmon_get_redirect(uint32_t original_addr) {
     uint32_t match_addr = original_addr & ~1UL;
 
     for (int i = 0; i < FPB_DEBUGMON_MAX_REDIRECTS; i++) {
-        if (g_debugmon_state.redirects[i].enabled && g_debugmon_state.redirects[i].original_addr == match_addr) {
+        if (g_debugmon_state.redirects[i].original_addr == match_addr) {
             return g_debugmon_state.redirects[i].redirect_addr;
         }
     }

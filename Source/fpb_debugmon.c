@@ -180,9 +180,8 @@ extern uint32_t mock_dfsr;
  * ============================================================================ */
 
 typedef struct {
-    uint32_t original_addr; /* Original function address (without Thumb bit) */
+    uint32_t original_addr; /* Original function address (without Thumb bit), 0 = not used */
     uint32_t redirect_addr; /* Redirect target address (with Thumb bit) */
-    bool enabled;
 } debugmon_redirect_t;
 
 static struct {
@@ -329,7 +328,6 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
     /* Store redirect info */
     g_debugmon_state.redirects[comp_id].original_addr = match_addr;
     g_debugmon_state.redirects[comp_id].redirect_addr = redirect_addr | 1; /* Ensure Thumb bit */
-    g_debugmon_state.redirects[comp_id].enabled = true;
 
     /* Configure FPB comparator for breakpoint
      *
@@ -377,7 +375,6 @@ int fpb_debugmon_clear_redirect(uint8_t comp_id) {
     /* Clear redirect entry */
     g_debugmon_state.redirects[comp_id].original_addr = 0;
     g_debugmon_state.redirects[comp_id].redirect_addr = 0;
-    g_debugmon_state.redirects[comp_id].enabled = false;
 
     dsb();
     isb();
@@ -389,7 +386,7 @@ uint32_t fpb_debugmon_get_redirect(uint32_t original_addr) {
     uint32_t match_addr = original_addr & ~1UL;
 
     for (uint8_t i = 0; i < g_debugmon_state.num_comp; i++) {
-        if (g_debugmon_state.redirects[i].enabled && g_debugmon_state.redirects[i].original_addr == match_addr) {
+        if (g_debugmon_state.redirects[i].original_addr == match_addr) {
             return g_debugmon_state.redirects[i].redirect_addr;
         }
     }
