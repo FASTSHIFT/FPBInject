@@ -266,9 +266,11 @@ class TestCompileInject(unittest.TestCase):
         }
 
         with patch("subprocess.run") as mock_run:
-            # First call (compile) succeeds, second call (link) fails
+            # compile succeeds, 2x nm for mangled name resolution, link fails
             mock_run.side_effect = [
                 Mock(returncode=0, stderr=""),
+                Mock(returncode=0, stdout="", stderr=""),  # nm (raw)
+                Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled)
                 Mock(returncode=1, stderr="undefined reference"),
             ]
 
@@ -295,9 +297,11 @@ class TestCompileInject(unittest.TestCase):
         }
 
         with patch("subprocess.run") as mock_run:
-            # Compile and link succeed, objcopy fails
+            # Compile succeeds, 2x nm for mangled names, link succeeds, objcopy fails
             mock_run.side_effect = [
                 Mock(returncode=0, stderr=""),
+                Mock(returncode=0, stdout="", stderr=""),  # nm (raw)
+                Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled)
                 Mock(returncode=0, stderr=""),
                 Mock(returncode=1, stderr="has no sections"),
             ]

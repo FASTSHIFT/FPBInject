@@ -117,3 +117,75 @@ arm-none-eabi-gcc → arm-none-eabi-g++
 ## 结论
 
 当前注入流水线在 C++ 支持方面存在根本性缺口。编译器选择和 include 路径解析在设计上以 C 为中心。短期修复（自动切换 `gcc` → `g++`）可以用最小的代码改动解决最常见的失败场景。中长期改进将使 C++ 注入在不同构建配置下都能稳定工作。
+
+---
+
+## 已实施的修复
+
+以下修复已全部实现并通过 CI 验证。
+
+### 修复 1：编译器自动切换 gcc → g++（`compiler.py`）
+
+当源文件扩展名为 `.cpp` / `.cc` / `.cxx` 时，自动将编译器路径中的 `gcc` 替换为 `g++`。
+
+### 修复 2：C++ 回退匹配（`compile_commands.py`）
+
+- 第 2-3 级目录树匹配：当源文件为 C++ 时，同时搜索 `.cpp` / `.cc` / `.cxx` 条目
+- 第 4 级兜底匹配：当源文件为 C++ 时，优先选择 C++ 条目
+
+### 修复 3：C++ 编译参数白名单（`compile_commands.py`）
+
+cflags 解析器原先只保留 `-mthumb`、`-mcpu` 等 ARM 架构参数和少量通用参数。C++ 关键参数被丢弃，导致头文件搜索路径冲突。
+
+新增白名单项：
+
+| 参数 | 作用 |
+|------|------|
+| `-nostdinc++` | 禁用编译器自带的 C++ 标准库头文件路径 |
+| `-fno-exceptions` | 禁用 C++ 异常（嵌入式常用） |
+| `-fno-rtti` | 禁用运行时类型信息（嵌入式常用） |
+| `-std=*` | C/C++ 标准版本（如 `-std=c++17`、`-std=gnu++20`） |
+
+其中 `-nostdinc++` 是最关键的修复 — 没有它，`g++` 会同时搜索工具链自带的 C++ 标准库和项目自定义的 libc++，两者冲突导致 `using std::abs` 等声明失败。
+
+### 修复 4：C++ 名称修饰（name mangling）支持（`compiler.py`）
+
+C++ 编译器会对函数名进行修饰（mangling），例如：
+
+```
+void Class::method(bool, bool) → _ZN5ns5Class6methodEbb
+```
+
+这导致三个环节失败：
+
+1. **链接器 `-Wl,-u` 标志**：使用未修饰名 `Class::method`，链接器找不到符号，`--gc-sections` 删除了注入函数
+2. **链接脚本 `KEEP` 规则**：`KEEP(*(.text.Class::method))` 无法匹配实际的 section 名 `.text._ZN5ns5Class6methodEbb`
+3. **最终符号查找**：nm 输出的 demangled 名带完整命名空间（`ns::Class::method`），与标记提取的短名（`Class::method`）不匹配
+
+解决方案：新增 `_resolve_mangled_names()` 函数：
+
+- 编译 `.o` 后，分别运行 `nm`（mangled）和 `nm -C`（demangled）
+- 逐行配对，构建 demangled → mangled 映射
+- 同时生成后缀映射（`Class::method` → mangled name），解决命名空间前缀不匹配问题
+- 链接器 `-Wl,-u` 和 `KEEP` 规则使用 mangled 名
+- 最终符号匹配使用后缀比较，并将短名回写到返回的 symbols 字典
+
+### 修复 5：FPB_INJECT 标记正则支持 C++ 类方法（`patch_generator.py`、`compiler.py`）
+
+原正则 `(\w+)\s*\(` 无法匹配 `Class::method` 中的 `::`。
+
+修改为 `([\w:]+)\s*\(`，支持：
+
+- C 函数：`void func()` → 提取 `func`
+- C++ 类方法：`void Class::method()` → 提取 `Class::method`
+
+### 修改文件清单
+
+| 文件 | 修改内容 |
+|------|----------|
+| `core/compile_commands.py` | C++ 回退匹配、cflags 白名单扩展 |
+| `core/compiler.py` | `_resolve_mangled_names()`、mangled 名链接、后缀符号匹配 |
+| `core/patch_generator.py` | FPB_INJECT 正则支持 `::` |
+| `tests/test_compiler.py` | 更新 mock side_effect 适配新增的 nm 调用 |
+| `tests/test_compiler_extended.py` | 同上 |
+| `tests/test_compile_inplace.py` | 同上 + 修正 `call_args_list` 索引 |

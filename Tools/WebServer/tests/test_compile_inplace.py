@@ -53,9 +53,11 @@ class TestCompileInjectInplace(unittest.TestCase):
         bin_data = kwargs.pop("bin_data", b"\x00" * 16)
         mock_run.side_effect = [
             Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
             Mock(returncode=0, stderr=""),  # link
             Mock(returncode=0, stderr=""),  # objcopy
-            Mock(returncode=0, stdout=nm_stdout),  # nm
+            Mock(returncode=0, stdout=nm_stdout),  # nm -C (final symbols)
         ]
 
         # Create a real temp file with source content
@@ -123,7 +125,8 @@ class TestCompileInjectInplace(unittest.TestCase):
 
         # Check the linker script written to tmpdir contains KEEP rules
         # The link command should reference a .ld file
-        link_cmd = mock_run.call_args_list[1][0][0]
+        # [0]=compile, [1]=nm raw, [2]=nm -C, [3]=link
+        link_cmd = mock_run.call_args_list[3][0][0]
         ld_args = [a for a in link_cmd if a.endswith(".ld") or ".ld" in a]
         self.assertTrue(len(ld_args) > 0, "Linker script should be in link command")
 
@@ -140,7 +143,8 @@ class TestCompileInjectInplace(unittest.TestCase):
         )
         self.assertEqual(error, "")
 
-        link_cmd = mock_run.call_args_list[1][0][0]
+        # [0]=compile, [1]=nm raw, [2]=nm -C, [3]=link
+        link_cmd = mock_run.call_args_list[3][0][0]
         self.assertIn("-Wl,-u,target_func", link_cmd)
 
     @patch("core.compiler.parse_compile_commands")
@@ -158,7 +162,8 @@ class TestCompileInjectInplace(unittest.TestCase):
         self.assertIn("fa", symbols)
         self.assertIn("fb", symbols)
 
-        link_cmd = mock_run.call_args_list[1][0][0]
+        # [0]=compile, [1]=nm raw, [2]=nm -C, [3]=link
+        link_cmd = mock_run.call_args_list[3][0][0]
         self.assertIn("-Wl,-u,fa", link_cmd)
         self.assertIn("-Wl,-u,fb", link_cmd)
 
@@ -169,10 +174,12 @@ class TestCompileInjectInplace(unittest.TestCase):
         mock_parse.return_value = self._make_config()
         bin_data = b"\x00" * 16
         mock_run.side_effect = [
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stdout="20001000 T test\n"),
+            Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
+            Mock(returncode=0, stderr=""),  # link
+            Mock(returncode=0, stderr=""),  # objcopy
+            Mock(returncode=0, stdout="20001000 T test\n"),  # nm -C (final)
         ]
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
@@ -270,10 +277,12 @@ class TestCompileInjectContentModeCompat(unittest.TestCase):
         mock_parse.return_value = self._make_config()
         bin_data = b"\x00" * 16
         mock_run.side_effect = [
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stdout="20001000 T test_func\n"),
+            Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
+            Mock(returncode=0, stderr=""),  # link
+            Mock(returncode=0, stderr=""),  # objcopy
+            Mock(returncode=0, stdout="20001000 T test_func\n"),  # nm -C (final)
         ]
         original_open = open
 
@@ -305,10 +314,12 @@ class TestCompileInjectContentModeCompat(unittest.TestCase):
         mock_parse.return_value = self._make_config()
         bin_data = b"\x00" * 16
         mock_run.side_effect = [
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stdout="20001000 T f\n"),
+            Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
+            Mock(returncode=0, stderr=""),  # link
+            Mock(returncode=0, stderr=""),  # objcopy
+            Mock(returncode=0, stdout="20001000 T f\n"),  # nm -C (final)
         ]
 
         real_open = open
@@ -635,10 +646,12 @@ class TestLinkerScriptGeneration(unittest.TestCase):
         # Capture what gets written to the .ld file
         bin_data = b"\x00" * 16
         mock_run.side_effect = [
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stdout="20001000 T func_a\n"),
+            Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
+            Mock(returncode=0, stderr=""),  # link
+            Mock(returncode=0, stderr=""),  # objcopy
+            Mock(returncode=0, stdout="20001000 T func_a\n"),  # nm -C (final)
         ]
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:

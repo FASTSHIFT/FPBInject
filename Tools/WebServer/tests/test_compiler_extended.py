@@ -35,10 +35,12 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         )
         bin_data = kwargs.pop("bin_data", b"\x00" * 16)
         mock_run.side_effect = [
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stdout=nm_stdout),
+            Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
+            Mock(returncode=0, stderr=""),  # link
+            Mock(returncode=0, stderr=""),  # objcopy
+            Mock(returncode=0, stdout=nm_stdout),  # nm -C (final symbols)
         ]
         original_open = open
 
@@ -176,7 +178,8 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
                 elf_path=elf_path,
             )
             self.assertEqual(error, "")
-            link_cmd = mock_run.call_args_list[1][0][0]
+            # link cmd is at index 3: [0]=compile, [1]=nm raw, [2]=nm -C, [3]=link
+            link_cmd = mock_run.call_args_list[3][0][0]
             just_sym = [a for a in link_cmd if "--just-symbols" in a]
             self.assertEqual(len(just_sym), 1)
         finally:
@@ -214,8 +217,10 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
     def test_link_error(self, mock_run, mock_parse):
         mock_parse.return_value = self._make_config()
         mock_run.side_effect = [
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=1, stderr="undefined symbol"),
+            Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
+            Mock(returncode=1, stderr="undefined symbol"),  # link fails
         ]
         data, symbols, error = compiler.compile_inject(
             "void f(void) {}",
@@ -230,9 +235,11 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
     def test_objcopy_error(self, mock_run, mock_parse):
         mock_parse.return_value = self._make_config()
         mock_run.side_effect = [
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=0, stderr=""),
-            Mock(returncode=1, stderr="objcopy failed"),
+            Mock(returncode=0, stderr=""),  # compile
+            Mock(returncode=0, stdout="", stderr=""),  # nm raw (mangled names)
+            Mock(returncode=0, stdout="", stderr=""),  # nm -C (demangled names)
+            Mock(returncode=0, stderr=""),  # link
+            Mock(returncode=1, stderr="objcopy failed"),  # objcopy fails
         ]
         data, symbols, error = compiler.compile_inject(
             "void f(void) {}",

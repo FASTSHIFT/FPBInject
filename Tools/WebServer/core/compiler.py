@@ -23,6 +23,85 @@ from core.compile_commands import parse_dep_file_for_compile_command  # noqa: F4
 logger = logging.getLogger(__name__)
 
 
+def _resolve_mangled_names(
+    obj_file: str,
+    toolchain_path: Optional[str] = None,
+    env: Optional[dict] = None,
+) -> Dict[str, str]:
+    """Resolve demangled function names to their mangled counterparts.
+
+    Runs nm twice on the object file - once with demangling (-C) and once
+    without - to build a mapping from demangled names to mangled names.
+    This is needed for C++ where gui_loop_close becomes _Z14gui_loop_closePPv.
+
+    Returns:
+        Dict mapping demangled name -> mangled name.
+        For C functions (no mangling), the name maps to itself.
+    """
+    mapping = {}
+    try:
+        nm_cmd = get_tool_path("arm-none-eabi-nm", toolchain_path)
+
+        # Get mangled symbols (T/t type only)
+        raw_result = subprocess.run(
+            [nm_cmd, "--defined-only", obj_file],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        # Get demangled symbols
+        demangled_result = subprocess.run(
+            [nm_cmd, "-C", "--defined-only", obj_file],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        if raw_result.returncode != 0 or demangled_result.returncode != 0:
+            return mapping
+
+        raw_lines = raw_result.stdout.strip().split("\n")
+        demangled_lines = demangled_result.stdout.strip().split("\n")
+
+        if len(raw_lines) != len(demangled_lines):
+            logger.debug(
+                "nm output line count mismatch, skipping mangled name resolution"
+            )
+            return mapping
+
+        for raw_line, dem_line in zip(raw_lines, demangled_lines):
+            raw_parts = raw_line.split()
+            dem_parts = dem_line.split()
+            if len(raw_parts) < 3 or len(dem_parts) < 3:
+                continue
+            sym_type = raw_parts[1]
+            if sym_type.upper() != "T":
+                continue
+            mangled_name = raw_parts[2]
+            # Demangled name may have params like "func(void**)", extract base name
+            demangled_full = " ".join(dem_parts[2:])
+            if "(" in demangled_full:
+                demangled_name = demangled_full.split("(")[0]
+            else:
+                demangled_name = demangled_full
+            mapping[demangled_name] = mangled_name
+
+            # Also add suffix variants for C++ namespaced names.
+            # E.g., for "ns::Class::method", also map "Class::method" and "method"
+            # so that markers like /* FPB_INJECT */ void Class::method()
+            # can be resolved without requiring the full namespace.
+            parts = demangled_name.split("::")
+            for i in range(1, len(parts)):
+                suffix = "::".join(parts[i:])
+                if suffix not in mapping:
+                    mapping[suffix] = mangled_name
+
+    except Exception as e:
+        logger.debug(f"Failed to resolve mangled names: {e}")
+
+    return mapping
+
+
 def compile_inject(
     source_content: str = None,
     base_addr: int = 0,
@@ -218,6 +297,14 @@ def compile_inject(
         if result.returncode != 0:
             return None, None, f"Compile error:\n{result.stderr}"
 
+        # Resolve C++ mangled names from the compiled object file.
+        # When compiling C++ code, function names get mangled (e.g.,
+        # gui_loop_close(void**) -> _Z14gui_loop_closePPv). We need the
+        # mangled names for linker -u flags and KEEP rules in the linker script.
+        mangled_map = _resolve_mangled_names(obj_file, toolchain_path, env)
+        if mangled_map:
+            logger.info(f"C++ mangled name mapping: {mangled_map}")
+
         # Create linker script
         # Note: We include .bss in the binary by adding a marker section after it.
         # This ensures that static/global variables with zero initialization
@@ -225,8 +312,9 @@ def compile_inject(
         # Build text section KEEP rules
         if inplace_mode and inject_functions:
             # In-place mode: use KEEP(.text.func) for each target function
+            # Use mangled names for C++ functions (section names use mangled names)
             keep_rules = "\n".join(
-                f"        KEEP(*(.text.{func}))  /* inject: {func} */"
+                f"        KEEP(*(.text.{mangled_map.get(func, func)}))  /* inject: {func} */"
                 for func in inject_functions
             )
             text_section = f"""
@@ -274,11 +362,13 @@ SECTIONS
         link_cmd.append("-Wl,--allow-multiple-definition")
 
         # Determine functions to keep with -u (undefined symbol reference)
+        # Use mangled names for C++ functions so the linker can find them
         if inplace_mode and inject_functions:
             # In-place mode: use provided function list
             fpb_funcs = list(inject_functions)
             for func in fpb_funcs:
-                link_cmd.append(f"-Wl,-u,{func}")
+                mangled = mangled_map.get(func, func)
+                link_cmd.append(f"-Wl,-u,{mangled}")
         else:
             # Content mode: find FPB_INJECT marked functions from source
             scan_content = source_content or ""
@@ -290,7 +380,7 @@ SECTIONS
                 r"(?:void|int|char|unsigned|signed|long|short|float|double|"
                 r"uint\d+_t|int\d+_t|size_t|ssize_t|bool|_Bool|"
                 r"\w+\s*\*?)\s+"
-                r"(\w+)\s*\(",
+                r"([\w:]+)\s*\(",
                 re.MULTILINE | re.IGNORECASE | re.DOTALL,
             )
             fpb_funcs = fpb_marker_pattern.findall(scan_content)
@@ -380,9 +470,20 @@ SECTIONS
                     pass
 
         # Log FPB inject symbols for debugging
-        fpb_syms = {k: v for k, v in symbols.items() if k in fpb_funcs}
+        # Use suffix matching for C++ namespaced names:
+        # fpb_funcs may have "Class::method" while symbols has "ns::Class::method"
+        fpb_syms = {}
+        for sym_name, sym_addr in symbols.items():
+            for func in fpb_funcs:
+                if sym_name == func or sym_name.endswith("::" + func):
+                    fpb_syms[func] = sym_addr
+                    break
         if fpb_syms:
             logger.info(f"Found FPB inject symbols: {fpb_syms}")
+            # Merge short names into symbols so callers can look up by either name
+            for func_name, func_addr in fpb_syms.items():
+                if func_name not in symbols:
+                    symbols[func_name] = func_addr
         elif fpb_funcs:
             logger.warning(
                 f"Expected FPB inject functions {fpb_funcs} not found in compiled ELF. Total symbols: {len(symbols)}"

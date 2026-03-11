@@ -95,7 +95,7 @@ class PatchGenerator:
             rf"(?:{combined_pattern})\s*\n?"
             r"(?:__attribute__\s*\(\(.*?\)\)\s*\n?)?"
             r"(?:(?:static|inline|extern|const|volatile)\s+)*"
-            r"[\w\s\*]+?\s+(\w+)\s*\("
+            r"[\w\s\*]+?\s+([\w:]+)\s*\("
         )
 
         for match in re.finditer(full_pattern, content, re.MULTILINE | re.DOTALL):
