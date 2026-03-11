@@ -641,9 +641,10 @@ SECTIONS
             # Also log raw nm output for debugging
             logger.warning(f"Raw nm output:\n{result.stdout[:2000]}")
             # Log source content first 1000 chars
-            logger.warning(
-                f"Source content preview (first 1000 chars):\n{source_content[:1000]}"
-            )
+            if source_content:
+                logger.warning(
+                    f"Source content preview (first 1000 chars):\n{source_content[:1000]}"
+                )
         else:
             logger.warning("No FPB_INJECT markers found in source code!")
 
