@@ -43,9 +43,7 @@ def init_auth(app, token):
         )
 
         if req_token != token:
-            logger.warning(
-                f"Auth rejected: {request.remote_addr} -> {request.path}"
-            )
+            logger.warning(f"Auth rejected: {request.remote_addr} -> {request.path}")
             abort(403)
 
         # Set cookie on first successful token auth via query/header

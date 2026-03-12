@@ -38,9 +38,7 @@ class TestAuthMiddleware(unittest.TestCase):
 
     def test_non_localhost_no_token_rejected(self):
         """Non-localhost without token should get 403"""
-        resp = self.client.get(
-            "/test", environ_base={"REMOTE_ADDR": "192.168.1.100"}
-        )
+        resp = self.client.get("/test", environ_base={"REMOTE_ADDR": "192.168.1.100"})
         self.assertEqual(resp.status_code, 403)
 
     def test_non_localhost_wrong_token_rejected(self):
@@ -119,9 +117,7 @@ class TestAuthMiddleware(unittest.TestCase):
 
     def test_security_headers_on_403(self):
         """Security headers should be present even on 403"""
-        resp = self.client.get(
-            "/test", environ_base={"REMOTE_ADDR": "192.168.1.100"}
-        )
+        resp = self.client.get("/test", environ_base={"REMOTE_ADDR": "192.168.1.100"})
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp.headers.get("X-Content-Type-Options"), "nosniff")
 
@@ -142,9 +138,7 @@ class TestNoAuthMode(unittest.TestCase):
 
     def test_non_localhost_allowed_without_auth(self):
         """Without auth middleware, non-localhost should pass"""
-        resp = self.client.get(
-            "/test", environ_base={"REMOTE_ADDR": "192.168.1.100"}
-        )
+        resp = self.client.get("/test", environ_base={"REMOTE_ADDR": "192.168.1.100"})
         self.assertEqual(resp.status_code, 200)
 
 
