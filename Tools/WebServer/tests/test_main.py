@@ -455,6 +455,109 @@ class TestAutoOpenBrowser(unittest.TestCase):
         log_output = "\n".join(calls)
         self.assertIn("http://127.0.0.1:8080", log_output)
 
+    @patch("main.threading.Timer")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_startup_banner_shows_lan_ip(
+        self,
+        mock_args,
+        mock_check,
+        mock_restore,
+        mock_create,
+        mock_timer_cls,
+    ):
+        """Startup banner should show LAN network URL"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=True,
+            no_browser=True,
+        )
+        mock_create.return_value = Mock()
+
+        mock_sock = Mock()
+        mock_sock.getsockname.return_value = ("192.168.1.100", 0)
+
+        with patch("main.logger") as mock_logger, patch(
+            "main.socket.socket", return_value=mock_sock
+        ):
+            main.main()
+
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        log_output = "\n".join(calls)
+        self.assertIn("http://192.168.1.100:5500", log_output)
+        self.assertIn("Network", log_output)
+
+    @patch("main.threading.Timer")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_startup_banner_lan_ip_unavailable(
+        self,
+        mock_args,
+        mock_check,
+        mock_restore,
+        mock_create,
+        mock_timer_cls,
+    ):
+        """Startup banner shows 'unavailable' when LAN IP detection fails"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=True,
+            no_browser=True,
+        )
+        mock_create.return_value = Mock()
+
+        mock_sock = Mock()
+        mock_sock.connect.side_effect = OSError("Network unreachable")
+
+        with patch("main.logger") as mock_logger, patch(
+            "main.socket.socket", return_value=mock_sock
+        ):
+            main.main()
+
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        log_output = "\n".join(calls)
+        self.assertIn("unavailable", log_output)
+
+    @patch("main.threading.Timer")
+    @patch("main.create_app")
+    @patch("main.restore_state")
+    @patch("main.check_port_available", return_value=True)
+    @patch("main.parse_args")
+    def test_startup_lan_ip_socket_closed(
+        self,
+        mock_args,
+        mock_check,
+        mock_restore,
+        mock_create,
+        mock_timer_cls,
+    ):
+        """LAN IP detection should close the socket after use"""
+        mock_args.return_value = Mock(
+            host="0.0.0.0",
+            port=5500,
+            debug=False,
+            skip_port_check=True,
+            no_browser=True,
+        )
+        mock_create.return_value = Mock()
+
+        mock_sock = Mock()
+        mock_sock.getsockname.return_value = ("10.0.0.5", 0)
+
+        with patch("main.socket.socket", return_value=mock_sock):
+            main.main()
+
+        mock_sock.connect.assert_called_once_with(("8.8.8.8", 80))
+        mock_sock.close.assert_called_once()
+
 
 class TestCheckRequirements(unittest.TestCase):
     """check_requirements dependency checker tests"""
