@@ -146,9 +146,6 @@ window.i18nResources['en'] = {
       reading_progress: 'Reading {{name}} {{percent}}%',
       loading_symbol: 'Loading {{name}}...',
       save_to_file: 'Save',
-      saved_to_file: 'Saved {{size}} bytes to: {{path}}',
-      save_failed: 'Failed to save: {{error}}',
-      save_file_error: 'Failed to save file: {{error}}',
     },
 
     // Inline value editing

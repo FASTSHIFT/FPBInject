@@ -1030,7 +1030,7 @@ function saveSymbolData(symName) {
 
   const hexDump = contentDiv.querySelector('.sym-hex-dump');
   if (!hexDump) {
-    log.error(t('symbols.no_hex_data', 'No hex data to write'));
+    log.error('No hex data to write');
     return;
   }
 
@@ -1043,7 +1043,7 @@ function saveSymbolData(symName) {
     .trim();
 
   if (!hexBytes || !/^[0-9a-fA-F]+$/.test(hexBytes)) {
-    log.error(t('symbols.invalid_hex', 'Invalid hex data'));
+    log.error('Invalid hex data');
     return;
   }
 
@@ -1062,13 +1062,7 @@ function saveSymbolData(symName) {
   a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
-  log.success(
-    t(
-      'symbols.saved_to_file',
-      `Saved ${bytes.length} bytes: ${fileName}`,
-      { size: bytes.length, path: fileName },
-    ),
-  );
+  log.success(`Saved ${bytes.length} bytes: ${fileName}`);
 }
 
 /* ===========================

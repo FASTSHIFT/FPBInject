@@ -146,9 +146,6 @@ window.i18nResources['zh-CN'] = {
       reading_progress: '正在读取 {{name}} {{percent}}%',
       loading_symbol: '正在加载 {{name}}...',
       save_to_file: '保存',
-      saved_to_file: '已保存 {{size}} 字节到: {{path}}',
-      save_failed: '保存失败: {{error}}',
-      save_file_error: '保存文件失败: {{error}}',
     },
 
     // 内联值编辑
