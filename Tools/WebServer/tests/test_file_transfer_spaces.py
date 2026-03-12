@@ -134,5 +134,60 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         self.assertIn('"/path/my file.txt"', first_call[0][0])
 
 
+class TestFileTransferSingleCharPath(unittest.TestCase):
+    """Tests for file operations with single-character paths (no quotes)."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_fpb = MagicMock()
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK]")
+        self.ft = FileTransfer(self.mock_fpb)
+
+    def test_flist_single_char_path_no_quotes(self):
+        """Test flist with single-char path does not add quotes."""
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FLIST dir=0 file=0")
+        success, entries = self.ft.flist("/")
+        self.assertTrue(success)
+        self.mock_fpb.send_fl_cmd.assert_called_with(
+            "fl -c flist --path /",
+            timeout=5.0,
+            max_retries=3,
+        )
+
+    def test_fstat_single_char_path_no_quotes(self):
+        """Test fstat with single-char path does not add quotes."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FSTAT / size=0 mtime=0 type=dir",
+        )
+        success, stat = self.ft.fstat("/")
+        self.assertTrue(success)
+        self.mock_fpb.send_fl_cmd.assert_called_with(
+            "fl -c fstat --path /",
+            timeout=2.0,
+            max_retries=3,
+        )
+
+    def test_fopen_single_char_path_no_quotes(self):
+        """Test fopen with single-char path does not add quotes."""
+        success, msg = self.ft.fopen("/", "r")
+        self.assertTrue(success)
+        self.mock_fpb.send_fl_cmd.assert_called_with(
+            "fl -c fopen --path / --mode r",
+            timeout=2.0,
+            max_retries=3,
+        )
+
+    def test_multi_char_path_has_quotes(self):
+        """Test that multi-char paths still have quotes."""
+        success, msg = self.ft.fopen("/a", "r")
+        self.assertTrue(success)
+        self.mock_fpb.send_fl_cmd.assert_called_with(
+            'fl -c fopen --path "/a" --mode r',
+            timeout=2.0,
+            max_retries=3,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

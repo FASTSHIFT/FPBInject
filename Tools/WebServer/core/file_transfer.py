@@ -27,6 +27,13 @@ def _sanitize_path(path: str) -> str:
     return path.replace('"', '\\"')
 
 
+def _format_path_arg(path: str) -> str:
+    """Format path argument for command line, quoting only if needed."""
+    if len(path) == 1:
+        return path
+    return f'"{path}"'
+
+
 class FileTransfer:
     """File transfer handler for device communication."""
 
@@ -121,7 +128,7 @@ class FileTransfer:
             Tuple of (success, message)
         """
         path = _sanitize_path(path)
-        cmd = f'fl -c fopen --path "{path}" --mode {mode}'
+        cmd = f"fl -c fopen --path {_format_path_arg(path)} --mode {mode}"
         return self._send_cmd(cmd)
 
     def fwrite(
@@ -353,7 +360,7 @@ class FileTransfer:
             stat_dict contains: size, mtime, type
         """
         path = _sanitize_path(path)
-        cmd = f'fl -c fstat --path "{path}"'
+        cmd = f"fl -c fstat --path {_format_path_arg(path)}"
         success, response = self._send_cmd(cmd)
 
         if not success:
@@ -385,7 +392,7 @@ class FileTransfer:
             Each entry contains: name, type, size
         """
         path = _sanitize_path(path)
-        cmd = f'fl -c flist --path "{path}"'
+        cmd = f"fl -c flist --path {_format_path_arg(path)}"
         success, response = self._send_cmd(cmd, timeout=5.0)
 
         if not success:
@@ -426,7 +433,7 @@ class FileTransfer:
             Tuple of (success, message)
         """
         path = _sanitize_path(path)
-        cmd = f'fl -c fremove --path "{path}"'
+        cmd = f"fl -c fremove --path {_format_path_arg(path)}"
         return self._send_cmd(cmd)
 
     def fmkdir(self, path: str) -> Tuple[bool, str]:
@@ -440,7 +447,7 @@ class FileTransfer:
             Tuple of (success, message)
         """
         path = _sanitize_path(path)
-        cmd = f'fl -c fmkdir --path "{path}"'
+        cmd = f"fl -c fmkdir --path {_format_path_arg(path)}"
         return self._send_cmd(cmd)
 
     def frename(self, old_path: str, new_path: str) -> Tuple[bool, str]:
@@ -456,7 +463,7 @@ class FileTransfer:
         """
         old_path = _sanitize_path(old_path)
         new_path = _sanitize_path(new_path)
-        cmd = f'fl -c frename --path "{old_path}" --newpath "{new_path}"'
+        cmd = f"fl -c frename --path {_format_path_arg(old_path)} --newpath {_format_path_arg(new_path)}"
         return self._send_cmd(cmd)
 
     def upload(
