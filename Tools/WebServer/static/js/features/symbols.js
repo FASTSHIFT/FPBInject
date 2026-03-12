@@ -62,10 +62,10 @@ function onSymbolClick(name, addr, type) {
   }, 250);
 }
 
-function onSymbolDblClick(name, type, addr) {
+function onSymbolDblClick(name, type) {
   clearTimeout(_symbolClickTimer);
   if (type === 'function') {
-    openManualPatchTab(name, addr);
+    openManualPatchTab(name);
   } else {
     // For const/variable, double-click same as single-click
     openSymbolValueTab(name, type);
@@ -798,7 +798,7 @@ async function searchSymbols() {
           const cfg = _getSymbolTypeConfig(sym.type || 'function');
           const colorStyle = cfg.color ? ` style="color: ${cfg.color};"` : '';
           return `
-        <div class="symbol-item" onclick="onSymbolClick('${sym.name}', '${sym.addr}', '${sym.type || 'function'}')" ondblclick="onSymbolDblClick('${sym.name}', '${sym.type || 'function'}', '${sym.addr}')">
+        <div class="symbol-item" onclick="onSymbolClick('${sym.name}', '${sym.addr}', '${sym.type || 'function'}')" ondblclick="onSymbolDblClick('${sym.name}', '${sym.type || 'function'}')">
           <i class="codicon ${cfg.icon} symbol-icon"${colorStyle}></i>
           <span class="symbol-name">${sym.name}</span>
           <span class="symbol-addr">${sym.addr}</span>
@@ -1023,7 +1023,7 @@ async function writeSymbolToDevice(symName) {
 /* ===========================
    SAVE SYMBOL DATA TO FILE
    =========================== */
-async function saveSymbolData(symName) {
+function saveSymbolData(symName) {
   const tabId = `symval_${symName}`;
   const contentDiv = document.getElementById(`tabContent_${tabId}`);
   if (!contentDiv) return;
@@ -1048,47 +1048,27 @@ async function saveSymbolData(symName) {
   }
 
   const fileName = `${symName}.bin`;
-  const state = window.FPBState;
 
-  state.fileBrowserCallback = async (selectedPath) => {
-    if (!selectedPath) return;
+  // Convert hex string to binary Uint8Array
+  const bytes = new Uint8Array(hexBytes.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hexBytes.substr(i * 2, 2), 16);
+  }
 
-    const fullPath = selectedPath.endsWith('/')
-      ? selectedPath + fileName
-      : selectedPath + '/' + fileName;
-
-    try {
-      const res = await fetch('/api/file/write/binary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: fullPath, hex_data: hexBytes }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        log.success(
-          t(
-            'symbols.saved_to_file',
-            `Saved ${data.size} bytes to: ${fullPath}`,
-            { size: data.size, path: fullPath },
-          ),
-        );
-      } else {
-        log.error(
-          t('symbols.save_failed', `Failed to save: ${data.error}`, {
-            error: data.error,
-          }),
-        );
-      }
-    } catch (e) {
-      log.error(
-        t('symbols.save_file_error', `Failed to save file: ${e}`, { error: e }),
-      );
-    }
-  };
-  state.fileBrowserFilter = '';
-  state.fileBrowserMode = 'dir';
-  openFileBrowser(HOME_PATH);
+  const blob = new Blob([bytes], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+  log.success(
+    t(
+      'symbols.saved_to_file',
+      `Saved ${bytes.length} bytes: ${fileName}`,
+      { size: bytes.length, path: fileName },
+    ),
+  );
 }
 
 /* ===========================

@@ -441,7 +441,7 @@ async function openManualPatchTab(funcName, origAddr = null) {
   log.success(`Created patch tab: ${tabTitle}`);
 }
 
-async function savePatchFile() {
+function savePatchFile() {
   const state = window.FPBState;
   if (!state.currentPatchTab || !state.currentPatchTab.funcName) {
     log.error('No patch tab selected');
@@ -458,34 +458,14 @@ async function savePatchFile() {
   }
 
   const fileName = `patch_${funcName}.c`;
-
-  state.fileBrowserCallback = async (selectedPath) => {
-    if (!selectedPath) return;
-
-    const fullPath = selectedPath.endsWith('/')
-      ? selectedPath + fileName
-      : selectedPath + '/' + fileName;
-
-    try {
-      const res = await fetch('/api/file/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: fullPath, content: content }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        log.success(`Saved patch to: ${fullPath}`);
-      } else {
-        log.error(`Failed to save: ${data.error}`);
-      }
-    } catch (e) {
-      log.error(`Failed to save file: ${e}`);
-    }
-  };
-  state.fileBrowserFilter = '';
-  state.fileBrowserMode = 'dir';
-  openFileBrowser(HOME_PATH);
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+  log.success(`Downloaded: ${fileName}`);
 }
 
 function escapeHtml(text) {

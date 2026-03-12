@@ -1072,104 +1072,39 @@ module.exports = function (w) {
     it('is exported to window', () =>
       assertTrue(typeof w.saveSymbolData === 'function'));
 
-    it('is async function', () =>
-      assertTrue(w.saveSymbolData.constructor.name === 'AsyncFunction'));
+    it('is not async (uses browser download)', () =>
+      assertTrue(w.saveSymbolData.constructor.name === 'Function'));
 
-    it('returns early if no tab content', async () => {
-      await w.saveSymbolData('nonexistent_xyz_999');
+    it('returns early if no tab content', () => {
+      w.saveSymbolData('nonexistent_xyz_999');
       assertTrue(true);
     });
 
-    it('returns early if no hex dump element', async () => {
+    it('returns early if no hex dump element', () => {
       // Get element via getElementById (registers in mockElements)
       const el = browserGlobals.document.getElementById(
         'tabContent_symval_no_hex2',
       );
       el.querySelector = () => null;
-      await w.saveSymbolData('no_hex2');
+      w.saveSymbolData('no_hex2');
       assertTrue(true);
     });
 
-    it('opens file browser with dir mode', async () => {
+    it('triggers browser download for valid hex data', () => {
       const el = browserGlobals.document.getElementById(
-        'tabContent_symval_save_dir',
+        'tabContent_symval_save_dl',
       );
       const hexDump = { textContent: '0x0000: DE AD BE EF  ....' };
       el.querySelector = (sel) => (sel === '.sym-hex-dump' ? hexDump : null);
 
-      await w.saveSymbolData('save_dir');
-      assertEqual(w.FPBState.fileBrowserMode, 'dir');
-      assertTrue(typeof w.FPBState.fileBrowserCallback === 'function');
-    });
-
-    it('callback posts to /api/file/write/binary', async () => {
-      const el = browserGlobals.document.getElementById(
-        'tabContent_symval_save_post',
-      );
-      const hexDump = { textContent: '0x0000: AA BB CC DD  ....' };
-      el.querySelector = (sel) => (sel === '.sym-hex-dump' ? hexDump : null);
-
-      await w.saveSymbolData('save_post');
-      assertTrue(typeof w.FPBState.fileBrowserCallback === 'function');
-
-      setFetchResponse('/api/file/write/binary', { success: true, size: 4 });
-      await w.FPBState.fileBrowserCallback('/tmp/test');
-      const calls = getFetchCalls();
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.saveSymbolData('save_dl');
       assertTrue(
-        calls.some(
-          (c) =>
-            c.url === '/api/file/write/binary' &&
-            c.options &&
-            c.options.method === 'POST',
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Saved'),
         ),
       );
-    });
-
-    it('callback handles empty path', async () => {
-      const el = browserGlobals.document.getElementById(
-        'tabContent_symval_save_null',
-      );
-      const hexDump = { textContent: '0x0000: FF  .' };
-      el.querySelector = (sel) => (sel === '.sym-hex-dump' ? hexDump : null);
-
-      await w.saveSymbolData('save_null');
-      await w.FPBState.fileBrowserCallback(null);
-      assertTrue(true);
-    });
-
-    it('callback handles save failure', async () => {
-      const el = browserGlobals.document.getElementById(
-        'tabContent_symval_save_err',
-      );
-      const hexDump = { textContent: '0x0000: AA BB  ..' };
-      el.querySelector = (sel) => (sel === '.sym-hex-dump' ? hexDump : null);
-
-      await w.saveSymbolData('save_err');
-      setFetchResponse('/api/file/write/binary', {
-        success: false,
-        error: 'Permission denied',
-      });
-      await w.FPBState.fileBrowserCallback('/tmp/fail');
-      assertTrue(true);
-    });
-
-    it('callback handles fetch exception', async () => {
-      const el = browserGlobals.document.getElementById(
-        'tabContent_symval_save_exc',
-      );
-      const hexDump = { textContent: '0x0000: AA BB  ..' };
-      el.querySelector = (sel) => (sel === '.sym-hex-dump' ? hexDump : null);
-
-      await w.saveSymbolData('save_exc');
-      const origFetch = browserGlobals.fetch;
-      browserGlobals.fetch = async () => {
-        throw new Error('Network error');
-      };
-      global.fetch = browserGlobals.fetch;
-      await w.FPBState.fileBrowserCallback('/tmp/exc');
-      browserGlobals.fetch = origFetch;
-      global.fetch = origFetch;
-      assertTrue(true);
+      w.FPBState.toolTerminal = null;
     });
   });
 

@@ -312,15 +312,15 @@ module.exports = function (w) {
       assertTrue(typeof w.savePatchFile === 'function');
     });
 
-    it('is async function', () => {
-      assertTrue(w.savePatchFile.constructor.name === 'AsyncFunction');
+    it('is not async (uses browser download)', () => {
+      assertTrue(w.savePatchFile.constructor.name === 'Function');
     });
 
-    it('returns error if no patch tab selected', async () => {
+    it('returns error if no patch tab selected', () => {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.currentPatchTab = null;
-      await w.savePatchFile();
+      w.savePatchFile();
       assertTrue(
         mockTerm._writes.some(
           (wr) => wr.msg && wr.msg.includes('No patch tab'),
@@ -329,7 +329,7 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
 
-    it('returns error if editor not found', async () => {
+    it('returns error if editor not found', () => {
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
       w.FPBState.currentPatchTab = {
@@ -337,7 +337,7 @@ module.exports = function (w) {
         funcName: 'test_func',
       };
       w.FPBState.aceEditors.clear();
-      await w.savePatchFile();
+      w.savePatchFile();
       assertTrue(
         mockTerm._writes.some(
           (wr) => wr.msg && wr.msg.includes('Editor not found'),
@@ -346,30 +346,20 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
 
-    it('sets fileBrowserCallback', async () => {
+    it('triggers browser download when content available', () => {
       w.FPBState.toolTerminal = new MockTerminal();
       w.FPBState.currentPatchTab = { id: 'save_tab', funcName: 'test_func' };
       w.FPBState.aceEditors.set('save_tab', {
         getValue: () => 'void test() {}',
       });
-      w.FPBState.fileBrowserCallback = null;
-      setFetchResponse('/api/browse', { items: [], current_path: '~' });
-      await w.savePatchFile();
-      assertTrue(w.FPBState.fileBrowserCallback !== null);
+      // Should not throw
+      w.savePatchFile();
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Downloaded'),
+        ),
+      );
       w.FPBState.aceEditors.delete('save_tab');
-      w.FPBState.toolTerminal = null;
-    });
-
-    it('sets fileBrowserMode to dir', async () => {
-      w.FPBState.toolTerminal = new MockTerminal();
-      w.FPBState.currentPatchTab = { id: 'save_tab2', funcName: 'test_func' };
-      w.FPBState.aceEditors.set('save_tab2', {
-        getValue: () => 'void test() {}',
-      });
-      setFetchResponse('/api/browse', { items: [], current_path: '~' });
-      await w.savePatchFile();
-      assertEqual(w.FPBState.fileBrowserMode, 'dir');
-      w.FPBState.aceEditors.delete('save_tab2');
       w.FPBState.toolTerminal = null;
     });
   });
