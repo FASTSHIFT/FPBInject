@@ -298,18 +298,27 @@ def main():
     # Restore previous state (auto-connect)
     restore_state()
 
-    url = f"http://127.0.0.1:{args.port}"
+    local_url = f"http://127.0.0.1:{args.port}"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        lan_ip = "unavailable"
+    lan_url = f"http://{lan_ip}:{args.port}"
 
     logger.info("")
     logger.info("  ╔══════════════════════════════════════════════╗")
     logger.info("  ║        FPBInject Web Server Started          ║")
     logger.info("  ╠══════════════════════════════════════════════╣")
-    logger.info(f"  ║  🌐 Open: {url:<35s}║")
+    logger.info(f"  ║  🏠 Local:   {local_url:<32s}║")
+    logger.info(f"  ║  🌐 Network: {lan_url:<32s}║")
     logger.info("  ╚══════════════════════════════════════════════╝")
     logger.info("")
 
     if not args.no_browser:
-        threading.Timer(1.0, webbrowser.open, args=[url]).start()
+        threading.Timer(1.0, webbrowser.open, args=[local_url]).start()
 
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
