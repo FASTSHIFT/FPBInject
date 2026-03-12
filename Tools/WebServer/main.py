@@ -329,17 +329,31 @@ def main():
     lan_url = f"http://{lan_ip}:{args.port}"
     network_url = f"{lan_url}?token={token}" if token else lan_url
 
-    logger.info("")
-    logger.info("  ╔══════════════════════════════════════════════╗")
-    logger.info("  ║        FPBInject Web Server Started          ║")
-    logger.info("  ╠══════════════════════════════════════════════╣")
-    logger.info(f"  ║  🏠 Local:   {local_url:<32s}║")
-    logger.info(f"  ║  🌐 Network: {network_url:<32s}║")
+    # Build banner with dynamic width
+    title = "FPBInject Web Server Started"
+    info_lines = [
+        ("🏠 Local:  ", local_url),
+        ("🌐 Network:", network_url),
+    ]
     if token:
-        logger.info(f"  ║  🔑 Token:   {token:<32s}║")
+        info_lines.append(("🔑 Token:  ", token))
     else:
-        logger.info("  ║  ⚠️  Auth:    disabled (--no-auth)          ║")
-    logger.info("  ╚══════════════════════════════════════════════╝")
+        info_lines.append(("⚠️  Auth:   ", "disabled (--no-auth)"))
+
+    # Each emoji label occupies ~14 display columns (2 pad + emoji(2) + space + text + pad)
+    # Calculate inner width from longest value, minimum fits the title
+    label_cols = 14  # display columns for "  🏠 Local:   " etc.
+    max_val_len = max(len(v) for _, v in info_lines)
+    inner_width = max(len(title) + 8, label_cols + max_val_len + 2)
+
+    logger.info("")
+    logger.info(f"  ╔{'═' * inner_width}╗")
+    logger.info(f"  ║{title:^{inner_width}s}║")
+    logger.info(f"  ╠{'═' * inner_width}╣")
+    val_width = inner_width - label_cols
+    for label, value in info_lines:
+        logger.info(f"  ║  {label} {value:<{val_width}s}║")
+    logger.info(f"  ╚{'═' * inner_width}╝")
     logger.info("")
 
     if not args.no_browser:
