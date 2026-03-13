@@ -2618,7 +2618,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      browserGlobals.document.getElementById('chunkSize').value = '128';
+      browserGlobals.document.getElementById('uploadChunkSize').value = '128';
       browserGlobals.confirm = () => true;
       setFetchResponse('/api/fpb/test-serial', {
         success: true,
@@ -2630,12 +2630,12 @@ module.exports = function (w) {
       await w.fpbTestSerial();
       // value can be number or string depending on mock implementation
       assertEqual(
-        String(browserGlobals.document.getElementById('chunkSize').value),
+        String(browserGlobals.document.getElementById('uploadChunkSize').value),
         '384',
       );
       assertTrue(
         mockTerm._writes.some(
-          (wr) => wr.msg && wr.msg.includes('Chunk size updated'),
+          (wr) => wr.msg && wr.msg.includes('Parameters applied'),
         ),
       );
       w.FPBState.isConnected = false;
@@ -2647,7 +2647,7 @@ module.exports = function (w) {
       w.FPBState.isConnected = true;
       const mockTerm = new MockTerminal();
       w.FPBState.toolTerminal = mockTerm;
-      browserGlobals.document.getElementById('chunkSize').value = '128';
+      browserGlobals.document.getElementById('uploadChunkSize').value = '128';
       // Override global confirm to return false
       const origConfirm = global.confirm;
       global.confirm = () => false;
@@ -2659,7 +2659,7 @@ module.exports = function (w) {
       });
       await w.fpbTestSerial();
       assertEqual(
-        browserGlobals.document.getElementById('chunkSize').value,
+        browserGlobals.document.getElementById('uploadChunkSize').value,
         '128',
       );
       assertTrue(

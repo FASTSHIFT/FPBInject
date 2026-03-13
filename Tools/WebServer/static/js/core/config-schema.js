@@ -472,6 +472,12 @@ function onConfigItemChange(key) {
         return; // Handler will save config
       }
       break;
+    case 'verify_crc':
+      if (typeof onVerifyCrcChange === 'function') {
+        onVerifyCrcChange();
+        return; // Handler will save config
+      }
+      break;
     case 'enable_decompile':
       if (typeof onEnableDecompileChange === 'function') {
         onEnableDecompileChange();

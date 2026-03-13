@@ -109,6 +109,13 @@ async function fpbTestSerial() {
 
       writeToOutput('─'.repeat(50), 'info');
 
+      if (data.max_working_size !== undefined) {
+        log.info(`Max working size: ${data.max_working_size} bytes`);
+      }
+      if (data.failed_size) {
+        log.warn(`Failed at size: ${data.failed_size} bytes`);
+      }
+
       const recUpload = data.recommended_upload_chunk_size;
       const recDownload = data.recommended_download_chunk_size;
       log.success(`Recommended upload chunk: ${recUpload} bytes`);
