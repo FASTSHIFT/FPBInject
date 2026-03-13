@@ -213,17 +213,55 @@ static bool fl_check_addr_range(uintptr_t addr, size_t len) {
     return true;
 }
 
-static void cmd_ping(fl_context_t* ctx) {
+/* ===========================
+   COMMAND ARGS & HANDLER TYPE
+   =========================== */
+
+/**
+ * @brief Parsed command arguments (shared by all handlers)
+ */
+typedef struct {
+    const char* cmd;
+    const char* data;
+    uintptr_t addr;
+    uintptr_t orig;
+    uintptr_t target;
+    int crc; /* -1 = no CRC provided */
+    int len;
+    int size;
+    int comp;
+    int all;
+    int enable; /* -1 = not specified, 0 = disable, 1 = enable */
+    int force;
+    const char* path;
+    const char* newpath;
+    const char* mode;
+} cmd_args_t;
+
+/**
+ * @brief Command handler function pointer
+ * @return 0 on success, -1 on argument validation error
+ */
+typedef int (*cmd_handler_t)(fl_context_t* ctx, const cmd_args_t* args);
+
+/* ===========================
+   COMMAND IMPLEMENTATIONS
+   =========================== */
+
+static int cmd_ping(fl_context_t* ctx, const cmd_args_t* args) {
     (void)ctx;
+    (void)args;
     fl_response(true, "PONG");
+    return 0;
 }
 
-static void cmd_echo(fl_context_t* ctx, const char* data_str) {
+static int cmd_echo(fl_context_t* ctx, const cmd_args_t* args) {
     (void)ctx;
     /* Echo command for serial throughput testing.
      * Echoes back the data length and CRC for verification.
      * The data is hex-encoded, so actual byte count is strlen/2.
      */
+    const char* data_str = args->data;
     size_t len = data_str ? strlen(data_str) / 2 : 0;
     uint16_t crc = 0;
 
@@ -233,17 +271,19 @@ static void cmd_echo(fl_context_t* ctx, const char* data_str) {
     }
 
     fl_response(true, "ECHO %u Bytes, CRC 0x%04X", (unsigned)len, crc);
+    return 0;
 }
 
-static void cmd_echoback(fl_context_t* ctx, int len) {
+static int cmd_echoback(fl_context_t* ctx, const cmd_args_t* args) {
     /* Echoback command for download direction throughput testing.
      * Fills the send buffer with a deterministic pattern (i % 256),
      * base64-encodes it, and sends it back with CRC.
      * PC sends: fl -c echoback --len N
      */
+    int len = args->len;
     if (len <= 0 || (size_t)len > FL_BUF_SIZE) {
         fl_response(false, "Invalid length %d (max %d)", len, (int)FL_BUF_SIZE);
-        return;
+        return 0;
     }
 
     /* Fill buffer with deterministic pattern */
@@ -254,7 +294,7 @@ static void cmd_echoback(fl_context_t* ctx, int len) {
     /* Base64 encode */
     if (bytes_to_base64(ctx->buf, len, ctx->b64_buf, FL_B64_BUF_SIZE) < 0) {
         fl_response(false, "Base64 encode failed");
-        return;
+        return 0;
     }
 
     /* CRC over raw pattern bytes */
@@ -264,9 +304,11 @@ static void cmd_echoback(fl_context_t* ctx, int len) {
     fl_print("[FLOK] ECHOBACK %d bytes crc=0x%04X data=", len, (unsigned)crc);
     fl_print_raw(ctx->b64_buf);
     fl_print_raw("\n[FLEND]\n");
+    return 0;
 }
 
-static void cmd_info(fl_context_t* ctx) {
+static int cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
+    (void)args;
     const fpb_state_t* fpb = fpb_get_state();
     fpb_info_t fpb_info;
     uint32_t num_comps = fpb->num_code_comp;
@@ -323,12 +365,18 @@ static void cmd_info(fl_context_t* ctx) {
     }
 
     fl_response(true, "Info complete");
+    return 0;
 }
 
-static void cmd_alloc(fl_context_t* ctx, size_t size) {
+static int cmd_alloc(fl_context_t* ctx, const cmd_args_t* args) {
+    if (args->size == 0) {
+        fl_response(false, "Missing --size");
+        return -1;
+    }
+
     if (!ctx->malloc_cb) {
         fl_response(false, "No malloc_cb");
-        return;
+        return 0;
     }
 
     /* Free previous allocation if any */
@@ -338,52 +386,59 @@ static void cmd_alloc(fl_context_t* ctx, size_t size) {
         ctx->last_alloc_size = 0;
     }
 
-    void* p = ctx->malloc_cb(size);
+    void* p = ctx->malloc_cb(args->size);
     if (!p) {
         fl_response(false, "Alloc failed");
-        return;
+        return 0;
     }
 
     ctx->last_alloc = (uintptr_t)p;
-    ctx->last_alloc_size = size;
-    fl_response(true, "Allocated %u at 0x%08lX", (unsigned)size, (unsigned long)p);
+    ctx->last_alloc_size = args->size;
+    fl_response(true, "Allocated %u at 0x%08lX", (unsigned)args->size, (unsigned long)p);
+    return 0;
 }
 
-static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str, uintptr_t crc, bool verify) {
-    uint8_t* buf = ctx->buf;
+static int cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
+    if (!args->data) {
+        fl_response(false, "Missing --data");
+        return -1;
+    }
 
-    int n = base64_to_bytes(data_str, buf, FL_BUF_SIZE);
+    uint8_t* buf = ctx->buf;
+    bool verify = args->crc >= 0;
+
+    int n = base64_to_bytes(args->data, buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
-        return;
+        return 0;
     }
 
     if (verify) {
         /* CRC covers: offset(4B) + len(4B) + data payload */
-        uint32_t offset32 = (uint32_t)offset;
+        uint32_t offset32 = (uint32_t)args->addr;
         uint32_t len32 = (uint32_t)n;
         uint16_t calc = 0xFFFF;
         calc = calc_crc16_base(calc, &offset32, sizeof(offset32));
         calc = calc_crc16_base(calc, &len32, sizeof(len32));
         calc = calc_crc16_base(calc, buf, n);
-        if (calc != (uint16_t)crc) {
+        if (calc != (uint16_t)args->crc) {
             /* CRC mismatch - free last_alloc in dynamic mode to prevent leak */
             if (ctx->last_alloc != 0 && ctx->free_cb) {
                 ctx->free_cb((void*)ctx->last_alloc);
                 ctx->last_alloc = 0;
                 ctx->last_alloc_size = 0;
             }
-            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
-            return;
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
         }
     }
 
     /* Upload to last_alloc */
     if (ctx->last_alloc == 0) {
         fl_response(false, "No allocation, call alloc first");
-        return;
+        return 0;
     }
-    uint8_t* dest = (uint8_t*)(ctx->last_alloc + offset);
+    uint8_t* dest = (uint8_t*)(ctx->last_alloc + args->addr);
 
     memcpy(dest, buf, n);
 
@@ -391,47 +446,50 @@ static void cmd_upload(fl_context_t* ctx, uintptr_t offset, const char* data_str
     fl_flush_dcache(ctx, dest, n);
 
     fl_response(true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)dest);
+    return 0;
 }
 
-static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len, int crc, bool force) {
+static int cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
     uint8_t* buf = ctx->buf;
     char* b64_buf = ctx->b64_buf;
+    int len = args->len;
 
     if (len <= 0 || (size_t)len > FL_BUF_SIZE) {
         fl_response(false, "Invalid length %d (max %d)", len, (int)FL_BUF_SIZE);
-        return;
+        return 0;
     }
 
     /* Verify request CRC if provided: covers addr(4B) + len(4B) */
-    if (crc >= 0) {
-        uint32_t addr32 = (uint32_t)addr;
+    if (args->crc >= 0) {
+        uint32_t addr32 = (uint32_t)args->addr;
         uint32_t len32 = (uint32_t)len;
         uint16_t calc = 0xFFFF;
         calc = calc_crc16_base(calc, &addr32, sizeof(addr32));
         calc = calc_crc16_base(calc, &len32, sizeof(len32));
-        if (calc != (uint16_t)crc) {
-            fl_response(false, "Request CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
-            return;
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "Request CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
         }
     }
 
-    if (!force && !fl_check_addr_range(addr, len)) {
-        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)addr, len);
-        return;
+    if (!args->force && !fl_check_addr_range(args->addr, len)) {
+        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)args->addr,
+                    len);
+        return 0;
     }
 
     /* Read memory at the given address */
-    const uint8_t* src = (const uint8_t*)addr;
+    const uint8_t* src = (const uint8_t*)args->addr;
     memcpy(buf, src, len);
 
     /* Base64 encode */
     if (bytes_to_base64(buf, len, b64_buf, FL_B64_BUF_SIZE) < 0) {
         fl_response(false, "Base64 encode failed");
-        return;
+        return 0;
     }
 
     /* CRC-16 covers: addr(4B) + len(4B) + data payload */
-    uint32_t resp_addr32 = (uint32_t)addr;
+    uint32_t resp_addr32 = (uint32_t)args->addr;
     uint32_t resp_len32 = (uint32_t)len;
     uint16_t resp_crc = 0xFFFF;
     resp_crc = calc_crc16_base(resp_crc, &resp_addr32, sizeof(resp_addr32));
@@ -442,44 +500,52 @@ static void cmd_read(fl_context_t* ctx, uintptr_t addr, int len, int crc, bool f
     fl_print("[FLOK] READ %d bytes crc=0x%04X data=", len, (unsigned)resp_crc);
     fl_print_raw(b64_buf);
     fl_print_raw("\n[FLEND]\n");
+    return 0;
 }
 
-static void cmd_write(fl_context_t* ctx, uintptr_t addr, const char* data_str, uintptr_t crc, bool verify, bool force) {
-    uint8_t* buf = ctx->buf;
-
-    int n = base64_to_bytes(data_str, buf, FL_BUF_SIZE);
-    if (n < 0) {
-        fl_response(false, "Invalid base64 data");
-        return;
+static int cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
+    if (!args->data) {
+        fl_response(false, "Missing --data");
+        return -1;
     }
 
-    if (!force && !fl_check_addr_range(addr, n)) {
-        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)addr, n);
-        return;
+    uint8_t* buf = ctx->buf;
+    bool verify = args->crc >= 0;
+
+    int n = base64_to_bytes(args->data, buf, FL_BUF_SIZE);
+    if (n < 0) {
+        fl_response(false, "Invalid base64 data");
+        return 0;
+    }
+
+    if (!args->force && !fl_check_addr_range(args->addr, n)) {
+        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)args->addr, n);
+        return 0;
     }
 
     if (verify) {
         /* CRC covers: addr(4B) + len(4B) + data payload */
-        uint32_t addr32 = (uint32_t)addr;
+        uint32_t addr32 = (uint32_t)args->addr;
         uint32_t len32 = (uint32_t)n;
         uint16_t calc = 0xFFFF;
         calc = calc_crc16_base(calc, &addr32, sizeof(addr32));
         calc = calc_crc16_base(calc, &len32, sizeof(len32));
         calc = calc_crc16_base(calc, buf, n);
-        if (calc != (uint16_t)crc) {
-            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
-            return;
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
         }
     }
 
     /* Write to the specified address */
-    uint8_t* dest = (uint8_t*)addr;
+    uint8_t* dest = (uint8_t*)args->addr;
     memcpy(dest, buf, n);
 
     /* Flush data cache */
     fl_flush_dcache(ctx, dest, n);
 
-    fl_response(true, "WRITE %d bytes to 0x%lX", n, (unsigned long)addr);
+    fl_response(true, "WRITE %d bytes to 0x%lX", n, (unsigned long)args->addr);
+    return 0;
 }
 
 /**
@@ -503,132 +569,145 @@ static bool verify_patch_crc(int crc, uint32_t comp, uintptr_t orig, uintptr_t t
     return true;
 }
 
-static void cmd_patch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target, int crc) {
-    if (!verify_patch_crc(crc, comp, orig, target))
-        return;
-
-    if (comp >= fpb_get_state()->num_code_comp || comp >= FL_MAX_SLOTS) {
-        fl_response(false, "Invalid comp %lu", (unsigned long)comp);
-        return;
+static int cmd_patch(fl_context_t* ctx, const cmd_args_t* args) {
+    if (args->orig == 0 || args->target == 0) {
+        fl_response(false, "Missing --orig/--target");
+        return -1;
     }
 
-    fpb_result_t ret = fpb_set_patch(comp, orig, target);
+    if (!verify_patch_crc(args->crc, args->comp, args->orig, args->target))
+        return 0;
+
+    if ((uint32_t)args->comp >= fpb_get_state()->num_code_comp || (uint32_t)args->comp >= FL_MAX_SLOTS) {
+        fl_response(false, "Invalid comp %lu", (unsigned long)args->comp);
+        return 0;
+    }
+
+    fpb_result_t ret = fpb_set_patch(args->comp, args->orig, args->target);
     if (ret != FPB_OK) {
         fl_response(false, "fpb_set_patch failed: %d", ret);
-        return;
+        return 0;
     }
 
     /* Record slot state, transfer last_alloc ownership to slot */
-    ctx->slots[comp].active = true;
-    ctx->slots[comp].orig_addr = orig;
-    ctx->slots[comp].target_addr = target;
-    ctx->slots[comp].code_size = ctx->last_alloc_size;
-    ctx->slots[comp].alloc_addr = ctx->last_alloc;
+    ctx->slots[args->comp].active = true;
+    ctx->slots[args->comp].orig_addr = args->orig;
+    ctx->slots[args->comp].target_addr = args->target;
+    ctx->slots[args->comp].code_size = ctx->last_alloc_size;
+    ctx->slots[args->comp].alloc_addr = ctx->last_alloc;
     ctx->last_alloc = 0; /* Ownership transferred */
     ctx->last_alloc_size = 0;
 
-    fl_response(true, "Patch %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig, (unsigned long)target);
+    fl_response(true, "Patch %lu: 0x%08lX -> 0x%08lX", (unsigned long)args->comp, (unsigned long)args->orig,
+                (unsigned long)args->target);
+    return 0;
 }
 
-static void cmd_tpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target, int crc) {
-#ifndef FPB_NO_TRAMPOLINE
-    if (!verify_patch_crc(crc, comp, orig, target))
-        return;
+static int cmd_tpatch(fl_context_t* ctx, const cmd_args_t* args) {
+    if (args->orig == 0 || args->target == 0) {
+        fl_response(false, "Missing --orig/--target");
+        return -1;
+    }
 
-    if (comp >= FPB_TRAMPOLINE_COUNT || comp >= FL_MAX_SLOTS) {
-        fl_response(false, "Invalid comp %lu (max %d)", (unsigned long)comp, FPB_TRAMPOLINE_COUNT - 1);
-        return;
+#ifndef FPB_NO_TRAMPOLINE
+    if (!verify_patch_crc(args->crc, args->comp, args->orig, args->target))
+        return 0;
+
+    if ((uint32_t)args->comp >= FPB_TRAMPOLINE_COUNT || (uint32_t)args->comp >= FL_MAX_SLOTS) {
+        fl_response(false, "Invalid comp %lu (max %d)", (unsigned long)args->comp, FPB_TRAMPOLINE_COUNT - 1);
+        return 0;
     }
 
     /* Set trampoline target in RAM */
-    fpb_trampoline_set_target(comp, target);
+    fpb_trampoline_set_target(args->comp, args->target);
 
     /* Get trampoline address in Flash */
-    uint32_t tramp_addr = fpb_trampoline_get_address(comp);
+    uint32_t tramp_addr = fpb_trampoline_get_address(args->comp);
 
     /* Use FPB to redirect original function to trampoline */
-    fpb_result_t ret = fpb_set_patch(comp, orig, tramp_addr);
+    fpb_result_t ret = fpb_set_patch(args->comp, args->orig, tramp_addr);
     if (ret != FPB_OK) {
-        fpb_trampoline_clear_target(comp);
+        fpb_trampoline_clear_target(args->comp);
         fl_response(false, "fpb_set_patch failed: %d", ret);
-        return;
+        return 0;
     }
 
     /* Record slot state, transfer last_alloc ownership to slot */
-    ctx->slots[comp].active = true;
-    ctx->slots[comp].orig_addr = orig;
-    ctx->slots[comp].target_addr = target;
-    ctx->slots[comp].code_size = ctx->last_alloc_size;
-    ctx->slots[comp].alloc_addr = ctx->last_alloc;
+    ctx->slots[args->comp].active = true;
+    ctx->slots[args->comp].orig_addr = args->orig;
+    ctx->slots[args->comp].target_addr = args->target;
+    ctx->slots[args->comp].code_size = ctx->last_alloc_size;
+    ctx->slots[args->comp].alloc_addr = ctx->last_alloc;
     ctx->last_alloc = 0; /* Ownership transferred */
     ctx->last_alloc_size = 0;
 
-    fl_response(true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
-                (unsigned long)tramp_addr, (unsigned long)target);
+    fl_response(true, "Trampoline %lu: 0x%08lX -> tramp(0x%08lX) -> 0x%08lX", (unsigned long)args->comp,
+                (unsigned long)args->orig, (unsigned long)tramp_addr, (unsigned long)args->target);
 #else
     (void)ctx;
-    (void)comp;
-    (void)orig;
-    (void)target;
-    (void)crc;
     fl_response(false, "Trampoline disabled (FPB_NO_TRAMPOLINE)");
 #endif
+    return 0;
 }
 
-static void cmd_dpatch(fl_context_t* ctx, uint32_t comp, uintptr_t orig, uintptr_t target, int crc) {
-#ifndef FPB_NO_DEBUGMON
-    if (!verify_patch_crc(crc, comp, orig, target))
-        return;
+static int cmd_dpatch(fl_context_t* ctx, const cmd_args_t* args) {
+    if (args->orig == 0 || args->target == 0) {
+        fl_response(false, "Missing --orig/--target");
+        return -1;
+    }
 
-    if (comp >= FPB_DEBUGMON_MAX_REDIRECTS || comp >= FL_MAX_SLOTS) {
-        fl_response(false, "Invalid comp %lu (max %d)", (unsigned long)comp, FPB_DEBUGMON_MAX_REDIRECTS - 1);
-        return;
+#ifndef FPB_NO_DEBUGMON
+    if (!verify_patch_crc(args->crc, args->comp, args->orig, args->target))
+        return 0;
+
+    if ((uint32_t)args->comp >= FPB_DEBUGMON_MAX_REDIRECTS || (uint32_t)args->comp >= FL_MAX_SLOTS) {
+        fl_response(false, "Invalid comp %lu (max %d)", (unsigned long)args->comp, FPB_DEBUGMON_MAX_REDIRECTS - 1);
+        return 0;
     }
 
     /* Initialize DebugMonitor if not already done */
     if (!fpb_debugmon_is_active()) {
         if (fpb_debugmon_init() != 0) {
             fl_response(false, "DebugMonitor init failed");
-            return;
+            return 0;
         }
     }
 
     /* Set redirect via DebugMonitor */
-    int ret = fpb_debugmon_set_redirect(comp, orig, target);
+    int ret = fpb_debugmon_set_redirect(args->comp, args->orig, args->target);
     if (ret != 0) {
         fl_response(false, "fpb_debugmon_set_redirect failed: %d", ret);
-        return;
+        return 0;
     }
 
     /* Record slot state, transfer last_alloc ownership to slot */
-    ctx->slots[comp].active = true;
-    ctx->slots[comp].orig_addr = orig;
-    ctx->slots[comp].target_addr = target;
-    ctx->slots[comp].code_size = ctx->last_alloc_size;
-    ctx->slots[comp].alloc_addr = ctx->last_alloc;
+    ctx->slots[args->comp].active = true;
+    ctx->slots[args->comp].orig_addr = args->orig;
+    ctx->slots[args->comp].target_addr = args->target;
+    ctx->slots[args->comp].code_size = ctx->last_alloc_size;
+    ctx->slots[args->comp].alloc_addr = ctx->last_alloc;
     ctx->last_alloc = 0; /* Ownership transferred */
     ctx->last_alloc_size = 0;
 
-    fl_response(true, "DebugMon %lu: 0x%08lX -> 0x%08lX", (unsigned long)comp, (unsigned long)orig,
-                (unsigned long)target);
+    fl_response(true, "DebugMon %lu: 0x%08lX -> 0x%08lX", (unsigned long)args->comp, (unsigned long)args->orig,
+                (unsigned long)args->target);
 #else
     (void)ctx;
-    (void)comp;
-    (void)orig;
-    (void)target;
-    (void)crc;
     fl_response(false, "DebugMonitor disabled (FPB_NO_DEBUGMON)");
 #endif
+    return 0;
 }
 
-static void cmd_unpatch(fl_context_t* ctx, uint32_t comp, bool all) {
+static int cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
+    uint32_t comp = (uint32_t)args->comp;
+    bool all = args->all;
     uint32_t num_comps = fpb_get_state()->num_code_comp;
     uint32_t start = all ? 0 : comp;
     uint32_t end = all ? num_comps : comp + 1;
 
     if (!all && (comp >= num_comps || comp >= FL_MAX_SLOTS)) {
         fl_response(false, "Invalid comp %lu", (unsigned long)comp);
-        return;
+        return 0;
     }
 
     uint32_t cleared = 0;
@@ -662,36 +741,53 @@ static void cmd_unpatch(fl_context_t* ctx, uint32_t comp, bool all) {
     } else {
         fl_response(true, "Cleared slot %lu", (unsigned long)comp);
     }
+    return 0;
 }
 
-static void cmd_enable(fl_context_t* ctx, uint32_t comp, bool enable, bool all) {
+static int cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
+    if (args->enable < 0) {
+        fl_response(false, "Missing --enable (0 or 1)");
+        return -1;
+    }
+
     (void)ctx;
+    bool en = args->enable != 0;
+    bool all = args->all;
+    uint32_t comp = (uint32_t)args->comp;
     uint32_t num_comps = fpb_get_state()->num_code_comp;
     uint32_t start = all ? 0 : comp;
     uint32_t end = all ? num_comps : comp + 1;
 
     if (!all && (comp >= num_comps || comp >= FL_MAX_SLOTS)) {
         fl_response(false, "Invalid comp %lu", (unsigned long)comp);
-        return;
+        return 0;
     }
 
     uint32_t changed = 0;
     for (uint32_t i = start; i < end && i < FL_MAX_SLOTS; i++) {
-        fpb_result_t ret = fpb_enable_patch(i, enable);
+        fpb_result_t ret = fpb_enable_patch(i, en);
         if (ret == FPB_OK) {
             changed++;
         }
     }
 
     if (all) {
-        fl_response(true, "%s %u patches", enable ? "Enabled" : "Disabled", (unsigned)changed);
+        fl_response(true, "%s %u patches", en ? "Enabled" : "Disabled", (unsigned)changed);
     } else {
-        fl_response(true, "%s patch %lu", enable ? "Enabled" : "Disabled", (unsigned long)comp);
+        fl_response(true, "%s patch %lu", en ? "Enabled" : "Disabled", (unsigned long)comp);
     }
+    return 0;
 }
 
 __attribute__((noinline)) void fl_hello(void) {
     fl_response(true, "HELLO from original fl_hello(%p) function!", (void*)fl_hello);
+}
+
+static int cmd_hello(fl_context_t* ctx, const cmd_args_t* args) {
+    (void)ctx;
+    (void)args;
+    fl_hello();
+    return 0;
 }
 
 /* ===========================
@@ -700,49 +796,51 @@ __attribute__((noinline)) void fl_hello(void) {
 
 #if FL_USE_FILE
 
-static void cmd_fopen(fl_context_t* ctx, const char* path, const char* mode) {
+static int cmd_fopen(fl_context_t* ctx, const cmd_args_t* args) {
+    const char* mode = args->mode ? args->mode : "r";
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return;
+        return 0;
     }
 
-    if (!path || !mode) {
+    if (!args->path || !mode) {
         fl_response(false, "Missing path or mode");
-        return;
+        return 0;
     }
 
-    if (fl_file_open(&ctx->file_ctx, path, mode) != 0) {
-        fl_response(false, "Failed to open: %s", path);
-        return;
+    if (fl_file_open(&ctx->file_ctx, args->path, mode) != 0) {
+        fl_response(false, "Failed to open: %s", args->path);
+        return 0;
     }
 
-    fl_response(true, "FOPEN %s mode=%s", path, mode);
+    fl_response(true, "FOPEN %s mode=%s", args->path, mode);
+    return 0;
 }
 
-static void cmd_fwrite(fl_context_t* ctx, const char* data_str, int crc) {
+static int cmd_fwrite(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return;
+        return 0;
     }
 
-    if (!data_str) {
+    if (!args->data) {
         fl_response(false, "Missing data");
-        return;
+        return 0;
     }
 
     /* Decode base64 data */
-    int n = base64_to_bytes(data_str, ctx->buf, FL_BUF_SIZE);
+    int n = base64_to_bytes(args->data, ctx->buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
-        return;
+        return 0;
     }
 
     /* Verify CRC if provided */
-    if (crc >= 0) {
+    if (args->crc >= 0) {
         uint16_t calc = calc_crc16(ctx->buf, n);
-        if (calc != (uint16_t)crc) {
-            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)crc, (unsigned)calc);
-            return;
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
         }
     }
 
@@ -750,16 +848,18 @@ static void cmd_fwrite(fl_context_t* ctx, const char* data_str, int crc) {
     ssize_t written = fl_file_write(&ctx->file_ctx, ctx->buf, n);
     if (written < 0) {
         fl_response(false, "Write failed");
-        return;
+        return 0;
     }
 
     fl_response(true, "FWRITE %d bytes", (int)written);
+    return 0;
 }
 
-static void cmd_fread(fl_context_t* ctx, int len) {
+static int cmd_fread(fl_context_t* ctx, const cmd_args_t* args) {
+    int len = args->len;
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return;
+        return 0;
     }
 
     if (len <= 0 || len > (int)FL_BUF_SIZE) {
@@ -769,18 +869,18 @@ static void cmd_fread(fl_context_t* ctx, int len) {
     ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->buf, len);
     if (nread < 0) {
         fl_response(false, "Read failed");
-        return;
+        return 0;
     }
 
     if (nread == 0) {
         fl_response(true, "FREAD 0 bytes EOF");
-        return;
+        return 0;
     }
 
     /* Encode to base64 */
     if (bytes_to_base64(ctx->buf, nread, ctx->b64_buf, FL_B64_BUF_SIZE) < 0) {
         fl_response(false, "Base64 encode failed");
-        return;
+        return 0;
     }
 
     /* Calculate CRC */
@@ -790,39 +890,43 @@ static void cmd_fread(fl_context_t* ctx, int len) {
     fl_print("[FLOK] FREAD %d bytes crc=0x%04X data=", (int)nread, (unsigned)crc);
     fl_print_raw(ctx->b64_buf);
     fl_print_raw("\n[FLEND]\n");
+    return 0;
 }
 
-static void cmd_fclose(fl_context_t* ctx) {
+static int cmd_fclose(fl_context_t* ctx, const cmd_args_t* args) {
+    (void)args;
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return;
+        return 0;
     }
 
     if (fl_file_close(&ctx->file_ctx) != 0) {
         fl_response(false, "Close failed");
-        return;
+        return 0;
     }
 
     fl_response(true, "FCLOSE");
+    return 0;
 }
 
-static void cmd_fcrc(fl_context_t* ctx, off_t size) {
+static int cmd_fcrc(fl_context_t* ctx, const cmd_args_t* args) {
+    off_t size = (off_t)args->len;
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return;
+        return 0;
     }
 
     /* Save current position */
     off_t saved_pos = fl_file_seek(&ctx->file_ctx, 0, FL_SEEK_CUR);
     if (saved_pos < 0) {
         fl_response(false, "Failed to get current position");
-        return;
+        return 0;
     }
 
     /* Seek to beginning */
     if (fl_file_seek(&ctx->file_ctx, 0, FL_SEEK_SET) < 0) {
         fl_response(false, "Failed to seek to beginning");
-        return;
+        return 0;
     }
 
     /* Calculate CRC of entire file (or specified size) */
@@ -839,7 +943,7 @@ static void cmd_fcrc(fl_context_t* ctx, off_t size) {
         ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->buf, to_read);
         if (nread < 0) {
             fl_response(false, "Read failed during CRC calculation");
-            return;
+            return 0;
         }
         if (nread == 0) {
             break; /* EOF */
@@ -855,42 +959,45 @@ static void cmd_fcrc(fl_context_t* ctx, off_t size) {
     fl_file_seek(&ctx->file_ctx, saved_pos, FL_SEEK_SET);
 
     fl_response(true, "FCRC size=%ld crc=0x%04X", (long)total_read, (unsigned)crc);
+    return 0;
 }
 
-static void cmd_fseek(fl_context_t* ctx, off_t offset) {
+static int cmd_fseek(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return;
+        return 0;
     }
 
-    off_t new_pos = fl_file_seek(&ctx->file_ctx, offset, FL_SEEK_SET);
+    off_t new_pos = fl_file_seek(&ctx->file_ctx, (off_t)args->addr, FL_SEEK_SET);
     if (new_pos < 0) {
         fl_response(false, "Seek failed");
-        return;
+        return 0;
     }
 
     fl_response(true, "FSEEK %ld", (long)new_pos);
+    return 0;
 }
 
-static void cmd_fstat(fl_context_t* ctx, const char* path) {
+static int cmd_fstat(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return;
+        return 0;
     }
 
-    if (!path) {
+    if (!args->path) {
         fl_response(false, "Missing path");
-        return;
+        return 0;
     }
 
     fl_file_stat_t st;
-    if (fl_file_stat(&ctx->file_ctx, path, &st) != 0) {
-        fl_response(false, "Stat failed: %s", path);
-        return;
+    if (fl_file_stat(&ctx->file_ctx, args->path, &st) != 0) {
+        fl_response(false, "Stat failed: %s", args->path);
+        return 0;
     }
 
     const char* type_str = (st.type == FL_FILE_TYPE_DIR) ? "dir" : "file";
-    fl_response(true, "FSTAT %s size=%u mtime=%u type=%s", path, (unsigned)st.size, (unsigned)st.mtime, type_str);
+    fl_response(true, "FSTAT %s size=%u mtime=%u type=%s", args->path, (unsigned)st.size, (unsigned)st.mtime, type_str);
+    return 0;
 }
 
 /* Callback context for flist count pass */
@@ -913,129 +1020,170 @@ static int flist_print_cb(const fl_dirent_t* entry, void* user_data) {
     return 0;
 }
 
-static void cmd_flist(fl_context_t* ctx, const char* path) {
+static int cmd_flist(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return;
+        return 0;
     }
 
-    if (!path) {
+    if (!args->path) {
         fl_response(false, "Missing path");
-        return;
+        return 0;
     }
 
     /* First pass: count dirs and files */
     flist_count_ctx_t count_ctx = {0, 0};
-    int total = fl_file_list_cb(&ctx->file_ctx, path, flist_print_cb, &count_ctx);
+    int total = fl_file_list_cb(&ctx->file_ctx, args->path, flist_print_cb, &count_ctx);
     if (total < 0) {
-        fl_response(false, "List failed: %s", path);
-        return;
+        fl_response(false, "List failed: %s", args->path);
+        return 0;
     }
 
     fl_response(true, "FLIST dir=%d file=%d", count_ctx.dir_count, count_ctx.file_count);
+    return 0;
 }
 
-static void cmd_fremove(fl_context_t* ctx, const char* path) {
+static int cmd_fremove(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return;
+        return 0;
     }
 
-    if (!path) {
+    if (!args->path) {
         fl_response(false, "Missing path");
-        return;
+        return 0;
     }
 
-    if (fl_file_remove(&ctx->file_ctx, path) != 0) {
-        fl_response(false, "Remove failed: %s", path);
-        return;
+    if (fl_file_remove(&ctx->file_ctx, args->path) != 0) {
+        fl_response(false, "Remove failed: %s", args->path);
+        return 0;
     }
 
-    fl_response(true, "FREMOVE %s", path);
+    fl_response(true, "FREMOVE %s", args->path);
+    return 0;
 }
 
-static void cmd_fmkdir(fl_context_t* ctx, const char* path) {
+static int cmd_fmkdir(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return;
+        return 0;
     }
 
-    if (!path) {
+    if (!args->path) {
         fl_response(false, "Missing path");
-        return;
+        return 0;
     }
 
-    if (fl_file_mkdir(&ctx->file_ctx, path) != 0) {
-        fl_response(false, "Mkdir failed: %s", path);
-        return;
+    if (fl_file_mkdir(&ctx->file_ctx, args->path) != 0) {
+        fl_response(false, "Mkdir failed: %s", args->path);
+        return 0;
     }
 
-    fl_response(true, "FMKDIR %s", path);
+    fl_response(true, "FMKDIR %s", args->path);
+    return 0;
 }
 
-static void cmd_frename(fl_context_t* ctx, const char* oldpath, const char* newpath) {
+static int cmd_frename(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return;
+        return 0;
     }
 
-    if (!oldpath) {
+    if (!args->path) {
         fl_response(false, "Missing path");
-        return;
+        return 0;
     }
 
-    if (!newpath) {
+    if (!args->newpath) {
         fl_response(false, "Missing newpath");
-        return;
+        return 0;
     }
 
-    if (fl_file_rename(&ctx->file_ctx, oldpath, newpath) != 0) {
-        fl_response(false, "Rename failed: %s -> %s", oldpath, newpath);
-        return;
+    if (fl_file_rename(&ctx->file_ctx, args->path, args->newpath) != 0) {
+        fl_response(false, "Rename failed: %s -> %s", args->path, args->newpath);
+        return 0;
     }
 
-    fl_response(true, "FRENAME %s -> %s", oldpath, newpath);
+    fl_response(true, "FRENAME %s -> %s", args->path, args->newpath);
+    return 0;
 }
 
 #endif /* FL_USE_FILE */
+
+/* ===========================
+   COMMAND DISPATCH TABLE
+   =========================== */
+
+/**
+ * @brief Command dispatch table entry
+ */
+typedef struct {
+    const char* name;
+    cmd_handler_t handler;
+} cmd_entry_t;
+
+/* clang-format off */
+static const cmd_entry_t s_cmd_table[] = {
+    /* Core commands */
+    { "ping",     cmd_ping     },
+    { "echo",     cmd_echo     },
+    { "echoback", cmd_echoback },
+    { "info",     cmd_info     },
+    { "alloc",    cmd_alloc    },
+    { "upload",   cmd_upload   },
+    { "read",     cmd_read     },
+    { "write",    cmd_write    },
+    { "patch",    cmd_patch    },
+    { "tpatch",   cmd_tpatch   },
+    { "dpatch",   cmd_dpatch   },
+    { "unpatch",  cmd_unpatch  },
+    { "enable",   cmd_enable   },
+    { "hello",    cmd_hello    },
+#if FL_USE_FILE
+    /* File transfer commands */
+    { "fopen",    cmd_fopen    },
+    { "fwrite",   cmd_fwrite   },
+    { "fread",    cmd_fread    },
+    { "fclose",   cmd_fclose   },
+    { "fcrc",     cmd_fcrc     },
+    { "fseek",    cmd_fseek    },
+    { "fstat",    cmd_fstat    },
+    { "flist",    cmd_flist    },
+    { "fremove",  cmd_fremove  },
+    { "fmkdir",   cmd_fmkdir   },
+    { "frename",  cmd_frename  },
+#endif
+};
+/* clang-format on */
+
+#define CMD_TABLE_SIZE (sizeof(s_cmd_table) / sizeof(s_cmd_table[0]))
 
 int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     if (argc == 0)
         return -1;
 
-    const char* cmd = NULL;
-    const char* data = NULL;
-    uintptr_t addr = 0;
-    uintptr_t orig = 0;
-    uintptr_t target = 0;
-    int crc = -1; /* -1 = no CRC provided */
-    int len = 64;
-    int size = 0;
-    int comp = 0;
-    int all = 0;
-    int enable = -1; /* -1 = not specified, 0 = disable, 1 = enable */
-    int force = 0;
-    const char* path = NULL;
-    const char* newpath = NULL;
-    const char* mode = NULL;
+    cmd_args_t args = {0};
+    args.crc = -1;
+    args.len = 64;
+    args.enable = -1;
 
     struct argparse_option opts[] = {
         OPT_HELP(),
-        OPT_STRING('c', "cmd", &cmd, "Command", NULL, 0, 0),
-        OPT_INTEGER('s', "size", &size, "Alloc size", NULL, 0, 0),
-        OPT_POINTER('a', "addr", &addr, "Address/offset (hex)", NULL, 0, 0),
-        OPT_STRING('d', "data", &data, "Hex data", NULL, 0, 0),
-        OPT_INTEGER('r', "crc", &crc, "CRC-16 (hex)", NULL, 0, 0),
-        OPT_INTEGER('l', "len", &len, "Read length", NULL, 0, 0),
-        OPT_INTEGER(0, "comp", &comp, "Comparator ID", NULL, 0, 0),
-        OPT_POINTER(0, "orig", &orig, "Original addr", NULL, 0, 0),
-        OPT_POINTER(0, "target", &target, "Target addr", NULL, 0, 0),
-        OPT_BOOLEAN(0, "all", &all, "Clear all", NULL, 0, 0),
-        OPT_INTEGER(0, "enable", &enable, "Enable(1) or disable(0) patch", NULL, 0, 0),
-        OPT_BOOLEAN(0, "force", &force, "Skip address range check", NULL, 0, 0),
-        OPT_STRING(0, "path", &path, "File path", NULL, 0, 0),
-        OPT_STRING(0, "newpath", &newpath, "New file path", NULL, 0, 0),
-        OPT_STRING('m', "mode", &mode, "File mode (r/w/a)", NULL, 0, 0),
+        OPT_STRING('c', "cmd", &args.cmd, "Command", NULL, 0, 0),
+        OPT_INTEGER('s', "size", &args.size, "Alloc size", NULL, 0, 0),
+        OPT_POINTER('a', "addr", &args.addr, "Address/offset (hex)", NULL, 0, 0),
+        OPT_STRING('d', "data", &args.data, "Hex data", NULL, 0, 0),
+        OPT_INTEGER('r', "crc", &args.crc, "CRC-16 (hex)", NULL, 0, 0),
+        OPT_INTEGER('l', "len", &args.len, "Read length", NULL, 0, 0),
+        OPT_INTEGER(0, "comp", &args.comp, "Comparator ID", NULL, 0, 0),
+        OPT_POINTER(0, "orig", &args.orig, "Original addr", NULL, 0, 0),
+        OPT_POINTER(0, "target", &args.target, "Target addr", NULL, 0, 0),
+        OPT_BOOLEAN(0, "all", &args.all, "Clear all", NULL, 0, 0),
+        OPT_INTEGER(0, "enable", &args.enable, "Enable(1) or disable(0) patch", NULL, 0, 0),
+        OPT_BOOLEAN(0, "force", &args.force, "Skip address range check", NULL, 0, 0),
+        OPT_STRING(0, "path", &args.path, "File path", NULL, 0, 0),
+        OPT_STRING(0, "newpath", &args.newpath, "New file path", NULL, 0, 0),
+        OPT_STRING('m', "mode", &args.mode, "File mode (r/w/a)", NULL, 0, 0),
         OPT_END(),
     };
 
@@ -1049,96 +1197,22 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         return -1;
     }
 
-    if (!cmd) {
+    if (!args.cmd) {
+        fl_println("Available commands:");
+        for (size_t i = 0; i < CMD_TABLE_SIZE; i++) {
+            fl_println("  %s", s_cmd_table[i].name);
+        }
         fl_response(false, "Missing --cmd");
         return -1;
     }
 
-    if (strcmp(cmd, "ping") == 0) {
-        cmd_ping(ctx);
-    } else if (strcmp(cmd, "echo") == 0) {
-        cmd_echo(ctx, data);
-    } else if (strcmp(cmd, "echoback") == 0) {
-        cmd_echoback(ctx, len);
-    } else if (strcmp(cmd, "info") == 0) {
-        cmd_info(ctx);
-    } else if (strcmp(cmd, "alloc") == 0) {
-        if (size == 0) {
-            fl_response(false, "Missing --size");
-            return -1;
+    /* Lookup command in dispatch table */
+    for (size_t i = 0; i < CMD_TABLE_SIZE; i++) {
+        if (strcmp(args.cmd, s_cmd_table[i].name) == 0) {
+            return s_cmd_table[i].handler(ctx, &args);
         }
-        cmd_alloc(ctx, size);
-    } else if (strcmp(cmd, "upload") == 0) {
-        if (!data) {
-            fl_response(false, "Missing --data");
-            return -1;
-        }
-        cmd_upload(ctx, addr, data, crc, crc >= 0);
-    } else if (strcmp(cmd, "read") == 0) {
-        cmd_read(ctx, addr, len, crc, force);
-    } else if (strcmp(cmd, "write") == 0) {
-        if (!data) {
-            fl_response(false, "Missing --data");
-            return -1;
-        }
-        cmd_write(ctx, addr, data, crc, crc >= 0, force);
-    } else if (strcmp(cmd, "patch") == 0) {
-        if (orig == 0 || target == 0) {
-            fl_response(false, "Missing --orig/--target");
-            return -1;
-        }
-        cmd_patch(ctx, comp, orig, target, crc);
-    } else if (strcmp(cmd, "tpatch") == 0) {
-        if (orig == 0 || target == 0) {
-            fl_response(false, "Missing --orig/--target");
-            return -1;
-        }
-        cmd_tpatch(ctx, comp, orig, target, crc);
-    } else if (strcmp(cmd, "dpatch") == 0) {
-        if (orig == 0 || target == 0) {
-            fl_response(false, "Missing --orig/--target");
-            return -1;
-        }
-        cmd_dpatch(ctx, comp, orig, target, crc);
-    } else if (strcmp(cmd, "unpatch") == 0) {
-        cmd_unpatch(ctx, comp, all);
-    } else if (strcmp(cmd, "enable") == 0) {
-        if (enable < 0) {
-            fl_response(false, "Missing --enable (0 or 1)");
-            return -1;
-        }
-        cmd_enable(ctx, comp, enable != 0, all);
-#if FL_USE_FILE
-        /* File transfer commands */
-    } else if (strcmp(cmd, "fopen") == 0) {
-        cmd_fopen(ctx, path, mode ? mode : "r");
-    } else if (strcmp(cmd, "fwrite") == 0) {
-        cmd_fwrite(ctx, data, crc);
-    } else if (strcmp(cmd, "fread") == 0) {
-        cmd_fread(ctx, len);
-    } else if (strcmp(cmd, "fclose") == 0) {
-        cmd_fclose(ctx);
-    } else if (strcmp(cmd, "fcrc") == 0) {
-        cmd_fcrc(ctx, (off_t)len);
-    } else if (strcmp(cmd, "fseek") == 0) {
-        cmd_fseek(ctx, (off_t)addr);
-    } else if (strcmp(cmd, "fstat") == 0) {
-        cmd_fstat(ctx, path);
-    } else if (strcmp(cmd, "flist") == 0) {
-        cmd_flist(ctx, path);
-    } else if (strcmp(cmd, "fremove") == 0) {
-        cmd_fremove(ctx, path);
-    } else if (strcmp(cmd, "fmkdir") == 0) {
-        cmd_fmkdir(ctx, path);
-    } else if (strcmp(cmd, "frename") == 0) {
-        cmd_frename(ctx, path, newpath);
-#endif /* FL_USE_FILE */
-    } else if (strcmp(cmd, "hello") == 0) {
-        fl_hello();
-    } else {
-        fl_response(false, "Unknown: %s", cmd);
-        return -1;
     }
 
-    return 0;
+    fl_response(false, "Unknown: %s", args.cmd);
+    return -1;
 }
