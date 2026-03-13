@@ -795,7 +795,11 @@ class FPBProtocol:
             "needed": False,
             "test": None,
         }
-        probe = self._probe_echo(256, timeout=timeout)
+        max_retries = 3
+        for attempt in range(max_retries):
+            probe = self._probe_echo(256, timeout=timeout)
+            if probe["passed"]:
+                break
         result["test"] = probe
         if not probe["passed"]:
             result["needed"] = True
@@ -817,12 +821,19 @@ class FPBProtocol:
 
         test_size = start_size
         max_working = 0
+        max_retries = 3
 
         while test_size <= max_size:
-            probe = self._probe_echo(test_size, timeout=timeout)
+            passed = False
+            probe = None
+            for attempt in range(max_retries):
+                probe = self._probe_echo(test_size, timeout=timeout)
+                if probe["passed"]:
+                    passed = True
+                    break
             result["tests"].append(probe)
 
-            if probe["passed"]:
+            if passed:
                 max_working = test_size
             else:
                 result["failed_size"] = test_size
@@ -921,6 +932,8 @@ class FPBProtocol:
             "skipped": False,
         }
 
+        max_retries = 3
+
         # Quick check: does the device support echoback?
         probe = self._probe_echoback(start_size, timeout=timeout)
         if probe.get("error") and (
@@ -942,10 +955,16 @@ class FPBProtocol:
         test_size = max(start_size + 64, int(start_size * 1.5) // 64 * 64)
 
         while test_size <= max_size:
-            probe = self._probe_echoback(test_size, timeout=timeout)
+            passed = False
+            probe = None
+            for attempt in range(max_retries):
+                probe = self._probe_echoback(test_size, timeout=timeout)
+                if probe["passed"]:
+                    passed = True
+                    break
             result["tests"].append(probe)
 
-            if probe["passed"]:
+            if passed:
                 max_working = test_size
             else:
                 result["failed_size"] = test_size
