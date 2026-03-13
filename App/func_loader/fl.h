@@ -45,9 +45,9 @@ extern "C" {
 #ifndef FL_BUF_SIZE
 #define FL_BUF_SIZE 1024
 #endif
-#ifndef FL_B64_BUF_SIZE
-#define FL_B64_BUF_SIZE 2048
-#endif
+
+/* Base64 output size: ceil(N/3)*4 + null terminator */
+#define FL_B64_BUF_SIZE ((FL_BUF_SIZE + 2) / 3 * 4 + 1)
 
 /* Callback types */
 typedef void (*fl_output_cb_t)(void* user, const char* str);
