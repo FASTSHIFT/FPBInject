@@ -806,7 +806,7 @@ class FPBProtocol:
         return result
 
     def _phase_upload_probe(
-        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+        self, start_size: int = 16, max_size: int = 512, timeout: float = 2.0
     ) -> Dict:
         """Phase 2: Find the device shell receive buffer limit (upload direction).
 
@@ -982,7 +982,7 @@ class FPBProtocol:
         return result
 
     def test_serial_throughput(
-        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+        self, start_size: int = 16, max_size: int = 512, timeout: float = 2.0
     ) -> Dict:
         """Test serial throughput with 3-phase probing.
 

@@ -53,7 +53,7 @@ async function fpbTestSerial() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         start_size: 16,
-        max_size: 4096,
+        max_size: 512,
         timeout: 2.0,
       }),
     });
