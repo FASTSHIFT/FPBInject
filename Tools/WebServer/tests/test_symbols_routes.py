@@ -1228,14 +1228,14 @@ class TestDynamicTimeout(SymbolRoutesBase):
     def test_large_size(self):
         from app.routes.symbols import _dynamic_timeout
 
-        state.device.chunk_size = 128
+        state.device.download_chunk_size = 128
         # 4096 bytes = 32 chunks * 3s = 96s
         self.assertEqual(_dynamic_timeout(4096), 96.0)
 
     def test_custom_chunk_size(self):
         from app.routes.symbols import _dynamic_timeout
 
-        state.device.chunk_size = 256
+        state.device.download_chunk_size = 256
         # 1024 bytes = 4 chunks * 3s = 12s
         self.assertEqual(_dynamic_timeout(1024), 12.0)
 

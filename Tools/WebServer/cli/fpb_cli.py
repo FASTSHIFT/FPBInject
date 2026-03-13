@@ -56,9 +56,10 @@ class DeviceState:
         self.inject_base = 0x20001000
         self.cached_slots = None  # Cache for slot state
         self.slot_update_id = 0
-        self.chunk_size = 128  # Default chunk size for upload
-        self.tx_chunk_size = 0  # 0 = disabled, >0 = chunk size for TX
-        self.tx_chunk_delay = 0.005  # Delay between TX chunks (seconds)
+        self.upload_chunk_size = 128  # Default chunk size for upload
+        self.download_chunk_size = 1024  # Default chunk size for download
+        self.serial_tx_fragment_size = 0  # 0 = disabled, >0 = fragment size for TX
+        self.serial_tx_fragment_delay = 0.002  # Delay between TX fragments (seconds)
         self.transfer_max_retries = 10  # Max retries for file transfer
 
     def add_tool_log(self, message):
@@ -98,7 +99,7 @@ class FPBCLI:
         elf_path: Optional[str] = None,
         compile_commands: Optional[str] = None,
         tx_chunk_size: int = 0,
-        tx_chunk_delay: float = 0.005,
+        tx_chunk_delay: float = 0.002,
         max_retries: int = 10,
     ):
         self.verbose = verbose
@@ -107,8 +108,8 @@ class FPBCLI:
         self._device_state = DeviceState()
         self._device_state.elf_path = elf_path
         self._device_state.compile_commands_path = compile_commands
-        self._device_state.tx_chunk_size = tx_chunk_size
-        self._device_state.tx_chunk_delay = tx_chunk_delay
+        self._device_state.serial_tx_fragment_size = tx_chunk_size
+        self._device_state.serial_tx_fragment_delay = tx_chunk_delay
         self._device_state.transfer_max_retries = max_retries
         self._fpb = FPBInject(self._device_state)
 
@@ -526,7 +527,11 @@ class FPBCLI:
                 raise FPBCLIError("No device connected.")
             from core.file_transfer import FileTransfer
 
-            ft = FileTransfer(self._fpb, chunk_size=self._device_state.chunk_size)
+            ft = FileTransfer(
+                self._fpb,
+                upload_chunk_size=self._device_state.upload_chunk_size,
+                download_chunk_size=self._device_state.download_chunk_size,
+            )
             success, entries = ft.flist(path)
             if not success:
                 raise FPBCLIError(f"Failed to list directory: {path}")
@@ -541,7 +546,11 @@ class FPBCLI:
                 raise FPBCLIError("No device connected.")
             from core.file_transfer import FileTransfer
 
-            ft = FileTransfer(self._fpb, chunk_size=self._device_state.chunk_size)
+            ft = FileTransfer(
+                self._fpb,
+                upload_chunk_size=self._device_state.upload_chunk_size,
+                download_chunk_size=self._device_state.download_chunk_size,
+            )
             success, stat = ft.fstat(path)
             if not success:
                 raise FPBCLIError(f"Failed to stat: {stat.get('error', 'unknown')}")
@@ -559,7 +568,8 @@ class FPBCLI:
 
             ft = FileTransfer(
                 self._fpb,
-                chunk_size=self._device_state.chunk_size,
+                upload_chunk_size=self._device_state.upload_chunk_size,
+                download_chunk_size=self._device_state.download_chunk_size,
                 max_retries=self._device_state.transfer_max_retries,
             )
             success, data, msg = ft.download(remote_path)

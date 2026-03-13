@@ -80,7 +80,7 @@ def start_gdb(state, read_memory_fn=None, write_memory_fn=None) -> bool:
             read_memory_fn=read_memory_fn,
             write_memory_fn=write_memory_fn,
             listen_port=DEFAULT_RSP_PORT,
-            cache_line_size=getattr(device, "chunk_size", 128),
+            cache_line_size=getattr(device, "download_chunk_size", 1024),
         )
         _apply_elf_memory_regions(bridge, elf_path)
         port = bridge.start()
@@ -215,7 +215,7 @@ def start_external_gdb_server(state, read_memory_fn=None, write_memory_fn=None) 
             read_memory_fn=read_memory_fn,
             write_memory_fn=write_memory_fn,
             listen_port=port,
-            cache_line_size=getattr(device, "chunk_size", 128),
+            cache_line_size=getattr(device, "download_chunk_size", 1024),
         )
         _apply_elf_memory_regions(bridge, device.elf_path)
         actual_port = bridge.start()

@@ -45,7 +45,7 @@ async function fpbTestSerial() {
     return;
   }
 
-  log.info('Starting serial throughput test (x1.4 stepping)...');
+  log.info('Starting 3-phase serial throughput test...');
 
   try {
     const res = await fetch('/api/fpb/test-serial', {
@@ -62,8 +62,15 @@ async function fpbTestSerial() {
     if (data.success) {
       state.throughputTested = true;
       writeToOutput('─'.repeat(50), 'info');
-      log.info('Serial Throughput Test Results:');
 
+      /* Phase 1: Fragment probe */
+      const fragNeeded = data.fragment_needed;
+      log.info(
+        `Phase 1 - TX Fragment: ${fragNeeded ? 'needed' : 'not needed'}`,
+      );
+
+      /* Phase 2: Upload probe */
+      log.info('Phase 2 - Upload Chunk Probe:');
       if (data.tests && data.tests.length > 0) {
         data.tests.forEach((test) => {
           const status = test.passed ? '✓' : '✗';
@@ -79,39 +86,52 @@ async function fpbTestSerial() {
         });
       }
 
-      writeToOutput('─'.repeat(50), 'info');
-      log.success(`Max working size: ${data.max_working_size} bytes`);
-      if (data.failed_size > 0) {
-        log.warn(`Failed at: ${data.failed_size} bytes`);
+      /* Phase 3: Download probe */
+      const dlPhase = data.phases?.download;
+      if (dlPhase && !dlPhase.skipped) {
+        log.info('Phase 3 - Download Chunk Probe:');
+        if (dlPhase.tests && dlPhase.tests.length > 0) {
+          dlPhase.tests.forEach((test) => {
+            const status = test.passed ? '✓' : '✗';
+            const timeStr = test.response_time_ms
+              ? ` (${test.response_time_ms}ms)`
+              : '';
+            const errStr = test.error ? ` - ${test.error}` : '';
+            writeToOutput(
+              `  ${status} ${test.size} bytes${timeStr}${errStr}`,
+              test.passed ? 'success' : 'error',
+            );
+          });
+        }
+      } else if (dlPhase?.skipped) {
+        log.warn(`Phase 3 skipped: ${dlPhase.skip_reason || 'unknown'}`);
       }
-      log.success(
-        `Recommended chunk size: ${data.recommended_chunk_size} bytes`,
-      );
 
-      /* Ask user if they want to apply recommended chunk size */
-      const recommendedSize = data.recommended_chunk_size;
-      const currentSize =
-        parseInt(document.getElementById('chunkSize')?.value) || 128;
+      writeToOutput('─'.repeat(50), 'info');
+
+      const recUpload = data.recommended_upload_chunk_size;
+      const recDownload = data.recommended_download_chunk_size;
+      log.success(`Recommended upload chunk: ${recUpload} bytes`);
+      log.success(`Recommended download chunk: ${recDownload} bytes`);
 
       const apply = confirm(
-        `${t('messages.serial_test_complete', 'Serial Throughput Test Complete!')}\n\n` +
-          `${t('messages.current_chunk_size', 'Current chunk size')}: ${currentSize} ${t('device.bytes', 'bytes')}\n` +
-          `${t('messages.recommended_chunk_size', 'Recommended chunk size')}: ${recommendedSize} ${t('device.bytes', 'bytes')}\n\n` +
-          t(
-            'messages.apply_recommended_size',
-            'Do you want to apply the recommended chunk size?',
-          ),
+        `✅ ${t('messages.serial_test_complete', 'Test Complete')}\n\n` +
+          `Upload: ${recUpload}B, Download: ${recDownload}B\n\n` +
+          t('messages.apply_recommended_size', 'Apply recommended parameters?'),
       );
 
       if (apply) {
-        const chunkInput = document.getElementById('chunkSize');
-        if (chunkInput) {
-          chunkInput.value = recommendedSize;
-          await saveConfig(true);
-          log.success(`Chunk size updated to ${recommendedSize} bytes`);
-        }
+        /* Apply both upload and download chunk sizes */
+        const uploadInput = document.getElementById('uploadChunkSize');
+        const downloadInput = document.getElementById('downloadChunkSize');
+        if (uploadInput) uploadInput.value = recUpload;
+        if (downloadInput) downloadInput.value = recDownload;
+        await saveConfig(true);
+        log.success(
+          `Parameters applied: upload=${recUpload}B, download=${recDownload}B`,
+        );
       } else {
-        log.info(`Chunk size unchanged (${currentSize} bytes)`);
+        log.info('Parameters unchanged');
       }
     } else {
       log.error(`Test failed: ${data.error || 'Unknown error'}`);

@@ -578,7 +578,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
         self.device = DeviceState()
         self.device.ser = Mock()
         self.device.ser.isOpen.return_value = True
-        self.device.chunk_size = 48  # Set fixed chunk_size for testing
+        self.device.upload_chunk_size = 48  # Set fixed upload_chunk_size for testing
         self.fpb = FPBInject(self.device)
 
     def test_send_cmd_write_error(self):
@@ -2022,7 +2022,9 @@ class TestSerialThroughput(unittest.TestCase):
         # Recommended should be 75% of max working size
         if result["max_working_size"] > 0:
             expected_min = 64  # Minimum recommended size
-            self.assertGreaterEqual(result["recommended_chunk_size"], expected_min)
+            self.assertGreaterEqual(
+                result["recommended_upload_chunk_size"], expected_min
+            )
 
     def test_test_serial_exception_handling(self):
         """Test serial throughput exception handling"""

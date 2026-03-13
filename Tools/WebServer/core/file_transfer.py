@@ -37,13 +37,15 @@ def _format_path_arg(path: str) -> str:
 class FileTransfer:
     """File transfer handler for device communication."""
 
-    DEFAULT_CHUNK_SIZE = 256
+    DEFAULT_UPLOAD_CHUNK_SIZE = 128
+    DEFAULT_DOWNLOAD_CHUNK_SIZE = 1024
     DEFAULT_MAX_RETRIES = 10
 
     def __init__(
         self,
         fpb_inject,
-        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        upload_chunk_size: int = DEFAULT_UPLOAD_CHUNK_SIZE,
+        download_chunk_size: int = DEFAULT_DOWNLOAD_CHUNK_SIZE,
         max_retries: int = DEFAULT_MAX_RETRIES,
         log_callback: Callable[[str], None] = None,
     ):
@@ -52,12 +54,14 @@ class FileTransfer:
 
         Args:
             fpb_inject: FPBInject instance for device communication
-            chunk_size: Size of data chunks for transfer (default 256)
+            upload_chunk_size: Size of data chunks for upload (default 128)
+            download_chunk_size: Size of data chunks for download (default 1024)
             max_retries: Maximum retry attempts for transfer (default 10)
             log_callback: Optional callback for logging transfer events to UI
         """
         self.fpb = fpb_inject
-        self.chunk_size = chunk_size
+        self.upload_chunk_size = upload_chunk_size
+        self.download_chunk_size = download_chunk_size
         self.max_retries = max_retries
         self.log_callback = log_callback
 
@@ -198,7 +202,7 @@ class FileTransfer:
         Read data from open file on device with retry support.
 
         Args:
-            size: Maximum bytes to read (default: chunk_size)
+            size: Maximum bytes to read (default: download_chunk_size)
             max_retries: Maximum retry attempts (default: self.max_retries)
             current_offset: Current file offset for seek on retry (optional)
 
@@ -206,7 +210,7 @@ class FileTransfer:
             Tuple of (success, data_bytes, message)
         """
         if size is None:
-            size = self.chunk_size
+            size = self.download_chunk_size
         if max_retries is None:
             max_retries = self.max_retries
 
@@ -471,7 +475,6 @@ class FileTransfer:
         local_data: bytes,
         remote_path: str,
         progress_cb: Optional[Callable[[int, int], None]] = None,
-        verify_crc: bool = True,
     ) -> Tuple[bool, str]:
         """
         Upload data to a file on device.
@@ -480,7 +483,6 @@ class FileTransfer:
             local_data: Data bytes to upload
             remote_path: Destination path on device
             progress_cb: Optional callback(uploaded_bytes, total_bytes)
-            verify_crc: If True, verify entire file CRC after upload
 
         Returns:
             Tuple of (success, message)
@@ -495,7 +497,7 @@ class FileTransfer:
         try:
             uploaded = 0
             while uploaded < total_size:
-                chunk = local_data[uploaded : uploaded + self.chunk_size]
+                chunk = local_data[uploaded : uploaded + self.upload_chunk_size]
                 # Pass current offset for seek on retry
                 success, msg = self.fwrite(chunk, current_offset=uploaded)
                 if not success:
@@ -507,7 +509,8 @@ class FileTransfer:
                     progress_cb(uploaded, total_size)
 
             # Verify entire file CRC before closing
-            if verify_crc and total_size > 0:
+            # Always verify entire file CRC before closing
+            if total_size > 0:
                 expected_crc = crc16(local_data)
                 success, dev_size, dev_crc = self.fcrc(total_size)
                 if not success:
@@ -550,7 +553,6 @@ class FileTransfer:
         self,
         remote_path: str,
         progress_cb: Optional[Callable[[int, int], None]] = None,
-        verify_crc: bool = True,
     ) -> Tuple[bool, bytes, str]:
         """
         Download a file from device.
@@ -558,7 +560,6 @@ class FileTransfer:
         Args:
             remote_path: Source path on device
             progress_cb: Optional callback(downloaded_bytes, total_bytes)
-            verify_crc: If True, verify entire file CRC after download
 
         Returns:
             Tuple of (success, data_bytes, message)
@@ -583,7 +584,7 @@ class FileTransfer:
             while True:
                 # Pass current offset for seek on retry
                 success, chunk, msg = self.fread(
-                    self.chunk_size, current_offset=current_offset
+                    self.download_chunk_size, current_offset=current_offset
                 )
                 if not success:
                     self.fclose()
@@ -598,7 +599,8 @@ class FileTransfer:
                     progress_cb(len(data), total_size)
 
             # Verify entire file CRC before closing
-            if verify_crc and len(data) > 0:
+            # Always verify entire file CRC before closing
+            if len(data) > 0:
                 local_crc = crc16(data)
                 success, dev_size, dev_crc = self.fcrc(len(data))
                 if not success:

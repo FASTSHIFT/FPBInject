@@ -107,7 +107,11 @@ def _dynamic_timeout(size):
     Assumes ~128 bytes/chunk with ~2s per chunk worst case,
     plus generous headroom.
     """
-    chunk_size = state.device.chunk_size if state.device.chunk_size > 0 else 128
+    chunk_size = (
+        state.device.download_chunk_size
+        if state.device.download_chunk_size > 0
+        else 1024
+    )
     num_chunks = max(1, (size + chunk_size - 1) // chunk_size)
     return max(10.0, num_chunks * 3.0)
 

@@ -27,7 +27,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertIsNone(device.ser)
         self.assertEqual(device.baudrate, 115200)
         self.assertEqual(device.patch_mode, "trampoline")
-        self.assertEqual(device.chunk_size, 128)
+        self.assertEqual(device.upload_chunk_size, 128)
 
     def test_add_tool_log(self):
         """Test adding tool log"""
@@ -223,14 +223,14 @@ class TestPersistentKeys(unittest.TestCase):
         device1.compile_commands_path = "/path/to/compile_commands.json"
         device1.watch_dirs = ["/dir1", "/dir2"]
         device1.patch_mode = "debugmon"
-        device1.chunk_size = 256
-        device1.tx_chunk_size = 32
-        device1.tx_chunk_delay = 0.01
+        device1.upload_chunk_size = 256
+        device1.download_chunk_size = 2048
+        device1.serial_tx_fragment_size = 32
+        device1.serial_tx_fragment_delay = 0.01
         device1.auto_connect = True
         device1.auto_compile = True
         device1.enable_decompile = True
         device1.ghidra_path = "/opt/ghidra_11.0"
-        device1.verify_crc = False
         device1.transfer_max_retries = 5
         device1.log_file_enabled = True
         device1.log_file_path = "/tmp/test.log"

@@ -34,8 +34,8 @@ class TransferTestBase(unittest.TestCase):
         self.mock_fpb.exit_fl_mode = Mock()
 
         self.mock_device = Mock()
-        self.mock_device.chunk_size = 64
-        self.mock_device.verify_crc = False
+        self.mock_device.upload_chunk_size = 64
+        self.mock_device.download_chunk_size = 64
         self.mock_device.transfer_max_retries = 3
 
         self.state_patcher = patch("app.routes.transfer.state")
@@ -85,10 +85,16 @@ class TestUploadRoute(TransferTestBase):
     def test_upload_success(self, mock_get_ft):
         """Test successful file upload."""
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fwrite.return_value = (True, "OK")
         mock_ft.fclose.return_value = (True, "OK")
+        mock_ft.fcrc.return_value = (
+            False,
+            0,
+            0,
+        )  # CRC check fails gracefully (warning)
         mock_ft.get_stats.return_value = {"packet_loss_rate": "0.0"}
         mock_ft.reset_stats = Mock()
         mock_ft.fpb = self.mock_fpb
@@ -114,7 +120,8 @@ class TestUploadRoute(TransferTestBase):
     def test_upload_fopen_failure(self, mock_get_ft):
         """Test upload when fopen fails."""
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fopen.return_value = (False, "Permission denied")
         mock_ft.fpb = self.mock_fpb
         mock_get_ft.return_value = mock_ft
@@ -138,7 +145,8 @@ class TestUploadRoute(TransferTestBase):
     def test_upload_fwrite_failure(self, mock_get_ft):
         """Test upload when fwrite fails."""
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fwrite.return_value = (False, "Write error")
         mock_ft.fclose.return_value = (True, "OK")
@@ -164,10 +172,10 @@ class TestUploadRoute(TransferTestBase):
     @patch("app.routes.transfer._get_file_transfer")
     def test_upload_with_crc_success(self, mock_get_ft):
         """Test upload with CRC verification success."""
-        self.mock_device.verify_crc = True
 
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fwrite.return_value = (True, "OK")
         mock_ft.fclose.return_value = (True, "OK")
@@ -200,10 +208,10 @@ class TestUploadRoute(TransferTestBase):
     @patch("app.routes.transfer._get_file_transfer")
     def test_upload_crc_mismatch(self, mock_get_ft):
         """Test upload with CRC mismatch."""
-        self.mock_device.verify_crc = True
 
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fwrite.return_value = (True, "OK")
         mock_ft.fclose.return_value = (True, "OK")
@@ -231,10 +239,10 @@ class TestUploadRoute(TransferTestBase):
     @patch("app.routes.transfer._get_file_transfer")
     def test_upload_size_mismatch(self, mock_get_ft):
         """Test upload with size mismatch."""
-        self.mock_device.verify_crc = True
 
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fwrite.return_value = (True, "OK")
         mock_ft.fclose.return_value = (True, "OK")
@@ -262,10 +270,10 @@ class TestUploadRoute(TransferTestBase):
     @patch("app.routes.transfer._get_file_transfer")
     def test_upload_crc_check_failure(self, mock_get_ft):
         """Test upload when CRC check itself fails."""
-        self.mock_device.verify_crc = True
 
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fwrite.return_value = (True, "OK")
         mock_ft.fclose.return_value = (True, "OK")
@@ -294,7 +302,8 @@ class TestUploadRoute(TransferTestBase):
     def test_upload_cancel(self, mock_get_ft):
         """Test upload cancellation."""
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
 
         def fopen_sets_cancel(*args, **kwargs):
             _transfer_cancelled.set()
@@ -350,13 +359,19 @@ class TestDownloadRoute(TransferTestBase):
     def test_download_success(self, mock_get_ft):
         """Test successful file download."""
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fstat.return_value = (True, {"size": 11, "type": "file"})
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fread.side_effect = [
             (True, b"hello world", ""),
             (True, b"", "EOF"),
         ]
+        mock_ft.fcrc.return_value = (
+            False,
+            0,
+            0,
+        )  # CRC check fails gracefully (warning)
         mock_ft.fclose.return_value = (True, "OK")
         mock_ft.get_stats.return_value = {"packet_loss_rate": "0.0"}
         mock_ft.reset_stats = Mock()
@@ -459,7 +474,8 @@ class TestDownloadRoute(TransferTestBase):
     def test_download_fread_failure(self, mock_get_ft):
         """Test download when fread fails."""
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fstat.return_value = (True, {"size": 100, "type": "file"})
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fread.return_value = (False, b"", "Read error")
@@ -481,7 +497,6 @@ class TestDownloadRoute(TransferTestBase):
     @patch("app.routes.transfer._get_file_transfer")
     def test_download_with_crc_success(self, mock_get_ft):
         """Test download with CRC verification."""
-        self.mock_device.verify_crc = True
 
         file_content = b"test data here"
         from utils.crc import crc16
@@ -489,7 +504,8 @@ class TestDownloadRoute(TransferTestBase):
         expected_crc = crc16(file_content)
 
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fstat.return_value = (True, {"size": len(file_content), "type": "file"})
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fread.side_effect = [
@@ -516,10 +532,10 @@ class TestDownloadRoute(TransferTestBase):
     @patch("app.routes.transfer._get_file_transfer")
     def test_download_crc_mismatch(self, mock_get_ft):
         """Test download with CRC mismatch."""
-        self.mock_device.verify_crc = True
 
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fstat.return_value = (True, {"size": 10, "type": "file"})
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fread.side_effect = [
@@ -548,7 +564,8 @@ class TestDownloadRoute(TransferTestBase):
     def test_download_cancel(self, mock_get_ft):
         """Test download cancellation."""
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fstat.return_value = (True, {"size": 1000, "type": "file"})
 
         def fopen_sets_cancel(*args, **kwargs):
@@ -591,10 +608,10 @@ class TestDownloadRoute(TransferTestBase):
     @patch("app.routes.transfer._get_file_transfer")
     def test_download_crc_check_failure(self, mock_get_ft):
         """Test download when CRC check itself fails."""
-        self.mock_device.verify_crc = True
 
         mock_ft = Mock()
-        mock_ft.chunk_size = 64
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
         mock_ft.fstat.return_value = (True, {"size": 5, "type": "file"})
         mock_ft.fopen.return_value = (True, "OK")
         mock_ft.fread.side_effect = [

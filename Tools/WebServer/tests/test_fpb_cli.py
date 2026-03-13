@@ -35,9 +35,9 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.inject_base, 0x20001000)
         self.assertIsNone(state.cached_slots)
         self.assertEqual(state.slot_update_id, 0)
-        self.assertEqual(state.chunk_size, 128)
-        self.assertEqual(state.tx_chunk_size, 0)
-        self.assertEqual(state.tx_chunk_delay, 0.005)
+        self.assertEqual(state.upload_chunk_size, 128)
+        self.assertEqual(state.serial_tx_fragment_size, 0)
+        self.assertEqual(state.serial_tx_fragment_delay, 0.002)
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
     @patch("cli.fpb_cli.serial.Serial")
@@ -125,8 +125,8 @@ class TestFPBCLI(unittest.TestCase):
     def test_init_with_tx_chunk_params(self):
         """Test initialization with TX chunk parameters"""
         cli = FPBCLI(tx_chunk_size=16, tx_chunk_delay=0.01)
-        self.assertEqual(cli._device_state.tx_chunk_size, 16)
-        self.assertEqual(cli._device_state.tx_chunk_delay, 0.01)
+        self.assertEqual(cli._device_state.serial_tx_fragment_size, 16)
+        self.assertEqual(cli._device_state.serial_tx_fragment_delay, 0.01)
         cli.cleanup()
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
@@ -679,7 +679,10 @@ class TestFPBCLIInfo(unittest.TestCase):
                     {"size": 256, "passed": True},
                     {"size": 512, "passed": False, "error": "timeout"},
                 ],
-                "recommended_chunk_size": 192,
+                "recommended_upload_chunk_size": 192,
+                "recommended_download_chunk_size": 2048,
+                "fragment_needed": False,
+                "phases": {},
             }
 
             f = io.StringIO()
@@ -701,7 +704,10 @@ class TestFPBCLIInfo(unittest.TestCase):
                 "max_working_size": 4096,
                 "failed_size": 0,
                 "tests": [{"size": 16, "passed": True}],
-                "recommended_chunk_size": 3072,
+                "recommended_upload_chunk_size": 3072,
+                "recommended_download_chunk_size": 4096,
+                "fragment_needed": False,
+                "phases": {},
             }
 
             f = io.StringIO()
@@ -1845,7 +1851,7 @@ class TestDeviceStateCLI(unittest.TestCase):
         device = DeviceState()
         self.assertIsNone(device.ser)
         self.assertFalse(device.connected)
-        self.assertEqual(device.chunk_size, 128)
+        self.assertEqual(device.upload_chunk_size, 128)
 
     def test_disconnect(self):
         """Test disconnect"""

@@ -202,15 +202,15 @@ class FPBProtocol:
             ser.reset_input_buffer()
 
             data_bytes = (full_cmd + "\n").encode()
-            tx_chunk_size = getattr(self.device, "tx_chunk_size", 0)
-            tx_chunk_delay = getattr(self.device, "tx_chunk_delay", 0.005)
-            if tx_chunk_size > 0 and len(data_bytes) > tx_chunk_size:
-                for i in range(0, len(data_bytes), tx_chunk_size):
-                    chunk = data_bytes[i : i + tx_chunk_size]
+            tx_fragment_size = getattr(self.device, "serial_tx_fragment_size", 0)
+            tx_fragment_delay = getattr(self.device, "serial_tx_fragment_delay", 0.002)
+            if tx_fragment_size > 0 and len(data_bytes) > tx_fragment_size:
+                for i in range(0, len(data_bytes), tx_fragment_size):
+                    chunk = data_bytes[i : i + tx_fragment_size]
                     ser.write(chunk)
                     ser.flush()
-                    if i + tx_chunk_size < len(data_bytes):
-                        time.sleep(tx_chunk_delay)
+                    if i + tx_fragment_size < len(data_bytes):
+                        time.sleep(tx_fragment_delay)
             else:
                 ser.write(data_bytes)
             ser.flush()
@@ -489,7 +489,9 @@ class FPBProtocol:
         """Upload binary data in chunks using base64 encoding."""
         total = len(data)
         data_offset = 0
-        bytes_per_chunk = self.device.chunk_size if self.device.chunk_size > 0 else 128
+        bytes_per_chunk = (
+            self.device.upload_chunk_size if self.device.upload_chunk_size > 0 else 128
+        )
 
         upload_start = time.time()
         chunk_count = 0
@@ -579,7 +581,11 @@ class FPBProtocol:
 
         Returns (data_bytes, message) on success, (None, error_msg) on failure.
         """
-        bytes_per_chunk = self.device.chunk_size if self.device.chunk_size > 0 else 128
+        bytes_per_chunk = (
+            self.device.download_chunk_size
+            if self.device.download_chunk_size > 0
+            else 1024
+        )
         buf = bytearray()
         offset = 0
 
@@ -622,7 +628,9 @@ class FPBProtocol:
 
         Returns (success, message).
         """
-        bytes_per_chunk = self.device.chunk_size if self.device.chunk_size > 0 else 128
+        bytes_per_chunk = (
+            self.device.upload_chunk_size if self.device.upload_chunk_size > 0 else 128
+        )
         total = len(data)
         offset = 0
 
@@ -727,10 +735,244 @@ class FPBProtocol:
         except Exception as e:
             return False, str(e)
 
+    def _probe_echo(self, test_size: int, timeout: float = 2.0) -> Dict:
+        """Send an echo command of given size and verify CRC.
+
+        Returns a test_result dict with keys: size, cmd_len, passed, error,
+        response_time_ms.
+        """
+        hex_data = "".join(f"{(i % 256):02X}" for i in range(test_size))
+        cmd = f"-c echo -d {hex_data}"
+
+        test_result: Dict = {
+            "size": test_size,
+            "cmd_len": len(cmd),
+            "passed": False,
+            "error": None,
+            "response_time_ms": 0,
+        }
+
+        try:
+            start_time = time.time()
+            response = self.send_cmd(cmd, timeout=timeout)
+            elapsed_ms = (time.time() - start_time) * 1000
+            test_result["response_time_ms"] = round(elapsed_ms, 2)
+
+            if "[FLOK]" in response:
+                expected_crc = crc16(hex_data.encode("ascii"))
+                crc_match = re.search(r"0x([0-9A-Fa-f]{4})", response)
+                if crc_match:
+                    received_crc = int(crc_match.group(1), 16)
+                    if received_crc == expected_crc:
+                        test_result["passed"] = True
+                    else:
+                        test_result["error"] = (
+                            f"CRC mismatch: expected 0x{expected_crc:04X}, "
+                            f"got 0x{received_crc:04X}"
+                        )
+                else:
+                    test_result["passed"] = True
+            else:
+                if "[FLERR]" in response:
+                    test_result["error"] = "Device returned error"
+                elif not response:
+                    test_result["error"] = "No response (timeout)"
+                else:
+                    test_result["error"] = "Incomplete/invalid response"
+        except Exception as e:
+            test_result["error"] = str(e)
+
+        return test_result
+
+    def _phase_fragment_probe(self, timeout: float = 2.0) -> Dict:
+        """Phase 1: Detect whether TX fragmentation is needed.
+
+        Sends a medium-length echo command (256 bytes). If it succeeds,
+        fragmentation is not needed. If it fails, fragmentation is required
+        but the optimal fragment size is left to the user or a future probe.
+        """
+        result: Dict = {
+            "needed": False,
+            "test": None,
+        }
+        probe = self._probe_echo(256, timeout=timeout)
+        result["test"] = probe
+        if not probe["passed"]:
+            result["needed"] = True
+        return result
+
+    def _phase_upload_probe(
+        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+    ) -> Dict:
+        """Phase 2: Find the device shell receive buffer limit (upload direction).
+
+        Uses increasing echo commands with x1.4 stepping.
+        """
+        result: Dict = {
+            "max_working_size": 0,
+            "failed_size": 0,
+            "recommended_upload_chunk_size": 0,
+            "tests": [],
+        }
+
+        test_size = start_size
+        max_working = 0
+
+        while test_size <= max_size:
+            probe = self._probe_echo(test_size, timeout=timeout)
+            result["tests"].append(probe)
+
+            if probe["passed"]:
+                max_working = test_size
+            else:
+                result["failed_size"] = test_size
+                break
+
+            test_size = max(test_size + 2, int(test_size * 1.4) // 2 * 2)
+
+        result["max_working_size"] = max_working
+        if max_working > 0:
+            result["recommended_upload_chunk_size"] = (max_working * 3) // 4
+            if result["recommended_upload_chunk_size"] < 16:
+                result["recommended_upload_chunk_size"] = max_working
+        return result
+
+    def _probe_echoback(self, test_size: int, timeout: float = 3.0) -> Dict:
+        """Send an echoback request and verify the response.
+
+        The device fills its send buffer with a known pattern of `test_size`
+        bytes and returns it as base64 with CRC. This tests the download
+        direction (device → PC) throughput.
+
+        Protocol:
+          Request:  fl -c echoback --len {N}
+          Response: [FLOK] ECHOBACK {N} bytes crc=0x{CRC} data={base64}
+
+        Returns a test_result dict with keys: size, passed, error,
+        response_time_ms.
+        """
+        cmd = f"-c echoback --len {test_size}"
+
+        test_result: Dict = {
+            "size": test_size,
+            "passed": False,
+            "error": None,
+            "response_time_ms": 0,
+        }
+
+        try:
+            start_time = time.time()
+            response = self.send_cmd(cmd, timeout=timeout)
+            elapsed_ms = (time.time() - start_time) * 1000
+            test_result["response_time_ms"] = round(elapsed_ms, 2)
+
+            if "[FLOK]" in response:
+                # Parse: [FLOK] ECHOBACK {N} bytes crc=0x{CRC} data={base64}
+                data_match = re.search(r"data=(\S+)", response)
+                crc_match = re.search(r"crc=0x([0-9A-Fa-f]{4})", response)
+                if data_match and crc_match:
+                    raw = base64.b64decode(data_match.group(1))
+                    received_crc = int(crc_match.group(1), 16)
+                    expected_crc = crc16(raw)
+                    if len(raw) == test_size and received_crc == expected_crc:
+                        test_result["passed"] = True
+                    elif len(raw) != test_size:
+                        test_result["error"] = (
+                            f"Size mismatch: expected {test_size}, got {len(raw)}"
+                        )
+                    else:
+                        test_result["error"] = (
+                            f"CRC mismatch: expected 0x{expected_crc:04X}, "
+                            f"got 0x{received_crc:04X}"
+                        )
+                elif not data_match:
+                    test_result["error"] = "No data in response"
+                else:
+                    test_result["error"] = "No CRC in response"
+            else:
+                if "[FLERR]" in response:
+                    test_result["error"] = "Device returned error"
+                elif not response:
+                    test_result["error"] = "No response (timeout)"
+                else:
+                    test_result["error"] = "Incomplete/invalid response"
+        except Exception as e:
+            test_result["error"] = str(e)
+
+        return test_result
+
+    def _phase_download_probe(
+        self,
+        start_size: int = 256,
+        max_size: int = 8192,
+        timeout: float = 3.0,
+    ) -> Dict:
+        """Phase 3: Find the max reliable download chunk size.
+
+        Uses the `echoback` command to have the device generate and send
+        increasing amounts of data. The device reuses its send buffer to
+        fill with a pattern, so no RAM allocation is needed.
+        """
+        result: Dict = {
+            "max_working_size": 0,
+            "failed_size": 0,
+            "recommended_download_chunk_size": 1024,
+            "tests": [],
+            "skipped": False,
+        }
+
+        # Quick check: does the device support echoback?
+        probe = self._probe_echoback(start_size, timeout=timeout)
+        if probe.get("error") and (
+            "Device returned error" in (probe["error"] or "")
+            or "No response" in (probe["error"] or "")
+        ):
+            result["skipped"] = True
+            result["skip_reason"] = (
+                f"Device does not support echoback command: {probe['error']}"
+            )
+            return result
+
+        result["tests"].append(probe)
+        if not probe["passed"]:
+            result["failed_size"] = start_size
+            return result
+
+        max_working = start_size
+        test_size = max(start_size + 64, int(start_size * 1.5) // 64 * 64)
+
+        while test_size <= max_size:
+            probe = self._probe_echoback(test_size, timeout=timeout)
+            result["tests"].append(probe)
+
+            if probe["passed"]:
+                max_working = test_size
+            else:
+                result["failed_size"] = test_size
+                break
+
+            test_size = max(test_size + 64, int(test_size * 1.5) // 64 * 64)
+
+        result["max_working_size"] = max_working
+        if max_working > 0:
+            # Download direction is more stable, use 85% safety margin
+            recommended = (max_working * 85) // 100 // 64 * 64
+            if recommended < 128:
+                recommended = max_working
+            result["recommended_download_chunk_size"] = recommended
+        return result
+
     def test_serial_throughput(
         self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
     ) -> Dict:
-        """Test serial port throughput by sending increasing data sizes."""
+        """Test serial throughput with 3-phase probing.
+
+        Phase 1: TX Fragment probe - detect if PC→device needs fragmentation.
+        Phase 2: Upload chunk probe - find device shell buffer limit.
+        Phase 3: Download chunk probe - find max reliable download size.
+
+        Returns a comprehensive result dict with recommended parameters.
+        """
         if self.device is None or self.device.ser is None:
             return {
                 "success": False,
@@ -738,95 +980,59 @@ class FPBProtocol:
                 "max_working_size": 0,
                 "failed_size": 0,
                 "tests": [],
-                "recommended_chunk_size": 16,
+                "recommended_upload_chunk_size": 16,
+                "recommended_download_chunk_size": 1024,
+                "fragment_needed": False,
             }
 
-        results = {
+        results: Dict = {
             "success": True,
             "max_working_size": 0,
             "failed_size": 0,
             "tests": [],
-            "recommended_chunk_size": 16,
+            "recommended_upload_chunk_size": 16,
+            "recommended_download_chunk_size": 1024,
+            "fragment_needed": False,
+            "phases": {},
         }
 
         try:
-            test_size = start_size
-            max_working = 0
+            # Phase 1: TX Fragment probe
+            frag = self._phase_fragment_probe(timeout=timeout)
+            results["phases"]["fragment"] = frag
+            results["fragment_needed"] = frag["needed"]
 
-            while test_size <= max_size:
-                hex_data = "".join(f"{(i % 256):02X}" for i in range(test_size))
-                cmd = f"-c echo -d {hex_data}"
+            # Phase 2: Upload chunk probe (same as old test_serial_throughput)
+            upload = self._phase_upload_probe(
+                start_size=start_size, max_size=max_size, timeout=timeout
+            )
+            results["phases"]["upload"] = upload
+            results["tests"] = upload["tests"]  # backward compat
+            results["max_working_size"] = upload["max_working_size"]
+            results["failed_size"] = upload["failed_size"]
+            results["recommended_upload_chunk_size"] = upload[
+                "recommended_upload_chunk_size"
+            ]
 
-                test_result = {
-                    "size": test_size,
-                    "cmd_len": len(cmd),
-                    "passed": False,
-                    "error": None,
-                    "response_time_ms": 0,
-                }
-
-                try:
-                    start_time = time.time()
-                    response = self.send_cmd(cmd, timeout=timeout)
-                    elapsed_ms = (time.time() - start_time) * 1000
-                    test_result["response_time_ms"] = round(elapsed_ms, 2)
-
-                    if "[FLOK]" in response:
-                        expected_crc = crc16(hex_data.encode("ascii"))
-                        crc_match = re.search(r"0x([0-9A-Fa-f]{4})", response)
-                        if crc_match:
-                            received_crc = int(crc_match.group(1), 16)
-                            if received_crc == expected_crc:
-                                test_result["passed"] = True
-                                max_working = test_size
-                            else:
-                                test_result["passed"] = False
-                                test_result["error"] = (
-                                    f"CRC mismatch: expected 0x{expected_crc:04X}, "
-                                    f"got 0x{received_crc:04X}"
-                                )
-                                results["failed_size"] = test_size
-                                results["tests"].append(test_result)
-                                break
-                        else:
-                            test_result["passed"] = True
-                            max_working = test_size
-                    else:
-                        test_result["passed"] = False
-                        if "[FLERR]" in response:
-                            test_result["error"] = "Device returned error"
-                        elif not response:
-                            test_result["error"] = "No response (timeout)"
-                        else:
-                            test_result["error"] = "Incomplete/invalid response"
-                        results["failed_size"] = test_size
-                        results["tests"].append(test_result)
-                        break
-
-                except Exception as e:
-                    test_result["passed"] = False
-                    test_result["error"] = str(e)
-                    results["failed_size"] = test_size
-                    results["tests"].append(test_result)
-                    break
-
-                results["tests"].append(test_result)
-                test_size = max(test_size + 2, int(test_size * 1.4) // 2 * 2)
-
-            results["max_working_size"] = max_working
-            if max_working > 0:
-                # Use 75% of max working size as safe chunk size
-                # Don't force minimum - respect actual device capability
-                results["recommended_chunk_size"] = (max_working * 3) // 4
-                if results["recommended_chunk_size"] < 16:
-                    results["recommended_chunk_size"] = max_working
-            else:
+            if upload["max_working_size"] == 0:
                 results["success"] = False
                 results["error"] = (
                     "Serial communication failed at minimum size "
                     f"({start_size} bytes). Check connection and try again."
                 )
-                results["recommended_chunk_size"] = 0
+                results["recommended_upload_chunk_size"] = 0
+                return results
+
+            # Phase 3: Download chunk probe (uses echoback command)
+            download = self._phase_download_probe(
+                start_size=256,
+                max_size=8192,
+                timeout=max(timeout, 3.0),
+            )
+            results["phases"]["download"] = download
+            results["recommended_download_chunk_size"] = download[
+                "recommended_download_chunk_size"
+            ]
 
         except Exception as e:
             results["success"] = False

@@ -108,7 +108,10 @@ class TestFPBTestSerialRoute(TestFPBRoutesBase):
             "success": True,
             "max_working_size": 256,
             "failed_size": 512,
-            "recommended_chunk_size": 192,
+            "recommended_upload_chunk_size": 192,
+            "recommended_download_chunk_size": 2048,
+            "fragment_needed": False,
+            "phases": {},
         }
         mock_helpers.return_value = make_mock_helpers(mock_fpb)
 

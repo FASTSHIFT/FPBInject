@@ -168,27 +168,27 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
 
-    it('sets chunk_size from config', async () => {
+    it('sets upload_chunk_size from config', async () => {
       w.FPBState.toolTerminal = new MockTerminal();
-      setFetchResponse('/api/config', { chunk_size: 256 });
+      setFetchResponse('/api/config', { upload_chunk_size: 256 });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
       assertEqual(typeof w.loadConfig, 'function');
       w.FPBState.toolTerminal = null;
     });
 
-    it('sets tx_chunk_size from config', async () => {
+    it('sets serial_tx_fragment_size from config', async () => {
       w.FPBState.toolTerminal = new MockTerminal();
-      setFetchResponse('/api/config', { tx_chunk_size: 64 });
+      setFetchResponse('/api/config', { serial_tx_fragment_size: 64 });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
       assertEqual(typeof w.loadConfig, 'function');
       w.FPBState.toolTerminal = null;
     });
 
-    it('converts tx_chunk_delay to milliseconds', async () => {
+    it('converts serial_tx_fragment_delay to milliseconds', async () => {
       w.FPBState.toolTerminal = new MockTerminal();
-      setFetchResponse('/api/config', { tx_chunk_delay: 0.01 });
+      setFetchResponse('/api/config', { serial_tx_fragment_delay: 0.01 });
       setFetchResponse('/api/status', { connected: false });
       await w.loadConfig();
       assertEqual(typeof w.loadConfig, 'function');
@@ -258,7 +258,7 @@ module.exports = function (w) {
         schema: [
           { key: 'elf_path', config_type: 'file_path', default: '' },
           {
-            key: 'chunk_size',
+            key: 'upload_chunk_size',
             config_type: 'number',
             default: 128,
             ui_multiplier: 1,
@@ -337,7 +337,7 @@ module.exports = function (w) {
         schema: [
           { key: 'elf_path', config_type: 'file_path', default: '' },
           {
-            key: 'chunk_size',
+            key: 'upload_chunk_size',
             config_type: 'number',
             default: 128,
             ui_multiplier: 1,

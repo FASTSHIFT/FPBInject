@@ -40,7 +40,8 @@ class TestTransferRoutes(unittest.TestCase):
 
         # Create mock device
         self.mock_device = Mock()
-        self.mock_device.chunk_size = 256
+        self.mock_device.upload_chunk_size = 256
+        self.mock_device.download_chunk_size = 256
         self.mock_device.add_tool_log = Mock()
 
         # Create mock log functions
@@ -482,13 +483,14 @@ class TestTransferHelpers(unittest.TestCase):
         with patch("app.routes.transfer._get_helpers") as mock_helpers:
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
             with patch("app.routes.transfer.state") as mock_state:
-                mock_state.device.chunk_size = 512
+                mock_state.device.upload_chunk_size = 512
+                mock_state.device.download_chunk_size = 512
                 mock_state.device.transfer_max_retries = 5
                 from app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
                 self.assertEqual(ft.fpb, mock_fpb)
-                self.assertEqual(ft.chunk_size, 512)
+                self.assertEqual(ft.upload_chunk_size, 512)
                 self.assertEqual(ft.max_retries, 5)
 
     def test_get_file_transfer_default_chunk_size(self):
@@ -497,12 +499,13 @@ class TestTransferHelpers(unittest.TestCase):
         with patch("app.routes.transfer._get_helpers") as mock_helpers:
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
             with patch("app.routes.transfer.state") as mock_state:
-                mock_state.device.chunk_size = None
+                mock_state.device.upload_chunk_size = None
+                mock_state.device.download_chunk_size = None
                 mock_state.device.transfer_max_retries = 10
                 from app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
-                self.assertEqual(ft.chunk_size, 256)
+                self.assertEqual(ft.upload_chunk_size, 128)
 
     def test_get_file_transfer_default_max_retries(self):
         """Test _get_file_transfer with default max_retries when not set."""
@@ -510,7 +513,8 @@ class TestTransferHelpers(unittest.TestCase):
         with patch("app.routes.transfer._get_helpers") as mock_helpers:
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
             with patch("app.routes.transfer.state") as mock_state:
-                mock_state.device.chunk_size = 256
+                mock_state.device.upload_chunk_size = 256
+                mock_state.device.download_chunk_size = 256
                 # Simulate missing transfer_max_retries attribute
                 del mock_state.device.transfer_max_retries
                 from app.routes.transfer import _get_file_transfer

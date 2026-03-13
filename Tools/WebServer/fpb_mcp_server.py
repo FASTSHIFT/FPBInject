@@ -294,14 +294,19 @@ def test_serial(
     start_size: int = 16,
     max_size: int = 4096,
 ) -> dict:
-    """Test serial throughput to find optimal transfer parameters.
+    """Test serial throughput with 3-phase probing to find optimal parameters.
 
-    Probes the device's receive buffer limit using increasing packet sizes.
+    Phase 1: TX Fragment probe - detect if PC→device needs fragmentation.
+    Phase 2: Upload chunk probe - find device shell buffer limit.
+    Phase 3: Download chunk probe - find max reliable download size.
+
+    Returns recommended_upload_chunk_size, recommended_download_chunk_size,
+    fragment_needed, and per-phase test details.
 
     Args:
         port: Serial port (uses existing connection if omitted)
-        start_size: Starting test size in bytes (default: 16)
-        max_size: Maximum test size in bytes (default: 4096)
+        start_size: Starting test size in bytes for upload probe (default: 16)
+        max_size: Maximum test size in bytes for upload probe (default: 4096)
     """
     cli = _get_cli(port=port)
     return _capture_cli_output(cli.test_serial, start_size, max_size)

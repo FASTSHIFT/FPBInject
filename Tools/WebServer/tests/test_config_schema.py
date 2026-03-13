@@ -179,9 +179,8 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertEqual(len(defaults), len(CONFIG_SCHEMA))
 
         # Check some known defaults
-        self.assertEqual(defaults["chunk_size"], 128)
+        self.assertEqual(defaults["upload_chunk_size"], 128)
         self.assertEqual(defaults["patch_mode"], "trampoline")
-        self.assertEqual(defaults["verify_crc"], True)
 
     def test_get_schema_by_key_found(self):
         """Test get_schema_by_key with existing key."""
@@ -292,15 +291,26 @@ class TestKnownConfigItems(unittest.TestCase):
         self.assertEqual(item.default, "trampoline")
         self.assertEqual(len(item.options), 3)
 
-    def test_chunk_size_config(self):
-        """Test chunk_size configuration."""
-        item = get_schema_by_key("chunk_size")
+    def test_upload_chunk_size_config(self):
+        """Test upload_chunk_size configuration."""
+        item = get_schema_by_key("upload_chunk_size")
         self.assertIsNotNone(item)
         self.assertEqual(item.group, ConfigGroup.TRANSFER)
         self.assertEqual(item.config_type, ConfigType.NUMBER)
         self.assertEqual(item.default, 128)
         self.assertEqual(item.min_value, 16)
-        self.assertEqual(item.max_value, 1024)
+        self.assertEqual(item.max_value, 512)
+        self.assertEqual(item.unit, "Bytes")
+
+    def test_download_chunk_size_config(self):
+        """Test download_chunk_size configuration."""
+        item = get_schema_by_key("download_chunk_size")
+        self.assertIsNotNone(item)
+        self.assertEqual(item.group, ConfigGroup.TRANSFER)
+        self.assertEqual(item.config_type, ConfigType.NUMBER)
+        self.assertEqual(item.default, 1024)
+        self.assertEqual(item.min_value, 128)
+        self.assertEqual(item.max_value, 8192)
         self.assertEqual(item.unit, "Bytes")
 
     def test_ghidra_path_config(self):
@@ -329,9 +339,9 @@ class TestKnownConfigItems(unittest.TestCase):
         # watch_dirs is now independent of auto_compile (no depends_on)
         self.assertIsNone(item.depends_on)
 
-    def test_tx_chunk_delay_ui_multiplier(self):
-        """Test tx_chunk_delay has UI multiplier for ms display."""
-        item = get_schema_by_key("tx_chunk_delay")
+    def test_serial_tx_fragment_delay_ui_multiplier(self):
+        """Test serial_tx_fragment_delay has UI multiplier for ms display."""
+        item = get_schema_by_key("serial_tx_fragment_delay")
         self.assertIsNotNone(item)
         self.assertEqual(item.ui_multiplier, 1000)
         self.assertEqual(item.unit, "ms")

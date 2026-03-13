@@ -254,7 +254,7 @@ module.exports = function (w) {
       setFetchResponse('/api/config/schema', {
         schema: [
           {
-            key: 'chunk_size',
+            key: 'upload_chunk_size',
             config_type: 'number',
             label: 'Chunk Size',
             group: 'transfer',
@@ -491,7 +491,7 @@ module.exports = function (w) {
         groups: {},
         group_order: [],
       });
-      setFetchResponse('/api/config', { tx_chunk_delay: 0.01 });
+      setFetchResponse('/api/config', { serial_tx_fragment_delay: 0.01 });
       const el = browserGlobals.document.getElementById('txChunkDelay');
       await w.loadConfigValues();
       assertEqual(parseInt(el.value), 10);
@@ -515,7 +515,7 @@ module.exports = function (w) {
       setFetchResponse('/api/config/schema', {
         schema: [
           {
-            key: 'chunk_size',
+            key: 'upload_chunk_size',
             config_type: 'number',
             default: 128,
             ui_multiplier: 1,
@@ -524,7 +524,7 @@ module.exports = function (w) {
         groups: {},
         group_order: [],
       });
-      setFetchResponse('/api/config', { chunk_size: null });
+      setFetchResponse('/api/config', { upload_chunk_size: null });
       const el = browserGlobals.document.getElementById('chunkSize');
       await w.loadConfigValues();
       assertEqual(parseInt(el.value), 128);

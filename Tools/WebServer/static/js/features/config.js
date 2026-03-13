@@ -249,10 +249,14 @@ async function saveConfigLegacy(silent = false) {
       document.getElementById('compileCommandsPath')?.value || '',
     toolchain_path: document.getElementById('toolchainPath')?.value || '',
     patch_mode: document.getElementById('patchMode')?.value || 'trampoline',
-    chunk_size: parseInt(document.getElementById('chunkSize')?.value) || 128,
-    tx_chunk_size: parseInt(document.getElementById('txChunkSize')?.value) || 0,
-    tx_chunk_delay:
-      (parseInt(document.getElementById('txChunkDelay')?.value) || 5) / 1000,
+    upload_chunk_size:
+      parseInt(document.getElementById('chunkSize')?.value) || 128,
+    download_chunk_size:
+      parseInt(document.getElementById('downloadChunkSize')?.value) || 1024,
+    serial_tx_fragment_size:
+      parseInt(document.getElementById('txChunkSize')?.value) || 0,
+    serial_tx_fragment_delay:
+      (parseInt(document.getElementById('txChunkDelay')?.value) || 2) / 1000,
     transfer_max_retries:
       parseInt(document.getElementById('transferMaxRetries')?.value) || 3,
     watch_dirs: getWatchDirs(),
@@ -260,7 +264,6 @@ async function saveConfigLegacy(silent = false) {
     enable_decompile:
       document.getElementById('enableDecompile')?.checked || false,
     ghidra_path: document.getElementById('ghidraPath')?.value || '',
-    verify_crc: document.getElementById('verifyCrc')?.checked ?? true,
   };
 
   try {

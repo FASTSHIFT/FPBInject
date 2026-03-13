@@ -1259,8 +1259,6 @@ class TestDevicePopupMessages(unittest.TestCase):
         "clear_slots_hint",
         # Serial test
         "serial_test_complete",
-        "current_chunk_size",
-        "recommended_chunk_size",
         "apply_recommended_size",
         # ELF watcher
         "elf_file_changed",

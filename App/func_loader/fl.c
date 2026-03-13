@@ -235,6 +235,37 @@ static void cmd_echo(fl_context_t* ctx, const char* data_str) {
     fl_response(true, "ECHO %u Bytes, CRC 0x%04X", (unsigned)len, crc);
 }
 
+static void cmd_echoback(fl_context_t* ctx, int len) {
+    /* Echoback command for download direction throughput testing.
+     * Fills the send buffer with a deterministic pattern (i % 256),
+     * base64-encodes it, and sends it back with CRC.
+     * PC sends: fl -c echoback --len N
+     */
+    if (len <= 0 || (size_t)len > FL_BUF_SIZE) {
+        fl_response(false, "Invalid length %d (max %d)", len, (int)FL_BUF_SIZE);
+        return;
+    }
+
+    /* Fill buffer with deterministic pattern */
+    for (int i = 0; i < len; i++) {
+        ctx->buf[i] = (uint8_t)(i % 256);
+    }
+
+    /* Base64 encode */
+    if (bytes_to_base64(ctx->buf, len, ctx->b64_buf, FL_B64_BUF_SIZE) < 0) {
+        fl_response(false, "Base64 encode failed");
+        return;
+    }
+
+    /* CRC over raw pattern bytes */
+    uint16_t crc = calc_crc16(ctx->buf, len);
+
+    /* Output in parts to avoid buffer overflow */
+    fl_print("[FLOK] ECHOBACK %d bytes crc=0x%04X data=", len, (unsigned)crc);
+    fl_print_raw(ctx->b64_buf);
+    fl_print_raw("\n[FLEND]\n");
+}
+
 static void cmd_info(fl_context_t* ctx) {
     const fpb_state_t* fpb = fpb_get_state();
     fpb_info_t fpb_info;
@@ -1027,6 +1058,8 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         cmd_ping(ctx);
     } else if (strcmp(cmd, "echo") == 0) {
         cmd_echo(ctx, data);
+    } else if (strcmp(cmd, "echoback") == 0) {
+        cmd_echoback(ctx, len);
     } else if (strcmp(cmd, "info") == 0) {
         cmd_info(ctx);
     } else if (strcmp(cmd, "alloc") == 0) {

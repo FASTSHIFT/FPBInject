@@ -229,9 +229,10 @@ class TestRoutesFPB(TestRoutesBase):
             "port": "/dev/ttyTest",
             "baudrate": 9600,
             "patch_mode": "debugmon",
-            "chunk_size": 128,
-            "tx_chunk_size": 16,
-            "tx_chunk_delay": 0.01,
+            "upload_chunk_size": 128,
+            "download_chunk_size": 1024,
+            "serial_tx_fragment_size": 16,
+            "serial_tx_fragment_delay": 0.01,
         }
         response = self.client.post("/api/config", json=payload)
         data = json.loads(response.data)
@@ -240,9 +241,9 @@ class TestRoutesFPB(TestRoutesBase):
         self.assertEqual(state.device.port, "/dev/ttyTest")
         self.assertEqual(state.device.baudrate, 9600)
         self.assertEqual(state.device.patch_mode, "debugmon")
-        self.assertEqual(state.device.chunk_size, 128)
-        self.assertEqual(state.device.tx_chunk_size, 16)
-        self.assertEqual(state.device.tx_chunk_delay, 0.01)
+        self.assertEqual(state.device.upload_chunk_size, 128)
+        self.assertEqual(state.device.serial_tx_fragment_size, 16)
+        self.assertEqual(state.device.serial_tx_fragment_delay, 0.01)
 
     def test_patch_template(self):
         """Test getting patch template"""
@@ -267,7 +268,7 @@ class TestRoutesFPB(TestRoutesBase):
             "compile_commands_path",
             "watch_dirs",
             "patch_mode",
-            "chunk_size",
+            "upload_chunk_size",
             "auto_connect",
             "auto_compile",
             "inject_active",
@@ -354,17 +355,17 @@ class TestConfigAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(state.device.patch_mode, "jump")
 
-    def test_update_chunk_size(self):
-        """Test updating chunk size"""
+    def test_update_upload_chunk_size(self):
+        """Test updating upload chunk size"""
         response = self.client.post(
             "/api/config",
-            data=json.dumps({"chunk_size": 512}),
+            data=json.dumps({"upload_chunk_size": 512}),
             content_type="application/json",
         )
         data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        self.assertEqual(state.device.chunk_size, 512)
+        self.assertEqual(state.device.upload_chunk_size, 512)
 
     def test_update_transfer_max_retries(self):
         """Test updating transfer max retries"""
@@ -453,26 +454,26 @@ class TestConfigAPI(TestRoutesBase):
         self.assertIn("ghidra_path", data)
         self.assertEqual(data["ghidra_path"], "/home/user/ghidra")
 
-    def test_update_verify_crc(self):
-        """Test updating verify_crc setting"""
+    def test_update_transfer_max_retries_setting(self):
+        """Test updating transfer_max_retries setting (replaces old verify_crc test)"""
         response = self.client.post(
             "/api/config",
-            data=json.dumps({"verify_crc": False}),
+            data=json.dumps({"transfer_max_retries": 20}),
             content_type="application/json",
         )
         data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        self.assertFalse(state.device.verify_crc)
+        self.assertEqual(state.device.transfer_max_retries, 20)
 
-    def test_get_config_includes_verify_crc(self):
-        """Test GET config includes verify_crc"""
-        state.device.verify_crc = True
+    def test_get_config_includes_upload_chunk_size(self):
+        """Test GET config includes upload_chunk_size"""
+        state.device.upload_chunk_size = 256
         response = self.client.get("/api/config")
         data = json.loads(response.data)
 
-        self.assertIn("verify_crc", data)
-        self.assertTrue(data["verify_crc"])
+        self.assertIn("upload_chunk_size", data)
+        self.assertEqual(data["upload_chunk_size"], 256)
 
     def test_update_enable_decompile(self):
         """Test updating enable_decompile setting"""
@@ -544,7 +545,18 @@ class TestFPBTestSerialAPI(TestRoutesBase):
                 {"size": 256, "passed": True, "response_time_ms": 20.1},
                 {"size": 512, "passed": False, "error": "No response (timeout)"},
             ],
-            "recommended_chunk_size": 192,
+            "recommended_upload_chunk_size": 192,
+            "recommended_download_chunk_size": 2048,
+            "fragment_needed": False,
+            "phases": {
+                "fragment": {"needed": False},
+                "upload": {"max_working_size": 256, "failed_size": 512},
+                "download": {
+                    "max_working_size": 2412,
+                    "failed_size": 0,
+                    "skipped": False,
+                },
+            },
         }
         mock_fpb.enter_fl_mode = Mock()
         mock_fpb.exit_fl_mode = Mock()
@@ -560,7 +572,8 @@ class TestFPBTestSerialAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["max_working_size"], 256)
         self.assertEqual(data["failed_size"], 512)
-        self.assertEqual(data["recommended_chunk_size"], 192)
+        self.assertEqual(data["recommended_upload_chunk_size"], 192)
+        self.assertIn("recommended_download_chunk_size", data)
         self.assertEqual(len(data["tests"]), 6)
 
     @patch("routes.get_fpb_inject")
@@ -575,7 +588,10 @@ class TestFPBTestSerialAPI(TestRoutesBase):
                 {"size": 16, "passed": True},
                 {"size": 32, "passed": True},
             ],
-            "recommended_chunk_size": 3072,
+            "recommended_upload_chunk_size": 3072,
+            "recommended_download_chunk_size": 4096,
+            "fragment_needed": False,
+            "phases": {},
         }
         mock_fpb.enter_fl_mode = Mock()
         mock_fpb.exit_fl_mode = Mock()
@@ -601,7 +617,9 @@ class TestFPBTestSerialAPI(TestRoutesBase):
             "max_working_size": 0,
             "failed_size": 0,
             "tests": [],
-            "recommended_chunk_size": 64,
+            "recommended_upload_chunk_size": 64,
+            "recommended_download_chunk_size": 1024,
+            "fragment_needed": False,
         }
         mock_fpb.enter_fl_mode = Mock()
         mock_fpb.exit_fl_mode = Mock()

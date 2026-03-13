@@ -106,10 +106,11 @@ def api_fpb_ping():
 @bp.route("/fpb/test-serial", methods=["POST"])
 def api_fpb_test_serial():
     """
-    Test serial throughput to find max single-transfer size.
+    Test serial throughput with 3-phase probing.
 
-    Uses x2 stepping to probe device's receive buffer limit.
-    Returns max working size and recommended chunk size.
+    Phase 1: TX Fragment probe - detect if fragmentation is needed.
+    Phase 2: Upload chunk probe - find device shell buffer limit.
+    Phase 3: Download chunk probe - find max reliable download size.
     """
     log_info, log_success, log_error, _, get_fpb_inject, _ = _get_helpers()
 
@@ -120,30 +121,50 @@ def api_fpb_test_serial():
 
     fpb = get_fpb_inject()
 
-    log_info("Starting serial throughput test...")
+    log_info("Starting 3-phase serial throughput test...")
 
     def do_test():
         return fpb.test_serial_throughput(
             start_size=start_size, max_size=max_size, timeout=timeout
         )
 
-    result = _run_serial_op(do_test, timeout=30.0)
+    result = _run_serial_op(do_test, timeout=60.0)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
 
     if result.get("success"):
+        # Phase 1 summary
+        if result.get("fragment_needed"):
+            log_info("Phase 1: TX fragmentation may be needed")
+        else:
+            log_info("Phase 1: TX fragmentation not needed")
+
+        # Phase 2 summary
         max_working = result.get("max_working_size", 0)
         failed_at = result.get("failed_size", 0)
-        recommended = result.get("recommended_chunk_size", 64)
+        rec_upload = result.get("recommended_upload_chunk_size", 64)
 
         if failed_at > 0:
-            log_info(
-                f"Max working size: {max_working} bytes, failed at: {failed_at} bytes"
-            )
+            log_info(f"Phase 2: Upload max={max_working}B, failed at {failed_at}B")
         else:
-            log_success(f"All tests passed up to {max_working} bytes")
-        log_info(f"Recommended chunk size: {recommended} bytes")
+            log_success(f"Phase 2: All upload tests passed up to {max_working}B")
+        log_info(f"Recommended upload chunk: {rec_upload}B")
+
+        # Phase 3 summary
+        rec_download = result.get("recommended_download_chunk_size", 1024)
+        phases = result.get("phases", {})
+        dl_phase = phases.get("download", {})
+        if dl_phase.get("skipped"):
+            log_info(f"Phase 3: Skipped ({dl_phase.get('skip_reason', 'unknown')})")
+        else:
+            dl_max = dl_phase.get("max_working_size", 0)
+            dl_fail = dl_phase.get("failed_size", 0)
+            if dl_fail > 0:
+                log_info(f"Phase 3: Download max={dl_max}B, failed at {dl_fail}B")
+            else:
+                log_success(f"Phase 3: All download tests passed up to {dl_max}B")
+        log_info(f"Recommended download chunk: {rec_download}B")
 
     return jsonify(result)
 

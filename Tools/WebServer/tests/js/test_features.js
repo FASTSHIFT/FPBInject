@@ -98,7 +98,7 @@ module.exports = function (w) {
         success: true,
         tests: [],
         max_working_size: 1024,
-        recommended_chunk_size: 128,
+        recommended_upload_chunk_size: 128,
       });
       await w.fpbTestSerial();
       // Check side effect instead of fetch calls
@@ -119,7 +119,7 @@ module.exports = function (w) {
         ],
         max_working_size: 16,
         failed_size: 32,
-        recommended_chunk_size: 16,
+        recommended_upload_chunk_size: 16,
       });
       await w.fpbTestSerial();
       assertTrue(
@@ -2517,7 +2517,7 @@ module.exports = function (w) {
         success: true,
         tests: [],
         max_working_size: 1024,
-        recommended_chunk_size: 128,
+        recommended_upload_chunk_size: 128,
       });
       await w.fpbTestSerial();
       // Check side effect instead of fetch calls
@@ -2538,7 +2538,7 @@ module.exports = function (w) {
         ],
         max_working_size: 16,
         failed_size: 32,
-        recommended_chunk_size: 16,
+        recommended_upload_chunk_size: 16,
       });
       await w.fpbTestSerial();
       assertTrue(
@@ -2579,7 +2579,7 @@ module.exports = function (w) {
           { size: 256, passed: true, response_time_ms: 45, cmd_len: 264 },
         ],
         max_working_size: 256,
-        recommended_chunk_size: 256,
+        recommended_upload_chunk_size: 256,
       });
       await w.fpbTestSerial();
       assertTrue(
@@ -2604,7 +2604,7 @@ module.exports = function (w) {
         tests: [{ size: 512, passed: true }],
         max_working_size: 512,
         failed_size: 0,
-        recommended_chunk_size: 512,
+        recommended_upload_chunk_size: 512,
       });
       await w.fpbTestSerial();
       assertTrue(
@@ -2624,7 +2624,7 @@ module.exports = function (w) {
         success: true,
         tests: [],
         max_working_size: 512,
-        recommended_chunk_size: 384,
+        recommended_upload_chunk_size: 384,
       });
       setFetchResponse('/api/config', { success: true });
       await w.fpbTestSerial();
@@ -2655,7 +2655,7 @@ module.exports = function (w) {
         success: true,
         tests: [],
         max_working_size: 512,
-        recommended_chunk_size: 384,
+        recommended_upload_chunk_size: 384,
       });
       await w.fpbTestSerial();
       assertEqual(

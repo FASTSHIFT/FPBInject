@@ -32,12 +32,12 @@ window.i18nResources['en'] = {
         patch_mode: 'Inject Mode',
         auto_compile: 'Auto Inject on Save',
         watch_dirs: 'Watch Directories',
-        chunk_size: 'Chunk Size',
-        tx_chunk_size: 'TX Chunk',
-        tx_chunk_delay: 'TX Delay',
+        upload_chunk_size: 'Upload Chunk Size',
+        download_chunk_size: 'Download Chunk Size',
+        serial_tx_fragment_size: 'TX Fragment',
+        serial_tx_fragment_delay: 'TX Fragment Delay',
         transfer_max_retries: 'Max Retries',
         wakeup_shell_cnt: 'Wakeup Count',
-        verify_crc: 'Verify CRC after Transfer',
         log_file_path: 'Log Path',
         log_file_enabled: 'Record Serial Logs',
         serial_echo_enabled: 'Serial TX Echo',
@@ -254,11 +254,8 @@ window.i18nResources['en'] = {
         'Please clear some Slots in DEVICE INFO panel and try again.',
       auto_generated_patch_preview: 'Auto-generated patch (read-only preview)',
       // Serial test
-      serial_test_complete: 'Serial Throughput Test Complete!',
-      current_chunk_size: 'Current chunk size',
-      recommended_chunk_size: 'Recommended chunk size',
-      apply_recommended_size:
-        'Do you want to apply the recommended chunk size?',
+      serial_test_complete: 'Test Complete',
+      apply_recommended_size: 'Apply recommended parameters?',
       // ELF watcher
       elf_file_changed: 'ELF file "{{fileName}}" has changed.',
       reload_symbols_now: 'Reload symbols now?',
@@ -408,16 +405,18 @@ window.i18nResources['en'] = {
       auto_compile:
         'Automatically compile and inject when source files are saved',
       watch_dirs: 'Directories to watch for file changes',
-      chunk_size:
+      upload_chunk_size:
         'Size of each uploaded data block. Smaller values are more stable but slower.',
-      tx_chunk_size:
-        'TX chunk size for serial commands (bytes). 0 = disabled. Workaround for slow serial drivers.',
-      tx_chunk_delay: 'Delay between TX chunks. Only used when TX Chunk > 0.',
+      download_chunk_size:
+        'Size of each downloaded data block. Larger values are faster.',
+      serial_tx_fragment_size:
+        'TX fragment size for serial commands (bytes). 0 = disabled. Workaround for slow serial drivers.',
+      serial_tx_fragment_delay:
+        'Delay between TX fragments. Only used when TX Fragment > 0.',
       transfer_max_retries:
         'Maximum retry attempts for file transfer when CRC mismatch occurs.',
       wakeup_shell_cnt:
         'Number of newlines to send before entering fl mode to wake up shell.',
-      verify_crc: 'Verify file integrity with CRC after transfer',
       log_file_path: 'Path to save serial logs',
       log_file_enabled: 'Record serial communication logs to file',
       serial_echo_enabled: 'Echo TX commands to SERIAL panel (for debugging)',

@@ -247,7 +247,7 @@ class TestReadMemory(unittest.TestCase):
 
     def setUp(self):
         self.device = MagicMock()
-        self.device.chunk_size = 128
+        self.device.download_chunk_size = 128
         self.protocol = FPBProtocol(self.device)
 
     def test_single_chunk(self):
@@ -275,7 +275,7 @@ class TestReadMemory(unittest.TestCase):
         import struct
         from utils.crc import crc16_update
 
-        self.device.chunk_size = 4
+        self.device.download_chunk_size = 4
         base_addr = 0x20000000
 
         def mock_send(cmd, timeout=0.5):
@@ -343,7 +343,7 @@ class TestWriteMemory(unittest.TestCase):
 
     def setUp(self):
         self.device = MagicMock()
-        self.device.chunk_size = 128
+        self.device.upload_chunk_size = 128
         self.protocol = FPBProtocol(self.device)
 
     def test_single_chunk(self):
@@ -359,7 +359,7 @@ class TestWriteMemory(unittest.TestCase):
 
     def test_multi_chunk(self):
         """Write data spanning multiple chunks."""
-        self.device.chunk_size = 4
+        self.device.upload_chunk_size = 4
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] WRITE 4 bytes")
 
         ok, msg = self.protocol.write_memory(0x20000000, b"\xaa" * 10)
@@ -400,7 +400,8 @@ class TestEnhancedCRC(unittest.TestCase):
 
     def setUp(self):
         self.device = MagicMock()
-        self.device.chunk_size = 128
+        self.device.upload_chunk_size = 128
+        self.device.download_chunk_size = 128
         self.protocol = FPBProtocol(self.device)
 
     def test_write_crc_includes_addr_and_len(self):

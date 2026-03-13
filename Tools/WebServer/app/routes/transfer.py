@@ -73,14 +73,19 @@ def _get_file_transfer(log_callback=None):
     """Get FileTransfer instance."""
     *_, get_fpb_inject = _get_helpers()
     fpb = get_fpb_inject()
-    chunk_size = state.device.chunk_size or 256
+    chunk_size = state.device.upload_chunk_size or 128
+    download_chunk_size = state.device.download_chunk_size or 1024
     max_retries = (
         state.device.transfer_max_retries
         if hasattr(state.device, "transfer_max_retries")
         else 10
     )
     return FileTransfer(
-        fpb, chunk_size=chunk_size, max_retries=max_retries, log_callback=log_callback
+        fpb,
+        upload_chunk_size=chunk_size,
+        download_chunk_size=download_chunk_size,
+        max_retries=max_retries,
+        log_callback=log_callback,
     )
 
 
@@ -395,7 +400,7 @@ def api_transfer_upload():
                     return
 
                 uploaded = 0
-                chunk_size = ft.chunk_size
+                chunk_size = ft.upload_chunk_size
                 ft.reset_stats()  # Reset stats before transfer
                 while uploaded < total_size:
                     # Check cancel before each chunk
@@ -433,8 +438,8 @@ def api_transfer_upload():
                         ft.fclose()
                         return
 
-                # Verify CRC if enabled
-                if state.device.verify_crc and total_size > 0:
+                # Always verify CRC
+                if total_size > 0:
                     expected_crc = crc16(file_data)
                     success, dev_size, dev_crc = ft.fcrc(total_size)
                     if not success:
@@ -646,7 +651,7 @@ def api_transfer_download():
                     return
 
                 file_data = b""
-                chunk_size = ft.chunk_size
+                chunk_size = ft.download_chunk_size
                 current_offset = 0
                 ft.reset_stats()  # Reset stats before transfer
                 while True:
@@ -690,8 +695,8 @@ def api_transfer_download():
                         ft.fclose()
                         return
 
-                # Verify CRC if enabled
-                if state.device.verify_crc and len(file_data) > 0:
+                # Always verify CRC
+                if len(file_data) > 0:
                     local_crc = crc16(file_data)
                     success, dev_size, dev_crc = ft.fcrc(len(file_data))
                     if not success:
