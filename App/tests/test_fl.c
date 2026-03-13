@@ -1388,6 +1388,113 @@ void test_loader_cmd_enable_unset_patch(void) {
 }
 
 /* ============================================================================
+ * fl_exec_cmd Tests - Echoback Command
+ * ============================================================================ */
+
+void test_loader_cmd_echoback_basic(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    const char* argv[] = {"fl", "--cmd", "echoback", "--len", "16"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("ECHOBACK 16 bytes"));
+    TEST_ASSERT(mock_output_contains("crc=0x"));
+    TEST_ASSERT(mock_output_contains("data="));
+}
+
+void test_loader_cmd_echoback_verify_pattern(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Request 4 bytes: pattern is {0x00, 0x01, 0x02, 0x03} */
+    const char* argv[] = {"fl", "--cmd", "echoback", "--len", "4"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("ECHOBACK 4 bytes"));
+
+    /* Verify the base64 data: {0x00, 0x01, 0x02, 0x03} -> "AAECAw==" */
+    TEST_ASSERT(mock_output_contains("AAECAw=="));
+}
+
+void test_loader_cmd_echoback_verify_crc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Request 1 byte: pattern is {0x00}, CRC16 of {0x00} with init 0xFFFF */
+    const char* argv[] = {"fl", "--cmd", "echoback", "--len", "1"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("ECHOBACK 1 bytes"));
+    TEST_ASSERT(mock_output_contains("crc=0x"));
+}
+
+void test_loader_cmd_echoback_max_len(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Request FL_BUF_SIZE (1024) bytes — should succeed */
+    const char* argv[] = {"fl", "--cmd", "echoback", "--len", "1024"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("ECHOBACK 1024 bytes"));
+}
+
+void test_loader_cmd_echoback_zero_len(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    const char* argv[] = {"fl", "--cmd", "echoback", "--len", "0"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid length"));
+}
+
+void test_loader_cmd_echoback_negative_len(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    const char* argv[] = {"fl", "--cmd", "echoback", "--len", "-1"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid length"));
+}
+
+void test_loader_cmd_echoback_over_max(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Request FL_BUF_SIZE + 1 (1025) bytes — should fail */
+    const char* argv[] = {"fl", "--cmd", "echoback", "--len", "1025"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("Invalid length"));
+}
+
+void test_loader_cmd_echoback_default_len(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Without --len, default is 64 */
+    const char* argv[] = {"fl", "--cmd", "echoback"};
+    int result = fl_exec_cmd(&test_ctx, 3, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("ECHOBACK 64 bytes"));
+}
+
+/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -1506,5 +1613,16 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_enable_all_enable);
     RUN_TEST(test_loader_cmd_enable_invalid_comp);
     RUN_TEST(test_loader_cmd_enable_unset_patch);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_loader - Echoback Command");
+    RUN_TEST(test_loader_cmd_echoback_basic);
+    RUN_TEST(test_loader_cmd_echoback_verify_pattern);
+    RUN_TEST(test_loader_cmd_echoback_verify_crc);
+    RUN_TEST(test_loader_cmd_echoback_max_len);
+    RUN_TEST(test_loader_cmd_echoback_zero_len);
+    RUN_TEST(test_loader_cmd_echoback_negative_len);
+    RUN_TEST(test_loader_cmd_echoback_over_max);
+    RUN_TEST(test_loader_cmd_echoback_default_len);
     TEST_SUITE_END();
 }
