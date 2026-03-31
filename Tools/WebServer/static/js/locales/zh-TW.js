@@ -371,6 +371,7 @@ window.i18nResources['zh-TW'] = {
       upload_file: '上傳檔案',
       upload_folder: '上傳資料夾',
       download_file: '下載',
+      preview_image: '預覽圖片',
       new_folder: '新建資料夾',
       rename_item: '重新命名',
       delete_item: '刪除',

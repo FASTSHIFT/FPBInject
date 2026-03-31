@@ -2106,4 +2106,129 @@ module.exports = function (w) {
       w.FPBState.toolTerminal = null;
     });
   });
+
+  describe('Image Preview Functions', () => {
+    it('_isImageFile detects png', () =>
+      assertTrue(w._isImageFile('photo.png')));
+
+    it('_isImageFile detects jpg', () =>
+      assertTrue(w._isImageFile('photo.JPG')));
+
+    it('_isImageFile detects jpeg', () =>
+      assertTrue(w._isImageFile('img.jpeg')));
+
+    it('_isImageFile detects gif', () =>
+      assertTrue(w._isImageFile('anim.gif')));
+
+    it('_isImageFile detects svg', () =>
+      assertTrue(w._isImageFile('icon.svg')));
+
+    it('_isImageFile detects webp', () =>
+      assertTrue(w._isImageFile('pic.webp')));
+
+    it('_isImageFile rejects txt', () =>
+      assertFalse(w._isImageFile('readme.txt')));
+
+    it('_isImageFile rejects elf', () =>
+      assertFalse(w._isImageFile('firmware.elf')));
+
+    it('_isImageFile rejects no extension', () =>
+      assertFalse(w._isImageFile('Makefile')));
+
+    it('previewDeviceImage is a function', () =>
+      assertTrue(typeof w.previewDeviceImage === 'function'));
+
+    it('previewDeviceImage returns early if not connected', async () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      await w.previewDeviceImage('/data/test.png', 'test.png');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('previewDeviceImage downloads and creates tab', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      resetMocks();
+      // Mock a successful download with base64 image data
+      setFetchResponse('/api/transfer/download', {
+        _stream: [
+          'data: {"type":"progress","downloaded":4,"total":4,"percent":100}\n',
+          'data: {"type":"result","success":true,"data":"iVBORw0KGgo=","size":4}\n',
+        ],
+      });
+      await w.previewDeviceImage('/data/test.png', 'test.png');
+      // Should have created a tab
+      var tab = w.FPBState.editorTabs.find(
+        (t) => t.id && t.id.includes('preview'),
+      );
+      assertTrue(!!tab, 'Preview tab should be created');
+      assertEqual(tab.type, 'preview');
+      // Clean up
+      w.FPBState.editorTabs = w.FPBState.editorTabs.filter(
+        (t) => !t.id.includes('preview'),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('previewDeviceImage reuses existing tab', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      // Pre-create a tab
+      var tabId = 'preview__data_test_png';
+      w.FPBState.editorTabs.push({
+        id: tabId,
+        title: 'test.png',
+        type: 'preview',
+        closable: true,
+      });
+      await w.previewDeviceImage('/data/test.png', 'test.png');
+      // Should not create a duplicate
+      var count = w.FPBState.editorTabs.filter((t) => t.id === tabId).length;
+      assertEqual(count, 1);
+      // Clean up
+      w.FPBState.editorTabs = w.FPBState.editorTabs.filter(
+        (t) => t.id !== tabId,
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('previewDeviceImage handles download failure', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      resetMocks();
+      setFetchResponse('/api/transfer/download', {
+        _stream: [
+          'data: {"type":"result","success":false,"error":"File not found"}\n',
+        ],
+      });
+      await w.previewDeviceImage('/data/missing.png', 'missing.png');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Preview failed'),
+        ),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('context menu preview action calls previewDeviceImage', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferSelectedFiles = [{ path: '/data/img.png', type: 'file' }];
+      w.transferContextAction('preview');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+  });
 };

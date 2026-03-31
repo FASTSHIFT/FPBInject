@@ -494,6 +494,8 @@ async function refreshDeviceFiles() {
       if (entry.type === 'dir') {
         pathInput.value = item.dataset.path;
         refreshDeviceFiles();
+      } else if (_isImageFile(entry.name)) {
+        previewDeviceImage(item.dataset.path, entry.name);
       }
     };
     item.oncontextmenu = (e) => {
@@ -645,6 +647,19 @@ function showTransferContextMenu(event) {
     downloadItem.classList.add('disabled');
   }
 
+  // Preview: only when a single image file is selected
+  const previewItem = menu.querySelector('[onclick*="preview"]');
+  if (previewItem) {
+    const hasImageSelected =
+      hasSingleSelection &&
+      transferSelectedFiles.some(
+        (f) => f.type !== 'dir' && _isImageFile(f.path.split('/').pop()),
+      );
+    if (!hasImageSelected) {
+      previewItem.classList.add('disabled');
+    }
+  }
+
   // Rename: only single selection
   const renameItem = menu.querySelector('[onclick*="rename"]');
   if (renameItem && !hasSingleSelection) {
@@ -702,6 +717,12 @@ function transferContextAction(action) {
     case 'download':
       downloadFromDevice();
       break;
+    case 'preview':
+      if (transferSelectedFiles.length === 1) {
+        const f = transferSelectedFiles[0];
+        previewDeviceImage(f.path, f.path.split('/').pop());
+      }
+      break;
     case 'newFolder':
       createDeviceDir();
       break;
@@ -711,6 +732,133 @@ function transferContextAction(action) {
     case 'delete':
       deleteFromDevice();
       break;
+  }
+}
+
+/* ===========================
+   IMAGE PREVIEW
+   =========================== */
+
+const _IMAGE_EXTENSIONS = [
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.bmp',
+  '.svg',
+  '.webp',
+  '.ico',
+];
+
+/**
+ * Check if a filename is an image file.
+ */
+function _isImageFile(name) {
+  const lower = name.toLowerCase();
+  return _IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Preview an image file from the device in an editor tab.
+ * Downloads the file, creates a blob URL, and displays it in a new tab.
+ */
+async function previewDeviceImage(remotePath, fileName) {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    log.error('Not connected');
+    return;
+  }
+
+  const tabId = `preview_${remotePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  // Reuse existing tab if already open
+  if (state.editorTabs.find((t) => t.id === tabId)) {
+    switchEditorTab(tabId);
+    return;
+  }
+
+  log.info(`Loading preview: ${fileName}...`);
+
+  try {
+    const result = await downloadFileFromDevice(
+      remotePath,
+      (downloaded, total, percent, speed, eta, stats) => {
+        updateTransferProgress(
+          percent,
+          `${percent.toFixed(1)}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
+          speed,
+          eta,
+          stats,
+        );
+      },
+    );
+
+    hideTransferProgress();
+
+    if (!result.success) {
+      log.error(`Preview failed: ${result.error || 'Download error'}`);
+      return;
+    }
+
+    // Create blob URL from downloaded data
+    const ext = fileName.split('.').pop().toLowerCase();
+    const mimeMap = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      bmp: 'image/bmp',
+      svg: 'image/svg+xml',
+      webp: 'image/webp',
+      ico: 'image/x-icon',
+    };
+    const mime = mimeMap[ext] || 'image/png';
+    const blob = result.blob || new Blob([result.data], { type: mime });
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Create editor tab
+    state.editorTabs.push({
+      id: tabId,
+      title: fileName,
+      type: 'preview',
+      closable: true,
+      blobUrl: blobUrl,
+    });
+
+    const tabsHeader = document.getElementById('editorTabsHeader');
+    const tabDiv = document.createElement('div');
+    tabDiv.className = 'tab';
+    tabDiv.setAttribute('data-tab', tabId);
+    tabDiv.innerHTML = `
+      <i class="codicon codicon-file-media tab-icon" style="color: #c586c0;"></i>
+      <span>${escapeHtml(fileName)}</span>
+      <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
+    `;
+    tabDiv.onclick = () => switchEditorTab(tabId);
+    tabDiv.onmousedown = (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tabId, e);
+      }
+    };
+    tabsHeader.appendChild(tabDiv);
+
+    const tabsContent = document.querySelector('.editor-tabs-content');
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'tab-content';
+    contentDiv.id = `tabContent_${tabId}`;
+    contentDiv.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: var(--vscode-editor-bg); overflow: auto; padding: 16px;">
+        <img src="${blobUrl}" alt="${escapeHtml(fileName)}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
+      </div>
+    `;
+    tabsContent.appendChild(contentDiv);
+
+    switchEditorTab(tabId);
+    log.success(`Preview: ${fileName}`);
+  } catch (e) {
+    hideTransferProgress();
+    log.error(`Preview error: ${e}`);
   }
 }
 
@@ -1601,6 +1749,8 @@ window.renameOnDevice = renameOnDevice;
 window.showTransferContextMenu = showTransferContextMenu;
 window.hideTransferContextMenu = hideTransferContextMenu;
 window.transferContextAction = transferContextAction;
+window.previewDeviceImage = previewDeviceImage;
+window._isImageFile = _isImageFile;
 window.handleDeviceFileKeydown = handleDeviceFileKeydown;
 window.createDeviceDir = createDeviceDir;
 window.updateTransferProgress = updateTransferProgress;
@@ -1638,5 +1788,11 @@ Object.defineProperty(window, 'transferLastSelectedItem', {
   get: () => transferLastSelectedItem,
   set: (v) => {
     transferLastSelectedItem = v;
+  },
+});
+Object.defineProperty(window, 'transferSelectedFiles', {
+  get: () => transferSelectedFiles,
+  set: (v) => {
+    transferSelectedFiles = v;
   },
 });

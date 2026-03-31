@@ -378,6 +378,7 @@ window.i18nResources['en'] = {
       upload_file: 'Upload File',
       upload_folder: 'Upload Folder',
       download_file: 'Download',
+      preview_image: 'Preview Image',
       new_folder: 'New Folder',
       rename_item: 'Rename',
       delete_item: 'Delete',

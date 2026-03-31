@@ -370,6 +370,7 @@ window.i18nResources['zh-CN'] = {
       upload_file: '上传文件',
       upload_folder: '上传文件夹',
       download_file: '下载',
+      preview_image: '预览图片',
       new_folder: '新建文件夹',
       rename_item: '重命名',
       delete_item: '删除',
