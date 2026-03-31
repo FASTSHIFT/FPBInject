@@ -846,8 +846,8 @@ static int cmd_fwrite(fl_context_t* ctx, const cmd_args_t* args) {
 
     /* Write to file */
     ssize_t written = fl_file_write(&ctx->file_ctx, ctx->buf, n);
-    if (written < 0) {
-        fl_response(false, "Write failed");
+    if (written < 0 || (int)written != n) {
+        fl_response(false, "Write failed, expected %d bytes, actual %d bytes", n, (int)written);
         return 0;
     }
 
@@ -870,6 +870,10 @@ static int cmd_fread(fl_context_t* ctx, const cmd_args_t* args) {
     if (nread < 0) {
         fl_response(false, "Read failed");
         return 0;
+    }
+
+    if (nread != len) {
+        fl_println("WARNING! Read expected %d bytes, actual %d bytes", len, (int)nread);
     }
 
     if (nread == 0) {
