@@ -2000,4 +2000,110 @@ module.exports = function (w) {
       w.renameOnDevice = origRename;
     });
   });
+
+  describe('Context Menu Functions', () => {
+    it('showTransferContextMenu is a function', () =>
+      assertTrue(typeof w.showTransferContextMenu === 'function'));
+
+    it('hideTransferContextMenu is a function', () =>
+      assertTrue(typeof w.hideTransferContextMenu === 'function'));
+
+    it('transferContextAction is a function', () =>
+      assertTrue(typeof w.transferContextAction === 'function'));
+
+    it('showTransferContextMenu shows menu at cursor', () => {
+      const menu = browserGlobals.document.getElementById(
+        'transferContextMenu',
+      );
+      menu.style.display = 'none';
+      w.showTransferContextMenu({
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        clientX: 100,
+        clientY: 200,
+      });
+      assertEqual(menu.style.display, 'block');
+    });
+
+    it('hideTransferContextMenu hides menu', () => {
+      const menu = browserGlobals.document.getElementById(
+        'transferContextMenu',
+      );
+      menu.style.display = 'block';
+      w.hideTransferContextMenu();
+      assertEqual(menu.style.display, 'none');
+    });
+
+    it('transferContextAction upload calls uploadToDevice', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferContextAction('upload');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('transferContextAction download calls downloadFromDevice', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferContextAction('download');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('transferContextAction delete calls deleteFromDevice', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferContextAction('delete');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('transferContextAction rename calls renameOnDevice', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferContextAction('rename');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('transferContextAction newFolder calls createDeviceDir', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferContextAction('newFolder');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('transferContextAction uploadFolder calls uploadFolderToDevice', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferContextAction('uploadFolder');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+  });
 };

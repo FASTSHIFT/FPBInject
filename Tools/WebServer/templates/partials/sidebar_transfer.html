@@ -1,4 +1,34 @@
 <!-- File Transfer Section -->
+<!-- Device File Context Menu -->
+<div class="qc-context-menu" id="transferContextMenu" style="display: none">
+  <div class="qc-context-item" onclick="transferContextAction('upload')">
+    <i class="codicon codicon-cloud-upload"></i>
+    <span data-i18n="transfer.upload_file">Upload File</span>
+  </div>
+  <div class="qc-context-item" onclick="transferContextAction('uploadFolder')">
+    <i class="codicon codicon-folder-opened"></i>
+    <span data-i18n="transfer.upload_folder">Upload Folder</span>
+  </div>
+  <div class="qc-context-item" onclick="transferContextAction('download')">
+    <i class="codicon codicon-cloud-download"></i>
+    <span data-i18n="transfer.download_file">Download</span>
+  </div>
+  <div class="qc-context-separator"></div>
+  <div class="qc-context-item" onclick="transferContextAction('newFolder')">
+    <i class="codicon codicon-new-folder"></i>
+    <span data-i18n="transfer.new_folder">New Folder</span>
+  </div>
+  <div class="qc-context-item" onclick="transferContextAction('rename')">
+    <i class="codicon codicon-edit"></i>
+    <span data-i18n="transfer.rename_item">Rename</span>
+  </div>
+  <div class="qc-context-separator"></div>
+  <div class="qc-context-item danger" onclick="transferContextAction('delete')">
+    <i class="codicon codicon-trash"></i>
+    <span data-i18n="transfer.delete_item">Delete</span>
+  </div>
+</div>
+
 <div class="sidebar-section" data-section-id="transfer">
   <details id="details-transfer">
     <summary class="sidebar-header">

@@ -3006,6 +3006,11 @@ details[open] > .sidebar-content {
   color: var(--vscode-errorForeground, #f44);
 }
 
+.qc-context-item.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .qc-context-separator {
   height: 1px;
   background: var(--vscode-menu-border, var(--vscode-border));

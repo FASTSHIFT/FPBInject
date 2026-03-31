@@ -432,6 +432,18 @@ async function refreshDeviceFiles() {
   transferSelectedFiles = [];
   transferLastSelectedItem = null;
 
+  // Right-click on empty space shows context menu
+  fileList.oncontextmenu = (e) => {
+    if (e.target === fileList || e.target.classList.contains('empty')) {
+      // Clear selection when right-clicking empty space
+      transferSelectedFiles = [];
+      fileList
+        .querySelectorAll('.device-file-item.selected')
+        .forEach((el) => el.classList.remove('selected'));
+      showTransferContextMenu(e);
+    }
+  };
+
   // Add parent directory entry if not at root
   if (path !== '/') {
     const parentItem = document.createElement('div');
@@ -483,6 +495,13 @@ async function refreshDeviceFiles() {
         pathInput.value = item.dataset.path;
         refreshDeviceFiles();
       }
+    };
+    item.oncontextmenu = (e) => {
+      // Select item on right-click if not already selected
+      if (!transferSelectedFiles.some((f) => f.path === item.dataset.path)) {
+        selectDeviceFile(item, e);
+      }
+      showTransferContextMenu(e);
     };
 
     fileList.appendChild(item);
@@ -595,6 +614,105 @@ function handleDeviceFileKeydown(event) {
     });
   }
 })();
+
+/* ===========================
+   RIGHT-CLICK CONTEXT MENU
+   =========================== */
+
+/**
+ * Show the device file context menu at the cursor position.
+ * @param {MouseEvent} event
+ */
+function showTransferContextMenu(event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const menu = document.getElementById('transferContextMenu');
+  if (!menu) return;
+
+  // Enable/disable items based on selection
+  const hasSelection = transferSelectedFiles.length > 0;
+  const hasFileSelected = transferSelectedFiles.some((f) => f.type !== 'dir');
+  const hasSingleSelection = transferSelectedFiles.length === 1;
+
+  menu.querySelectorAll('.qc-context-item').forEach((item) => {
+    item.classList.remove('disabled');
+  });
+
+  // Download: only when files selected (not dirs)
+  const downloadItem = menu.querySelector('[onclick*="download"]');
+  if (downloadItem && !hasFileSelected) {
+    downloadItem.classList.add('disabled');
+  }
+
+  // Rename: only single selection
+  const renameItem = menu.querySelector('[onclick*="rename"]');
+  if (renameItem && !hasSingleSelection) {
+    renameItem.classList.add('disabled');
+  }
+
+  // Delete: only when something selected
+  const deleteItem = menu.querySelector('[onclick*="delete"]');
+  if (deleteItem && !hasSelection) {
+    deleteItem.classList.add('disabled');
+  }
+
+  menu.style.display = 'block';
+  menu.style.left = event.clientX + 'px';
+  menu.style.top = event.clientY + 'px';
+
+  // Keep within viewport
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = window.innerWidth - rect.width - 4 + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = window.innerHeight - rect.height - 4 + 'px';
+    }
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', hideTransferContextMenu, { once: true });
+  }, 0);
+}
+
+/**
+ * Hide the device file context menu.
+ */
+function hideTransferContextMenu() {
+  const menu = document.getElementById('transferContextMenu');
+  if (menu) menu.style.display = 'none';
+}
+
+/**
+ * Handle context menu action.
+ * @param {string} action
+ */
+function transferContextAction(action) {
+  hideTransferContextMenu();
+
+  switch (action) {
+    case 'upload':
+      uploadToDevice();
+      break;
+    case 'uploadFolder':
+      uploadFolderToDevice();
+      break;
+    case 'download':
+      downloadFromDevice();
+      break;
+    case 'newFolder':
+      createDeviceDir();
+      break;
+    case 'rename':
+      renameOnDevice();
+      break;
+    case 'delete':
+      deleteFromDevice();
+      break;
+  }
+}
 
 /**
  * Format file size for display
@@ -1480,6 +1598,9 @@ window.uploadFolderToDevice = uploadFolderToDevice;
 window.downloadFromDevice = downloadFromDevice;
 window.deleteFromDevice = deleteFromDevice;
 window.renameOnDevice = renameOnDevice;
+window.showTransferContextMenu = showTransferContextMenu;
+window.hideTransferContextMenu = hideTransferContextMenu;
+window.transferContextAction = transferContextAction;
 window.handleDeviceFileKeydown = handleDeviceFileKeydown;
 window.createDeviceDir = createDeviceDir;
 window.updateTransferProgress = updateTransferProgress;
