@@ -562,6 +562,27 @@ class TestEnhancedCRC(unittest.TestCase):
         chained = crc16_update(chained, b)
         self.assertEqual(combined, chained)
 
+    def test_alloc_cmd_includes_crc(self):
+        """alloc must send -r covering size(4B)."""
+        import re
+        import struct
+        from utils.crc import crc16_update
+
+        self.protocol.send_cmd = MagicMock(
+            return_value="[FLOK] Allocated 256 at 0x20001000"
+        )
+
+        size = 256
+        self.protocol.alloc(size)
+
+        cmd_str = self.protocol.send_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", cmd_str)
+        self.assertIsNotNone(m, "alloc command must include -r")
+        sent_crc = int(m.group(1), 16)
+
+        expected = crc16_update(0xFFFF, struct.pack("<I", size))
+        self.assertEqual(sent_crc, expected)
+
 
 class TestEnablePatch(unittest.TestCase):
     """Tests for enable_patch method."""

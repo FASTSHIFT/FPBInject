@@ -20,6 +20,44 @@
 static fl_context_t test_ctx;
 
 /* ============================================================================
+ * Test CRC Helper (mirrors firmware calc_crc16_base / calc_crc16)
+ * ============================================================================ */
+
+static const uint16_t s_test_crc16_table[256] = {
+    0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7, 0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD,
+    0xE1CE, 0xF1EF, 0x1231, 0x0210, 0x3273, 0x2252, 0x52B5, 0x4294, 0x72F7, 0x62D6, 0x9339, 0x8318, 0xB37B, 0xA35A,
+    0xD3BD, 0xC39C, 0xF3FF, 0xE3DE, 0x2462, 0x3443, 0x0420, 0x1401, 0x64E6, 0x74C7, 0x44A4, 0x5485, 0xA56A, 0xB54B,
+    0x8528, 0x9509, 0xE5EE, 0xF5CF, 0xC5AC, 0xD58D, 0x3653, 0x2672, 0x1611, 0x0630, 0x76D7, 0x66F6, 0x5695, 0x46B4,
+    0xB75B, 0xA77A, 0x9719, 0x8738, 0xF7DF, 0xE7FE, 0xD79D, 0xC7BC, 0x48C4, 0x58E5, 0x6886, 0x78A7, 0x0840, 0x1861,
+    0x2802, 0x3823, 0xC9CC, 0xD9ED, 0xE98E, 0xF9AF, 0x8948, 0x9969, 0xA90A, 0xB92B, 0x5AF5, 0x4AD4, 0x7AB7, 0x6A96,
+    0x1A71, 0x0A50, 0x3A33, 0x2A12, 0xDBFD, 0xCBDC, 0xFBBF, 0xEB9E, 0x9B79, 0x8B58, 0xBB3B, 0xAB1A, 0x6CA6, 0x7C87,
+    0x4CE4, 0x5CC5, 0x2C22, 0x3C03, 0x0C60, 0x1C41, 0xEDAE, 0xFD8F, 0xCDEC, 0xDDCD, 0xAD2A, 0xBD0B, 0x8D68, 0x9D49,
+    0x7E97, 0x6EB6, 0x5ED5, 0x4EF4, 0x3E13, 0x2E32, 0x1E51, 0x0E70, 0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF3A,
+    0x9F59, 0x8F78, 0x9188, 0x81A9, 0xB1CA, 0xA1EB, 0xD10C, 0xC12D, 0xF14E, 0xE16F, 0x1080, 0x00A1, 0x30C2, 0x20E3,
+    0x5004, 0x4025, 0x7046, 0x6067, 0x83B9, 0x9398, 0xA3FB, 0xB3DA, 0xC33D, 0xD31C, 0xE37F, 0xF35E, 0x02B1, 0x1290,
+    0x22F3, 0x32D2, 0x4235, 0x5214, 0x6277, 0x7256, 0xB5EA, 0xA5CB, 0x95A8, 0x8589, 0xF56E, 0xE54F, 0xD52C, 0xC50D,
+    0x34E2, 0x24C3, 0x14A0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405, 0xA7DB, 0xB7FA, 0x8799, 0x97B8, 0xE75F, 0xF77E,
+    0xC71D, 0xD73C, 0x26D3, 0x36F2, 0x0691, 0x16B0, 0x6657, 0x7676, 0x4615, 0x5634, 0xD94C, 0xC96D, 0xF90E, 0xE92F,
+    0x99C8, 0x89E9, 0xB98A, 0xA9AB, 0x5844, 0x4865, 0x7806, 0x6827, 0x18C0, 0x08E1, 0x3882, 0x28A3, 0xCB7D, 0xDB5C,
+    0xEB3F, 0xFB1E, 0x8BF9, 0x9BD8, 0xABBB, 0xBB9A, 0x4A75, 0x5A54, 0x6A37, 0x7A16, 0x0AF1, 0x1AD0, 0x2AB3, 0x3A92,
+    0xFD2E, 0xED0F, 0xDD6C, 0xCD4D, 0xBDAA, 0xAD8B, 0x9DE8, 0x8DC9, 0x7C26, 0x6C07, 0x5C64, 0x4C45, 0x3CA2, 0x2C83,
+    0x1CE0, 0x0CC1, 0xEF1F, 0xFF3E, 0xCF5D, 0xDF7C, 0xAF9B, 0xBFBA, 0x8FD9, 0x9FF8, 0x6E17, 0x7E36, 0x4E55, 0x5E74,
+    0x2E93, 0x3EB2, 0x0ED1, 0x1EF0,
+};
+
+static uint16_t test_crc16_update(uint16_t crc, const void* data, size_t len) {
+    const uint8_t* ptr = data;
+    while (len--) {
+        crc = (crc << 8) ^ s_test_crc16_table[(crc >> 8) ^ *ptr++];
+    }
+    return crc;
+}
+
+static uint16_t test_crc16(const void* data, size_t len) {
+    return test_crc16_update(0xFFFF, data, len);
+}
+
+/* ============================================================================
  * Setup/Teardown
  * ============================================================================ */
 
@@ -1495,6 +1533,304 @@ void test_loader_cmd_echoback_default_len(void) {
 }
 
 /* ============================================================================
+ * CRC Integrity V2 Tests
+ * ============================================================================ */
+
+void test_loader_cmd_alloc_with_crc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Compute CRC for size=256: CRC16 of uint32_t(256) in LE */
+    uint32_t size32 = 256;
+    uint16_t crc = test_crc16(&size32, sizeof(size32));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    const char* argv[] = {"fl", "--cmd", "alloc", "--size", "256", "--crc", crc_str};
+    int result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("Allocated"));
+}
+
+void test_loader_cmd_alloc_crc_mismatch(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Wrong CRC for size=256 */
+    const char* argv[] = {"fl", "--cmd", "alloc", "--size", "256", "--crc", "0xFFFF"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+}
+
+void test_loader_cmd_alloc_without_crc_still_works(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* No --crc arg: backward compatible, should still work */
+    const char* argv[] = {"fl", "--cmd", "alloc", "--size", "128"};
+    int result = fl_exec_cmd(&test_ctx, 5, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+}
+
+void test_loader_cmd_fopen_with_crc(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fopen_crc_%d.txt", getpid());
+
+    /* Compute CRC for path + mode */
+    const char* mode = "w";
+    uint16_t crc = test_crc16_update(0xFFFF, test_file, strlen(test_file));
+    crc = test_crc16_update(crc, mode, strlen(mode));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    const char* argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "w", "--crc", crc_str};
+    int result = fl_exec_cmd(&test_ctx, 9, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("FOPEN"));
+
+    /* Close and cleanup */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+    unlink(test_file);
+}
+
+void test_loader_cmd_fopen_crc_mismatch(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fopen_crc_bad_%d.txt", getpid());
+
+    /* Wrong CRC */
+    const char* argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "w", "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+}
+
+void test_loader_cmd_fremove_with_crc(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fremove_crc_%d.txt", getpid());
+
+    /* Create a file */
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "to be removed");
+        fclose(f);
+    }
+
+    /* Compute CRC for path */
+    uint16_t crc = test_crc16(test_file, strlen(test_file));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    const char* argv[] = {"fl", "--cmd", "fremove", "--path", test_file, "--crc", crc_str};
+    int result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("FREMOVE"));
+
+    /* Verify file is gone */
+    TEST_ASSERT(access(test_file, F_OK) != 0);
+}
+
+void test_loader_cmd_fremove_crc_mismatch(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fremove_crc_bad_%d.txt", getpid());
+
+    /* Create a file */
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "should not be removed");
+        fclose(f);
+    }
+
+    /* Wrong CRC — file must NOT be deleted */
+    const char* argv[] = {"fl", "--cmd", "fremove", "--path", test_file, "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+
+    /* File must still exist */
+    TEST_ASSERT(access(test_file, F_OK) == 0);
+
+    /* Cleanup */
+    unlink(test_file);
+}
+
+void test_loader_cmd_frename_with_crc(void) {
+    setup_loader_with_file();
+
+    char old_file[256], new_file[256];
+    snprintf(old_file, sizeof(old_file), "/tmp/fl_test_ren_old_crc_%d.txt", getpid());
+    snprintf(new_file, sizeof(new_file), "/tmp/fl_test_ren_new_crc_%d.txt", getpid());
+
+    /* Create the old file */
+    FILE* f = fopen(old_file, "w");
+    if (f) {
+        fprintf(f, "to be renamed");
+        fclose(f);
+    }
+
+    /* Compute CRC for path + newpath */
+    uint16_t crc = test_crc16_update(0xFFFF, old_file, strlen(old_file));
+    crc = test_crc16_update(crc, new_file, strlen(new_file));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    const char* argv[] = {"fl", "--cmd", "frename", "--path", old_file, "--newpath", new_file, "--crc", crc_str};
+    int result = fl_exec_cmd(&test_ctx, 9, argv);
+
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("FRENAME"));
+
+    /* Cleanup */
+    unlink(old_file);
+    unlink(new_file);
+}
+
+void test_loader_cmd_frename_crc_mismatch(void) {
+    setup_loader_with_file();
+
+    char old_file[256], new_file[256];
+    snprintf(old_file, sizeof(old_file), "/tmp/fl_test_ren_old_bad_%d.txt", getpid());
+    snprintf(new_file, sizeof(new_file), "/tmp/fl_test_ren_new_bad_%d.txt", getpid());
+
+    /* Create the old file */
+    FILE* f = fopen(old_file, "w");
+    if (f) {
+        fprintf(f, "should not be renamed");
+        fclose(f);
+    }
+
+    /* Wrong CRC */
+    const char* argv[] = {"fl", "--cmd", "frename", "--path", old_file, "--newpath", new_file, "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+
+    /* Cleanup */
+    unlink(old_file);
+    unlink(new_file);
+}
+
+void test_loader_cmd_fcrc_chunked(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fcrc_chunk_%d.txt", getpid());
+
+    /* Create a file with known content */
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "HelloWorld");
+        fclose(f);
+    }
+
+    /* Open file */
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    /* Calculate CRC of first 5 bytes (offset=0, len=5) */
+    const char* argv1[] = {"fl", "--cmd", "fcrc", "--addr", "0", "--len", "5"};
+    fl_exec_cmd(&test_ctx, 7, argv1);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("FCRC"));
+    TEST_ASSERT(mock_output_contains("offset=0"));
+    TEST_ASSERT(mock_output_contains("size=5"));
+
+    /* Extract CRC from output for chaining */
+    const char* output = mock_output_get();
+    TEST_ASSERT_NOT_NULL(output);
+
+    /* Verify the output contains a crc= field */
+    TEST_ASSERT(strstr(output, "crc=0x") != NULL);
+
+    mock_output_reset();
+
+    /* Calculate CRC of next 5 bytes (offset=5, len=5), chaining with previous CRC */
+    /* Use the CRC from "Hello" to chain */
+    uint16_t hello_crc = test_crc16("Hello", 5);
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", hello_crc);
+
+    const char* argv2[] = {"fl", "--cmd", "fcrc", "--addr", "5", "--len", "5", "--crc", crc_str};
+    fl_exec_cmd(&test_ctx, 9, argv2);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("offset=5"));
+    TEST_ASSERT(mock_output_contains("size=5"));
+
+    /* The chained CRC should equal CRC of "HelloWorld" */
+    uint16_t full_crc = test_crc16("HelloWorld", 10);
+    char expected_crc_str[16];
+    snprintf(expected_crc_str, sizeof(expected_crc_str), "crc=0x%04X", full_crc);
+    TEST_ASSERT(mock_output_contains(expected_crc_str));
+
+    /* Close file */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+
+    /* Cleanup */
+    unlink(test_file);
+}
+
+void test_loader_cmd_fcrc_offset_response_format(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fcrc_fmt_%d.txt", getpid());
+
+    /* Create a file */
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "ABCDEF");
+        fclose(f);
+    }
+
+    /* Open file */
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    /* fcrc without --addr defaults to offset=0 */
+    const char* argv[] = {"fl", "--cmd", "fcrc", "--len", "6"};
+    fl_exec_cmd(&test_ctx, 5, argv);
+
+    /* New response format must include offset= */
+    TEST_ASSERT(mock_output_contains("offset=0"));
+    TEST_ASSERT(mock_output_contains("size=6"));
+
+    /* Close file */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+
+    unlink(test_file);
+}
+
+/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -1624,5 +1960,19 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_echoback_negative_len);
     RUN_TEST(test_loader_cmd_echoback_over_max);
     RUN_TEST(test_loader_cmd_echoback_default_len);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_loader - CRC Integrity V2");
+    RUN_TEST(test_loader_cmd_alloc_with_crc);
+    RUN_TEST(test_loader_cmd_alloc_crc_mismatch);
+    RUN_TEST(test_loader_cmd_alloc_without_crc_still_works);
+    RUN_TEST(test_loader_cmd_fopen_with_crc);
+    RUN_TEST(test_loader_cmd_fopen_crc_mismatch);
+    RUN_TEST(test_loader_cmd_fremove_with_crc);
+    RUN_TEST(test_loader_cmd_fremove_crc_mismatch);
+    RUN_TEST(test_loader_cmd_frename_with_crc);
+    RUN_TEST(test_loader_cmd_frename_crc_mismatch);
+    RUN_TEST(test_loader_cmd_fcrc_chunked);
+    RUN_TEST(test_loader_cmd_fcrc_offset_response_format);
     TEST_SUITE_END();
 }

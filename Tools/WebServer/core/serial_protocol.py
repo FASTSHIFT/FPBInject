@@ -475,7 +475,8 @@ class FPBProtocol:
     def alloc(self, size: int) -> Tuple[Optional[int], str]:
         """Allocate memory buffer."""
         try:
-            resp = self.send_cmd(f"-c alloc -s {size}")
+            crc = crc16_update(0xFFFF, struct.pack("<I", size))
+            resp = self.send_cmd(f"-c alloc -s {size} -r 0x{crc:04X}")
             logger.debug(f"Alloc response: {resp}")
             result = self.parse_response(resp)
             logger.debug(f"Alloc parsed result: {result}")

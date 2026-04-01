@@ -366,6 +366,8 @@ class TestFileTransferRemoveMkdir(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FREMOVE /test.txt")
         success, msg = self.ft.fremove("/test.txt")
         self.assertTrue(success)
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("-r 0x", call_args)
 
     def test_fremove_failure(self):
         """Test removal failure."""
@@ -393,11 +395,10 @@ class TestFileTransferRemoveMkdir(unittest.TestCase):
         )
         success, msg = self.ft.frename("/old.txt", "/new.txt")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            "fl -c frename --path /old.txt --newpath /new.txt",
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("--path /old.txt", call_args)
+        self.assertIn("--newpath /new.txt", call_args)
+        self.assertIn("-r 0x", call_args)
 
     def test_frename_failure(self):
         """Test rename failure."""
@@ -421,9 +422,9 @@ class TestFileTransferCRC(unittest.TestCase):
         """Test successful fcrc."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[FLOK] FCRC size=1024 crc=0xABCD",
+            "[FLOK] FCRC offset=0 size=1024 crc=0xABCD",
         )
-        success, size, crc_val = self.ft.fcrc()
+        success, size, crc_val = self.ft.fcrc(1024)
         self.assertTrue(success)
         self.assertEqual(size, 1024)
         self.assertEqual(crc_val, 0xABCD)
@@ -432,7 +433,7 @@ class TestFileTransferCRC(unittest.TestCase):
         """Test fcrc with specific size."""
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
-            "[FLOK] FCRC size=512 crc=0x1234",
+            "[FLOK] FCRC offset=0 size=512 crc=0x1234",
         )
         success, size, crc_val = self.ft.fcrc(512)
         self.assertTrue(success)
@@ -474,11 +475,13 @@ class TestFileTransferUpload(unittest.TestCase):
         data = b"x" * 300
         expected_crc = crc16(data)
         self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FOPEN /test.txt mode=w"),  # fopen write
             (True, "[FLOK] FWRITE 256 bytes"),
             (True, "[FLOK] FWRITE 44 bytes"),
-            (True, f"[FLOK] FCRC size=300 crc=0x{expected_crc:04X}"),
-            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FCLOSE"),  # fclose after write
+            (True, "[FLOK] FOPEN /test.txt mode=r"),  # fopen read for CRC
+            (True, f"[FLOK] FCRC offset=0 size=300 crc=0x{expected_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),  # fclose after CRC
         ]
         progress_calls = []
 
@@ -497,7 +500,9 @@ class TestFileTransferUpload(unittest.TestCase):
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, "[FLOK] FWRITE 256 bytes"),
             (True, "[FLOK] FWRITE 44 bytes"),
-            (True, f"[FLOK] FCRC size=300 crc=0x{expected_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size=300 crc=0x{expected_crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, msg = self.ft.upload(data, "/test.txt")
@@ -510,7 +515,9 @@ class TestFileTransferUpload(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, "[FLOK] FWRITE 100 bytes"),
-            (True, f"[FLOK] FCRC size=100 crc=0x{wrong_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size=100 crc=0x{wrong_crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, msg = self.ft.upload(data, "/test.txt")
@@ -524,7 +531,12 @@ class TestFileTransferUpload(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, "[FLOK] FWRITE 100 bytes"),
-            (True, f"[FLOK] FCRC size=50 crc=0x{expected_crc:04X}"),  # Wrong size
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (
+                True,
+                f"[FLOK] FCRC offset=0 size=50 crc=0x{expected_crc:04X}",
+            ),  # Wrong size
             (True, "[FLOK] FCLOSE"),
         ]
         success, msg = self.ft.upload(data, "/test.txt")
@@ -560,12 +572,10 @@ class TestFileTransferUpload(unittest.TestCase):
     def test_upload_close_failure(self):
         """Test upload with close failure."""
         data = b"test"
-        expected_crc = crc16(data)
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, "[FLOK] FWRITE 4 bytes"),
-            (True, f"[FLOK] FCRC size=4 crc=0x{expected_crc:04X}"),
-            (False, "[FLERR] Close failed"),
+            (False, "[FLERR] Close failed"),  # fclose after write fails
         ]
         success, msg = self.ft.upload(data, "/test.txt")
         self.assertFalse(success)
@@ -609,7 +619,9 @@ class TestFileTransferUpload(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, "[FLOK] FWRITE 4 bytes"),
-            (True, f"[FLOK] FCRC size=4 crc=0x{expected_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size=4 crc=0x{expected_crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, msg = self.ft.upload(data, "/test.txt")
@@ -635,14 +647,16 @@ class TestFileTransferDownload(unittest.TestCase):
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
-            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),  # fopen read
             (
                 True,
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
             (True, "[FLOK] FREAD 0 bytes EOF"),
-            (True, f"[FLOK] FCRC size={len(test_data)} crc=0x{crc:04X}"),
-            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FCLOSE"),  # fclose after read
+            (True, "[FLOK] FOPEN /test.txt mode=r"),  # fopen read for CRC
+            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{crc:04X}"),
+            (True, "[FLOK] FCLOSE"),  # fclose after CRC
         ]
 
         progress_calls = []
@@ -669,7 +683,9 @@ class TestFileTransferDownload(unittest.TestCase):
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
             (True, "[FLOK] FREAD 0 bytes EOF"),
-            (True, f"[FLOK] FCRC size={len(test_data)} crc=0x{crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, data, msg = self.ft.download("/test.txt")
@@ -691,7 +707,9 @@ class TestFileTransferDownload(unittest.TestCase):
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
             (True, "[FLOK] FREAD 0 bytes EOF"),
-            (True, f"[FLOK] FCRC size={len(test_data)} crc=0x{wrong_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{wrong_crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, data, msg = self.ft.download("/test.txt")
@@ -783,8 +801,7 @@ class TestFileTransferDownload(unittest.TestCase):
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
             (True, "[FLOK] FREAD 0 bytes EOF"),
-            (True, f"[FLOK] FCRC size={len(test_data)} crc=0x{crc:04X}"),
-            (False, "[FLERR] Close failed"),
+            (False, "[FLERR] Close failed"),  # fclose after read fails
         ]
         success, data, msg = self.ft.download("/test.txt")
         self.assertFalse(success)
@@ -804,7 +821,9 @@ class TestFileTransferDownload(unittest.TestCase):
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
             (True, "[FLOK] FREAD 0 bytes EOF"),
-            (True, f"[FLOK] FCRC size={len(test_data)} crc=0x{crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, data, msg = self.ft.download("/test.txt")
@@ -824,18 +843,19 @@ class TestFileTransferIntegration(unittest.TestCase):
         b64_data = base64.b64encode(original_data).decode("ascii")
         crc = crc16(original_data)
 
-        # Upload
-        upload_crc = crc16(original_data)
+        # Upload: fopen(w) → fwrite → fclose → fopen(r) → fcrc → fclose
         mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, f"[FLOK] FWRITE {len(original_data)} bytes"),
-            (True, f"[FLOK] FCRC size={len(original_data)} crc=0x{upload_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(original_data)} crc=0x{crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, _ = ft.upload(original_data, "/test.txt")
         self.assertTrue(success)
 
-        # Download
+        # Download: fstat → fopen(r) → fread → fclose → fopen(r) → fcrc → fclose
         mock_fpb.send_fl_cmd.side_effect = [
             (
                 True,
@@ -847,7 +867,9 @@ class TestFileTransferIntegration(unittest.TestCase):
                 f"[FLOK] FREAD {len(original_data)} bytes crc=0x{crc:04X} data={b64_data}",
             ),
             (True, "[FLOK] FREAD 0 bytes EOF"),
-            (True, f"[FLOK] FCRC size={len(original_data)} crc=0x{crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(original_data)} crc=0x{crc:04X}"),
             (True, "[FLOK] FCLOSE"),
         ]
         success, downloaded_data, _ = ft.download("/test.txt")
@@ -1541,3 +1563,221 @@ class TestPathSanitization(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFileTransferCRCEnhancements(unittest.TestCase):
+    """Tests for CRC integrity enhancements (V2 audit)."""
+
+    def setUp(self):
+        """Set up mock FPB and FileTransfer."""
+        self.mock_fpb = Mock()
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
+        self.ft = FileTransfer(
+            self.mock_fpb, upload_chunk_size=256, download_chunk_size=256
+        )
+
+    def test_fopen_sends_crc(self):
+        """fopen must send CRC covering path + mode."""
+        from utils.crc import crc16_update
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FOPEN /test.txt mode=w",
+        )
+        self.ft.fopen("/test.txt", "w")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("-r 0x", call_args)
+
+        # Verify CRC value
+        import re
+
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", call_args)
+        self.assertIsNotNone(m)
+        sent_crc = int(m.group(1), 16)
+        expected = crc16_update(0xFFFF, b"/test.txt")
+        expected = crc16_update(expected, b"w")
+        self.assertEqual(sent_crc, expected)
+
+    def test_fopen_crc_varies_with_mode(self):
+        """fopen CRC must differ for different modes."""
+        import re
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FOPEN /test.txt mode=r",
+        )
+        self.ft.fopen("/test.txt", "r")
+        call_r = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        crc_r = int(re.search(r"-r 0x([0-9A-Fa-f]+)", call_r).group(1), 16)
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FOPEN /test.txt mode=w",
+        )
+        self.ft.fopen("/test.txt", "w")
+        call_w = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        crc_w = int(re.search(r"-r 0x([0-9A-Fa-f]+)", call_w).group(1), 16)
+
+        self.assertNotEqual(crc_r, crc_w)
+
+    def test_fremove_sends_crc(self):
+        """fremove must send CRC covering path."""
+        from utils.crc import crc16_update
+        import re
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FREMOVE /test.txt",
+        )
+        self.ft.fremove("/test.txt")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", call_args)
+        self.assertIsNotNone(m)
+        sent_crc = int(m.group(1), 16)
+        expected = crc16_update(0xFFFF, b"/test.txt")
+        self.assertEqual(sent_crc, expected)
+
+    def test_frename_sends_crc(self):
+        """frename must send CRC covering old_path + new_path."""
+        from utils.crc import crc16_update
+        import re
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FRENAME /old.txt -> /new.txt",
+        )
+        self.ft.frename("/old.txt", "/new.txt")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", call_args)
+        self.assertIsNotNone(m)
+        sent_crc = int(m.group(1), 16)
+        expected = crc16_update(0xFFFF, b"/old.txt")
+        expected = crc16_update(expected, b"/new.txt")
+        self.assertEqual(sent_crc, expected)
+
+    def test_fcrc_chunked_large_file(self):
+        """fcrc must use chunked calls for files larger than 32KB."""
+        # 64KB file should result in 2 chunked calls
+        chunk1_size = 32768
+        chunk2_size = 32768
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (
+                True,
+                f"[FLOK] FCRC offset=0 size={chunk1_size} crc=0x1234",
+            ),
+            (
+                True,
+                f"[FLOK] FCRC offset={chunk1_size} size={chunk2_size} crc=0xABCD",
+            ),
+        ]
+        success, size, crc_val = self.ft.fcrc(65536)
+        self.assertTrue(success)
+        self.assertEqual(size, 65536)
+        self.assertEqual(crc_val, 0xABCD)
+        # Verify 2 calls were made
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+
+    def test_fcrc_chunked_passes_crc_chain(self):
+        """fcrc chunked calls must chain CRC from previous chunk."""
+        import re
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FCRC offset=0 size=32768 crc=0x1234"),
+            (True, "[FLOK] FCRC offset=32768 size=32768 crc=0xABCD"),
+        ]
+        self.ft.fcrc(65536)
+
+        # Second call should include -r 0x1234 (CRC from first chunk)
+        second_call = self.mock_fpb.send_fl_cmd.call_args_list[1][0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", second_call)
+        self.assertIsNotNone(m, "Second fcrc call must include -r for CRC chaining")
+        self.assertEqual(int(m.group(1), 16), 0x1234)
+
+    def test_fcrc_small_file_single_call(self):
+        """fcrc for small files (<=32KB) should use single call."""
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FCRC offset=0 size=1024 crc=0x5678",
+        )
+        success, size, crc_val = self.ft.fcrc(1024)
+        self.assertTrue(success)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 1)
+
+    def test_upload_fclose_before_fcrc(self):
+        """Upload must close file before CRC verification (P1 fix)."""
+        data = b"test data"
+        expected_crc = crc16(data)
+        call_log = []
+
+        def track_calls(cmd, **kwargs):
+            call_log.append(cmd)
+            if "fopen" in cmd and "mode=w" in cmd:
+                return (True, "[FLOK] FOPEN /test.txt mode=w")
+            elif "fwrite" in cmd:
+                return (True, "[FLOK] FWRITE 9 bytes")
+            elif "fclose" in cmd:
+                return (True, "[FLOK] FCLOSE")
+            elif "fopen" in cmd and "mode=r" in cmd:
+                return (True, "[FLOK] FOPEN /test.txt mode=r")
+            elif "fcrc" in cmd:
+                return (
+                    True,
+                    f"[FLOK] FCRC offset=0 size=9 crc=0x{expected_crc:04X}",
+                )
+            return (True, "[FLOK] OK")
+
+        self.mock_fpb.send_fl_cmd.side_effect = track_calls
+        success, msg = self.ft.upload(data, "/test.txt")
+        self.assertTrue(success)
+
+        # Verify order: fopen(w) → fwrite → fclose → fopen(r) → fcrc → fclose
+        fclose_indices = [i for i, c in enumerate(call_log) if "fclose" in c]
+        fcrc_indices = [i for i, c in enumerate(call_log) if "fcrc" in c]
+        self.assertTrue(len(fclose_indices) >= 2)
+        self.assertTrue(len(fcrc_indices) >= 1)
+        # First fclose must come before fcrc
+        self.assertLess(fclose_indices[0], fcrc_indices[0])
+
+    def test_download_fclose_before_fcrc(self):
+        """Download must close file before CRC verification (P1 fix)."""
+        import base64
+
+        test_data = b"hello"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc_val = crc16(test_data)
+        call_log = []
+
+        def track_calls(cmd, **kwargs):
+            call_log.append(cmd)
+            if "fstat" in cmd:
+                return (
+                    True,
+                    f"[FLOK] FSTAT /t.txt size={len(test_data)} mtime=0 type=file",
+                )
+            elif "fopen" in cmd and "mode=r" in cmd:
+                return (True, "[FLOK] FOPEN /t.txt mode=r")
+            elif "fread" in cmd:
+                if any("fread" in c for c in call_log[:-1]):
+                    return (True, "[FLOK] FREAD 0 bytes EOF")
+                return (
+                    True,
+                    f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc_val:04X} data={b64_data}",
+                )
+            elif "fclose" in cmd:
+                return (True, "[FLOK] FCLOSE")
+            elif "fcrc" in cmd:
+                return (
+                    True,
+                    f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{crc_val:04X}",
+                )
+            return (True, "[FLOK] OK")
+
+        self.mock_fpb.send_fl_cmd.side_effect = track_calls
+        success, data, msg = self.ft.download("/t.txt")
+        self.assertTrue(success)
+
+        fclose_indices = [i for i, c in enumerate(call_log) if "fclose" in c]
+        fcrc_indices = [i for i, c in enumerate(call_log) if "fcrc" in c]
+        self.assertTrue(len(fclose_indices) >= 2)
+        self.assertTrue(len(fcrc_indices) >= 1)
+        self.assertLess(fclose_indices[0], fcrc_indices[0])

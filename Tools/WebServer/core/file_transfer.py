@@ -15,7 +15,7 @@ import logging
 import re
 from typing import Callable, Optional, Tuple, List, Dict, Any
 
-from utils.crc import crc16
+from utils.crc import crc16, crc16_update
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,9 @@ class FileTransfer:
             Tuple of (success, message)
         """
         path = _sanitize_path(path)
-        cmd = f"fl -c fopen --path {_format_path_arg(path)} -m {mode}"
+        crc = crc16_update(0xFFFF, path.encode("utf-8"))
+        crc = crc16_update(crc, mode.encode("utf-8"))
+        cmd = f"fl -c fopen --path {_format_path_arg(path)} -m {mode} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
     def fwrite(
@@ -317,7 +319,13 @@ class FileTransfer:
 
     def fcrc(self, size: int = 0) -> Tuple[bool, int, int]:
         """
-        Calculate CRC of open file on device.
+        Calculate CRC of open file on device using chunked reads.
+
+        Splits the CRC calculation into chunks to avoid watchdog timeout
+        on large files. Each chunk is processed by the device and the
+        intermediate CRC is chained to the next call.
+
+        Requires firmware with chunked fcrc support (offset= response format).
 
         Args:
             size: Number of bytes to calculate CRC for (0 = entire file)
@@ -325,18 +333,52 @@ class FileTransfer:
         Returns:
             Tuple of (success, size, crc)
         """
-        cmd = f"fl -c fcrc -l {size}" if size > 0 else "fl -c fcrc"
-        success, response = self._send_cmd(cmd)
+        FCRC_CHUNK = 32 * 1024  # 32KB per chunk to avoid watchdog timeout
+        FCRC_RE = re.compile(r"FCRC\s+offset=\d+\s+size=(\d+)\s+crc=0x([0-9A-Fa-f]+)")
 
-        if not success:
-            return False, 0, 0
+        # For small files or unspecified size, use single call
+        if 0 < size <= FCRC_CHUNK:
+            cmd = f"fl -c fcrc -l {size}"
+            success, response = self._send_cmd(cmd)
+            if not success:
+                return False, 0, 0
+            match = FCRC_RE.search(response)
+            if not match:
+                return False, 0, 0
+            return True, int(match.group(1)), int(match.group(2), 16)
 
-        # Parse: [FLOK] FCRC size=<n> crc=0x<crc>
-        match = re.search(r"FCRC\s+size=(\d+)\s+crc=0x([0-9A-Fa-f]+)", response)
-        if not match:
-            return False, 0, 0
+        # Chunked CRC for large files
+        offset = 0
+        crc = 0xFFFF
+        total_read = 0
+        remaining = size if size > 0 else 0x7FFFFFFF  # Large default
 
-        return True, int(match.group(1)), int(match.group(2), 16)
+        while remaining > 0:
+            chunk = min(FCRC_CHUNK, remaining)
+            # Pass current CRC as init value via -r, offset via -a
+            if offset == 0 and crc == 0xFFFF:
+                cmd = f"fl -c fcrc -a {offset} -l {chunk}"
+            else:
+                cmd = f"fl -c fcrc -a {offset} -l {chunk} -r 0x{crc:04X}"
+            success, response = self._send_cmd(cmd)
+            if not success:
+                return False, 0, 0
+
+            match = FCRC_RE.search(response)
+            if not match:
+                return False, 0, 0
+
+            chunk_size = int(match.group(1))
+            crc = int(match.group(2), 16)
+            total_read += chunk_size
+            offset += chunk_size
+            remaining -= chunk_size
+
+            # EOF reached
+            if chunk_size < chunk:
+                break
+
+        return True, total_read, crc
 
     def fseek(self, offset: int, whence: int = 0) -> Tuple[bool, str]:
         """
@@ -437,7 +479,8 @@ class FileTransfer:
             Tuple of (success, message)
         """
         path = _sanitize_path(path)
-        cmd = f"fl -c fremove --path {_format_path_arg(path)}"
+        crc = crc16_update(0xFFFF, path.encode("utf-8"))
+        cmd = f"fl -c fremove --path {_format_path_arg(path)} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
     def fmkdir(self, path: str) -> Tuple[bool, str]:
@@ -467,7 +510,9 @@ class FileTransfer:
         """
         old_path = _sanitize_path(old_path)
         new_path = _sanitize_path(new_path)
-        cmd = f"fl -c frename --path {_format_path_arg(old_path)} --newpath {_format_path_arg(new_path)}"
+        crc = crc16_update(0xFFFF, old_path.encode("utf-8"))
+        crc = crc16_update(crc, new_path.encode("utf-8"))
+        cmd = f"fl -c frename --path {_format_path_arg(old_path)} --newpath {_format_path_arg(new_path)} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
     def upload(
@@ -489,8 +534,8 @@ class FileTransfer:
         """
         total_size = len(local_data)
 
-        # Open file for read/write (need read for CRC verification)
-        success, msg = self.fopen(remote_path, "rw")
+        # Open file for writing
+        success, msg = self.fopen(remote_path, "w")
         if not success:
             return False, f"Failed to open file: {msg}"
 
@@ -508,24 +553,35 @@ class FileTransfer:
                 if progress_cb:
                     progress_cb(uploaded, total_size)
 
-            # Verify entire file CRC before closing
-            # Always verify entire file CRC before closing
+            # Close file first to flush data to storage
+            success, msg = self.fclose()
+            if not success:
+                return False, f"Failed to close file: {msg}"
+
+            # Verify CRC after close: reopen read-only for safe verification
             if total_size > 0:
                 expected_crc = crc16(local_data)
+                success, msg = self.fopen(remote_path, "r")
+                if not success:
+                    return (
+                        False,
+                        f"Failed to reopen file for CRC verification: {msg}",
+                    )
+
                 success, dev_size, dev_crc = self.fcrc(total_size)
+                self.fclose()  # Always close regardless of CRC result
+
                 if not success:
                     self._log(
                         "[WARN] upload: CRC verification failed: could not get device CRC"
                     )
                     logger.warning("Failed to get device CRC for verification")
                 elif dev_size != total_size:
-                    self.fclose()
                     return (
                         False,
                         f"Size mismatch: expected {total_size}, device has {dev_size}",
                     )
                 elif dev_crc != expected_crc:
-                    self.fclose()
                     return (
                         False,
                         f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}",
@@ -533,11 +589,6 @@ class FileTransfer:
                 else:
                     self._log(f"[SUCCESS] upload: CRC verified: 0x{dev_crc:04X}")
                     logger.info(f"Upload CRC verified: 0x{dev_crc:04X}")
-
-            # Close file
-            success, msg = self.fclose()
-            if not success:
-                return False, f"Failed to close file: {msg}"
 
             return True, f"Uploaded {total_size} bytes to {remote_path}"
 
@@ -598,18 +649,31 @@ class FileTransfer:
                 if progress_cb:
                     progress_cb(len(data), total_size)
 
-            # Verify entire file CRC before closing
-            # Always verify entire file CRC before closing
+            # Close file first, then verify CRC by reopening read-only
+            success, msg = self.fclose()
+            if not success:
+                return False, b"", f"Failed to close file: {msg}"
+
+            # Verify CRC after close: reopen read-only for safe verification
             if len(data) > 0:
                 local_crc = crc16(data)
+                success, msg = self.fopen(remote_path, "r")
+                if not success:
+                    return (
+                        False,
+                        b"",
+                        f"Failed to reopen file for CRC verification: {msg}",
+                    )
+
                 success, dev_size, dev_crc = self.fcrc(len(data))
+                self.fclose()  # Always close regardless of CRC result
+
                 if not success:
                     self._log(
                         "[WARN] download: CRC verification failed: could not get device CRC"
                     )
                     logger.warning("Failed to get device CRC for verification")
                 elif dev_crc != local_crc:
-                    self.fclose()
                     return (
                         False,
                         b"",
@@ -618,11 +682,6 @@ class FileTransfer:
                 else:
                     self._log(f"[SUCCESS] download: CRC verified: 0x{dev_crc:04X}")
                     logger.info(f"Download CRC verified: 0x{dev_crc:04X}")
-
-            # Close file
-            success, msg = self.fclose()
-            if not success:
-                return False, b"", f"Failed to close file: {msg}"
 
             return True, data, f"Downloaded {len(data)} bytes from {remote_path}"
 

@@ -374,6 +374,17 @@ static int cmd_alloc(fl_context_t* ctx, const cmd_args_t* args) {
         return -1;
     }
 
+    /* Verify CRC if provided: covers size(4B) */
+    if (args->crc >= 0) {
+        uint32_t size32 = (uint32_t)args->size;
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, &size32, sizeof(size32));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
+    }
+
     if (!ctx->malloc_cb) {
         fl_response(false, "No malloc_cb");
         return 0;
@@ -808,6 +819,17 @@ static int cmd_fopen(fl_context_t* ctx, const cmd_args_t* args) {
         return 0;
     }
 
+    /* Verify CRC if provided: covers path + mode strings */
+    if (args->crc >= 0) {
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, args->path, strlen(args->path));
+        calc = calc_crc16_base(calc, mode, strlen(mode));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
+    }
+
     if (fl_file_open(&ctx->file_ctx, args->path, mode) != 0) {
         fl_response(false, "Failed to open: %s", args->path);
         return 0;
@@ -914,27 +936,23 @@ static int cmd_fclose(fl_context_t* ctx, const cmd_args_t* args) {
 }
 
 static int cmd_fcrc(fl_context_t* ctx, const cmd_args_t* args) {
+    off_t offset = (off_t)args->addr; /* Start offset (0 = from beginning) */
     off_t size = (off_t)args->len;
+    int init_crc = args->crc; /* Previous CRC for chained calculation, -1 = initial */
+
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
         return 0;
     }
 
-    /* Save current position */
-    off_t saved_pos = fl_file_seek(&ctx->file_ctx, 0, FL_SEEK_CUR);
-    if (saved_pos < 0) {
-        fl_response(false, "Failed to get current position");
+    /* Seek to specified offset */
+    if (fl_file_seek(&ctx->file_ctx, offset, FL_SEEK_SET) < 0) {
+        fl_response(false, "Failed to seek to offset %ld", (long)offset);
         return 0;
     }
 
-    /* Seek to beginning */
-    if (fl_file_seek(&ctx->file_ctx, 0, FL_SEEK_SET) < 0) {
-        fl_response(false, "Failed to seek to beginning");
-        return 0;
-    }
-
-    /* Calculate CRC of entire file (or specified size) */
-    uint16_t crc = 0xFFFF;
+    /* Use provided CRC as initial value for chained calculation */
+    uint16_t crc = (init_crc >= 0) ? (uint16_t)init_crc : 0xFFFF;
     off_t total_read = 0;
     off_t remaining = size > 0 ? size : LLONG_MAX;
 
@@ -959,10 +977,7 @@ static int cmd_fcrc(fl_context_t* ctx, const cmd_args_t* args) {
         remaining -= nread;
     }
 
-    /* Restore original position */
-    fl_file_seek(&ctx->file_ctx, saved_pos, FL_SEEK_SET);
-
-    fl_response(true, "FCRC size=%ld crc=0x%04X", (long)total_read, (unsigned)crc);
+    fl_response(true, "FCRC offset=%ld size=%ld crc=0x%04X", (long)offset, (long)total_read, (unsigned)crc);
     return 0;
 }
 
@@ -1058,6 +1073,16 @@ static int cmd_fremove(fl_context_t* ctx, const cmd_args_t* args) {
         return 0;
     }
 
+    /* Verify CRC if provided: covers path string */
+    if (args->crc >= 0) {
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, args->path, strlen(args->path));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
+    }
+
     if (fl_file_remove(&ctx->file_ctx, args->path) != 0) {
         fl_response(false, "Remove failed: %s", args->path);
         return 0;
@@ -1101,6 +1126,17 @@ static int cmd_frename(fl_context_t* ctx, const cmd_args_t* args) {
     if (!args->newpath) {
         fl_response(false, "Missing newpath");
         return 0;
+    }
+
+    /* Verify CRC if provided: covers path + newpath strings */
+    if (args->crc >= 0) {
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, args->path, strlen(args->path));
+        calc = calc_crc16_base(calc, args->newpath, strlen(args->newpath));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
     }
 
     if (fl_file_rename(&ctx->file_ctx, args->path, args->newpath) != 0) {

@@ -28,11 +28,10 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         """Test fopen with filename containing spaces."""
         success, msg = self.ft.fopen("/path/my file.txt", "r")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            'fl -c fopen --path "/path/my file.txt" -m r',
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn('--path "/path/my file.txt"', call_args)
+        self.assertIn("-m r", call_args)
+        self.assertIn("-r 0x", call_args)
 
     def test_fstat_with_spaces(self):
         """Test fstat with filename containing spaces."""
@@ -68,11 +67,9 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         """Test fremove with filename containing spaces."""
         success, msg = self.ft.fremove("/path/my file.txt")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            'fl -c fremove --path "/path/my file.txt"',
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn('--path "/path/my file.txt"', call_args)
+        self.assertIn("-r 0x", call_args)
 
     def test_fmkdir_with_spaces(self):
         """Test fmkdir with directory name containing spaces."""
@@ -88,21 +85,25 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         """Test frename with filenames containing spaces."""
         success, msg = self.ft.frename("/path/old file.txt", "/path/new file.txt")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            'fl -c frename --path "/path/old file.txt" --newpath "/path/new file.txt"',
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn('--path "/path/old file.txt"', call_args)
+        self.assertIn('--newpath "/path/new file.txt"', call_args)
+        self.assertIn("-r 0x", call_args)
 
     def test_upload_with_spaces(self):
         """Test upload with filename containing spaces."""
-        self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, "[FLOK] FOPEN"),  # fopen
-            (True, "[FLOK] FWRITE"),  # fwrite
-            (True, "[FLOK] FCRC size=5 crc=0xd26e"),  # fcrc (correct CRC for "hello")
-            (True, "[FLOK] FCLOSE"),  # fclose
-        ]
+        from utils.crc import crc16
+
         data = b"hello"
+        expected_crc = crc16(data)
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FOPEN"),  # fopen write
+            (True, "[FLOK] FWRITE"),  # fwrite
+            (True, "[FLOK] FCLOSE"),  # fclose after write
+            (True, "[FLOK] FOPEN"),  # fopen read for CRC
+            (True, f"[FLOK] FCRC offset=0 size=5 crc=0x{expected_crc:04X}"),  # fcrc
+            (True, "[FLOK] FCLOSE"),  # fclose after CRC
+        ]
         success, msg = self.ft.upload(data, "/path/my file.txt")
         self.assertTrue(success)
         # Check that fopen was called with quoted path
@@ -111,20 +112,26 @@ class TestFileTransferWithSpaces(unittest.TestCase):
 
     def test_download_with_spaces(self):
         """Test download with filename containing spaces."""
-        # Mock responses for: fstat, fopen, fread (data), fread (EOF), fcrc, fclose
+        from utils.crc import crc16
+
+        data = b"hello"
+        expected_crc = crc16(data)
+        # Mock responses for: fstat, fopen, fread (data), fread (EOF), fclose, fopen, fcrc, fclose
         self.mock_fpb.send_fl_cmd.side_effect = [
             (
                 True,
                 "[FLOK] FSTAT /path/my file.txt size=5 mtime=1234567890 type=file",
             ),  # fstat
-            (True, "[FLOK] FOPEN"),  # fopen
+            (True, "[FLOK] FOPEN"),  # fopen read
             (
                 True,
-                "[FLOK] FREAD 5 bytes crc=0xd26e data=aGVsbG8=",
-            ),  # fread (correct CRC for "hello")
+                f"[FLOK] FREAD 5 bytes crc=0x{expected_crc:04X} data=aGVsbG8=",
+            ),  # fread
             (True, "[FLOK] FREAD 0 bytes EOF"),  # fread EOF
-            (True, "[FLOK] FCRC size=5 crc=0xd26e"),  # fcrc
-            (True, "[FLOK] FCLOSE"),  # fclose
+            (True, "[FLOK] FCLOSE"),  # fclose after read
+            (True, "[FLOK] FOPEN"),  # fopen read for CRC
+            (True, f"[FLOK] FCRC offset=0 size=5 crc=0x{expected_crc:04X}"),  # fcrc
+            (True, "[FLOK] FCLOSE"),  # fclose after CRC
         ]
         success, data, msg = self.ft.download("/path/my file.txt")
         self.assertTrue(success)
@@ -172,21 +179,20 @@ class TestFileTransferSingleCharPath(unittest.TestCase):
         """Test fopen with single-char path does not add quotes."""
         success, msg = self.ft.fopen("/", "r")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            "fl -c fopen --path / -m r",
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("--path /", call_args)
+        self.assertIn("-m r", call_args)
+        # Path should not be quoted
+        self.assertNotIn('"/"', call_args)
 
     def test_multi_char_path_no_quotes_without_spaces(self):
         """Test that multi-char paths without spaces have no quotes."""
         success, msg = self.ft.fopen("/a", "r")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            "fl -c fopen --path /a -m r",
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("--path /a", call_args)
+        self.assertIn("-m r", call_args)
+        self.assertNotIn('"/a"', call_args)
 
 
 if __name__ == "__main__":
