@@ -97,7 +97,7 @@ void test_stream_exec_help(void) {
     char line[] = "--help";
     fl_error_t result = fl_stream_exec_line(&test_stream, line);
     /* --help prints usage but requires --cmd, so returns error */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 void test_stream_exec_info(void) {
@@ -119,7 +119,8 @@ void test_stream_exec_unknown_cmd(void) {
     setup_stream();
     char line[] = "--cmd nonexistent_command";
     fl_error_t result = fl_stream_exec_line(&test_stream, line);
-    TEST_ASSERT(result != FL_OK);
+    /* No "fl" prefix, argparse treats "--cmd" as argv[0] and skips it */
+    TEST_ASSERT_EQUAL(FL_ERR_PARSE, result);
 }
 
 void test_stream_exec_comment(void) {
@@ -128,7 +129,7 @@ void test_stream_exec_comment(void) {
     fl_error_t result = fl_stream_exec_line(&test_stream, line);
     /* Comment starts with #, which argparse doesn't recognize */
     /* It should return error since no --cmd is provided */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_PARSE, result);
 }
 
 /* ============================================================================

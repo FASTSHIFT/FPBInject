@@ -142,7 +142,7 @@ void test_loader_cmd_help(void) {
 
     /* --help prints usage but still requires --cmd, so returns error */
     /* Output should contain help text */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 void test_loader_cmd_info(void) {
@@ -163,7 +163,7 @@ void test_loader_cmd_unknown(void) {
     fl_error_t result = fl_exec_cmd(&test_ctx, 3, argv);
 
     /* Unknown command should return error */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_UNKNOWN, result);
 }
 
 void test_loader_cmd_empty(void) {
@@ -198,7 +198,7 @@ void test_loader_cmd_clear_invalid_slot(void) {
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
     /* Invalid slot should error */
-    TEST_ASSERT(result != FL_OK || mock_output_contains("Invalid") || mock_output_contains("Error"));
+    TEST_ASSERT_EQUAL(FL_ERR_RANGE, result);
 }
 
 void test_loader_cmd_clear_valid_slot(void) {
@@ -304,7 +304,7 @@ void test_loader_cmd_alloc_no_size(void) {
     fl_error_t result = fl_exec_cmd(&test_ctx, 3, argv);
 
     /* Alloc without size should fail */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 void test_loader_cmd_alloc_zero(void) {
@@ -315,7 +315,7 @@ void test_loader_cmd_alloc_zero(void) {
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
     /* Zero size allocation should fail */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 /* ============================================================================
@@ -330,7 +330,7 @@ void test_loader_cmd_patch_missing_args(void) {
     fl_error_t result = fl_exec_cmd(&test_ctx, 3, argv);
 
     /* patch without orig/target should fail */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 void test_loader_cmd_patch_valid(void) {
@@ -354,7 +354,7 @@ void test_loader_cmd_tpatch_missing_args(void) {
     const char* argv[] = {"fl", "--cmd", "tpatch"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 3, argv);
 
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 void test_loader_cmd_dpatch_missing_args(void) {
@@ -364,7 +364,7 @@ void test_loader_cmd_dpatch_missing_args(void) {
     const char* argv[] = {"fl", "--cmd", "dpatch"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 3, argv);
 
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 /* ============================================================================
@@ -395,7 +395,7 @@ void test_loader_cmd_upload_no_data(void) {
     fl_error_t result = fl_exec_cmd(&test_ctx, 3, argv);
 
     /* Upload without data should fail */
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
 }
 
 void test_loader_cmd_upload_with_data(void) {
@@ -425,7 +425,7 @@ void test_loader_cmd_upload_overflow(void) {
     const char* argv[] = {"fl", "--cmd", "upload", "--addr", "2", "--data", "AQIDBA=="};
     fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
 
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_RANGE, result);
     TEST_ASSERT(mock_output_contains("overflow") || mock_output_contains("FLERR"));
 }
 
@@ -1308,7 +1308,7 @@ void test_loader_cmd_enable_missing_arg(void) {
     const char* argv[] = {"fl", "--cmd", "enable", "--comp", "0"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
     TEST_ASSERT(mock_output_contains("Missing --enable"));
 }
 
@@ -1428,7 +1428,7 @@ void test_loader_cmd_enable_invalid_comp(void) {
     const char* argv[] = {"fl", "--cmd", "enable", "--comp", "99", "--enable", "1"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
 
-    TEST_ASSERT(result != FL_OK || mock_output_contains("Invalid"));
+    TEST_ASSERT_EQUAL(FL_ERR_RANGE, result);
 }
 
 void test_loader_cmd_enable_unset_patch(void) {
@@ -1508,7 +1508,7 @@ void test_loader_cmd_echoback_zero_len(void) {
     const char* argv[] = {"fl", "--cmd", "echoback", "--len", "0"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_RANGE, result);
     TEST_ASSERT(mock_output_contains("FLERR"));
     TEST_ASSERT(mock_output_contains("Invalid length"));
 }
@@ -1520,7 +1520,7 @@ void test_loader_cmd_echoback_negative_len(void) {
     const char* argv[] = {"fl", "--cmd", "echoback", "--len", "-1"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_RANGE, result);
     TEST_ASSERT(mock_output_contains("FLERR"));
     TEST_ASSERT(mock_output_contains("Invalid length"));
 }
@@ -1533,7 +1533,7 @@ void test_loader_cmd_echoback_over_max(void) {
     const char* argv[] = {"fl", "--cmd", "echoback", "--len", "1025"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
-    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT_EQUAL(FL_ERR_RANGE, result);
     TEST_ASSERT(mock_output_contains("FLERR"));
     TEST_ASSERT(mock_output_contains("Invalid length"));
 }
