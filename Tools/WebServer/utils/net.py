@@ -17,7 +17,7 @@ import time
 logger = logging.getLogger(__name__)
 
 
-def is_port_available(port, host="127.0.0.1"):
+def is_port_available(host, port):
     """Check if a TCP port is available by attempting to connect.
 
     Returns True if the port is free, False if something is listening.
@@ -136,7 +136,7 @@ def kill_port_owner(port, timeout=1.0):
         return False
 
 
-def check_and_free_port(port, host="127.0.0.1"):
+def check_and_free_port(host, port):
     """Check if a TCP port is available; if not, kill the occupying process.
 
     Returns True if the port is available (or was freed), False if still occupied.

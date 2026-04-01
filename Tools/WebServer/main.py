@@ -37,7 +37,7 @@ from core.state import state
 from fpb_inject import serial_open
 from services.device_worker import start_worker
 from services.file_watcher_manager import restore_file_watcher
-from utils.net import is_port_available as check_port_available
+from utils.net import is_port_available as check_port_available  # noqa: same API
 from utils.net import get_port_owner
 from utils.port_lock import PortLock
 

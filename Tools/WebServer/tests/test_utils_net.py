@@ -27,7 +27,7 @@ class TestIsPortAvailable(unittest.TestCase):
     def test_available_port(self):
         """An unused port should be available."""
         # Use a random high port unlikely to be in use
-        self.assertTrue(is_port_available(59123))
+        self.assertTrue(is_port_available("127.0.0.1", 59123))
 
     def test_occupied_port(self):
         """A port with a listener should not be available."""
@@ -37,7 +37,7 @@ class TestIsPortAvailable(unittest.TestCase):
         s.listen(1)
         port = s.getsockname()[1]
         try:
-            self.assertFalse(is_port_available(port))
+            self.assertFalse(is_port_available("127.0.0.1", port))
         finally:
             s.close()
 
@@ -49,7 +49,7 @@ class TestIsPortAvailable(unittest.TestCase):
         s.listen(1)
         port = s.getsockname()[1]
         s.close()
-        self.assertTrue(is_port_available(port))
+        self.assertTrue(is_port_available("127.0.0.1", port))
 
 
 class TestGetPortOwner(unittest.TestCase):
@@ -130,33 +130,32 @@ class TestCheckAndFreePort(unittest.TestCase):
 
     def test_available_port(self):
         """Should return True immediately for a free port."""
-        self.assertTrue(check_and_free_port(59126))
+        self.assertTrue(check_and_free_port("127.0.0.1", 59126))
 
     @patch("utils.net.kill_port_owner", return_value=True)
     @patch("utils.net.is_port_available", return_value=False)
     def test_occupied_then_freed(self, mock_avail, mock_kill):
         """Should try to kill and return True on success."""
-        self.assertTrue(check_and_free_port(12345))
+        self.assertTrue(check_and_free_port("127.0.0.1", 12345))
         mock_kill.assert_called_once_with(12345)
 
     @patch("utils.net.kill_port_owner", return_value=False)
     @patch("utils.net.is_port_available", return_value=False)
     def test_occupied_kill_fails(self, mock_avail, mock_kill):
         """Should return False when kill fails."""
-        self.assertFalse(check_and_free_port(12345))
+        self.assertFalse(check_and_free_port("127.0.0.1", 12345))
 
 
 class TestGDBPortConflict(unittest.TestCase):
     """Integration test: GDB server port conflict detection."""
 
     @patch("utils.net.get_port_owner")
-    def test_gdb_manager_uses_check_and_free_port(self, mock_owner):
-        """start_external_gdb_server should call check_and_free_port."""
-
+    def test_gdb_manager_checks_port(self, mock_owner):
+        """start_external_gdb_server should check port availability."""
         mock_owner.return_value = None
 
         with patch(
-            "core.gdb_manager.check_and_free_port", return_value=True
+            "core.gdb_manager.is_port_available", return_value=True
         ) as mock_check:
             with patch("core.gdb_manager.GDBRSPBridge") as mock_bridge_cls:
                 mock_bridge = MagicMock()
@@ -174,19 +173,53 @@ class TestGDBPortConflict(unittest.TestCase):
 
                 result = start_external_gdb_server(state)
                 self.assertTrue(result)
-                mock_check.assert_called_once_with(3333)
+                mock_check.assert_called_once_with("127.0.0.1", 3333)
 
     def test_gdb_manager_rejects_occupied_port(self):
-        """start_external_gdb_server should fail if port can't be freed."""
-        with patch("core.gdb_manager.check_and_free_port", return_value=False):
-            from core.gdb_manager import start_external_gdb_server
+        """start_external_gdb_server should fail with detailed info if port can't be freed."""
+        with patch("core.gdb_manager.is_port_available", return_value=False):
+            with patch(
+                "core.gdb_manager.get_port_owner",
+                return_value={
+                    "pid": 999,
+                    "name": "python",
+                    "cmdline": "python main.py",
+                },
+            ):
+                with patch("core.gdb_manager.kill_port_owner", return_value=False):
+                    from core.gdb_manager import start_external_gdb_server
 
-            state = MagicMock()
-            state.device.external_gdb_port = 3333
-            state.external_gdb_bridge = None
+                    state = MagicMock()
+                    state.device.external_gdb_port = 3333
+                    state.external_gdb_bridge = None
 
-            result = start_external_gdb_server(state)
-            self.assertFalse(result)
+                    result = start_external_gdb_server(state)
+                    self.assertFalse(result)
+
+    def test_gdb_manager_kills_stale_and_starts(self):
+        """start_external_gdb_server should kill stale process and succeed."""
+        with patch("core.gdb_manager.is_port_available", return_value=False):
+            with patch(
+                "core.gdb_manager.get_port_owner",
+                return_value={"pid": 888, "name": "python", "cmdline": "old"},
+            ):
+                with patch("core.gdb_manager.kill_port_owner", return_value=True):
+                    with patch("core.gdb_manager.GDBRSPBridge") as mock_bridge_cls:
+                        mock_bridge = MagicMock()
+                        mock_bridge.start.return_value = 3333
+                        mock_bridge.is_running = False
+                        mock_bridge_cls.return_value = mock_bridge
+
+                        from core.gdb_manager import start_external_gdb_server
+
+                        state = MagicMock()
+                        state.device.external_gdb_port = 3333
+                        state.device.elf_path = None
+                        state.device.download_chunk_size = 1024
+                        state.external_gdb_bridge = None
+
+                        result = start_external_gdb_server(state)
+                        self.assertTrue(result)
 
 
 if __name__ == "__main__":

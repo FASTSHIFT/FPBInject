@@ -19,7 +19,7 @@ from core.elf_utils import get_memory_regions
 from core.gdb_bridge import GDBRSPBridge
 from core.gdb_session import GDBSession
 from core.state import ToolLogHandler
-from utils.net import check_and_free_port
+from utils.net import get_port_owner, is_port_available, kill_port_owner
 
 logger = logging.getLogger(__name__)
 
@@ -207,9 +207,22 @@ def start_external_gdb_server(state, read_memory_fn=None, write_memory_fn=None) 
         logger.info("[ExtGDB] Using provided memory callbacks (may be offline stubs)")
 
     try:
-        if not check_and_free_port(port):
-            logger.error(f"Cannot start external GDB server: port {port} is occupied")
-            return False
+        if not is_port_available("127.0.0.1", port):
+            owner = get_port_owner(port)
+            if owner:
+                logger.error(f"❌ GDB server port {port} is already in use!")
+                logger.error(f"   Process: {owner['name']} (PID {owner['pid']})")
+                logger.error(f"   Command: {owner['cmdline']}")
+                logger.warning(f"   Killing stale process PID {owner['pid']}...")
+            else:
+                logger.error(f"❌ GDB server port {port} is in use by unknown process")
+
+            if not kill_port_owner(port):
+                logger.error(f"   Failed to free port {port}. Options:")
+                if owner:
+                    logger.error(f"     kill {owner['pid']}")
+                logger.error("     Change port in config (external_gdb_port)")
+                return False
 
         bridge = GDBRSPBridge(
             read_memory_fn=read_memory_fn,
