@@ -411,6 +411,24 @@ void test_loader_cmd_upload_with_data(void) {
     TEST_ASSERT_EQUAL(FL_OK, result);
 }
 
+void test_loader_cmd_upload_overflow(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Allocate only 4 bytes */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "4"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_output_reset();
+
+    /* Try to upload 4 bytes at offset 2 -> 2+4=6 > 4, overflow */
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "2", "--data", "AQIDBA=="};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(result != FL_OK);
+    TEST_ASSERT(mock_output_contains("overflow") || mock_output_contains("FLERR"));
+}
+
 /* ============================================================================
  * Slot State Tests
  * ============================================================================ */
@@ -2097,6 +2115,7 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_upload_no_alloc);
     RUN_TEST(test_loader_cmd_upload_no_data);
     RUN_TEST(test_loader_cmd_upload_with_data);
+    RUN_TEST(test_loader_cmd_upload_overflow);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader - Slot Commands");

@@ -465,6 +465,14 @@ static fl_error_t cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
         fl_response(false, "No allocation, call alloc first");
         return FL_ERR_STATE;
     }
+
+    /* Bounds check: offset + data must fit within allocation */
+    if (args->addr + (size_t)n > ctx->last_alloc_size) {
+        fl_response(false, "Upload overflow: offset %lu + %d > alloc %u", (unsigned long)args->addr, n,
+                    (unsigned)ctx->last_alloc_size);
+        return FL_ERR_RANGE;
+    }
+
     uint8_t* dest = (uint8_t*)(ctx->last_alloc + args->addr);
 
     memcpy(dest, buf, n);
