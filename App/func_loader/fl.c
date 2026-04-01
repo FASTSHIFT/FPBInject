@@ -83,15 +83,15 @@ static uint16_t calc_crc16_base(uint16_t crc, const void* data, size_t len) {
     return crc;
 }
 
-static uint16_t calc_crc16(const void* data, size_t len) {
+static inline uint16_t calc_crc16(const void* data, size_t len) {
     return calc_crc16_base(0xFFFF, data, len);
 }
 
-static uint16_t calc_crc16_str(const char* str) {
+static inline uint16_t calc_crc16_str(const char* str) {
     return calc_crc16_base(0xFFFF, str, strlen(str));
 }
 
-static uint16_t calc_crc16_base_str(uint16_t crc, const char* str) {
+static inline uint16_t calc_crc16_base_str(uint16_t crc, const char* str) {
     return calc_crc16_base(crc, str, strlen(str));
 }
 
