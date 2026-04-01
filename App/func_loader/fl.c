@@ -47,11 +47,7 @@
 #else
 #include "argparse/argparse.h"
 #endif
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 
 void fl_init_default(fl_context_t* ctx) {
     memset(ctx, 0, sizeof(fl_context_t));

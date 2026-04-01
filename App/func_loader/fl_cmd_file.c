@@ -10,7 +10,6 @@
 
 #include "fl_cmd.h"
 #include <limits.h>
-#include <string.h>
 
 /* ===========================
    FILE TRANSFER COMMANDS
