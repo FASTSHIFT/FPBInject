@@ -161,7 +161,10 @@ static int interactive_mode(fl_context_t* ctx, int argc_first, char** argv_first
 
     /* Execute first command if provided */
     if (argc_first > 1) {
-        fl_exec_cmd(ctx, argc_first, (const char**)argv_first);
+        const fl_error_t ret = fl_exec_cmd(ctx, argc_first, (const char**)argv_first);
+        if (ret != FL_OK) {
+            printf("Error: %d\n", ret);
+        }
     }
 
     while (1) {
@@ -190,7 +193,7 @@ static int interactive_mode(fl_context_t* ctx, int argc_first, char** argv_first
         if (argc > 0) {
             const fl_error_t ret = fl_exec_cmd(ctx, argc, argv);
             if (ret != FL_OK) {
-                printf("Type 'q' to exit\n\n");
+                printf("fl_error: %d. Type 'q' to exit\n\n", (int)ret);
             }
         }
     }
