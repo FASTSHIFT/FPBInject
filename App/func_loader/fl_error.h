@@ -1,24 +1,6 @@
 /*
  * MIT License
  * Copyright (c) 2026 VIFEX
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
  */
 
 /**
@@ -37,11 +19,18 @@ extern "C" {
  * @brief Error codes for fl_exec_cmd and command handlers
  */
 typedef enum {
-    FL_OK = 0,           /* Command executed (success or handled error) */
-    FL_ERR_ARGS = -1,    /* Missing or invalid required arguments */
-    FL_ERR_CRC = -2,     /* CRC verification failed */
-    FL_ERR_PARSE = -3,   /* Argument parsing failed */
-    FL_ERR_UNKNOWN = -4, /* Unknown command */
+    FL_OK = 0,             /* Command executed successfully */
+    FL_ERR_ARGS = -1,      /* Missing or invalid required arguments */
+    FL_ERR_CRC = -2,       /* CRC verification failed */
+    FL_ERR_PARSE = -3,     /* Argument parsing failed */
+    FL_ERR_IO = -4,        /* I/O operation failed (file read/write/seek/close) */
+    FL_ERR_ALLOC = -5,     /* Memory allocation failed */
+    FL_ERR_STATE = -6,     /* Invalid state (no file open, no alloc, not initialized) */
+    FL_ERR_RANGE = -7,     /* Address/comp/length out of valid range */
+    FL_ERR_ENCODE = -8,    /* Base64 encode/decode failed */
+    FL_ERR_HW = -9,        /* Hardware operation failed (FPB/debugmon) */
+    FL_ERR_DISABLED = -10, /* Feature disabled at compile time */
+    FL_ERR_UNKNOWN = -11,  /* Unknown command */
 } fl_error_t;
 
 #ifdef __cplusplus

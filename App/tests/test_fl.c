@@ -1490,7 +1490,7 @@ void test_loader_cmd_echoback_zero_len(void) {
     const char* argv[] = {"fl", "--cmd", "echoback", "--len", "0"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
-    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT(result != FL_OK);
     TEST_ASSERT(mock_output_contains("FLERR"));
     TEST_ASSERT(mock_output_contains("Invalid length"));
 }
@@ -1502,7 +1502,7 @@ void test_loader_cmd_echoback_negative_len(void) {
     const char* argv[] = {"fl", "--cmd", "echoback", "--len", "-1"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
-    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT(result != FL_OK);
     TEST_ASSERT(mock_output_contains("FLERR"));
     TEST_ASSERT(mock_output_contains("Invalid length"));
 }
@@ -1515,7 +1515,7 @@ void test_loader_cmd_echoback_over_max(void) {
     const char* argv[] = {"fl", "--cmd", "echoback", "--len", "1025"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 5, argv);
 
-    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT(result != FL_OK);
     TEST_ASSERT(mock_output_contains("FLERR"));
     TEST_ASSERT(mock_output_contains("Invalid length"));
 }

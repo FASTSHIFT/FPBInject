@@ -27,6 +27,7 @@
  */
 
 #include "fl.h"
+#include "fl_error.h"
 #include "fl_log.h"
 #include "fpbinject_version.h"
 
@@ -242,7 +243,7 @@ typedef struct {
  * @brief Command handler function pointer
  * @return 0 on success, -1 on argument validation error
  */
-typedef int (*cmd_handler_t)(fl_context_t* ctx, const cmd_args_t* args);
+typedef fl_error_t (*cmd_handler_t)(fl_context_t* ctx, const cmd_args_t* args);
 
 /**
  * @brief  Verify args->crc against a pre-computed CRC value
@@ -267,14 +268,14 @@ static bool verify_args_crc(int crc, uint16_t calc) {
    COMMAND IMPLEMENTATIONS
    =========================== */
 
-static int cmd_ping(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_ping(fl_context_t* ctx, const cmd_args_t* args) {
     (void)ctx;
     (void)args;
     fl_response(true, "PONG");
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_echo(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_echo(fl_context_t* ctx, const cmd_args_t* args) {
     (void)ctx;
     /* Echo command for serial throughput testing.
      * Echoes back the data length and CRC for verification.
@@ -290,10 +291,10 @@ static int cmd_echo(fl_context_t* ctx, const cmd_args_t* args) {
     }
 
     fl_response(true, "ECHO %u Bytes, CRC 0x%04X", (unsigned)len, crc);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_echoback(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_echoback(fl_context_t* ctx, const cmd_args_t* args) {
     /* Echoback command for download direction throughput testing.
      * Fills the send buffer with a deterministic pattern (i % 256),
      * base64-encodes it, and sends it back with CRC.
@@ -302,7 +303,7 @@ static int cmd_echoback(fl_context_t* ctx, const cmd_args_t* args) {
     int len = args->len;
     if (len <= 0 || (size_t)len > FL_BUF_SIZE) {
         fl_response(false, "Invalid length %d (max %d)", len, (int)FL_BUF_SIZE);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     /* Fill buffer with deterministic pattern */
@@ -313,7 +314,7 @@ static int cmd_echoback(fl_context_t* ctx, const cmd_args_t* args) {
     /* Base64 encode */
     if (bytes_to_base64(ctx->buf, len, ctx->b64_buf, FL_B64_BUF_SIZE) < 0) {
         fl_response(false, "Base64 encode failed");
-        return 0;
+        return FL_ERR_ENCODE;
     }
 
     /* CRC over raw pattern bytes */
@@ -323,10 +324,10 @@ static int cmd_echoback(fl_context_t* ctx, const cmd_args_t* args) {
     fl_print("[FLOK] ECHOBACK %d bytes crc=0x%04X data=", len, (unsigned)crc);
     fl_print_raw(ctx->b64_buf);
     fl_print_raw("\n[FLEND]\n");
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
     (void)args;
     const fpb_state_t* fpb = fpb_get_state();
     fpb_info_t fpb_info;
@@ -384,26 +385,26 @@ static int cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
     }
 
     fl_response(true, "Info complete");
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_alloc(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_alloc(fl_context_t* ctx, const cmd_args_t* args) {
     if (args->size == 0) {
         fl_response(false, "Missing --size");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers size(4B) */
     {
         uint32_t size32 = (uint32_t)args->size;
         if (!verify_args_crc(args->crc, calc_crc16(&size32, sizeof(size32)))) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
     if (!ctx->malloc_cb) {
         fl_response(false, "No malloc_cb");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     /* Free previous allocation if any */
@@ -416,19 +417,19 @@ static int cmd_alloc(fl_context_t* ctx, const cmd_args_t* args) {
     void* p = ctx->malloc_cb(args->size);
     if (!p) {
         fl_response(false, "Alloc failed");
-        return 0;
+        return FL_ERR_ALLOC;
     }
 
     ctx->last_alloc = (uintptr_t)p;
     ctx->last_alloc_size = args->size;
     fl_response(true, "Allocated %u at 0x%08lX", (unsigned)args->size, (unsigned long)p);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
     if (!args->data) {
         fl_response(false, "Missing --data");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
     uint8_t* buf = ctx->buf;
@@ -437,7 +438,7 @@ static int cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
     int n = base64_to_bytes(args->data, buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
-        return 0;
+        return FL_ERR_ENCODE;
     }
 
     if (verify) {
@@ -455,14 +456,14 @@ static int cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
                 ctx->last_alloc = 0;
                 ctx->last_alloc_size = 0;
             }
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
     /* Upload to last_alloc */
     if (ctx->last_alloc == 0) {
         fl_response(false, "No allocation, call alloc first");
-        return 0;
+        return FL_ERR_STATE;
     }
     uint8_t* dest = (uint8_t*)(ctx->last_alloc + args->addr);
 
@@ -472,17 +473,17 @@ static int cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
     fl_flush_dcache(ctx, dest, n);
 
     fl_response(true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)dest);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
     uint8_t* buf = ctx->buf;
     char* b64_buf = ctx->b64_buf;
     int len = args->len;
 
     if (len <= 0 || (size_t)len > FL_BUF_SIZE) {
         fl_response(false, "Invalid length %d (max %d)", len, (int)FL_BUF_SIZE);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     /* Verify request CRC if provided: covers addr(4B) + len(4B) */
@@ -493,14 +494,14 @@ static int cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
         calc = calc_crc16_base(calc, &addr32, sizeof(addr32));
         calc = calc_crc16_base(calc, &len32, sizeof(len32));
         if (!verify_args_crc(args->crc, calc)) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
     if (!args->force && !fl_check_addr_range(args->addr, len)) {
         fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)args->addr,
                     len);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     /* Read memory at the given address */
@@ -510,7 +511,7 @@ static int cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
     /* Base64 encode */
     if (bytes_to_base64(buf, len, b64_buf, FL_B64_BUF_SIZE) < 0) {
         fl_response(false, "Base64 encode failed");
-        return 0;
+        return FL_ERR_ENCODE;
     }
 
     /* CRC-16 covers: addr(4B) + len(4B) + data payload */
@@ -525,13 +526,13 @@ static int cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
     fl_print("[FLOK] READ %d bytes crc=0x%04X data=", len, (unsigned)resp_crc);
     fl_print_raw(b64_buf);
     fl_print_raw("\n[FLEND]\n");
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
     if (!args->data) {
         fl_response(false, "Missing --data");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
     uint8_t* buf = ctx->buf;
@@ -540,12 +541,12 @@ static int cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
     int n = base64_to_bytes(args->data, buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
-        return 0;
+        return FL_ERR_ENCODE;
     }
 
     if (!args->force && !fl_check_addr_range(args->addr, n)) {
         fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)args->addr, n);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     if (verify) {
@@ -557,7 +558,7 @@ static int cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
         calc = calc_crc16_base(calc, &len32, sizeof(len32));
         calc = calc_crc16_base(calc, buf, n);
         if (!verify_args_crc(args->crc, calc)) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
@@ -569,7 +570,7 @@ static int cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
     fl_flush_dcache(ctx, dest, n);
 
     fl_response(true, "WRITE %d bytes to 0x%lX", n, (unsigned long)args->addr);
-    return 0;
+    return FL_OK;
 }
 
 /**
@@ -589,24 +590,24 @@ static bool verify_patch_crc(int crc, uint32_t comp, uintptr_t orig, uintptr_t t
     return verify_args_crc(crc, calc);
 }
 
-static int cmd_patch(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_patch(fl_context_t* ctx, const cmd_args_t* args) {
     if (args->orig == 0 || args->target == 0) {
         fl_response(false, "Missing --orig/--target");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
     if (!verify_patch_crc(args->crc, args->comp, args->orig, args->target))
-        return 0;
+        return FL_ERR_CRC;
 
     if ((uint32_t)args->comp >= fpb_get_state()->num_code_comp || (uint32_t)args->comp >= FL_MAX_SLOTS) {
         fl_response(false, "Invalid comp %lu", (unsigned long)args->comp);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     fpb_result_t ret = fpb_set_patch(args->comp, args->orig, args->target);
     if (ret != FPB_OK) {
         fl_response(false, "fpb_set_patch failed: %d", ret);
-        return 0;
+        return FL_ERR_HW;
     }
 
     /* Record slot state, transfer last_alloc ownership to slot */
@@ -620,22 +621,22 @@ static int cmd_patch(fl_context_t* ctx, const cmd_args_t* args) {
 
     fl_response(true, "Patch %lu: 0x%08lX -> 0x%08lX", (unsigned long)args->comp, (unsigned long)args->orig,
                 (unsigned long)args->target);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_tpatch(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_tpatch(fl_context_t* ctx, const cmd_args_t* args) {
     if (args->orig == 0 || args->target == 0) {
         fl_response(false, "Missing --orig/--target");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
 #ifndef FPB_NO_TRAMPOLINE
     if (!verify_patch_crc(args->crc, args->comp, args->orig, args->target))
-        return 0;
+        return FL_ERR_CRC;
 
     if ((uint32_t)args->comp >= FPB_TRAMPOLINE_COUNT || (uint32_t)args->comp >= FL_MAX_SLOTS) {
         fl_response(false, "Invalid comp %lu (max %d)", (unsigned long)args->comp, FPB_TRAMPOLINE_COUNT - 1);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     /* Set trampoline target in RAM */
@@ -649,7 +650,7 @@ static int cmd_tpatch(fl_context_t* ctx, const cmd_args_t* args) {
     if (ret != FPB_OK) {
         fpb_trampoline_clear_target(args->comp);
         fl_response(false, "fpb_set_patch failed: %d", ret);
-        return 0;
+        return FL_ERR_HW;
     }
 
     /* Record slot state, transfer last_alloc ownership to slot */
@@ -667,29 +668,29 @@ static int cmd_tpatch(fl_context_t* ctx, const cmd_args_t* args) {
     (void)ctx;
     fl_response(false, "Trampoline disabled (FPB_NO_TRAMPOLINE)");
 #endif
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_dpatch(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_dpatch(fl_context_t* ctx, const cmd_args_t* args) {
     if (args->orig == 0 || args->target == 0) {
         fl_response(false, "Missing --orig/--target");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
 #ifndef FPB_NO_DEBUGMON
     if (!verify_patch_crc(args->crc, args->comp, args->orig, args->target))
-        return 0;
+        return FL_ERR_CRC;
 
     if ((uint32_t)args->comp >= FPB_DEBUGMON_MAX_REDIRECTS || (uint32_t)args->comp >= FL_MAX_SLOTS) {
         fl_response(false, "Invalid comp %lu (max %d)", (unsigned long)args->comp, FPB_DEBUGMON_MAX_REDIRECTS - 1);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     /* Initialize DebugMonitor if not already done */
     if (!fpb_debugmon_is_active()) {
         if (fpb_debugmon_init() != 0) {
             fl_response(false, "DebugMonitor init failed");
-            return 0;
+            return FL_ERR_HW;
         }
     }
 
@@ -697,7 +698,7 @@ static int cmd_dpatch(fl_context_t* ctx, const cmd_args_t* args) {
     int ret = fpb_debugmon_set_redirect(args->comp, args->orig, args->target);
     if (ret != 0) {
         fl_response(false, "fpb_debugmon_set_redirect failed: %d", ret);
-        return 0;
+        return FL_ERR_HW;
     }
 
     /* Record slot state, transfer last_alloc ownership to slot */
@@ -715,10 +716,10 @@ static int cmd_dpatch(fl_context_t* ctx, const cmd_args_t* args) {
     (void)ctx;
     fl_response(false, "DebugMonitor disabled (FPB_NO_DEBUGMON)");
 #endif
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
     uint32_t comp = (uint32_t)args->comp;
     bool all = args->all;
 
@@ -726,7 +727,7 @@ static int cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
     {
         uint32_t comp32 = comp;
         if (!verify_args_crc(args->crc, calc_crc16(&comp32, sizeof(comp32)))) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
@@ -736,7 +737,7 @@ static int cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
 
     if (!all && (comp >= num_comps || comp >= FL_MAX_SLOTS)) {
         fl_response(false, "Invalid comp %lu", (unsigned long)comp);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     uint32_t cleared = 0;
@@ -770,13 +771,13 @@ static int cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
     } else {
         fl_response(true, "Cleared slot %lu", (unsigned long)comp);
     }
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
     if (args->enable < 0) {
         fl_response(false, "Missing --enable (0 or 1)");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers comp(4B) + enable(4B) */
@@ -787,7 +788,7 @@ static int cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
         calc = calc_crc16_base(calc, &comp32, sizeof(comp32));
         calc = calc_crc16_base(calc, &enable32, sizeof(enable32));
         if (!verify_args_crc(args->crc, calc)) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
@@ -801,7 +802,7 @@ static int cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
 
     if (!all && (comp >= num_comps || comp >= FL_MAX_SLOTS)) {
         fl_response(false, "Invalid comp %lu", (unsigned long)comp);
-        return 0;
+        return FL_ERR_RANGE;
     }
 
     uint32_t changed = 0;
@@ -817,18 +818,18 @@ static int cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
     } else {
         fl_response(true, "%s patch %lu", en ? "Enabled" : "Disabled", (unsigned long)comp);
     }
-    return 0;
+    return FL_OK;
 }
 
 __attribute__((noinline)) void fl_hello(void) {
     fl_response(true, "HELLO from original fl_hello(%p) function!", (void*)fl_hello);
 }
 
-static int cmd_hello(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_hello(fl_context_t* ctx, const cmd_args_t* args) {
     (void)ctx;
     (void)args;
     fl_hello();
-    return 0;
+    return FL_OK;
 }
 
 /* ===========================
@@ -837,16 +838,16 @@ static int cmd_hello(fl_context_t* ctx, const cmd_args_t* args) {
 
 #if FL_USE_FILE
 
-static int cmd_fopen(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fopen(fl_context_t* ctx, const cmd_args_t* args) {
     const char* mode = args->mode ? args->mode : "r";
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (!args->path || !mode) {
         fl_response(false, "Missing path or mode");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers path + mode strings */
@@ -855,58 +856,58 @@ static int cmd_fopen(fl_context_t* ctx, const cmd_args_t* args) {
         calc = calc_crc16_base(calc, args->path, strlen(args->path));
         calc = calc_crc16_base(calc, mode, strlen(mode));
         if (!verify_args_crc(args->crc, calc)) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
     if (fl_file_open(&ctx->file_ctx, args->path, mode) != 0) {
         fl_response(false, "Failed to open: %s", args->path);
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FOPEN %s mode=%s", args->path, mode);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fwrite(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fwrite(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (!args->data) {
         fl_response(false, "Missing data");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     /* Decode base64 data */
     int n = base64_to_bytes(args->data, ctx->buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
-        return 0;
+        return FL_ERR_ENCODE;
     }
 
     /* Verify CRC if provided */
     if (!verify_args_crc(args->crc, calc_crc16(ctx->buf, n))) {
-        return 0;
+        return FL_ERR_CRC;
     }
 
     /* Write to file */
     ssize_t written = fl_file_write(&ctx->file_ctx, ctx->buf, n);
     if (written < 0 || (int)written != n) {
         fl_response(false, "Write failed, expected %d bytes, actual %d bytes", n, (int)written);
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FWRITE %d bytes", (int)written);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fread(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fread(fl_context_t* ctx, const cmd_args_t* args) {
     int len = args->len;
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (len <= 0 || len > (int)FL_BUF_SIZE) {
@@ -916,7 +917,7 @@ static int cmd_fread(fl_context_t* ctx, const cmd_args_t* args) {
     ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->buf, len);
     if (nread < 0) {
         fl_response(false, "Read failed");
-        return 0;
+        return FL_ERR_IO;
     }
 
     if (nread != len) {
@@ -925,13 +926,13 @@ static int cmd_fread(fl_context_t* ctx, const cmd_args_t* args) {
 
     if (nread == 0) {
         fl_response(true, "FREAD 0 bytes EOF");
-        return 0;
+        return FL_OK;
     }
 
     /* Encode to base64 */
     if (bytes_to_base64(ctx->buf, nread, ctx->b64_buf, FL_B64_BUF_SIZE) < 0) {
         fl_response(false, "Base64 encode failed");
-        return 0;
+        return FL_ERR_ENCODE;
     }
 
     /* Calculate CRC */
@@ -941,39 +942,39 @@ static int cmd_fread(fl_context_t* ctx, const cmd_args_t* args) {
     fl_print("[FLOK] FREAD %d bytes crc=0x%04X data=", (int)nread, (unsigned)crc);
     fl_print_raw(ctx->b64_buf);
     fl_print_raw("\n[FLEND]\n");
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fclose(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fclose(fl_context_t* ctx, const cmd_args_t* args) {
     (void)args;
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (fl_file_close(&ctx->file_ctx) != 0) {
         fl_response(false, "Close failed");
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FCLOSE");
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fcrc(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fcrc(fl_context_t* ctx, const cmd_args_t* args) {
     off_t offset = (off_t)args->addr; /* Start offset (0 = from beginning) */
     off_t size = (off_t)args->len;
     int init_crc = args->crc; /* Previous CRC for chained calculation, -1 = initial */
 
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     /* Seek to specified offset */
     if (fl_file_seek(&ctx->file_ctx, offset, FL_SEEK_SET) < 0) {
         fl_response(false, "Failed to seek to offset %ld", (long)offset);
-        return 0;
+        return FL_ERR_IO;
     }
 
     /* Use provided CRC as initial value for chained calculation */
@@ -990,7 +991,7 @@ static int cmd_fcrc(fl_context_t* ctx, const cmd_args_t* args) {
         ssize_t nread = fl_file_read(&ctx->file_ctx, ctx->buf, to_read);
         if (nread < 0) {
             fl_response(false, "Read failed during CRC calculation");
-            return 0;
+            return FL_ERR_IO;
         }
         if (nread == 0) {
             break; /* EOF */
@@ -1003,58 +1004,58 @@ static int cmd_fcrc(fl_context_t* ctx, const cmd_args_t* args) {
     }
 
     fl_response(true, "FCRC offset=%ld size=%ld crc=0x%04X", (long)offset, (long)total_read, (unsigned)crc);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fseek(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fseek(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fp) {
         fl_response(false, "No file open");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     /* Verify CRC if provided: covers addr(4B) */
     {
         int32_t addr32 = (int32_t)args->addr;
         if (!verify_args_crc(args->crc, calc_crc16(&addr32, sizeof(addr32)))) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
     off_t new_pos = fl_file_seek(&ctx->file_ctx, (off_t)args->addr, FL_SEEK_SET);
     if (new_pos < 0) {
         fl_response(false, "Seek failed");
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FSEEK %ld", (long)new_pos);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fstat(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fstat(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (!args->path) {
         fl_response(false, "Missing path");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers path string */
     if (!verify_args_crc(args->crc, calc_crc16(args->path, strlen(args->path)))) {
-        return 0;
+        return FL_ERR_CRC;
     }
 
     fl_file_stat_t st;
     if (fl_file_stat(&ctx->file_ctx, args->path, &st) != 0) {
         fl_response(false, "Stat failed: %s", args->path);
-        return 0;
+        return FL_ERR_IO;
     }
 
     const char* type_str = (st.type == FL_FILE_TYPE_DIR) ? "dir" : "file";
     fl_response(true, "FSTAT %s size=%u mtime=%u type=%s", args->path, (unsigned)st.size, (unsigned)st.mtime, type_str);
-    return 0;
+    return FL_OK;
 }
 
 /* Callback context for flist count pass */
@@ -1074,23 +1075,23 @@ static int flist_print_cb(const fl_dirent_t* entry, void* user_data) {
         fl_println("  %s %s %u", type_char, entry->name, (unsigned)entry->size);
         c->file_count++;
     }
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_flist(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_flist(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (!args->path) {
         fl_response(false, "Missing path");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers path string */
     if (!verify_args_crc(args->crc, calc_crc16(args->path, strlen(args->path)))) {
-        return 0;
+        return FL_ERR_CRC;
     }
 
     /* First pass: count dirs and files */
@@ -1098,77 +1099,77 @@ static int cmd_flist(fl_context_t* ctx, const cmd_args_t* args) {
     int total = fl_file_list_cb(&ctx->file_ctx, args->path, flist_print_cb, &count_ctx);
     if (total < 0) {
         fl_response(false, "List failed: %s", args->path);
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FLIST dir=%d file=%d", count_ctx.dir_count, count_ctx.file_count);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fremove(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fremove(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (!args->path) {
         fl_response(false, "Missing path");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers path string */
     if (!verify_args_crc(args->crc, calc_crc16(args->path, strlen(args->path)))) {
-        return 0;
+        return FL_ERR_CRC;
     }
 
     if (fl_file_remove(&ctx->file_ctx, args->path) != 0) {
         fl_response(false, "Remove failed: %s", args->path);
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FREMOVE %s", args->path);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_fmkdir(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_fmkdir(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (!args->path) {
         fl_response(false, "Missing path");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers path string */
     if (!verify_args_crc(args->crc, calc_crc16(args->path, strlen(args->path)))) {
-        return 0;
+        return FL_ERR_CRC;
     }
 
     if (fl_file_mkdir(&ctx->file_ctx, args->path) != 0) {
         fl_response(false, "Mkdir failed: %s", args->path);
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FMKDIR %s", args->path);
-    return 0;
+    return FL_OK;
 }
 
-static int cmd_frename(fl_context_t* ctx, const cmd_args_t* args) {
+static fl_error_t cmd_frename(fl_context_t* ctx, const cmd_args_t* args) {
     if (!ctx->file_ctx.fs) {
         fl_response(false, "File context not initialized");
-        return 0;
+        return FL_ERR_STATE;
     }
 
     if (!args->path) {
         fl_response(false, "Missing path");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     if (!args->newpath) {
         fl_response(false, "Missing newpath");
-        return 0;
+        return FL_ERR_ARGS;
     }
 
     /* Verify CRC if provided: covers path + newpath strings */
@@ -1177,17 +1178,17 @@ static int cmd_frename(fl_context_t* ctx, const cmd_args_t* args) {
         calc = calc_crc16_base(calc, args->path, strlen(args->path));
         calc = calc_crc16_base(calc, args->newpath, strlen(args->newpath));
         if (!verify_args_crc(args->crc, calc)) {
-            return 0;
+            return FL_ERR_CRC;
         }
     }
 
     if (fl_file_rename(&ctx->file_ctx, args->path, args->newpath) != 0) {
         fl_response(false, "Rename failed: %s -> %s", args->path, args->newpath);
-        return 0;
+        return FL_ERR_IO;
     }
 
     fl_response(true, "FRENAME %s -> %s", args->path, args->newpath);
-    return 0;
+    return FL_OK;
 }
 
 #endif /* FL_USE_FILE */
