@@ -84,6 +84,7 @@ build_config() {
     local no_asm="$4"
     local config_name="$5"
     local no_debugmon="${6:-OFF}"
+    local no_fpb="${7:-OFF}"
 
     local build_subdir="$BUILD_DIR/$config_name"
 
@@ -99,6 +100,7 @@ build_config() {
         -DFPB_NO_TRAMPOLINE="$no_trampoline"
         -DFPB_TRAMPOLINE_NO_ASM="$no_asm"
         -DFPB_NO_DEBUGMON="$no_debugmon"
+        -DFL_NO_FPB="$no_fpb"
     )
 
     # Add alloc mode for func_loader
@@ -314,15 +316,7 @@ run_tests() {
 
     local start_time=$(date +%s)
 
-    local build_subdir="$BUILD_DIR/$config_name"
-    mkdir -p "$build_subdir"
-
-    if cmake -B "$build_subdir" -S "$PROJECT_ROOT" \
-        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
-        -DAPP_SELECT=3 -DFL_ALLOC_MODE=STATIC -DFL_NO_FPB=ON \
-        >"$build_subdir/cmake.log" 2>&1 && \
-       cmake --build "$build_subdir" --parallel >"$build_subdir/build.log" 2>&1 && \
-       [ -f "$build_subdir/FPBInject.elf" ]; then
+    if build_config "3" "STATIC" "OFF" "OFF" "$config_name" "OFF" "ON"; then
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
 
