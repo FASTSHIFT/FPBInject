@@ -42,11 +42,9 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         success, stat = self.ft.fstat("/path/my file.txt")
         self.assertTrue(success)
         self.assertEqual(stat["size"], 1024)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            'fl -c fstat --path "/path/my file.txt"',
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn('--path "/path/my file.txt"', call_args)
+        self.assertIn("-r 0x", call_args)
 
     def test_flist_with_spaces(self):
         """Test flist with directory name containing spaces."""
@@ -57,11 +55,9 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         success, entries = self.ft.flist("/path/my dir")
         self.assertTrue(success)
         self.assertEqual(len(entries), 2)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            'fl -c flist --path "/path/my dir"',
-            timeout=5.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn('--path "/path/my dir"', call_args)
+        self.assertIn("-r 0x", call_args)
 
     def test_fremove_with_spaces(self):
         """Test fremove with filename containing spaces."""
@@ -75,11 +71,9 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         """Test fmkdir with directory name containing spaces."""
         success, msg = self.ft.fmkdir("/path/my new dir")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            'fl -c fmkdir --path "/path/my new dir"',
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn('--path "/path/my new dir"', call_args)
+        self.assertIn("-r 0x", call_args)
 
     def test_frename_with_spaces(self):
         """Test frename with filenames containing spaces."""
@@ -155,11 +149,9 @@ class TestFileTransferSingleCharPath(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FLIST dir=0 file=0")
         success, entries = self.ft.flist("/")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            "fl -c flist --path /",
-            timeout=5.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("--path /", call_args)
+        self.assertNotIn('"/"', call_args)
 
     def test_fstat_single_char_path_no_quotes(self):
         """Test fstat with single-char path does not add quotes."""
@@ -169,11 +161,9 @@ class TestFileTransferSingleCharPath(unittest.TestCase):
         )
         success, stat = self.ft.fstat("/")
         self.assertTrue(success)
-        self.mock_fpb.send_fl_cmd.assert_called_with(
-            "fl -c fstat --path /",
-            timeout=2.0,
-            max_retries=3,
-        )
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("--path /", call_args)
+        self.assertNotIn('"/"', call_args)
 
     def test_fopen_single_char_path_no_quotes(self):
         """Test fopen with single-char path does not add quotes."""

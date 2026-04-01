@@ -723,7 +723,8 @@ class FPBProtocol:
             if all:
                 cmd = "-c unpatch --all"
             else:
-                cmd = f"-c unpatch --comp {comp}"
+                crc = crc16_update(0xFFFF, struct.pack("<I", comp))
+                cmd = f"-c unpatch --comp {comp} -r 0x{crc:04X}"
             resp = self.send_cmd(cmd)
             result = self.parse_response(resp)
             return result.get("ok", False), result.get("msg", "")
@@ -739,7 +740,8 @@ class FPBProtocol:
             if all:
                 cmd = f"-c enable --enable {enable_val} --all"
             else:
-                cmd = f"-c enable --comp {comp} --enable {enable_val}"
+                crc = crc16_update(0xFFFF, struct.pack("<II", comp, enable_val))
+                cmd = f"-c enable --comp {comp} --enable {enable_val} -r 0x{crc:04X}"
             resp = self.send_cmd(cmd)
             result = self.parse_response(resp)
             return result.get("ok", False), result.get("msg", "")

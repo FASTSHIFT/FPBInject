@@ -712,6 +712,18 @@ static int cmd_dpatch(fl_context_t* ctx, const cmd_args_t* args) {
 static int cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
     uint32_t comp = (uint32_t)args->comp;
     bool all = args->all;
+
+    /* Verify CRC if provided: covers comp(4B) */
+    if (args->crc >= 0) {
+        uint32_t comp32 = comp;
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, &comp32, sizeof(comp32));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
+    }
+
     uint32_t num_comps = fpb_get_state()->num_code_comp;
     uint32_t start = all ? 0 : comp;
     uint32_t end = all ? num_comps : comp + 1;
@@ -759,6 +771,19 @@ static int cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
     if (args->enable < 0) {
         fl_response(false, "Missing --enable (0 or 1)");
         return -1;
+    }
+
+    /* Verify CRC if provided: covers comp(4B) + enable(4B) */
+    if (args->crc >= 0) {
+        uint32_t comp32 = (uint32_t)args->comp;
+        uint32_t enable32 = (uint32_t)args->enable;
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, &comp32, sizeof(comp32));
+        calc = calc_crc16_base(calc, &enable32, sizeof(enable32));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
     }
 
     (void)ctx;
@@ -987,6 +1012,17 @@ static int cmd_fseek(fl_context_t* ctx, const cmd_args_t* args) {
         return 0;
     }
 
+    /* Verify CRC if provided: covers addr(4B) */
+    if (args->crc >= 0) {
+        int32_t addr32 = (int32_t)args->addr;
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, &addr32, sizeof(addr32));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
+    }
+
     off_t new_pos = fl_file_seek(&ctx->file_ctx, (off_t)args->addr, FL_SEEK_SET);
     if (new_pos < 0) {
         fl_response(false, "Seek failed");
@@ -1006,6 +1042,16 @@ static int cmd_fstat(fl_context_t* ctx, const cmd_args_t* args) {
     if (!args->path) {
         fl_response(false, "Missing path");
         return 0;
+    }
+
+    /* Verify CRC if provided: covers path string */
+    if (args->crc >= 0) {
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, args->path, strlen(args->path));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
     }
 
     fl_file_stat_t st;
@@ -1048,6 +1094,16 @@ static int cmd_flist(fl_context_t* ctx, const cmd_args_t* args) {
     if (!args->path) {
         fl_response(false, "Missing path");
         return 0;
+    }
+
+    /* Verify CRC if provided: covers path string */
+    if (args->crc >= 0) {
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, args->path, strlen(args->path));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
     }
 
     /* First pass: count dirs and files */
@@ -1101,6 +1157,16 @@ static int cmd_fmkdir(fl_context_t* ctx, const cmd_args_t* args) {
     if (!args->path) {
         fl_response(false, "Missing path");
         return 0;
+    }
+
+    /* Verify CRC if provided: covers path string */
+    if (args->crc >= 0) {
+        uint16_t calc = 0xFFFF;
+        calc = calc_crc16_base(calc, args->path, strlen(args->path));
+        if (calc != (uint16_t)args->crc) {
+            fl_response(false, "CRC mismatch: 0x%04X != 0x%04X", (unsigned)args->crc, (unsigned)calc);
+            return 0;
+        }
     }
 
     if (fl_file_mkdir(&ctx->file_ctx, args->path) != 0) {

@@ -1830,6 +1830,227 @@ void test_loader_cmd_fcrc_offset_response_format(void) {
     unlink(test_file);
 }
 
+void test_loader_cmd_fseek_with_crc(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fseek_crc_%d.txt", getpid());
+
+    /* Create and open a file */
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "HelloWorld");
+        fclose(f);
+    }
+
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    /* Seek with valid CRC: CRC of addr(4B) = 5 */
+    uint32_t addr32 = 5;
+    uint16_t crc = test_crc16(&addr32, sizeof(addr32));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    const char* argv[] = {"fl", "--cmd", "fseek", "--addr", "5", "--crc", crc_str};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("FSEEK"));
+
+    /* Close and cleanup */
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+    unlink(test_file);
+}
+
+void test_loader_cmd_fseek_crc_mismatch(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fseek_crc_bad_%d.txt", getpid());
+
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "HelloWorld");
+        fclose(f);
+    }
+
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "fseek", "--addr", "5", "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+    unlink(test_file);
+}
+
+void test_loader_cmd_fstat_with_crc(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fstat_crc_%d.txt", getpid());
+
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "test");
+        fclose(f);
+    }
+
+    uint16_t crc = test_crc16(test_file, strlen(test_file));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "fstat", "--path", test_file, "--crc", crc_str};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+    TEST_ASSERT(mock_output_contains("FSTAT"));
+
+    unlink(test_file);
+}
+
+void test_loader_cmd_fstat_crc_mismatch(void) {
+    setup_loader_with_file();
+
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fstat_crc_bad_%d.txt", getpid());
+
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "test");
+        fclose(f);
+    }
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "fstat", "--path", test_file, "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+
+    unlink(test_file);
+}
+
+void test_loader_cmd_fmkdir_with_crc(void) {
+    setup_loader_with_file();
+
+    char test_dir[256];
+    snprintf(test_dir, sizeof(test_dir), "/tmp/fl_test_mkdir_crc_%d", getpid());
+
+    /* Pre-cleanup in case of previous failed run */
+    rmdir(test_dir);
+
+    uint16_t crc = test_crc16(test_dir, strlen(test_dir));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "fmkdir", "--path", test_dir, "--crc", crc_str};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    /* libc backend may not support mkdir, so accept either result.
+     * Key point: CRC passed, command was attempted (not rejected by CRC check). */
+    TEST_ASSERT(mock_output_contains("FLERR") || mock_output_contains("FLOK"));
+    /* Must NOT contain CRC mismatch — that would mean CRC check failed */
+    TEST_ASSERT(!mock_output_contains("CRC mismatch"));
+
+    rmdir(test_dir);
+}
+
+void test_loader_cmd_fmkdir_crc_mismatch(void) {
+    setup_loader_with_file();
+
+    char test_dir[256];
+    snprintf(test_dir, sizeof(test_dir), "/tmp/fl_test_mkdir_crc_bad_%d", getpid());
+
+    const char* argv[] = {"fl", "--cmd", "fmkdir", "--path", test_dir, "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+
+    /* Directory must NOT have been created */
+    TEST_ASSERT(access(test_dir, F_OK) != 0);
+}
+
+void test_loader_cmd_unpatch_with_crc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* CRC of comp=0: CRC16 of uint32_t(0) */
+    uint32_t comp32 = 0;
+    uint16_t crc = test_crc16(&comp32, sizeof(comp32));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "unpatch", "--comp", "0", "--crc", crc_str};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+}
+
+void test_loader_cmd_unpatch_crc_mismatch(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "unpatch", "--comp", "0", "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+}
+
+void test_loader_cmd_enable_with_crc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* CRC of comp=0 + enable=1 */
+    uint32_t comp32 = 0;
+    uint32_t enable32 = 1;
+    uint16_t crc = test_crc16_update(0xFFFF, &comp32, sizeof(comp32));
+    crc = test_crc16_update(crc, &enable32, sizeof(enable32));
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", crc);
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "enable", "--comp", "0", "--enable", "1", "--crc", crc_str};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    TEST_ASSERT(mock_output_contains("FLOK"));
+}
+
+void test_loader_cmd_enable_crc_mismatch(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+
+    mock_output_reset();
+
+    const char* argv[] = {"fl", "--cmd", "enable", "--comp", "0", "--enable", "1", "--crc", "0xDEAD"};
+    fl_exec_cmd(&test_ctx, 9, argv);
+
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+}
+
 /* ============================================================================
  * Test Runner
  * ============================================================================ */
@@ -1974,5 +2195,15 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_frename_crc_mismatch);
     RUN_TEST(test_loader_cmd_fcrc_chunked);
     RUN_TEST(test_loader_cmd_fcrc_offset_response_format);
+    RUN_TEST(test_loader_cmd_fseek_with_crc);
+    RUN_TEST(test_loader_cmd_fseek_crc_mismatch);
+    RUN_TEST(test_loader_cmd_fstat_with_crc);
+    RUN_TEST(test_loader_cmd_fstat_crc_mismatch);
+    RUN_TEST(test_loader_cmd_fmkdir_with_crc);
+    RUN_TEST(test_loader_cmd_fmkdir_crc_mismatch);
+    RUN_TEST(test_loader_cmd_unpatch_with_crc);
+    RUN_TEST(test_loader_cmd_unpatch_crc_mismatch);
+    RUN_TEST(test_loader_cmd_enable_with_crc);
+    RUN_TEST(test_loader_cmd_enable_crc_mismatch);
     TEST_SUITE_END();
 }

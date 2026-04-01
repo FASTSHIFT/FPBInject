@@ -13,6 +13,7 @@ via serial port using the func_loader file transfer protocol.
 import base64
 import logging
 import re
+import struct
 from typing import Callable, Optional, Tuple, List, Dict, Any
 
 from utils.crc import crc16, crc16_update
@@ -391,7 +392,8 @@ class FileTransfer:
         Returns:
             Tuple of (success, message)
         """
-        cmd = f"fl -c fseek -a {offset}"
+        crc = crc16_update(0xFFFF, struct.pack("<i", offset))
+        cmd = f"fl -c fseek -a {offset} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
     def fstat(self, path: str) -> Tuple[bool, Dict[str, Any]]:
@@ -406,7 +408,8 @@ class FileTransfer:
             stat_dict contains: size, mtime, type
         """
         path = _sanitize_path(path)
-        cmd = f"fl -c fstat --path {_format_path_arg(path)}"
+        crc = crc16_update(0xFFFF, path.encode("utf-8"))
+        cmd = f"fl -c fstat --path {_format_path_arg(path)} -r 0x{crc:04X}"
         success, response = self._send_cmd(cmd)
 
         if not success:
@@ -438,7 +441,8 @@ class FileTransfer:
             Each entry contains: name, type, size
         """
         path = _sanitize_path(path)
-        cmd = f"fl -c flist --path {_format_path_arg(path)}"
+        crc = crc16_update(0xFFFF, path.encode("utf-8"))
+        cmd = f"fl -c flist --path {_format_path_arg(path)} -r 0x{crc:04X}"
         success, response = self._send_cmd(cmd, timeout=5.0)
 
         if not success:
@@ -494,7 +498,8 @@ class FileTransfer:
             Tuple of (success, message)
         """
         path = _sanitize_path(path)
-        cmd = f"fl -c fmkdir --path {_format_path_arg(path)}"
+        crc = crc16_update(0xFFFF, path.encode("utf-8"))
+        cmd = f"fl -c fmkdir --path {_format_path_arg(path)} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
     def frename(self, old_path: str, new_path: str) -> Tuple[bool, str]:

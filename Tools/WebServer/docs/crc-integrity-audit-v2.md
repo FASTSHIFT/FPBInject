@@ -313,15 +313,15 @@ if (args->crc >= 0) {
 | `frename` | ❌ **缺失** | — | 🔧 增加 path + newpath CRC |
 | `fclose` | N/A | 无参数 | 无需改动 |
 | `fcrc` | N/A | 无需 CRC | 🔧 增加分块支持 |
-| `fseek` | ⚠️ 低风险 | — | 可选（seek 错误可被后续 CRC 检测） |
-| `fstat` | ⚠️ 低风险 | — | 可选（只读操作） |
-| `flist` | ⚠️ 低风险 | — | 可选（只读操作） |
-| `fmkdir` | ⚠️ 低风险 | — | 可选（创建目录影响较小） |
+| `fseek` | ✅ 已有 | addr(4B) | 🔧 本次新增 |
+| `fstat` | ✅ 已有 | path | 🔧 本次新增 |
+| `flist` | ✅ 已有 | path | 🔧 本次新增 |
+| `fmkdir` | ✅ 已有 | path | 🔧 本次新增 |
 | `ping` | N/A | 无参数 | 无需改动 |
 | `echo` | N/A | 测试命令 | 无需改动 |
 | `info` | N/A | 无参数 | 无需改动 |
-| `unpatch` | ⚠️ 低风险 | — | 可选（可重新 patch 恢复） |
-| `enable` | ⚠️ 低风险 | — | 可选（可重新 enable 恢复） |
+| `unpatch` | ✅ 已有 | comp(4B) | 🔧 本次新增 |
+| `enable` | ✅ 已有 | comp(4B) + enable(4B) | 🔧 本次新增 |
 
 ---
 

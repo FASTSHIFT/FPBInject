@@ -583,6 +583,69 @@ class TestEnhancedCRC(unittest.TestCase):
         expected = crc16_update(0xFFFF, struct.pack("<I", size))
         self.assertEqual(sent_crc, expected)
 
+    def test_unpatch_cmd_includes_crc(self):
+        """unpatch (single slot) must send -r covering comp(4B)."""
+        import re
+        import struct
+        from utils.crc import crc16_update
+
+        self.protocol.send_cmd = MagicMock(return_value="[FLOK] Cleared slot 2")
+
+        comp = 2
+        self.protocol.unpatch(comp=comp)
+
+        cmd_str = self.protocol.send_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", cmd_str)
+        self.assertIsNotNone(m, "unpatch command must include -r")
+        sent_crc = int(m.group(1), 16)
+
+        expected = crc16_update(0xFFFF, struct.pack("<I", comp))
+        self.assertEqual(sent_crc, expected)
+
+    def test_unpatch_all_no_crc(self):
+        """unpatch --all should not include CRC (no comp to protect)."""
+        import re
+
+        self.protocol.send_cmd = MagicMock(return_value="[FLOK] Cleared all")
+
+        self.protocol.unpatch(all=True)
+
+        cmd_str = self.protocol.send_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", cmd_str)
+        self.assertIsNone(m, "unpatch --all should not include -r")
+
+    def test_enable_cmd_includes_crc(self):
+        """enable (single slot) must send -r covering comp(4B) + enable(4B)."""
+        import re
+        import struct
+        from utils.crc import crc16_update
+
+        self.protocol.send_cmd = MagicMock(return_value="[FLOK] Enabled patch 1")
+
+        comp, enable = 1, True
+        self.protocol.enable_patch(comp=comp, enable=enable)
+
+        cmd_str = self.protocol.send_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", cmd_str)
+        self.assertIsNotNone(m, "enable command must include -r")
+        sent_crc = int(m.group(1), 16)
+
+        enable_val = 1 if enable else 0
+        expected = crc16_update(0xFFFF, struct.pack("<II", comp, enable_val))
+        self.assertEqual(sent_crc, expected)
+
+    def test_enable_all_no_crc(self):
+        """enable --all should not include CRC."""
+        import re
+
+        self.protocol.send_cmd = MagicMock(return_value="[FLOK] Enabled all")
+
+        self.protocol.enable_patch(all=True)
+
+        cmd_str = self.protocol.send_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", cmd_str)
+        self.assertIsNone(m, "enable --all should not include -r")
+
 
 class TestEnablePatch(unittest.TestCase):
     """Tests for enable_patch method."""
@@ -599,14 +662,20 @@ class TestEnablePatch(unittest.TestCase):
         self.protocol.parse_response.return_value = {"ok": True, "msg": "Enabled 0"}
         ok, msg = self.protocol.enable_patch(comp=0, enable=True)
         self.assertTrue(ok)
-        self.protocol.send_cmd.assert_called_once_with("-c enable --comp 0 --enable 1")
+        call_args = self.protocol.send_cmd.call_args[0][0]
+        self.assertIn("-c enable", call_args)
+        self.assertIn("--comp 0", call_args)
+        self.assertIn("--enable 1", call_args)
 
     def test_disable_single_patch(self):
         """enable_patch disables a single comparator."""
         self.protocol.parse_response.return_value = {"ok": True, "msg": "Disabled 0"}
         ok, msg = self.protocol.enable_patch(comp=2, enable=False)
         self.assertTrue(ok)
-        self.protocol.send_cmd.assert_called_once_with("-c enable --comp 2 --enable 0")
+        call_args = self.protocol.send_cmd.call_args[0][0]
+        self.assertIn("-c enable", call_args)
+        self.assertIn("--comp 2", call_args)
+        self.assertIn("--enable 0", call_args)
 
     def test_enable_all_patches(self):
         """enable_patch enables all comparators with --all flag."""
@@ -641,7 +710,11 @@ class TestEnablePatch(unittest.TestCase):
         self.protocol.parse_response.return_value = {"ok": True, "msg": "Enabled 0"}
         ok, msg = self.protocol.enable_patch()
         self.assertTrue(ok)
-        self.protocol.send_cmd.assert_called_once_with("-c enable --comp 0 --enable 1")
+        call_args = self.protocol.send_cmd.call_args[0][0]
+        self.assertIn("-c enable", call_args)
+        self.assertIn("--comp 0", call_args)
+        self.assertIn("--enable 1", call_args)
+        self.assertIn("-r 0x", call_args)
 
 
 class TestFPBProtocolInfo(unittest.TestCase):

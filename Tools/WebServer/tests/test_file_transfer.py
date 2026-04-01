@@ -1781,3 +1781,66 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
         self.assertTrue(len(fclose_indices) >= 2)
         self.assertTrue(len(fcrc_indices) >= 1)
         self.assertLess(fclose_indices[0], fcrc_indices[0])
+
+    def test_fseek_sends_crc(self):
+        """fseek must send CRC covering addr(4B)."""
+        import re
+        import struct
+        from utils.crc import crc16_update
+
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FSEEK 100")
+        self.ft.fseek(100)
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", call_args)
+        self.assertIsNotNone(m)
+        sent_crc = int(m.group(1), 16)
+        expected = crc16_update(0xFFFF, struct.pack("<i", 100))
+        self.assertEqual(sent_crc, expected)
+
+    def test_fstat_sends_crc(self):
+        """fstat must send CRC covering path."""
+        import re
+        from utils.crc import crc16_update
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FSTAT /test.txt size=100 mtime=0 type=file",
+        )
+        self.ft.fstat("/test.txt")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", call_args)
+        self.assertIsNotNone(m)
+        sent_crc = int(m.group(1), 16)
+        expected = crc16_update(0xFFFF, b"/test.txt")
+        self.assertEqual(sent_crc, expected)
+
+    def test_flist_sends_crc(self):
+        """flist must send CRC covering path."""
+        import re
+        from utils.crc import crc16_update
+
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FLIST dir=0 file=0",
+        )
+        self.ft.flist("/data")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", call_args)
+        self.assertIsNotNone(m)
+        sent_crc = int(m.group(1), 16)
+        expected = crc16_update(0xFFFF, b"/data")
+        self.assertEqual(sent_crc, expected)
+
+    def test_fmkdir_sends_crc(self):
+        """fmkdir must send CRC covering path."""
+        import re
+        from utils.crc import crc16_update
+
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FMKDIR /newdir")
+        self.ft.fmkdir("/newdir")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        m = re.search(r"-r 0x([0-9A-Fa-f]+)", call_args)
+        self.assertIsNotNone(m)
+        sent_crc = int(m.group(1), 16)
+        expected = crc16_update(0xFFFF, b"/newdir")
+        self.assertEqual(sent_crc, expected)
