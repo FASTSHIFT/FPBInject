@@ -19,6 +19,7 @@ from core.elf_utils import get_memory_regions
 from core.gdb_bridge import GDBRSPBridge
 from core.gdb_session import GDBSession
 from core.state import ToolLogHandler
+from utils.net import check_and_free_port
 
 logger = logging.getLogger(__name__)
 
@@ -166,11 +167,6 @@ def _apply_elf_memory_regions(bridge, elf_path):
         )
 
 
-# ------------------------------------------------------------------
-# External GDB Server (for CLI / IDE connections)
-# ------------------------------------------------------------------
-
-
 def start_external_gdb_server(state, read_memory_fn=None, write_memory_fn=None) -> bool:
     """Start an external-facing GDB RSP Bridge for CLI/IDE connections.
 
@@ -211,6 +207,10 @@ def start_external_gdb_server(state, read_memory_fn=None, write_memory_fn=None) 
         logger.info("[ExtGDB] Using provided memory callbacks (may be offline stubs)")
 
     try:
+        if not check_and_free_port(port):
+            logger.error(f"Cannot start external GDB server: port {port} is occupied")
+            return False
+
         bridge = GDBRSPBridge(
             read_memory_fn=read_memory_fn,
             write_memory_fn=write_memory_fn,

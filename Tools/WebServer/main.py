@@ -37,6 +37,8 @@ from core.state import state
 from fpb_inject import serial_open
 from services.device_worker import start_worker
 from services.file_watcher_manager import restore_file_watcher
+from utils.net import is_port_available as check_port_available
+from utils.net import get_port_owner
 from utils.port_lock import PortLock
 
 # Get the directory where this script is located
@@ -166,87 +168,6 @@ def create_app(auth_token=None):
 
     register_routes(app)
     return app
-
-
-def check_port_available(host, port):
-    """Check if the port is available."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(1)
-    try:
-        result = sock.connect_ex(("127.0.0.1", port))
-        if result == 0:
-            return False
-        return True
-    except Exception:
-        return True
-    finally:
-        sock.close()
-
-
-def get_port_owner(port):
-    """Get info about the process occupying a port.
-
-    Returns dict with pid, name, cmdline, or None if not found.
-    Uses /proc on Linux, lsof as fallback.
-    """
-    # Try /proc/net/tcp + /proc/<pid>/cmdline (no external tools needed)
-    try:
-        hex_port = f"{port:04X}"
-        with open("/proc/net/tcp", "r") as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) < 10:
-                    continue
-                local = parts[1]
-                if local.endswith(f":{hex_port}") and parts[3] == "0A":  # LISTEN
-                    inode = parts[9]
-                    # Find PID by scanning /proc/*/fd/
-                    for entry in os.listdir("/proc"):
-                        if not entry.isdigit():
-                            continue
-                        fd_dir = f"/proc/{entry}/fd"
-                        try:
-                            for fd in os.listdir(fd_dir):
-                                link = os.readlink(f"{fd_dir}/{fd}")
-                                if f"socket:[{inode}]" in link:
-                                    pid = int(entry)
-                                    cmdline = open(f"/proc/{pid}/cmdline", "r").read()
-                                    cmdline = cmdline.replace("\x00", " ").strip()
-                                    comm = open(f"/proc/{pid}/comm", "r").read().strip()
-                                    return {
-                                        "pid": pid,
-                                        "name": comm,
-                                        "cmdline": cmdline,
-                                    }
-                        except (PermissionError, FileNotFoundError, OSError):
-                            continue
-    except Exception:
-        pass
-
-    # Fallback: try lsof
-    try:
-        import subprocess
-
-        out = subprocess.check_output(
-            ["lsof", "-ti", f":{port}"], stderr=subprocess.DEVNULL, timeout=3
-        ).decode()
-        for line in out.strip().split("\n"):
-            pid = int(line.strip())
-            try:
-                cmdline = (
-                    open(f"/proc/{pid}/cmdline", "r")
-                    .read()
-                    .replace("\x00", " ")
-                    .strip()
-                )
-                comm = open(f"/proc/{pid}/comm", "r").read().strip()
-                return {"pid": pid, "name": comm, "cmdline": cmdline}
-            except Exception:
-                return {"pid": pid, "name": "unknown", "cmdline": "unknown"}
-    except Exception:
-        pass
-
-    return None
 
 
 def parse_args():
