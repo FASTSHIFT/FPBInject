@@ -84,13 +84,13 @@ static int parse_line(char* line, const char** argv, int max_argc) {
     return argc;
 }
 
-int fl_stream_exec_line(fl_stream_t* s, char* line) {
+fl_error_t fl_stream_exec_line(fl_stream_t* s, char* line) {
     static const char* argv[FL_MAX_ARGC];
     int argc = parse_line(line, argv, FL_MAX_ARGC);
     if (argc > 0) {
         return fl_exec_cmd(s->ctx, argc, argv);
     }
-    return 0;
+    return FL_OK;
 }
 
 void fl_stream_process(fl_stream_t* s) {

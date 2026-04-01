@@ -22,60 +22,30 @@
  */
 
 /**
- * @file   fl_stream.h
- * @brief  Serial stream processing for func_loader
+ * @file   fl_error.h
+ * @brief  Error codes for func_loader
  */
 
-#ifndef FL_STREAM_H
-#define FL_STREAM_H
+#ifndef FL_ERROR_H
+#define FL_ERROR_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stdint.h>
-#include <stddef.h>
-#include "fl_error.h"
-
-/* Serial callbacks */
-typedef int (*fl_serial_read_cb_t)(uint8_t* buf, size_t len);
-typedef int (*fl_serial_write_cb_t)(const uint8_t* buf, size_t len);
-typedef int (*fl_serial_available_cb_t)(void);
-
-typedef struct {
-    fl_serial_read_cb_t read_cb;
-    fl_serial_write_cb_t write_cb;
-    fl_serial_available_cb_t available_cb;
-} fl_serial_t;
-
-struct fl_context_s;
-
-typedef struct {
-    struct fl_context_s* ctx;
-    const fl_serial_t* serial;
-    char* line_buf;
-    size_t line_size;
-    size_t line_pos;
-} fl_stream_t;
-
 /**
- * @brief Initialize stream processor
+ * @brief Error codes for fl_exec_cmd and command handlers
  */
-void fl_stream_init(fl_stream_t* s, struct fl_context_s* ctx, const fl_serial_t* serial, char* line_buf,
-                    size_t line_size);
-
-/**
- * @brief Process incoming serial data
- */
-void fl_stream_process(fl_stream_t* s);
-
-/**
- * @brief Parse line and execute
- */
-fl_error_t fl_stream_exec_line(fl_stream_t* s, char* line);
+typedef enum {
+    FL_OK = 0,           /* Command executed (success or handled error) */
+    FL_ERR_ARGS = -1,    /* Missing or invalid required arguments */
+    FL_ERR_CRC = -2,     /* CRC verification failed */
+    FL_ERR_PARSE = -3,   /* Argument parsing failed */
+    FL_ERR_UNKNOWN = -4, /* Unknown command */
+} fl_error_t;
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* FL_STREAM_H */
+#endif /* FL_ERROR_H */

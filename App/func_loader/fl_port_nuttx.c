@@ -188,8 +188,8 @@ static int interactive_mode(fl_context_t* ctx, int argc_first, char** argv_first
 
         int argc = parse_line(line, argv, sizeof(argv) / sizeof(argv[0]));
         if (argc > 0) {
-            const int ret = fl_exec_cmd(ctx, argc, argv);
-            if (ret != 0) {
+            const fl_error_t ret = fl_exec_cmd(ctx, argc, argv);
+            if (ret != FL_OK) {
                 printf("Type 'q' to exit\n\n");
             }
         }

@@ -80,55 +80,55 @@ void test_stream_init_null_serial(void) {
 void test_stream_exec_empty_line(void) {
     setup_stream();
     char line[] = "";
-    int result = fl_stream_exec_line(&test_stream, line);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
     /* Empty line should be OK */
-    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT_EQUAL(FL_OK, result);
 }
 
 void test_stream_exec_whitespace_line(void) {
     setup_stream();
     char line[] = "   \t  ";
-    int result = fl_stream_exec_line(&test_stream, line);
-    TEST_ASSERT_EQUAL(0, result);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
+    TEST_ASSERT_EQUAL(FL_OK, result);
 }
 
 void test_stream_exec_help(void) {
     setup_stream();
     char line[] = "--help";
-    int result = fl_stream_exec_line(&test_stream, line);
-    /* --help prints usage but requires --cmd, so returns -1 */
-    TEST_ASSERT_EQUAL(-1, result);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
+    /* --help prints usage but requires --cmd, so returns error */
+    TEST_ASSERT(result != FL_OK);
 }
 
 void test_stream_exec_info(void) {
     setup_stream();
     /* Need program name as first arg since argparse skips argv[0] */
     char line[] = "fl --cmd info";
-    int result = fl_stream_exec_line(&test_stream, line);
-    TEST_ASSERT_EQUAL(0, result);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
+    TEST_ASSERT_EQUAL(FL_OK, result);
 }
 
 void test_stream_exec_with_args(void) {
     setup_stream();
     char line[] = "fl --cmd unpatch --comp 0";
-    int result = fl_stream_exec_line(&test_stream, line);
-    TEST_ASSERT_EQUAL(0, result);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
+    TEST_ASSERT_EQUAL(FL_OK, result);
 }
 
 void test_stream_exec_unknown_cmd(void) {
     setup_stream();
     char line[] = "--cmd nonexistent_command";
-    int result = fl_stream_exec_line(&test_stream, line);
-    TEST_ASSERT(result != 0);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
+    TEST_ASSERT(result != FL_OK);
 }
 
 void test_stream_exec_comment(void) {
     setup_stream();
     char line[] = "# this is a comment";
-    int result = fl_stream_exec_line(&test_stream, line);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
     /* Comment starts with #, which argparse doesn't recognize */
     /* It should return error since no --cmd is provided */
-    TEST_ASSERT_EQUAL(-1, result);
+    TEST_ASSERT(result != FL_OK);
 }
 
 /* ============================================================================
@@ -193,8 +193,8 @@ void test_stream_long_line(void) {
 void test_stream_quoted_args(void) {
     setup_stream();
     char line[] = "fl --cmd ping";
-    int result = fl_stream_exec_line(&test_stream, line);
-    TEST_ASSERT_EQUAL(0, result);
+    fl_error_t result = fl_stream_exec_line(&test_stream, line);
+    TEST_ASSERT_EQUAL(FL_OK, result);
 }
 
 void test_stream_output_via_serial(void) {

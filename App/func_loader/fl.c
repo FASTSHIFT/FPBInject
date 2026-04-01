@@ -1240,9 +1240,10 @@ static const cmd_entry_t s_cmd_table[] = {
 
 #define CMD_TABLE_SIZE (sizeof(s_cmd_table) / sizeof(s_cmd_table[0]))
 
-int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
-    if (argc == 0)
-        return -1;
+fl_error_t fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
+    if (argc == 0) {
+        return FL_ERR_ARGS;
+    }
 
     cmd_args_t args = {0};
     args.crc = -1;
@@ -1273,7 +1274,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     fl_argparse_init(&ap, opts, NULL, 0);
     if (fl_argparse_parse(&ap, argc, argv) > 0) {
         fl_response(false, "Invalid arguments");
-        return -1;
+        return FL_ERR_PARSE;
     }
 
     if (!args.cmd) {
@@ -1282,7 +1283,7 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
             fl_println("  %s", s_cmd_table[i].name);
         }
         fl_response(false, "Missing --cmd");
-        return -1;
+        return FL_ERR_ARGS;
     }
 
     /* Lookup command in dispatch table */
@@ -1293,5 +1294,5 @@ int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     }
 
     fl_response(false, "Unknown: %s", args.cmd);
-    return -1;
+    return FL_ERR_UNKNOWN;
 }

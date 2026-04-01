@@ -36,6 +36,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "fl_error.h"
 #include "fl_file.h"
 
 /* Maximum slot count (FPB v1: 6, v2: 8) */
@@ -118,9 +119,9 @@ bool fl_is_inited(fl_context_t* ctx);
 
 /**
  * @brief Execute command from argc/argv
- * @return 0 on success, -1 on error
+ * @return FL_OK on success, negative fl_error_t on error
  */
-int fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv);
+fl_error_t fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv);
 
 #ifdef __cplusplus
 }
