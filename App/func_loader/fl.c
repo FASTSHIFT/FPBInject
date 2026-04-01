@@ -44,9 +44,11 @@
 #include "argparse/argparse.h"
 #endif
 
+#ifndef FL_NO_FPB
 #include "fpb_inject.h"
 #include "fpb_trampoline.h"
 #include "fpb_debugmon.h"
+#endif
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -189,7 +191,9 @@ void fl_init_default(fl_context_t* ctx) {
 }
 
 void fl_init(fl_context_t* ctx) {
+#ifndef FL_NO_FPB
     fpb_init();
+#endif
     fl_log_init(ctx->output_cb, ctx->output_user);
     ctx->is_inited = true;
 }
@@ -337,60 +341,68 @@ static fl_error_t cmd_echoback(fl_context_t* ctx, const cmd_args_t* args) {
 
 static fl_error_t cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
     (void)args;
-    const fpb_state_t* fpb = fpb_get_state();
-    fpb_info_t fpb_info;
-    uint32_t num_comps = fpb->num_code_comp;
-    uint32_t active_count = 0;
-    size_t total_used = 0;
-
-    /* Count active slots and total code size */
-    for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS; i++) {
-        if (ctx->slots[i].active) {
-            active_count++;
-            total_used += ctx->slots[i].code_size;
-        }
-    }
 
     fl_println("FPBInject " FPBINJECT_VERSION_STRING);
     fl_println("Build: " __DATE__ " " __TIME__);
-    fl_println("Used: %u", (unsigned)total_used);
-    fl_println("Slots: %u/%u", (unsigned)active_count, (unsigned)num_comps);
+
+#ifndef FL_NO_FPB
+    {
+        const fpb_state_t* fpb = fpb_get_state();
+        fpb_info_t fpb_info;
+        uint32_t num_comps = fpb->num_code_comp;
+        uint32_t active_count = 0;
+        size_t total_used = 0;
+
+        /* Count active slots and total code size */
+        for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS; i++) {
+            if (ctx->slots[i].active) {
+                active_count++;
+                total_used += ctx->slots[i].code_size;
+            }
+        }
+
+        fl_println("Used: %u", (unsigned)total_used);
+        fl_println("Slots: %u/%u", (unsigned)active_count, (unsigned)num_comps);
+
+        /* Get and print FPB detailed information */
+        if (fpb_get_info(&fpb_info) == FPB_OK) {
+            const char* rev_str = (fpb_info.rev == 0) ? "v1" : (fpb_info.rev == 1) ? "v2" : "unknown";
+            fl_println("FPB: %s, %u code + %u lit = %u total, %s", rev_str, fpb_info.num_code_comp,
+                       fpb_info.num_lit_comp, fpb_info.total_comp, fpb_info.enabled ? "enabled" : "disabled");
+
+            fl_println("FP_REMAP: 0x%08lX, base=0x%08lX, remap %s", (unsigned long)fpb_info.remap_raw,
+                       (unsigned long)fpb_info.remap_base, fpb_info.remap_supported ? "supported" : "not supported");
+
+            static const char* replace_mode_str[] = {"remap", "bp_lo", "bp_hi", "bp_both"};
+            for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS && i < FPB_MAX_CODE_COMP; i++) {
+                fl_slot_state_t* slot = &ctx->slots[i];
+                fpb_comp_info_t* comp = &fpb_info.comp[i];
+                const char* mode_str = (comp->replace < 4) ? replace_mode_str[comp->replace] : "?";
+
+                if (slot->active) {
+                    fl_println("Slot[%u]: 0x%08lX -> 0x%08lX, %u bytes (COMP=0x%08lX, %s, %s)", (unsigned)i,
+                               (unsigned long)slot->orig_addr, (unsigned long)slot->target_addr,
+                               (unsigned)slot->code_size, (unsigned long)comp->comp_raw, mode_str,
+                               comp->enabled ? "on" : "off");
+                } else {
+                    fl_println("Slot[%u]: empty (COMP=0x%08lX, %s)", (unsigned)i, (unsigned long)comp->comp_raw,
+                               comp->enabled ? "on" : "off");
+                }
+            }
+        } else {
+            fl_println("FPB: not available");
+        }
+    }
+#else
+    (void)ctx;
+    fl_println("FPB: disabled (FL_NO_FPB)");
+#endif
 
 #if FL_USE_FILE
     fl_println("FileTransfer: %s", ctx->file_ctx.fs ? "enabled" : "disabled");
 #else
     fl_println("FileTransfer: not compiled");
 #endif
-
-    /* Get and print FPB detailed information */
-    if (fpb_get_info(&fpb_info) == FPB_OK) {
-        const char* rev_str = (fpb_info.rev == 0) ? "v1" : (fpb_info.rev == 1) ? "v2" : "unknown";
-        fl_println("FPB: %s, %u code + %u lit = %u total, %s", rev_str, fpb_info.num_code_comp, fpb_info.num_lit_comp,
-                   fpb_info.total_comp, fpb_info.enabled ? "enabled" : "disabled");
-
-        /* Print FP_REMAP info */
-        fl_println("FP_REMAP: 0x%08lX, base=0x%08lX, remap %s", (unsigned long)fpb_info.remap_raw,
-                   (unsigned long)fpb_info.remap_base, fpb_info.remap_supported ? "supported" : "not supported");
-
-        /* Print each comparator status with hardware register info */
-        static const char* replace_mode_str[] = {"remap", "bp_lo", "bp_hi", "bp_both"};
-        for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS && i < FPB_MAX_CODE_COMP; i++) {
-            fl_slot_state_t* slot = &ctx->slots[i];
-            fpb_comp_info_t* comp = &fpb_info.comp[i];
-            const char* mode_str = (comp->replace < 4) ? replace_mode_str[comp->replace] : "?";
-
-            if (slot->active) {
-                fl_println("Slot[%u]: 0x%08lX -> 0x%08lX, %u bytes (COMP=0x%08lX, %s, %s)", (unsigned)i,
-                           (unsigned long)slot->orig_addr, (unsigned long)slot->target_addr, (unsigned)slot->code_size,
-                           (unsigned long)comp->comp_raw, mode_str, comp->enabled ? "on" : "off");
-            } else {
-                fl_println("Slot[%u]: empty (COMP=0x%08lX, %s)", (unsigned)i, (unsigned long)comp->comp_raw,
-                           comp->enabled ? "on" : "off");
-            }
-        }
-    } else {
-        fl_println("FPB: not available");
-    }
 
     fl_response(true, "Info complete");
     return FL_OK;
@@ -588,6 +600,8 @@ static fl_error_t cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
     fl_response(true, "WRITE %d bytes to 0x%lX", n, (unsigned long)args->addr);
     return FL_OK;
 }
+
+#ifndef FL_NO_FPB
 
 /**
  * @brief  Verify CRC for patch commands: covers comp(4B) + orig(4B) + target(4B)
@@ -836,6 +850,26 @@ static fl_error_t cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
     }
     return FL_OK;
 }
+
+#else /* FL_NO_FPB */
+
+#define FL_NO_FPB_CMD(name)                                             \
+    static fl_error_t name(fl_context_t* ctx, const cmd_args_t* args) { \
+        (void)ctx;                                                      \
+        (void)args;                                                     \
+        fl_response(false, "FPB disabled (FL_NO_FPB)");                 \
+        return FL_ERR_DISABLED;                                         \
+    }
+
+FL_NO_FPB_CMD(cmd_patch)
+FL_NO_FPB_CMD(cmd_tpatch)
+FL_NO_FPB_CMD(cmd_dpatch)
+FL_NO_FPB_CMD(cmd_unpatch)
+FL_NO_FPB_CMD(cmd_enable)
+
+#undef FL_NO_FPB_CMD
+
+#endif /* FL_NO_FPB */
 
 __attribute__((noinline)) void fl_hello(void) {
     fl_response(true, "HELLO from original fl_hello(%p) function!", (void*)fl_hello);

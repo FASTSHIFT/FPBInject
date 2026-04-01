@@ -304,6 +304,37 @@ run_tests() {
     done
 
     echo ""
+    echo -e "${YELLOW}Testing FL_NO_FPB configuration (no FPB hardware)...${NC}"
+    echo ""
+
+    local config_name="NO_FPB"
+    local config_desc="FL_NO_FPB=ON"
+
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+
+    local start_time=$(date +%s)
+
+    local build_subdir="$BUILD_DIR/$config_name"
+    mkdir -p "$build_subdir"
+
+    if cmake -B "$build_subdir" -S "$PROJECT_ROOT" \
+        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+        -DAPP_SELECT=3 -DFL_ALLOC_MODE=STATIC -DFL_NO_FPB=ON \
+        >"$build_subdir/cmake.log" 2>&1 && \
+       cmake --build "$build_subdir" --parallel >"$build_subdir/build.log" 2>&1 && \
+       [ -f "$build_subdir/FPBInject.elf" ]; then
+        local end_time=$(date +%s)
+        local elapsed=$((end_time - start_time))
+
+        print_result "$config_desc" "PASS" "$elapsed"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        print_result "$config_desc" "FAIL" ""
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_CONFIGS+=("$config_desc")
+    fi
+
+    echo ""
     echo -e "${YELLOW}Testing NuttX platform (mock API)...${NC}"
     echo ""
 

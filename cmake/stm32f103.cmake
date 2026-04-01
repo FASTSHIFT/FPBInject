@@ -56,6 +56,9 @@ option(FPB_TRAMPOLINE_NO_ASM
 # FPB DebugMonitor option (for ARMv8-M where REMAP is removed)
 option(FPB_NO_DEBUGMON "Disable DebugMonitor-based redirection" OFF)
 
+# Disable FPB entirely (for CPUs without FPB hardware)
+option(FL_NO_FPB "Disable all FPB-dependent commands" OFF)
+
 # Function loader allocation mode: STATIC = Static buffer allocation (default)
 # LIBC   = Use standard libc malloc/free
 set(FL_ALLOC_MODE
@@ -80,6 +83,11 @@ endif()
 # Add DebugMonitor option to compile definitions
 if(FPB_NO_DEBUGMON)
   add_compile_definitions(FPB_NO_DEBUGMON)
+endif()
+
+# Add FL_NO_FPB option
+if(FL_NO_FPB)
+  add_compile_definitions(FL_NO_FPB)
 endif()
 
 # Add allocation mode definition
