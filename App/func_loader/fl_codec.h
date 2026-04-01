@@ -36,6 +36,7 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <sys/types.h>
 
 /**
  * @brief  CRC-16-CCITT incremental calculation
@@ -65,7 +66,7 @@ static inline uint16_t fl_crc16_base_str(uint16_t crc, const char* str) {
  * @param  max Output buffer size
  * @return Number of decoded bytes, or -1 on error
  */
-int fl_base64_decode(const char* b64, uint8_t* out, size_t max);
+ssize_t fl_base64_decode(const char* b64, uint8_t* out, size_t max);
 
 /**
  * @brief  Encode bytes to Base64 string
@@ -75,7 +76,7 @@ int fl_base64_decode(const char* b64, uint8_t* out, size_t max);
  * @param  max  Output buffer size
  * @return Number of Base64 characters written, or -1 on error
  */
-int fl_base64_encode(const uint8_t* data, size_t len, char* out, size_t max);
+ssize_t fl_base64_encode(const uint8_t* data, size_t len, char* out, size_t max);
 
 #ifdef __cplusplus
 }

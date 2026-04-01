@@ -76,7 +76,7 @@ fl_error_t fl_cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
     uint8_t* buf = ctx->buf;
     bool verify = args->crc >= 0;
 
-    int n = fl_base64_decode(args->data, buf, FL_BUF_SIZE);
+    ssize_t n = fl_base64_decode(args->data, buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
         return FL_ERR_ENCODE;
@@ -187,7 +187,7 @@ fl_error_t fl_cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
     uint8_t* buf = ctx->buf;
     bool verify = args->crc >= 0;
 
-    int n = fl_base64_decode(args->data, buf, FL_BUF_SIZE);
+    ssize_t n = fl_base64_decode(args->data, buf, FL_BUF_SIZE);
     if (n < 0) {
         fl_response(false, "Invalid base64 data");
         return FL_ERR_ENCODE;

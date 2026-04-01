@@ -91,8 +91,8 @@ fl_error_t fl_cmd_fwrite(fl_context_t* ctx, const cmd_args_t* args) {
 
     /* Write to file */
     ssize_t written = fl_file_write(&ctx->file_ctx, ctx->buf, n);
-    if (written < 0 || (int)written != n) {
-        fl_response(false, "Write failed, expected %d bytes, actual %d bytes", n, (int)written);
+    if (written < 0 || written != n) {
+        fl_response(false, "Write failed, expected %d bytes, actual %d bytes", (int)n, (int)written);
         return FL_ERR_IO;
     }
 

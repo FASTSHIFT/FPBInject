@@ -75,7 +75,7 @@ static const uint8_t s_b64_dec[128] = {
 static const char s_b64_enc[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 /* clang-format on */
 
-int fl_base64_decode(const char* b64, uint8_t* out, size_t max) {
+ssize_t fl_base64_decode(const char* b64, uint8_t* out, size_t max) {
     if (!b64 || !out) {
         return -1;
     }
@@ -129,10 +129,10 @@ int fl_base64_decode(const char* b64, uint8_t* out, size_t max) {
         i += 4;
     }
 
-    return (int)out_len;
+    return (ssize_t)out_len;
 }
 
-int fl_base64_encode(const uint8_t* data, size_t len, char* out, size_t max) {
+ssize_t fl_base64_encode(const uint8_t* data, size_t len, char* out, size_t max) {
     if (!data || !out || max == 0) {
         return -1;
     }
@@ -155,5 +155,5 @@ int fl_base64_encode(const uint8_t* data, size_t len, char* out, size_t max) {
     }
     out[j] = '\0';
 
-    return (int)j;
+    return (ssize_t)j;
 }
