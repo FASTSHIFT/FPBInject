@@ -77,8 +77,8 @@ int main(void)
 
 #elif APP_SELECT == APP_FUNC_LOADER
     /* Function loader mode */
-    extern void func_loader_run(void);
-    func_loader_run();
+    extern void fl_demo_run(void);
+    fl_demo_run();
 
 #else
 #error "Invalid APP_SELECT value"

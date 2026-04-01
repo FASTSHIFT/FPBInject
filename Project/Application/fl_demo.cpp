@@ -22,8 +22,8 @@
  */
 
 /**
- * @file   func_loader_port_arduino.cpp
- * @brief  Arduino/STM32 porting layer
+ * @file   fl_demo.cpp
+ * @brief  Arduino/STM32 function loader demo application
  *
  * Supports two allocation modes (selected via CMake FL_ALLOC_MODE):
  *   - FL_ALLOC_STATIC: Static buffer allocation (default)
@@ -140,7 +140,7 @@ static void blink_led() {
     last_time = millis();
 }
 
-void func_loader_run(void) {
+void fl_demo_run(void) {
     pinMode(LED_PIN, OUTPUT);
 
     /* Initialize allocator (mode-specific) */
