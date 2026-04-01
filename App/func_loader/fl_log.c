@@ -30,12 +30,14 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#define PRINT_BUF_SIZE 256
+#ifndef FL_LOG_BUF_SIZE
+#define FL_LOG_BUF_SIZE 256
+#endif
 
 /* Global output callback */
 static fl_output_cb_t g_output_cb = NULL;
 static void* g_output_user = NULL;
-static char log_buf[PRINT_BUF_SIZE];
+static char log_buf[FL_LOG_BUF_SIZE];
 
 void fl_log_init(fl_output_cb_t output_cb, void* output_user) {
     g_output_cb = output_cb;
