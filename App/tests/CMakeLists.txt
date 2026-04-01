@@ -65,6 +65,11 @@ set(SUT_SOURCES_COMMON
     ${SRC_DIR}/fpb_trampoline.c
     # Function loader core
     ${FUNC_LOADER_DIR}/fl.c
+    ${FUNC_LOADER_DIR}/fl_codec.c
+    ${FUNC_LOADER_DIR}/fl_cmd_file.c
+    ${FUNC_LOADER_DIR}/fl_cmd_core.c
+    ${FUNC_LOADER_DIR}/fl_cmd_mem.c
+    ${FUNC_LOADER_DIR}/fl_cmd_patch.c
     ${FUNC_LOADER_DIR}/fl_stream.c
     ${FUNC_LOADER_DIR}/fl_log.c
     ${FUNC_LOADER_DIR}/fl_allocator.c
@@ -81,6 +86,11 @@ set(SUT_SOURCES_FATFS
     ${SRC_DIR}/fpb_trampoline.c
     # Function loader core
     ${FUNC_LOADER_DIR}/fl.c
+    ${FUNC_LOADER_DIR}/fl_codec.c
+    ${FUNC_LOADER_DIR}/fl_cmd_file.c
+    ${FUNC_LOADER_DIR}/fl_cmd_core.c
+    ${FUNC_LOADER_DIR}/fl_cmd_mem.c
+    ${FUNC_LOADER_DIR}/fl_cmd_patch.c
     ${FUNC_LOADER_DIR}/fl_stream.c
     ${FUNC_LOADER_DIR}/fl_log.c
     ${FUNC_LOADER_DIR}/fl_allocator.c
