@@ -160,16 +160,20 @@ def api_log_file_start():
 
     data = request.json or {}
     path = data.get("path", "")
+    append = data.get("append", True)
+    timestamp = data.get("timestamp", True)
 
     if not path:
         return jsonify({"success": False, "error": "No path provided"})
 
     device = state.device
-    success, error = log_recorder.start(path)
+    success, error = log_recorder.start(path, append=append, timestamp=timestamp)
 
     if success:
         device.log_file_enabled = True
         device.log_file_path = path
+        device.log_file_append = append
+        device.log_file_timestamp = timestamp
         state.save_config()
 
     return jsonify({"success": success, "error": error})
@@ -203,6 +207,8 @@ def api_log_file_status():
             "path": log_recorder.path,
             "config_enabled": device.log_file_enabled,
             "config_path": device.log_file_path,
+            "config_append": device.log_file_append,
+            "config_timestamp": device.log_file_timestamp,
         }
     )
 

@@ -301,7 +301,11 @@ class TestRestoreState(unittest.TestCase):
 
         main.restore_state()
 
-        mock_recorder.start.assert_called_once_with("/tmp/test.log")
+        mock_recorder.start.assert_called_once_with(
+            "/tmp/test.log",
+            append=state.device.log_file_append,
+            timestamp=state.device.log_file_timestamp,
+        )
 
     @patch("services.log_recorder.log_recorder")
     def test_restore_state_log_recorder_failure(self, mock_recorder):

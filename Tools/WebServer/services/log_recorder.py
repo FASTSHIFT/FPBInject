@@ -25,8 +25,11 @@ class LogFileRecorder:
         self._file = None
         self._enabled = False
         self._path = ""
+        self._timestamp = True
 
-    def start(self, path: str) -> tuple[bool, str]:
+    def start(
+        self, path: str, append: bool = True, timestamp: bool = True
+    ) -> tuple[bool, str]:
         """Start recording logs to file."""
         with self._lock:
             if self._enabled:
@@ -41,11 +44,15 @@ class LogFileRecorder:
                 if dir_path and not os.path.exists(dir_path):
                     os.makedirs(dir_path, exist_ok=True)
 
-                self._file = open(path, "a", encoding="utf-8")
+                mode = "a" if append else "w"
+                self._file = open(path, mode, encoding="utf-8")
                 self._enabled = True
                 self._path = path
+                self._timestamp = timestamp
 
-                logger.info(f"Log recording started: {path}")
+                logger.info(
+                    f"Log recording started: {path} (append={append}, timestamp={timestamp})"
+                )
                 return True, ""
             except Exception as e:
                 self._enabled = False
@@ -83,14 +90,16 @@ class LogFileRecorder:
                 return
 
             try:
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 # Handle multi-line messages
                 lines = message.split("\n")
                 for i, line in enumerate(lines):
                     if (
                         line or i == 0
                     ):  # Write first line even if empty, skip other empty lines
-                        if i == 0:
+                        if i == 0 and self._timestamp:
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[
+                                :-3
+                            ]
                             self._file.write(f"[{timestamp}] {line}\n")
                         else:
                             self._file.write(f"{line}\n")

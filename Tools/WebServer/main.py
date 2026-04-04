@@ -235,7 +235,11 @@ def restore_state():
         from services.log_recorder import log_recorder
 
         logger.info(f"Restoring log file recording: {device.log_file_path}")
-        success, error = log_recorder.start(device.log_file_path)
+        success, error = log_recorder.start(
+            device.log_file_path,
+            append=device.log_file_append,
+            timestamp=device.log_file_timestamp,
+        )
         if success:
             logger.info("Log file recording restored")
         else:

@@ -40,6 +40,8 @@ window.i18nResources['en'] = {
         wakeup_shell_cnt: 'Wakeup Count',
         log_file_path: 'Log Path',
         log_file_enabled: 'Record Serial Logs',
+        log_file_append: 'Append Mode',
+        log_file_timestamp: 'Record Timestamp',
         serial_echo_enabled: 'Serial TX Echo',
         external_gdb_port: 'External GDB Port',
         ghidra_path: 'Ghidra Path',
@@ -471,6 +473,8 @@ window.i18nResources['en'] = {
         'Number of newlines to send before entering fl mode to wake up shell.',
       log_file_path: 'Path to save serial logs',
       log_file_enabled: 'Record serial communication logs to file',
+      log_file_append: 'Append to existing log file instead of truncating',
+      log_file_timestamp: 'Add timestamp prefix to each log line',
       serial_echo_enabled: 'Echo TX commands to SERIAL panel (for debugging)',
       ghidra_path:
         'Path to Ghidra installation directory (containing support/analyzeHeadless)',

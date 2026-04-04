@@ -440,6 +440,10 @@ async function onLogFileEnabledChange() {
       if (pathInput) pathInput.value = path;
     }
 
+    const append = document.getElementById('logFileAppend')?.checked ?? true;
+    const timestamp =
+      document.getElementById('logFileTimestamp')?.checked ?? true;
+
     try {
       // Check current status first
       const statusRes = await fetch('/api/log_file/status');
@@ -457,7 +461,7 @@ async function onLogFileEnabledChange() {
       const res = await fetch('/api/log_file/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify({ path, append, timestamp }),
       });
       const data = await res.json();
 
