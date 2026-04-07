@@ -371,6 +371,7 @@ class FPBInject:
         source_file: str = None,
         inject_functions: list = None,
         inject_marker_lines: list = None,
+        comp_id: int = -1,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, int]], str]:
         """Compile injection code from source content or file to binary."""
         return compiler_utils.compile_inject(
@@ -385,6 +386,7 @@ class FPBInject:
             source_file=source_file,
             inject_functions=inject_functions,
             inject_marker_lines=inject_marker_lines,
+            comp_id=comp_id,
         )
 
     # ========== Injection Workflow ==========
@@ -531,6 +533,7 @@ class FPBInject:
             source_file=source_file,
             inject_functions=inject_functions,
             inject_marker_lines=inject_marker_lines,
+            comp_id=actual_comp if actual_comp >= 0 else 0,
         )
         if error:
             return False, {"error": error}
@@ -561,6 +564,7 @@ class FPBInject:
             source_file=source_file,
             inject_functions=inject_functions,
             inject_marker_lines=inject_marker_lines,
+            comp_id=actual_comp,
         )
         if error:
             return False, {"error": error}

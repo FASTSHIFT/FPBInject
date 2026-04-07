@@ -397,6 +397,7 @@ window.i18nResources['en'] = {
       clear_all: 'Clear All',
       reinject: 'Re-inject',
       slot_n: 'Slot {{n}}',
+      slot_auto: 'Auto',
       fpb_v2_only: 'FPB v2 only',
       fpb_v2_required: 'This slot requires FPB v2 hardware',
       bytes: 'Bytes',

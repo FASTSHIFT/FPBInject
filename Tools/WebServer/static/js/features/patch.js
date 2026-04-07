@@ -142,15 +142,15 @@ static ${funcName}_fn_t const ${macroName} = (${funcName}_fn_t)(${origAddr} | 1)
     if (returnType === 'void') {
       callOrigSection = `
     /* Disable patch -> call original -> re-enable patch */
-    fpb_enable_patch(${slot}, false);
+    fpb_enable_patch(FPB_PATCH_COMP_ID, false);
     ORIG_${funcName.toUpperCase()}(${argList});
-    fpb_enable_patch(${slot}, true);`;
+    fpb_enable_patch(FPB_PATCH_COMP_ID, true);`;
     } else {
       callOrigSection = `
     /* Disable patch -> call original -> re-enable patch */
-    fpb_enable_patch(${slot}, false);
+    fpb_enable_patch(FPB_PATCH_COMP_ID, false);
     ${returnType} result = ORIG_${funcName.toUpperCase()}(${argList});
-    fpb_enable_patch(${slot}, true);
+    fpb_enable_patch(FPB_PATCH_COMP_ID, true);
 
     return result;`;
     }
@@ -450,7 +450,10 @@ async function performInject() {
     return;
   }
 
-  if (state.slotStates[state.selectedSlot].occupied) {
+  if (
+    state.selectedSlot >= 0 &&
+    state.slotStates[state.selectedSlot].occupied
+  ) {
     const slotFunc = state.slotStates[state.selectedSlot].func;
     const overwrite = confirm(
       `⚠️ ${t('messages.slot_occupied_by', 'Slot {{slot}} is already occupied by "{{func}}".', { slot: state.selectedSlot, func: slotFunc })}\n\n` +

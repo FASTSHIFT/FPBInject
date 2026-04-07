@@ -74,7 +74,12 @@ function updateSlotUI() {
   document.getElementById('activeSlotCount').textContent =
     `${activeCount}/${maxSlots}`;
   const slotDisplay = document.getElementById('currentSlotDisplay');
-  const slotValue = state.selectedSlot != null ? state.selectedSlot : '-';
+  const slotValue =
+    state.selectedSlot != null
+      ? state.selectedSlot < 0
+        ? 'Auto'
+        : state.selectedSlot
+      : '-';
   slotDisplay.textContent = t('statusbar.slot', 'Slot: {{slot}}', {
     slot: slotValue,
   });
@@ -87,11 +92,11 @@ function updateSlotUI() {
   const slotSelect = document.getElementById('slotSelect');
   slotSelect.value = state.selectedSlot;
 
-  // Disable v2-only slots in dropdown
+  // Disable v2-only slots in dropdown (skip Auto option with value -1)
   for (let i = 0; i < slotSelect.options.length; i++) {
     const option = slotSelect.options[i];
     const slotId = parseInt(option.value);
-    option.disabled = slotId >= maxSlots;
+    option.disabled = slotId >= 0 && slotId >= maxSlots;
   }
 }
 

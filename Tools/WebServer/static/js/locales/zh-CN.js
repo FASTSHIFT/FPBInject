@@ -389,6 +389,7 @@ window.i18nResources['zh-CN'] = {
       clear_all: '清除所有',
       reinject: '重新注入',
       slot_n: '槽位 {{n}}',
+      slot_auto: '自动',
       fpb_v2_only: '仅 FPB v2',
       fpb_v2_required: '此补丁需要 FPB v2 硬件',
       bytes: '字节',

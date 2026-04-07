@@ -390,6 +390,7 @@ window.i18nResources['zh-TW'] = {
       clear_all: '清除所有',
       reinject: '重新注入',
       slot_n: '槽位 {{n}}',
+      slot_auto: '自動',
       fpb_v2_only: '僅 FPB v2',
       fpb_v2_required: '此補丁需要 FPB v2 硬體',
       bytes: '位元組',

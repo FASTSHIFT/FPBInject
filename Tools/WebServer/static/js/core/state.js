@@ -15,7 +15,7 @@ let logPollInterval = null;
 let autoInjectPollInterval = null;
 let lastAutoInjectStatus = 'idle';
 let autoInjectProgressHideTimer = null;
-let selectedSlot = 0;
+let selectedSlot = -1;
 let fpbVersion = 1; // 1=FPB v1 (6 slots), 2=FPB v2 (8 slots)
 let slotStates = Array(8)
   .fill()

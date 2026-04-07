@@ -672,6 +672,66 @@ class TestParseDepFileExtended(unittest.TestCase):
                 # May or may not find depending on implementation details
 
 
+class TestCompileInjectCompId(unittest.TestCase):
+    """Tests for comp_id parameter in compile_inject"""
+
+    @patch("core.compiler.parse_compile_commands")
+    def test_comp_id_adds_define(self, mock_parse):
+        """comp_id >= 0 should add -DFPB_PATCH_COMP_ID=N to compile command"""
+        mock_parse.return_value = {
+            "compiler": "arm-none-eabi-gcc",
+            "objcopy": "arm-none-eabi-objcopy",
+            "includes": [],
+            "defines": [],
+            "cflags": ["-mcpu=cortex-m4"],
+            "ldflags": [],
+            "raw_command": None,
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stderr="error")
+
+            compiler.compile_inject(
+                "void test() {}",
+                0x20000000,
+                compile_commands_path="/tmp/cc.json",
+                comp_id=3,
+            )
+
+            # First subprocess.run call is the compile command
+            compile_cmd = mock_run.call_args_list[0][0][0]
+            self.assertIn("-D", compile_cmd)
+            idx = compile_cmd.index("-D")
+            self.assertEqual(compile_cmd[idx + 1], "FPB_PATCH_COMP_ID=3")
+
+    @patch("core.compiler.parse_compile_commands")
+    def test_comp_id_negative_no_define(self, mock_parse):
+        """comp_id < 0 should NOT add FPB_PATCH_COMP_ID define"""
+        mock_parse.return_value = {
+            "compiler": "arm-none-eabi-gcc",
+            "objcopy": "arm-none-eabi-objcopy",
+            "includes": [],
+            "defines": [],
+            "cflags": ["-mcpu=cortex-m4"],
+            "ldflags": [],
+            "raw_command": None,
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stderr="error")
+
+            compiler.compile_inject(
+                "void test() {}",
+                0x20000000,
+                compile_commands_path="/tmp/cc.json",
+                comp_id=-1,
+            )
+
+            compile_cmd = mock_run.call_args_list[0][0][0]
+            cmd_str = " ".join(compile_cmd)
+            self.assertNotIn("FPB_PATCH_COMP_ID", cmd_str)
+
+
 class TestCompileInjectExtended(unittest.TestCase):
     """Extended compile_inject tests"""
 

@@ -235,6 +235,7 @@ def compile_inject(
     source_file: str = None,
     inject_functions: List[str] = None,
     inject_marker_lines: List[int] = None,
+    comp_id: int = -1,
 ) -> Tuple[Optional[bytes], Optional[Dict[str, int]], str]:
     """
     Compile injection code from source content to binary.
@@ -412,6 +413,10 @@ def compile_inject(
                 cmd.extend(["-D", d])
 
             cmd.extend(["-o", obj_file, compile_source])
+
+        # Inject FPB_PATCH_COMP_ID define for patch enable/disable in user code
+        if comp_id >= 0:
+            cmd.extend(["-D", f"FPB_PATCH_COMP_ID={comp_id}"])
 
         if verbose:
             logger.info(f"Compile: {' '.join(cmd)}")

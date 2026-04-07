@@ -263,7 +263,6 @@ module.exports = function (w) {
       const template = w.generatePatchTemplate('test_func', 0);
       assertContains(template, 'test_func');
       assertContains(template, 'FPB_INJECT');
-      assertContains(template, 'Slot: 0');
     });
     it('uses signature params in function definition', () => {
       const template = w.generatePatchTemplate(
@@ -434,9 +433,10 @@ module.exports = function (w) {
       assertContains(template, 'fl_println');
       assertContains(template, 'Patched');
     });
-    it('handles slot number correctly', () => {
+    it('handles slot number in template', () => {
       const template = w.generatePatchTemplate('func', 5);
-      assertContains(template, 'Slot: 5');
+      /* Slot number should not appear in template (uses FPB_PATCH_COMP_ID macro) */
+      assertTrue(!template.includes('Slot: 5'));
     });
     it('handles void params', () => {
       const template = w.generatePatchTemplate('init', 0, 'void init(void)');
@@ -490,9 +490,9 @@ module.exports = function (w) {
         false,
         '0x08003000',
       );
-      assertContains(template, 'fpb_enable_patch(2, false)');
+      assertContains(template, 'fpb_enable_patch(FPB_PATCH_COMP_ID, false)');
       assertContains(template, 'ORIG_DO_WORK(val)');
-      assertContains(template, 'fpb_enable_patch(2, true)');
+      assertContains(template, 'fpb_enable_patch(FPB_PATCH_COMP_ID, true)');
       /* void function should not have result variable */
       assertTrue(!template.includes('result ='));
     });
@@ -546,6 +546,24 @@ module.exports = function (w) {
       /* Address should have | 1 for Thumb mode */
       assertContains(template, '0x08001234 | 1');
       assertContains(template, 'Thumb bit');
+    });
+    it('uses FPB_PATCH_COMP_ID macro instead of hardcoded slot', () => {
+      const template = w.generatePatchTemplate(
+        'func',
+        3,
+        'void func(void)',
+        null,
+        null,
+        false,
+        '0x08001000',
+      );
+      assertContains(template, 'FPB_PATCH_COMP_ID');
+      /* Should NOT contain hardcoded slot number in fpb_enable_patch */
+      assertTrue(!template.includes('fpb_enable_patch(3,'));
+    });
+    it('does not include Slot line in header comment', () => {
+      const template = w.generatePatchTemplate('func', 2);
+      assertTrue(!template.includes('Slot:'));
     });
     it('uses static const for function pointer', () => {
       const template = w.generatePatchTemplate(
@@ -828,6 +846,81 @@ module.exports = function (w) {
       w.FPBState.aceEditors.delete('patch_test');
       w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = null;
+    });
+
+    it('sends comp -1 in auto slot mode', async () => {
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.selectedSlot = -1;
+      w.FPBState.slotStates = Array(8)
+        .fill()
+        .map(() => ({ occupied: false }));
+      w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('patch_test', {
+        getValue: () => 'void test() {}',
+      });
+      browserGlobals.document.getElementById('patchMode').value = 'trampoline';
+      setFetchResponse('/api/fpb/inject/stream', {
+        _stream: [
+          'data: {"type":"result","success":true,"compile_time":1.0,"upload_time":0.5,"code_size":100}\n',
+        ],
+      });
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      await w.performInject();
+      /* Verify the fetch body contains comp: -1 */
+      const calls = getFetchCalls();
+      const injectCall = calls.find((c) =>
+        c.url.includes('/api/fpb/inject/stream'),
+      );
+      assertTrue(injectCall !== undefined, 'Should call inject/stream API');
+      if (injectCall && injectCall.options && injectCall.options.body) {
+        const body = JSON.parse(injectCall.options.body);
+        assertEqual(body.comp, -1);
+      }
+      w.FPBState.aceEditors.delete('patch_test');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('skips slot-occupied check in auto mode', async () => {
+      w.FPBState.isConnected = true;
+      const mockTerm = new MockTerminal();
+      w.FPBState.toolTerminal = mockTerm;
+      w.FPBState.selectedSlot = -1;
+      w.FPBState.slotStates = Array(8)
+        .fill()
+        .map((_, i) => ({
+          occupied: i === 0,
+          func: i === 0 ? 'old_func' : '',
+        }));
+      w.FPBState.currentPatchTab = { id: 'patch_test', funcName: 'test_func' };
+      w.FPBState.aceEditors.set('patch_test', {
+        getValue: () => 'void test() {}',
+      });
+      browserGlobals.document.getElementById('patchMode').value = 'trampoline';
+      setFetchResponse('/api/fpb/inject/stream', {
+        _stream: [
+          'data: {"type":"result","success":true,"compile_time":1.0,"upload_time":0.5,"code_size":100}\n',
+        ],
+      });
+      setFetchResponse('/api/fpb/info', { success: true, slots: [] });
+      /* Should NOT prompt for overwrite in auto mode */
+      const origConfirm = global.confirm;
+      let confirmCalled = false;
+      global.confirm = () => {
+        confirmCalled = true;
+        return false;
+      };
+      await w.performInject();
+      assertTrue(
+        !confirmCalled,
+        'Should not prompt for overwrite in auto mode',
+      );
+      w.FPBState.aceEditors.delete('patch_test');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+      global.confirm = origConfirm;
     });
 
     it('handles injection failure', async () => {
