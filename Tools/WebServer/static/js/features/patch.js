@@ -187,7 +187,6 @@ ${decompiledSection}`;
   /* Build complete template */
   let template = `/*
  * Patch for: ${funcName}
- * Slot: ${slot}
 ${sourceFile ? ` * Source: ${sourceFile}\n` : ''}${hasOrigAddr ? ` * Original: ${origAddr}\n` : ''} */
 
 #include <stdbool.h>
