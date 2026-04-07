@@ -58,10 +58,21 @@ typedef void (*fl_flush_dcache_cb_t)(uintptr_t start, uintptr_t end);
 typedef void (*fl_invalidate_icache_cb_t)(uintptr_t start, uintptr_t end);
 
 /**
+ * @brief Patch mode for slot tracking
+ */
+typedef enum {
+    FL_PATCH_MODE_NONE = 0,   /* Not patched */
+    FL_PATCH_MODE_REMAP,      /* FPB REMAP (patch command) */
+    FL_PATCH_MODE_TRAMPOLINE, /* FPB REMAP + trampoline (tpatch command) */
+    FL_PATCH_MODE_DEBUGMON,   /* FPB BKPT + DebugMonitor (dpatch command) */
+} fl_patch_mode_t;
+
+/**
  * @brief Slot state for tracking injection info
  */
 typedef struct {
     bool active;          /* Slot is in use */
+    fl_patch_mode_t mode; /* Patch mode used */
     uint32_t orig_addr;   /* Original function address */
     uint32_t target_addr; /* Injected code address */
     uint32_t code_size;   /* Injected code size */

@@ -62,10 +62,18 @@ void fl_cmd_print_fpb_info(fl_context_t* ctx) {
                    (unsigned long)fpb_info.remap_base, fpb_info.remap_supported ? "supported" : "not supported");
 
         static const char* replace_mode_str[] = {"remap", "bp_lo", "bp_hi", "bp_both"};
+        static const char* patch_mode_str[] = {"none", "remap", "trampoline", "debugmon"};
         for (uint32_t i = 0; i < num_comps && i < FL_MAX_SLOTS && i < FPB_MAX_CODE_COMP; i++) {
             fl_slot_state_t* slot = &ctx->slots[i];
             fpb_comp_info_t* comp = &fpb_info.comp[i];
-            const char* mode_str = (comp->replace < 4) ? replace_mode_str[comp->replace] : "?";
+            const char* mode_str;
+
+            /* Use slot's patch mode if active, otherwise fall back to hardware REPLACE field */
+            if (slot->active && slot->mode < 4) {
+                mode_str = patch_mode_str[slot->mode];
+            } else {
+                mode_str = (comp->replace < 4) ? replace_mode_str[comp->replace] : "?";
+            }
 
             if (slot->active) {
                 fl_println("Slot[%u]: 0x%08lX -> 0x%08lX, %u bytes (COMP=0x%08lX, %s, %s)", (unsigned)i,
@@ -120,6 +128,7 @@ fl_error_t fl_cmd_patch(fl_context_t* ctx, const cmd_args_t* args) {
 
     /* Record slot state, transfer last_alloc ownership to slot */
     ctx->slots[args->comp].active = true;
+    ctx->slots[args->comp].mode = FL_PATCH_MODE_REMAP;
     ctx->slots[args->comp].orig_addr = args->orig;
     ctx->slots[args->comp].target_addr = args->target;
     ctx->slots[args->comp].code_size = ctx->last_alloc_size;
@@ -163,6 +172,7 @@ fl_error_t fl_cmd_tpatch(fl_context_t* ctx, const cmd_args_t* args) {
 
     /* Record slot state, transfer last_alloc ownership to slot */
     ctx->slots[args->comp].active = true;
+    ctx->slots[args->comp].mode = FL_PATCH_MODE_TRAMPOLINE;
     ctx->slots[args->comp].orig_addr = args->orig;
     ctx->slots[args->comp].target_addr = args->target;
     ctx->slots[args->comp].code_size = ctx->last_alloc_size;
@@ -211,6 +221,7 @@ fl_error_t fl_cmd_dpatch(fl_context_t* ctx, const cmd_args_t* args) {
 
     /* Record slot state, transfer last_alloc ownership to slot */
     ctx->slots[args->comp].active = true;
+    ctx->slots[args->comp].mode = FL_PATCH_MODE_DEBUGMON;
     ctx->slots[args->comp].orig_addr = args->orig;
     ctx->slots[args->comp].target_addr = args->target;
     ctx->slots[args->comp].code_size = ctx->last_alloc_size;
@@ -266,6 +277,7 @@ fl_error_t fl_cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
 
             /* Clear slot state */
             ctx->slots[i].active = false;
+            ctx->slots[i].mode = FL_PATCH_MODE_NONE;
             ctx->slots[i].orig_addr = 0;
             ctx->slots[i].target_addr = 0;
             ctx->slots[i].code_size = 0;
@@ -300,7 +312,6 @@ fl_error_t fl_cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
         }
     }
 
-    (void)ctx;
     bool en = args->enable != 0;
     bool all = args->all;
     uint32_t comp = (uint32_t)args->comp;
@@ -315,10 +326,16 @@ fl_error_t fl_cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
 
     uint32_t changed = 0;
     for (uint32_t i = start; i < end && i < FL_MAX_SLOTS; i++) {
-        fpb_result_t ret = fpb_enable_patch(i, en);
-        if (ret == FPB_OK) {
-            changed++;
+        if (all && !ctx->slots[i].active) {
+            continue; /* --all mode: skip inactive slots */
         }
+
+        fpb_result_t ret = fpb_enable_patch(i, en);
+        if (ret != FPB_OK) {
+            fl_response(false, "Failed to %s patch %lu: %d", en ? "enable" : "disable", (unsigned long)i, ret);
+            return FL_ERR_HW;
+        }
+        changed++;
     }
 
     if (all) {

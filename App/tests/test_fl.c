@@ -1406,12 +1406,12 @@ void test_loader_cmd_enable_unset_patch(void) {
     setup_loader();
     fl_init(&test_ctx);
 
-    /* Try to enable a patch that was never set - should succeed but report 0 changed */
+    /* Try to enable a patch that was never set - should fail */
     const char* argv[] = {"fl", "--cmd", "enable", "--comp", "0", "--enable", "1"};
     fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
 
-    /* fpb_enable_patch returns FPB_ERR_NOT_SET for unset patches, so changed=0 */
-    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_EQUAL(FL_ERR_HW, result);
+    TEST_ASSERT(mock_output_contains("Failed to enable"));
 }
 
 /* ============================================================================
@@ -2010,6 +2010,18 @@ void test_loader_cmd_unpatch_crc_mismatch(void) {
 void test_loader_cmd_enable_with_crc(void) {
     setup_loader();
     fl_init(&test_ctx);
+
+    /* Set up a patch first so enable has something to work with */
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    const char* patch_argv[]
+        = {"fl", "--cmd", "patch", "--comp", "0", "--orig", "0x08001000", "--target", "0x20000100"};
+    fl_exec_cmd(&test_ctx, 9, patch_argv);
+
+    /* Disable first so we can test re-enable with CRC */
+    const char* disable_argv[] = {"fl", "--cmd", "enable", "--comp", "0", "--enable", "0"};
+    fl_exec_cmd(&test_ctx, 7, disable_argv);
 
     /* CRC of comp=0 + enable=1 */
     uint32_t comp32 = 0;
