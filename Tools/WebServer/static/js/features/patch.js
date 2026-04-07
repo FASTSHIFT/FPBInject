@@ -160,7 +160,7 @@ static ${funcName}_fn_t const ${macroName} = (${funcName}_fn_t)(${origAddr} | 1)
   let functionBody = '';
   if (hasOrigAddr) {
     /* Generate call-original pattern */
-    functionBody = `fl_println("Hooked ${funcName}!");
+    functionBody = `fl_println("### HOOKED: ${funcName} ###");
 
     /* TODO: Add your pre-call logic here */
 ${callOrigSection}`;
