@@ -121,6 +121,9 @@ fl_error_t fl_cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
     /* Flush data cache after upload to ensure code is visible to CPU */
     fl_flush_dcache(ctx, dest, n);
 
+    /* Invalidate instruction cache to prevent stale code execution */
+    fl_invalidate_icache(ctx, dest, n);
+
     fl_response(true, "Uploaded %d bytes to 0x%lX", n, (unsigned long)dest);
     return FL_OK;
 }
@@ -217,6 +220,9 @@ fl_error_t fl_cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
 
     /* Flush data cache */
     fl_flush_dcache(ctx, dest, n);
+
+    /* Invalidate instruction cache */
+    fl_invalidate_icache(ctx, dest, n);
 
     fl_response(true, "WRITE %d bytes to 0x%lX", n, (unsigned long)args->addr);
     return FL_OK;

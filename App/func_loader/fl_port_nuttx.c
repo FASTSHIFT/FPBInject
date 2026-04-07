@@ -83,6 +83,11 @@ static void nuttx_flush_dcache_cb(uintptr_t start, uintptr_t end) {
     up_flush_dcache(start, end);
 }
 
+/* Invalidate icache callback */
+static void nuttx_invalidate_icache_cb(uintptr_t start, uintptr_t end) {
+    up_invalidate_icache(start, end);
+}
+
 /* ==========================================================================
  * Memory Allocation Configuration
  * ========================================================================== */
@@ -211,6 +216,7 @@ int main(int argc, char** argv) {
         fl_init_default(&ctx);
         ctx.output_cb = nuttx_output_cb;
         ctx.flush_dcache_cb = nuttx_flush_dcache_cb;
+        ctx.invalidate_icache_cb = nuttx_invalidate_icache_cb;
 
         /* Initialize allocator */
         nuttx_alloc_init();

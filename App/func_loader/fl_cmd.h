@@ -79,6 +79,11 @@ bool fl_verify_crc(int crc, uint16_t calc);
 void fl_flush_dcache(fl_context_t* ctx, const void* addr, size_t len);
 
 /**
+ * @brief  Invalidate instruction cache for a memory region
+ */
+void fl_invalidate_icache(fl_context_t* ctx, const void* addr, size_t len);
+
+/**
  * @brief  Check if [addr, addr+len) is a safe memory range
  * @return true if the range is safe to access
  */

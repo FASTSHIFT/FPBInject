@@ -71,6 +71,12 @@ void fl_flush_dcache(fl_context_t* ctx, const void* addr, size_t len) {
     }
 }
 
+void fl_invalidate_icache(fl_context_t* ctx, const void* addr, size_t len) {
+    if (ctx->invalidate_icache_cb) {
+        ctx->invalidate_icache_cb((uintptr_t)addr, (uintptr_t)addr + len);
+    }
+}
+
 /**
  * @brief  Check if [addr, addr+len) is a safe memory range
  * @note   Rejects NULL pointer and address overflow (wrapping past 0xFFFFFFFF)

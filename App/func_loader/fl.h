@@ -55,6 +55,7 @@ typedef void (*fl_output_cb_t)(void* user, const char* str);
 typedef void* (*fl_malloc_cb_t)(size_t size);
 typedef void (*fl_free_cb_t)(void* ptr);
 typedef void (*fl_flush_dcache_cb_t)(uintptr_t start, uintptr_t end);
+typedef void (*fl_invalidate_icache_cb_t)(uintptr_t start, uintptr_t end);
 
 /**
  * @brief Slot state for tracking injection info
@@ -83,6 +84,9 @@ typedef struct fl_context_s {
 
     /* Cache flush callback (optional, for platforms with dcache) */
     fl_flush_dcache_cb_t flush_dcache_cb;
+
+    /* ICache invalidate callback (optional, for platforms with icache) */
+    fl_invalidate_icache_cb_t invalidate_icache_cb;
 
     /* Internal state (managed by fl_init) */
     bool is_inited;         /* true after first fl_init() call */

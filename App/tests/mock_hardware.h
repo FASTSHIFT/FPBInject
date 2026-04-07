@@ -58,6 +58,12 @@ typedef struct {
     uint32_t free_count;
     size_t total_allocated;
     size_t total_freed;
+    uint32_t flush_dcache_count;
+    uint32_t invalidate_icache_count;
+    uintptr_t last_dcache_start;
+    uintptr_t last_dcache_end;
+    uintptr_t last_icache_start;
+    uintptr_t last_icache_end;
 } mock_call_stats_t;
 
 extern mock_call_stats_t g_mock_call_stats;
@@ -111,6 +117,13 @@ bool mock_output_contains(const char* substr);
 void mock_heap_reset(void);
 void* mock_malloc(size_t size);
 void mock_free(void* ptr);
+
+/* ============================================================================
+ * Mock Cache Callbacks (for fl_context_t)
+ * ============================================================================ */
+
+void mock_flush_dcache(uintptr_t start, uintptr_t end);
+void mock_invalidate_icache(uintptr_t start, uintptr_t end);
 
 #ifdef __cplusplus
 }

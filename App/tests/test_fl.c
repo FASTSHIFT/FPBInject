@@ -2041,6 +2041,158 @@ void test_loader_cmd_enable_crc_mismatch(void) {
 }
 
 /* ============================================================================
+ * Cache Flush / ICache Invalidate Tests
+ * ============================================================================ */
+
+static void setup_loader_with_cache(void) {
+    setup_loader();
+    test_ctx.flush_dcache_cb = mock_flush_dcache;
+    test_ctx.invalidate_icache_cb = mock_invalidate_icache;
+}
+
+void test_loader_upload_flushes_dcache(void) {
+    setup_loader_with_cache();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_reset_call_stats();
+
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "0", "--data", "AQIDBA=="};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    const mock_call_stats_t* stats = mock_get_call_stats();
+    TEST_ASSERT(stats->flush_dcache_count >= 1);
+    TEST_ASSERT(stats->last_dcache_start != 0);
+    TEST_ASSERT(stats->last_dcache_end > stats->last_dcache_start);
+}
+
+void test_loader_upload_invalidates_icache(void) {
+    setup_loader_with_cache();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    mock_reset_call_stats();
+
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "0", "--data", "AQIDBA=="};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    const mock_call_stats_t* stats = mock_get_call_stats();
+    TEST_ASSERT(stats->invalidate_icache_count >= 1);
+    TEST_ASSERT(stats->last_icache_start != 0);
+    TEST_ASSERT(stats->last_icache_end > stats->last_icache_start);
+}
+
+void test_loader_upload_cache_range_matches(void) {
+    setup_loader_with_cache();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    mock_reset_call_stats();
+
+    /* Upload 4 bytes at offset 0 */
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "0", "--data", "AQIDBA=="};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    const mock_call_stats_t* stats = mock_get_call_stats();
+    /* dcache and icache should cover the same range */
+    TEST_ASSERT_EQUAL_HEX(alloc_addr, stats->last_dcache_start);
+    TEST_ASSERT_EQUAL_HEX(alloc_addr + 4, stats->last_dcache_end);
+    TEST_ASSERT_EQUAL_HEX(alloc_addr, stats->last_icache_start);
+    TEST_ASSERT_EQUAL_HEX(alloc_addr + 4, stats->last_icache_end);
+}
+
+void test_loader_write_flushes_dcache(void) {
+    setup_loader_with_cache();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+
+    mock_reset_call_stats();
+
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "AQIDBA=="};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    const mock_call_stats_t* stats = mock_get_call_stats();
+    TEST_ASSERT(stats->flush_dcache_count >= 1);
+}
+
+void test_loader_write_invalidates_icache(void) {
+    setup_loader_with_cache();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    char addr_str[32];
+    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
+
+    mock_reset_call_stats();
+
+    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "AQIDBA=="};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    const mock_call_stats_t* stats = mock_get_call_stats();
+    TEST_ASSERT(stats->invalidate_icache_count >= 1);
+}
+
+void test_loader_no_cache_cb_no_crash(void) {
+    /* Without cache callbacks set, upload/write should still work */
+    setup_loader();
+    fl_init(&test_ctx);
+
+    /* Ensure no cache callbacks */
+    TEST_ASSERT(test_ctx.flush_dcache_cb == NULL);
+    TEST_ASSERT(test_ctx.invalidate_icache_cb == NULL);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "0", "--data", "AQIDBA=="};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 7, argv);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+}
+
+void test_loader_upload_offset_cache_range(void) {
+    setup_loader_with_cache();
+    fl_init(&test_ctx);
+
+    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "128"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+
+    uintptr_t alloc_addr = test_ctx.last_alloc;
+    mock_reset_call_stats();
+
+    /* Upload 4 bytes at offset 16 */
+    const char* argv[] = {"fl", "--cmd", "upload", "--addr", "16", "--data", "AQIDBA=="};
+    fl_exec_cmd(&test_ctx, 7, argv);
+
+    const mock_call_stats_t* stats = mock_get_call_stats();
+    /* Cache range should be alloc_addr+16 to alloc_addr+20 */
+    TEST_ASSERT_EQUAL_HEX(alloc_addr + 16, stats->last_dcache_start);
+    TEST_ASSERT_EQUAL_HEX(alloc_addr + 20, stats->last_dcache_end);
+    TEST_ASSERT_EQUAL_HEX(alloc_addr + 16, stats->last_icache_start);
+    TEST_ASSERT_EQUAL_HEX(alloc_addr + 20, stats->last_icache_end);
+}
+
+/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -2195,5 +2347,15 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_unpatch_crc_mismatch);
     RUN_TEST(test_loader_cmd_enable_with_crc);
     RUN_TEST(test_loader_cmd_enable_crc_mismatch);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_loader - Cache Flush / ICache Invalidate");
+    RUN_TEST(test_loader_upload_flushes_dcache);
+    RUN_TEST(test_loader_upload_invalidates_icache);
+    RUN_TEST(test_loader_upload_cache_range_matches);
+    RUN_TEST(test_loader_write_flushes_dcache);
+    RUN_TEST(test_loader_write_invalidates_icache);
+    RUN_TEST(test_loader_no_cache_cb_no_crash);
+    RUN_TEST(test_loader_upload_offset_cache_range);
     TEST_SUITE_END();
 }

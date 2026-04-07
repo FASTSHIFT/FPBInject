@@ -171,3 +171,19 @@ void mock_free(void* ptr) {
     (void)ptr; /* Simple bump allocator, no actual free */
     g_mock_call_stats.free_count++;
 }
+
+/* ============================================================================
+ * Mock Cache Callbacks
+ * ============================================================================ */
+
+void mock_flush_dcache(uintptr_t start, uintptr_t end) {
+    g_mock_call_stats.flush_dcache_count++;
+    g_mock_call_stats.last_dcache_start = start;
+    g_mock_call_stats.last_dcache_end = end;
+}
+
+void mock_invalidate_icache(uintptr_t start, uintptr_t end) {
+    g_mock_call_stats.invalidate_icache_count++;
+    g_mock_call_stats.last_icache_start = start;
+    g_mock_call_stats.last_icache_end = end;
+}
