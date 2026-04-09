@@ -111,6 +111,20 @@ function closeTab(tabId, event) {
   const tabInfo = state.editorTabs.find((t) => t.id === tabId);
   if (!tabInfo || !tabInfo.closable) return;
 
+  // Confirm before closing dirty text file tabs
+  if (tabInfo.type === 'textfile' && tabInfo.dirty) {
+    const discard = confirm(
+      t(
+        'transfer.unsaved_changes',
+        'File {{name}} has unsaved changes. Discard?',
+        {
+          name: tabInfo.title,
+        },
+      ),
+    );
+    if (!discard) return;
+  }
+
   const { aceEditors } = state;
   if (aceEditors.has(tabId)) {
     const editor = aceEditors.get(tabId);

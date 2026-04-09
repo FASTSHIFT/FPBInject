@@ -379,6 +379,15 @@ window.i18nResources['zh-CN'] = {
       create_dir_failed: '创建目录失败：{{error}}',
       delete_failed: '删除失败：{{error}}',
       rename_failed: '重命名失败：{{error}}',
+      // 文本编辑器
+      open_as_text: '以文本方式打开',
+      large_file_message:
+        '文件 "{{name}}" ({{size}}) 过大，不适合在浏览器中编辑。\n是否下载到本地编辑？',
+      force_open_confirm:
+        '仍要在浏览器中打开 "{{name}}" ({{size}})？\n可能较慢。',
+      unsaved_changes: '文件 {{name}} 有未保存的修改，确定丢弃？',
+      save_to_device: '保存到设备 (Ctrl+S)',
+      download_to_pc: '下载到本地',
     },
 
     // 设备

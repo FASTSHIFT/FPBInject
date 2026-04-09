@@ -48,3 +48,18 @@ document.addEventListener('DOMContentLoaded', () => {
     watchRestoreFromStorage();
   }
 });
+
+/* Global Ctrl+S handler for text file tabs */
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    const state = window.FPBState;
+    if (!state) return;
+    const activeTab = state.editorTabs.find(
+      (tab) => tab.id === state.activeEditorTab,
+    );
+    if (activeTab && activeTab.type === 'textfile') {
+      e.preventDefault();
+      saveDeviceTextFile(activeTab.id);
+    }
+  }
+});

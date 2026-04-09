@@ -496,6 +496,8 @@ async function refreshDeviceFiles() {
         refreshDeviceFiles();
       } else if (_isImageFile(entry.name)) {
         previewDeviceImage(item.dataset.path, entry.name);
+      } else if (_isTextFile(entry.name)) {
+        openDeviceTextFile(item.dataset.path, entry.name);
       }
     };
     item.oncontextmenu = (e) => {
@@ -666,6 +668,16 @@ function showTransferContextMenu(event) {
     renameItem.classList.add('disabled');
   }
 
+  // Open as Text: only single file (not dir)
+  const openAsTextItem = menu.querySelector('[onclick*="openAsText"]');
+  if (openAsTextItem) {
+    const hasSingleFile =
+      hasSingleSelection && transferSelectedFiles.some((f) => f.type !== 'dir');
+    if (!hasSingleFile) {
+      openAsTextItem.classList.add('disabled');
+    }
+  }
+
   // Delete: only when something selected
   const deleteItem = menu.querySelector('[onclick*="delete"]');
   if (deleteItem && !hasSelection) {
@@ -723,6 +735,12 @@ function transferContextAction(action) {
         previewDeviceImage(f.path, f.path.split('/').pop());
       }
       break;
+    case 'openAsText':
+      if (transferSelectedFiles.length === 1) {
+        const tf = transferSelectedFiles[0];
+        openDeviceTextFile(tf.path, tf.path.split('/').pop(), true);
+      }
+      break;
     case 'newFolder':
       createDeviceDir();
       break;
@@ -756,6 +774,413 @@ const _IMAGE_EXTENSIONS = [
 function _isImageFile(name) {
   const lower = name.toLowerCase();
   return _IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/* ===========================
+   TEXT FILE SUPPORT
+   =========================== */
+
+const _TEXT_EXTENSIONS = [
+  '.txt',
+  '.log',
+  '.md',
+  '.csv',
+  '.tsv',
+  '.json',
+  '.xml',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.ini',
+  '.cfg',
+  '.conf',
+  '.properties',
+  '.env',
+  '.c',
+  '.h',
+  '.cpp',
+  '.hpp',
+  '.cc',
+  '.cxx',
+  '.py',
+  '.js',
+  '.ts',
+  '.sh',
+  '.bash',
+  '.bat',
+  '.cmd',
+  '.lua',
+  '.rb',
+  '.pl',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.html',
+  '.htm',
+  '.css',
+  '.scss',
+  '.less',
+  '.svg',
+  '.cmake',
+  '.mk',
+  '.ld',
+  '.s',
+  '.asm',
+];
+
+/**
+ * Check if a filename is a text file by extension.
+ */
+function _isTextFile(name) {
+  const lower = name.toLowerCase();
+  return _TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Get Ace Editor mode for a filename.
+ */
+function _getAceMode(fileName) {
+  const ext = fileName.split('.').pop().toLowerCase();
+  const modeMap = {
+    c: 'c_cpp',
+    h: 'c_cpp',
+    cpp: 'c_cpp',
+    hpp: 'c_cpp',
+    cc: 'c_cpp',
+    cxx: 'c_cpp',
+    py: 'python',
+    js: 'javascript',
+    ts: 'typescript',
+    json: 'json',
+    xml: 'xml',
+    html: 'html',
+    htm: 'html',
+    css: 'css',
+    scss: 'scss',
+    less: 'less',
+    yaml: 'yaml',
+    yml: 'yaml',
+    toml: 'toml',
+    sh: 'sh',
+    bash: 'sh',
+    md: 'markdown',
+    sql: 'sql',
+    lua: 'lua',
+    rb: 'ruby',
+    go: 'golang',
+    rs: 'rust',
+    java: 'java',
+    ini: 'ini',
+    cfg: 'ini',
+    conf: 'ini',
+    cmake: 'cmake',
+    mk: 'makefile',
+    s: 'assembly_x86',
+    asm: 'assembly_x86',
+    svg: 'svg',
+  };
+  return modeMap[ext] || 'text';
+}
+
+/** Size threshold for large file warning (100KB) */
+const TEXT_FILE_SIZE_LIMIT = 102400;
+
+/**
+ * Large file confirmation using two-step native confirm().
+ * @returns {'open' | 'download' | 'cancel'}
+ */
+function confirmLargeFile(fileName, fileSize) {
+  const sizeStr = formatFileSize(fileSize);
+  const msg = t(
+    'transfer.large_file_message',
+    'File "{{name}}" ({{size}}) is too large for in-browser editing.\nDownload and edit locally instead?',
+    { name: fileName, size: sizeStr },
+  );
+
+  const wantDownload = confirm(msg);
+  if (wantDownload) {
+    return 'download';
+  }
+
+  const forceOpen = confirm(
+    t(
+      'transfer.force_open_confirm',
+      'Open "{{name}}" ({{size}}) in browser anyway?\nThis may be slow.',
+      { name: fileName, size: sizeStr },
+    ),
+  );
+  return forceOpen ? 'open' : 'cancel';
+}
+
+/**
+ * Update dirty indicator on a text file tab.
+ */
+function updateTabDirtyState(tabId, isDirty) {
+  const state = window.FPBState;
+  const tabInfo = state.editorTabs.find((t) => t.id === tabId);
+  if (!tabInfo) return;
+
+  tabInfo.dirty = isDirty;
+
+  const tabEl = document.querySelector(`.tab[data-tab="${tabId}"]`);
+  if (tabEl) {
+    const dot = tabEl.querySelector('.tab-dirty-indicator');
+    if (dot) dot.style.display = isDirty ? 'inline' : 'none';
+
+    const closeBtn = tabEl.querySelector('.tab-close');
+    if (closeBtn) {
+      if (isDirty) {
+        closeBtn.classList.add('dirty');
+      } else {
+        closeBtn.classList.remove('dirty');
+      }
+    }
+  }
+}
+
+/**
+ * Open a device text file in an editor tab.
+ * @param {string} remotePath - File path on device
+ * @param {string} fileName - File name for display
+ * @param {boolean} forceText - Force open as text (from context menu)
+ */
+async function openDeviceTextFile(remotePath, fileName, forceText = false) {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    log.error('Not connected to device');
+    return;
+  }
+
+  const tabId = `textfile_${remotePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  // Reuse existing tab
+  if (state.editorTabs.find((tab) => tab.id === tabId)) {
+    switchEditorTab(tabId);
+    return;
+  }
+
+  // Get file size via stat
+  const statResult = await statDeviceFile(remotePath);
+  if (!statResult.success) {
+    log.error(`Failed to stat: ${statResult.error || 'unknown'}`);
+    return;
+  }
+
+  const fileSize = statResult.stat ? statResult.stat.size : 0;
+
+  // Large file check
+  if (fileSize > TEXT_FILE_SIZE_LIMIT) {
+    const choice = confirmLargeFile(fileName, fileSize);
+    if (choice === 'download') {
+      // Trigger browser download, do not open editor
+      const prevSelected = transferSelectedFiles;
+      transferSelectedFiles = [{ path: remotePath, type: 'file' }];
+      await downloadFromDevice();
+      transferSelectedFiles = prevSelected;
+      return;
+    }
+    if (choice === 'cancel') {
+      return;
+    }
+    // choice === 'open' → continue
+  }
+
+  log.info(`Loading ${fileName} (${formatFileSize(fileSize)})`);
+
+  try {
+    const result = await downloadFileFromDevice(
+      remotePath,
+      (downloaded, total, percent, speed, eta, stats) => {
+        updateTransferProgress(
+          percent,
+          `${percent.toFixed(1)}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
+          speed,
+          eta,
+          stats,
+        );
+      },
+    );
+
+    hideTransferProgress();
+
+    if (!result.success) {
+      log.error(`Open failed: ${result.error || 'Download error'}`);
+      return;
+    }
+
+    // Convert blob to text
+    const blob = result.blob || new Blob([result.data]);
+    const textContent = await blob.text();
+
+    // Create editor tab
+    state.editorTabs.push({
+      id: tabId,
+      title: fileName,
+      type: 'textfile',
+      closable: true,
+      remotePath: remotePath,
+      originalContent: textContent,
+      dirty: false,
+    });
+
+    const tabsHeader = document.getElementById('editorTabsHeader');
+    const tabDiv = document.createElement('div');
+    tabDiv.className = 'tab';
+    tabDiv.setAttribute('data-tab', tabId);
+    tabDiv.innerHTML = `
+      <i class="codicon codicon-file-code tab-icon" style="color: #e37933;"></i>
+      <span class="tab-dirty-indicator" style="display: none;">\u25CF</span>
+      <span class="tab-label">${escapeHtml(fileName)}</span>
+      <div class="tab-close" onclick="closeTab('${tabId}', event)"><i class="codicon codicon-close"></i></div>
+    `;
+    tabDiv.onclick = () => switchEditorTab(tabId);
+    tabDiv.onmousedown = (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tabId, e);
+      }
+    };
+    tabsHeader.appendChild(tabDiv);
+
+    const tabsContent = document.querySelector('.editor-tabs-content');
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'tab-content';
+    contentDiv.id = `tabContent_${tabId}`;
+    contentDiv.innerHTML = `
+      <div class="textfile-toolbar">
+        <span class="textfile-path" title="${escapeHtml(remotePath)}">${escapeHtml(remotePath)}</span>
+        <div class="textfile-actions">
+          <button onclick="saveDeviceTextFile('${tabId}')" title="${escapeHtml(t('transfer.save_to_device', 'Save to device (Ctrl+S)'))}">
+            <i class="codicon codicon-save"></i>
+          </button>
+          <button onclick="downloadTextFileLocal('${tabId}')" title="${escapeHtml(t('transfer.download_to_pc', 'Download to PC'))}">
+            <i class="codicon codicon-desktop-download"></i>
+          </button>
+        </div>
+      </div>
+      <div class="editor-main">
+        <div id="editor_${tabId}" class="ace-editor-container"></div>
+      </div>
+    `;
+    tabsContent.appendChild(contentDiv);
+
+    switchEditorTab(tabId);
+
+    const aceMode = _getAceMode(fileName);
+    const editor = initAceEditor(tabId, textContent, aceMode, false);
+
+    // Track dirty state via change event
+    if (editor) {
+      editor.on('change', () => {
+        const tabEntry = state.editorTabs.find((t) => t.id === tabId);
+        if (!tabEntry) return;
+        const currentContent = editor.getValue();
+        const isDirty = currentContent !== tabEntry.originalContent;
+        if (isDirty !== tabEntry.dirty) {
+          updateTabDirtyState(tabId, isDirty);
+        }
+      });
+
+      // Bind Ctrl+S in Ace Editor
+      editor.commands.addCommand({
+        name: 'saveToDevice',
+        bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+        exec: () => saveDeviceTextFile(tabId),
+      });
+    }
+
+    log.success(`${fileName} (${formatFileSize(fileSize)})`);
+  } catch (e) {
+    hideTransferProgress();
+    log.error(`Open error: ${e}`);
+  }
+}
+
+/**
+ * Save text file content back to device (full overwrite).
+ */
+async function saveDeviceTextFile(tabId) {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    log.error('Not connected to device');
+    return;
+  }
+
+  const tabInfo = state.editorTabs.find((tab) => tab.id === tabId);
+  if (!tabInfo || tabInfo.type !== 'textfile') {
+    log.error('No text file tab');
+    return;
+  }
+
+  const { aceEditors } = state;
+  const editor = aceEditors.get(tabId);
+  if (!editor) {
+    log.error('Editor not found');
+    return;
+  }
+
+  const content = editor.getValue();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const blob = new Blob([data], { type: 'application/octet-stream' });
+  const file = new File([blob], tabInfo.title);
+
+  log.info(`Saving ${tabInfo.title} to device...`);
+  updateTransferControls(true);
+
+  try {
+    const result = await uploadFileToDevice(
+      file,
+      tabInfo.remotePath,
+      (uploaded, total, percent, speed, eta, stats) => {
+        updateTransferProgress(
+          percent,
+          `${percent.toFixed(1)}% (${formatFileSize(uploaded)}/${formatFileSize(total)})`,
+          speed,
+          eta,
+          stats,
+        );
+      },
+    );
+
+    hideTransferProgress();
+    updateTransferControls(false);
+
+    if (result.success) {
+      tabInfo.originalContent = content;
+      updateTabDirtyState(tabId, false);
+      log.success(`Saved: ${tabInfo.title}`);
+    } else {
+      log.error(`Save failed: ${result.error || 'unknown'}`);
+    }
+  } catch (e) {
+    hideTransferProgress();
+    updateTransferControls(false);
+    log.error(`Save failed: ${e.message || String(e)}`);
+  }
+}
+
+/**
+ * Download text file content to local PC.
+ */
+function downloadTextFileLocal(tabId) {
+  const state = window.FPBState;
+  const tabInfo = state.editorTabs.find((tab) => tab.id === tabId);
+  if (!tabInfo) return;
+
+  const { aceEditors } = state;
+  const editor = aceEditors.get(tabId);
+  const content = editor ? editor.getValue() : '';
+
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = tabInfo.title;
+  a.click();
+  URL.revokeObjectURL(url);
+  log.success(`Downloaded: ${tabInfo.title}`);
 }
 
 /**
@@ -1751,12 +2176,21 @@ window.hideTransferContextMenu = hideTransferContextMenu;
 window.transferContextAction = transferContextAction;
 window.previewDeviceImage = previewDeviceImage;
 window._isImageFile = _isImageFile;
+window._isTextFile = _isTextFile;
+window._getAceMode = _getAceMode;
+window.openDeviceTextFile = openDeviceTextFile;
+window.saveDeviceTextFile = saveDeviceTextFile;
+window.downloadTextFileLocal = downloadTextFileLocal;
+window.confirmLargeFile = confirmLargeFile;
+window.updateTabDirtyState = updateTabDirtyState;
+window.TEXT_FILE_SIZE_LIMIT = TEXT_FILE_SIZE_LIMIT;
 window.handleDeviceFileKeydown = handleDeviceFileKeydown;
 window.createDeviceDir = createDeviceDir;
 window.updateTransferProgress = updateTransferProgress;
 window.hideTransferProgress = hideTransferProgress;
 window.formatSpeed = formatSpeed;
 window.formatETA = formatETA;
+window.formatFileSize = formatFileSize;
 window.formatTransferStats = formatTransferStats;
 // CRC verification
 window.showCrcWarning = showCrcWarning;

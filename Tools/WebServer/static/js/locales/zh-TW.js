@@ -380,6 +380,15 @@ window.i18nResources['zh-TW'] = {
       create_dir_failed: '建立目錄失敗：{{error}}',
       delete_failed: '刪除失敗：{{error}}',
       rename_failed: '重新命名失敗：{{error}}',
+      // 文字編輯器
+      open_as_text: '以文字方式開啟',
+      large_file_message:
+        '檔案 "{{name}}" ({{size}}) 過大，不適合在瀏覽器中編輯。\n是否下載到本機編輯？',
+      force_open_confirm:
+        '仍要在瀏覽器中開啟 "{{name}}" ({{size}})？\n可能較慢。',
+      unsaved_changes: '檔案 {{name}} 有未儲存的修改，確定捨棄？',
+      save_to_device: '儲存到裝置 (Ctrl+S)',
+      download_to_pc: '下載到本機',
     },
 
     // 裝置

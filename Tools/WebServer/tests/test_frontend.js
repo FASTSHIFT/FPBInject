@@ -100,6 +100,16 @@ const globalFunctions = [
   'getTerminalTheme',
   'getAceEditorContent',
   'HOME_PATH',
+  // Text editor functions
+  '_isTextFile',
+  '_getAceMode',
+  'openDeviceTextFile',
+  'saveDeviceTextFile',
+  'downloadTextFileLocal',
+  'confirmLargeFile',
+  'updateTabDirtyState',
+  'TEXT_FILE_SIZE_LIMIT',
+  'formatFileSize',
   // Config schema functions
   'loadConfigSchema',
   'getConfigSchema',

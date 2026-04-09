@@ -387,6 +387,15 @@ window.i18nResources['en'] = {
       create_dir_failed: 'Create directory failed: {{error}}',
       delete_failed: 'Delete failed: {{error}}',
       rename_failed: 'Rename failed: {{error}}',
+      // Text editor
+      open_as_text: 'Open as Text',
+      large_file_message:
+        'File "{{name}}" ({{size}}) is too large for in-browser editing.\nDownload and edit locally instead?',
+      force_open_confirm:
+        'Open "{{name}}" ({{size}}) in browser anyway?\nThis may be slow.',
+      unsaved_changes: 'File {{name}} has unsaved changes. Discard?',
+      save_to_device: 'Save to device (Ctrl+S)',
+      download_to_pc: 'Download to PC',
     },
 
     // Device

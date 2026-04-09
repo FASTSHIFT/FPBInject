@@ -98,6 +98,23 @@ module.exports = function (w) {
       assertTrue(typeof w.uploadFolderEntry === 'function'));
     it('uploadFolderFiles is a function', () =>
       assertTrue(typeof w.uploadFolderFiles === 'function'));
+    // Text editor functions
+    it('_isTextFile is a function', () =>
+      assertTrue(typeof w._isTextFile === 'function'));
+    it('_getAceMode is a function', () =>
+      assertTrue(typeof w._getAceMode === 'function'));
+    it('openDeviceTextFile is a function', () =>
+      assertTrue(typeof w.openDeviceTextFile === 'function'));
+    it('saveDeviceTextFile is a function', () =>
+      assertTrue(typeof w.saveDeviceTextFile === 'function'));
+    it('downloadTextFileLocal is a function', () =>
+      assertTrue(typeof w.downloadTextFileLocal === 'function'));
+    it('confirmLargeFile is a function', () =>
+      assertTrue(typeof w.confirmLargeFile === 'function'));
+    it('updateTabDirtyState is a function', () =>
+      assertTrue(typeof w.updateTabDirtyState === 'function'));
+    it('TEXT_FILE_SIZE_LIMIT is 102400', () =>
+      assertEqual(w.TEXT_FILE_SIZE_LIMIT, 102400));
   });
 
   describe('formatTransferStats Function', () => {
@@ -535,6 +552,23 @@ module.exports = function (w) {
       w.selectDeviceFile(item, { shiftKey: true });
       // Item should be selected (falls back to normal click behavior)
       assertTrue(item.classList.contains('selected'));
+    });
+  });
+
+  describe('formatFileSize Function', () => {
+    it('formats bytes', () => {
+      assertEqual(w.formatFileSize(500), '500 B');
+    });
+    it('formats kilobytes', () => {
+      const result = w.formatFileSize(2048);
+      assertTrue(result.includes('KB'));
+    });
+    it('formats megabytes', () => {
+      const result = w.formatFileSize(2 * 1024 * 1024);
+      assertTrue(result.includes('MB'));
+    });
+    it('handles zero', () => {
+      assertEqual(w.formatFileSize(0), '0 B');
     });
   });
 
@@ -2229,6 +2263,492 @@ module.exports = function (w) {
         ),
       );
       w.FPBState.toolTerminal = null;
+    });
+  });
+
+  /* ===========================
+     TEXT FILE EDITOR TESTS
+     =========================== */
+
+  describe('_isTextFile Function', () => {
+    it('recognizes .txt files', () => assertTrue(w._isTextFile('readme.txt')));
+    it('recognizes .json files', () =>
+      assertTrue(w._isTextFile('config.json')));
+    it('recognizes .c files', () => assertTrue(w._isTextFile('main.c')));
+    it('recognizes .py files', () => assertTrue(w._isTextFile('script.py')));
+    it('recognizes .yaml files', () =>
+      assertTrue(w._isTextFile('config.yaml')));
+    it('recognizes .md files', () => assertTrue(w._isTextFile('README.md')));
+    it('recognizes .sh files', () => assertTrue(w._isTextFile('build.sh')));
+    it('recognizes .log files', () => assertTrue(w._isTextFile('debug.log')));
+    it('recognizes .ini files', () => assertTrue(w._isTextFile('config.ini')));
+    it('recognizes .xml files', () => assertTrue(w._isTextFile('data.xml')));
+    it('recognizes .html files', () => assertTrue(w._isTextFile('index.html')));
+    it('recognizes .css files', () => assertTrue(w._isTextFile('style.css')));
+    it('recognizes .cpp files', () => assertTrue(w._isTextFile('main.cpp')));
+    it('is case insensitive', () => assertTrue(w._isTextFile('FILE.TXT')));
+    it('rejects .bin files', () => assertFalse(w._isTextFile('data.bin')));
+    it('rejects .png files', () => assertFalse(w._isTextFile('image.png')));
+    it('rejects .elf files', () => assertFalse(w._isTextFile('firmware.elf')));
+    it('rejects files without extension', () =>
+      assertFalse(w._isTextFile('Makefile')));
+  });
+
+  describe('_getAceMode Function', () => {
+    it('returns c_cpp for .c', () =>
+      assertEqual(w._getAceMode('main.c'), 'c_cpp'));
+    it('returns c_cpp for .h', () =>
+      assertEqual(w._getAceMode('header.h'), 'c_cpp'));
+    it('returns c_cpp for .cpp', () =>
+      assertEqual(w._getAceMode('main.cpp'), 'c_cpp'));
+    it('returns c_cpp for .hpp', () =>
+      assertEqual(w._getAceMode('header.hpp'), 'c_cpp'));
+    it('returns c_cpp for .cc', () =>
+      assertEqual(w._getAceMode('main.cc'), 'c_cpp'));
+    it('returns c_cpp for .cxx', () =>
+      assertEqual(w._getAceMode('main.cxx'), 'c_cpp'));
+    it('returns python for .py', () =>
+      assertEqual(w._getAceMode('script.py'), 'python'));
+    it('returns javascript for .js', () =>
+      assertEqual(w._getAceMode('app.js'), 'javascript'));
+    it('returns typescript for .ts', () =>
+      assertEqual(w._getAceMode('app.ts'), 'typescript'));
+    it('returns json for .json', () =>
+      assertEqual(w._getAceMode('config.json'), 'json'));
+    it('returns xml for .xml', () =>
+      assertEqual(w._getAceMode('data.xml'), 'xml'));
+    it('returns html for .html', () =>
+      assertEqual(w._getAceMode('index.html'), 'html'));
+    it('returns css for .css', () =>
+      assertEqual(w._getAceMode('style.css'), 'css'));
+    it('returns scss for .scss', () =>
+      assertEqual(w._getAceMode('style.scss'), 'scss'));
+    it('returns less for .less', () =>
+      assertEqual(w._getAceMode('style.less'), 'less'));
+    it('returns yaml for .yaml', () =>
+      assertEqual(w._getAceMode('config.yaml'), 'yaml'));
+    it('returns yaml for .yml', () =>
+      assertEqual(w._getAceMode('config.yml'), 'yaml'));
+    it('returns toml for .toml', () =>
+      assertEqual(w._getAceMode('config.toml'), 'toml'));
+    it('returns sh for .sh', () =>
+      assertEqual(w._getAceMode('build.sh'), 'sh'));
+    it('returns sh for .bash', () =>
+      assertEqual(w._getAceMode('script.bash'), 'sh'));
+    it('returns markdown for .md', () =>
+      assertEqual(w._getAceMode('README.md'), 'markdown'));
+    it('returns sql for .sql', () =>
+      assertEqual(w._getAceMode('query.sql'), 'sql'));
+    it('returns lua for .lua', () =>
+      assertEqual(w._getAceMode('script.lua'), 'lua'));
+    it('returns ruby for .rb', () =>
+      assertEqual(w._getAceMode('app.rb'), 'ruby'));
+    it('returns golang for .go', () =>
+      assertEqual(w._getAceMode('main.go'), 'golang'));
+    it('returns rust for .rs', () =>
+      assertEqual(w._getAceMode('lib.rs'), 'rust'));
+    it('returns java for .java', () =>
+      assertEqual(w._getAceMode('Main.java'), 'java'));
+    it('returns ini for .ini', () =>
+      assertEqual(w._getAceMode('config.ini'), 'ini'));
+    it('returns ini for .cfg', () =>
+      assertEqual(w._getAceMode('config.cfg'), 'ini'));
+    it('returns ini for .conf', () =>
+      assertEqual(w._getAceMode('nginx.conf'), 'ini'));
+    it('returns cmake for .cmake', () =>
+      assertEqual(w._getAceMode('CMakeLists.cmake'), 'cmake'));
+    it('returns makefile for .mk', () =>
+      assertEqual(w._getAceMode('rules.mk'), 'makefile'));
+    it('returns assembly for .s', () =>
+      assertEqual(w._getAceMode('startup.s'), 'assembly_x86'));
+    it('returns assembly for .asm', () =>
+      assertEqual(w._getAceMode('boot.asm'), 'assembly_x86'));
+    it('returns svg for .svg', () =>
+      assertEqual(w._getAceMode('icon.svg'), 'svg'));
+    it('returns text for unknown', () =>
+      assertEqual(w._getAceMode('data.bin'), 'text'));
+    it('returns html for .htm', () =>
+      assertEqual(w._getAceMode('page.htm'), 'html'));
+  });
+
+  describe('confirmLargeFile Function', () => {
+    it('returns download when first confirm is true', () => {
+      const origConfirm = browserGlobals.confirm;
+      browserGlobals.confirm = () => true;
+      global.confirm = browserGlobals.confirm;
+      const result = w.confirmLargeFile('big.txt', 200000);
+      assertEqual(result, 'download');
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
+    });
+
+    it('returns open when first false, second true', () => {
+      const origConfirm = browserGlobals.confirm;
+      let callCount = 0;
+      browserGlobals.confirm = () => {
+        callCount++;
+        return callCount > 1; // first false, second true
+      };
+      global.confirm = browserGlobals.confirm;
+      const result = w.confirmLargeFile('big.txt', 200000);
+      assertEqual(result, 'open');
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
+    });
+
+    it('returns cancel when both confirms are false', () => {
+      const origConfirm = browserGlobals.confirm;
+      browserGlobals.confirm = () => false;
+      global.confirm = browserGlobals.confirm;
+      const result = w.confirmLargeFile('big.txt', 200000);
+      assertEqual(result, 'cancel');
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
+    });
+  });
+
+  describe('updateTabDirtyState Function', () => {
+    it('sets dirty flag on tab info', () => {
+      w.FPBState.editorTabs = [
+        { id: 'textfile_test', type: 'textfile', dirty: false },
+      ];
+      w.updateTabDirtyState('textfile_test', true);
+      assertTrue(w.FPBState.editorTabs[0].dirty);
+      w.FPBState.editorTabs = [];
+    });
+
+    it('clears dirty flag on tab info', () => {
+      w.FPBState.editorTabs = [
+        { id: 'textfile_test', type: 'textfile', dirty: true },
+      ];
+      w.updateTabDirtyState('textfile_test', false);
+      assertFalse(w.FPBState.editorTabs[0].dirty);
+      w.FPBState.editorTabs = [];
+    });
+
+    it('handles missing tab gracefully', () => {
+      w.FPBState.editorTabs = [];
+      // Should not throw
+      w.updateTabDirtyState('nonexistent', true);
+    });
+  });
+
+  describe('openDeviceTextFile Function', () => {
+    it('is async function', () =>
+      assertTrue(w.openDeviceTextFile.constructor.name === 'AsyncFunction'));
+
+    it('returns early when not connected', async () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      await w.openDeviceTextFile('/data/test.txt', 'test.txt');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('switches to existing tab if already open', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        { id: 'textfile__data_test_txt', title: 'test.txt', type: 'textfile' },
+      ];
+      await w.openDeviceTextFile('/data/test.txt', 'test.txt');
+      assertEqual(w.FPBState.activeEditorTab, 'textfile__data_test_txt');
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns early when stat fails', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/transfer/stat', {
+        success: false,
+        error: 'Not found',
+      });
+      await w.openDeviceTextFile('/data/missing.txt', 'missing.txt');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Failed to stat'),
+        ),
+      );
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('cancels when user chooses cancel for large file', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [];
+      setFetchResponse('/api/transfer/stat', {
+        success: true,
+        stat: { size: 200000 },
+      });
+      const origConfirm = browserGlobals.confirm;
+      browserGlobals.confirm = () => false;
+      global.confirm = browserGlobals.confirm;
+      await w.openDeviceTextFile('/data/big.txt', 'big.txt');
+      // No tab should be created
+      assertEqual(w.FPBState.editorTabs.length, 0);
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles download failure', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [];
+      w.FPBState.aceEditors = new Map();
+      setFetchResponse('/api/transfer/stat', {
+        success: true,
+        stat: { size: 100 },
+      });
+      // Mock downloadFileFromDevice to return failure via SSE stream
+      setFetchResponse('/api/transfer/download', {
+        _stream: [
+          'data: {"type":"result","success":false,"error":"Read failed"}\n',
+        ],
+      });
+      await w.openDeviceTextFile('/data/fail.txt', 'fail.txt');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('failed'),
+        ),
+      );
+      assertEqual(w.FPBState.editorTabs.length, 0);
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('saveDeviceTextFile Function', () => {
+    it('is async function', () =>
+      assertTrue(w.saveDeviceTextFile.constructor.name === 'AsyncFunction'));
+
+    it('returns error when not connected', async () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      await w.saveDeviceTextFile('textfile_test');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns error for non-textfile tab', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [{ id: 'tab1', type: 'asm' }];
+      await w.saveDeviceTextFile('tab1');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('No text file tab'),
+        ),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns error when editor not found', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        {
+          id: 'textfile_test',
+          type: 'textfile',
+          title: 'test.txt',
+          remotePath: '/test.txt',
+        },
+      ];
+      w.FPBState.aceEditors.clear();
+      await w.saveDeviceTextFile('textfile_test');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Editor not found'),
+        ),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('downloadTextFileLocal Function', () => {
+    it('is a function', () =>
+      assertTrue(typeof w.downloadTextFileLocal === 'function'));
+
+    it('triggers browser download', () => {
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        { id: 'textfile_test', type: 'textfile', title: 'test.txt' },
+      ];
+      w.FPBState.aceEditors.set('textfile_test', {
+        getValue: () => 'file content',
+      });
+      w.downloadTextFileLocal('textfile_test');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Downloaded'),
+        ),
+      );
+      w.FPBState.aceEditors.delete('textfile_test');
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles missing tab gracefully', () => {
+      w.FPBState.editorTabs = [];
+      // Should not throw
+      w.downloadTextFileLocal('nonexistent');
+    });
+
+    it('handles missing editor gracefully', () => {
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        { id: 'textfile_noed', type: 'textfile', title: 'noed.txt' },
+      ];
+      w.FPBState.aceEditors.clear();
+      w.downloadTextFileLocal('textfile_noed');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Downloaded'),
+        ),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('Text Editor Context Menu', () => {
+    it('openAsText action calls openDeviceTextFile', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferSelectedFiles = [{ path: '/data/config.ini', type: 'file' }];
+      w.transferContextAction('openAsText');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('openAsText does nothing with no selection', () => {
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferSelectedFiles = [];
+      w.transferContextAction('openAsText');
+      // No error logged since no selection
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('openAsText does nothing with multiple selection', () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.transferSelectedFiles = [
+        { path: '/a.txt', type: 'file' },
+        { path: '/b.txt', type: 'file' },
+      ];
+      w.transferContextAction('openAsText');
+      // Should not call openDeviceTextFile with multiple selection
+      assertFalse(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('closeTab dirty confirmation', () => {
+    it('prompts confirm for dirty textfile tab', () => {
+      const origConfirm = browserGlobals.confirm;
+      let confirmCalled = false;
+      browserGlobals.confirm = () => {
+        confirmCalled = true;
+        return false; // User cancels
+      };
+      global.confirm = browserGlobals.confirm;
+
+      const mockEditor = { destroy: () => {} };
+      w.FPBState.editorTabs = [
+        {
+          id: 'textfile_dirty',
+          type: 'textfile',
+          closable: true,
+          dirty: true,
+          title: 'dirty.txt',
+        },
+      ];
+      w.FPBState.aceEditors.set('textfile_dirty', mockEditor);
+      w.closeTab('textfile_dirty');
+      assertTrue(confirmCalled);
+      // Tab should NOT be closed since user cancelled
+      assertEqual(w.FPBState.editorTabs.length, 1);
+
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
+      w.FPBState.aceEditors.delete('textfile_dirty');
+      w.FPBState.editorTabs = [];
+    });
+
+    it('closes dirty tab when user confirms discard', () => {
+      const origConfirm = browserGlobals.confirm;
+      browserGlobals.confirm = () => true;
+      global.confirm = browserGlobals.confirm;
+
+      const mockEditor = { destroy: () => {} };
+      w.FPBState.editorTabs = [
+        {
+          id: 'textfile_dirty2',
+          type: 'textfile',
+          closable: true,
+          dirty: true,
+          title: 'dirty2.txt',
+        },
+      ];
+      w.FPBState.aceEditors.set('textfile_dirty2', mockEditor);
+      w.closeTab('textfile_dirty2');
+      assertEqual(w.FPBState.editorTabs.length, 0);
+
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
+    });
+
+    it('does not prompt for non-dirty textfile tab', () => {
+      const origConfirm = browserGlobals.confirm;
+      let confirmCalled = false;
+      browserGlobals.confirm = () => {
+        confirmCalled = true;
+        return true;
+      };
+      global.confirm = browserGlobals.confirm;
+
+      const mockEditor = { destroy: () => {} };
+      w.FPBState.editorTabs = [
+        {
+          id: 'textfile_clean',
+          type: 'textfile',
+          closable: true,
+          dirty: false,
+          title: 'clean.txt',
+        },
+      ];
+      w.FPBState.aceEditors.set('textfile_clean', mockEditor);
+      w.closeTab('textfile_clean');
+      assertFalse(confirmCalled);
+      assertEqual(w.FPBState.editorTabs.length, 0);
+
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
     });
   });
 };
