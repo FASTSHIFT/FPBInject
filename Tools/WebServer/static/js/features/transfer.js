@@ -987,6 +987,7 @@ async function openDeviceTextFile(remotePath, fileName, forceText = false) {
   }
 
   log.info(`Loading ${fileName} (${formatFileSize(fileSize)})`);
+  updateTransferControls(true);
 
   try {
     const result = await downloadFileFromDevice(
@@ -1003,6 +1004,7 @@ async function openDeviceTextFile(remotePath, fileName, forceText = false) {
     );
 
     hideTransferProgress();
+    updateTransferControls(false);
 
     if (!result.success) {
       log.error(`Open failed: ${result.error || 'Download error'}`);
@@ -1093,6 +1095,7 @@ async function openDeviceTextFile(remotePath, fileName, forceText = false) {
     log.success(`${fileName} (${formatFileSize(fileSize)})`);
   } catch (e) {
     hideTransferProgress();
+    updateTransferControls(false);
     log.error(`Open error: ${e}`);
   }
 }
@@ -1203,6 +1206,7 @@ async function previewDeviceImage(remotePath, fileName) {
   }
 
   log.info(`Loading preview: ${fileName}...`);
+  updateTransferControls(true);
 
   try {
     const result = await downloadFileFromDevice(
@@ -1219,6 +1223,7 @@ async function previewDeviceImage(remotePath, fileName) {
     );
 
     hideTransferProgress();
+    updateTransferControls(false);
 
     if (!result.success) {
       log.error(`Preview failed: ${result.error || 'Download error'}`);
@@ -1283,6 +1288,7 @@ async function previewDeviceImage(remotePath, fileName) {
     log.success(`Preview: ${fileName}`);
   } catch (e) {
     hideTransferProgress();
+    updateTransferControls(false);
     log.error(`Preview error: ${e}`);
   }
 }
