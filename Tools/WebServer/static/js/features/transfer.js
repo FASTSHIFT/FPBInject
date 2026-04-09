@@ -1048,16 +1048,16 @@ async function openDeviceTextFile(remotePath, fileName, forceText = false) {
     contentDiv.className = 'tab-content';
     contentDiv.id = `tabContent_${tabId}`;
     contentDiv.innerHTML = `
-      <div class="textfile-toolbar">
+      <div class="editor-toolbar" style="display: flex;">
         <span class="textfile-path" title="${escapeHtml(remotePath)}">${escapeHtml(remotePath)}</span>
-        <div class="textfile-actions">
-          <button onclick="saveDeviceTextFile('${tabId}')" title="${escapeHtml(t('transfer.save_to_device', 'Save to device (Ctrl+S)'))}">
-            <i class="codicon codicon-save"></i>
-          </button>
-          <button onclick="downloadTextFileLocal('${tabId}')" title="${escapeHtml(t('transfer.download_to_pc', 'Download to PC'))}">
-            <i class="codicon codicon-desktop-download"></i>
-          </button>
-        </div>
+        <div class="spacer"></div>
+        <button class="vscode-btn secondary" onclick="downloadTextFileLocal('${tabId}')" title="${escapeHtml(t('transfer.download_to_pc', 'Download to PC'))}">
+          <i class="codicon codicon-desktop-download" style="margin-right: 4px"></i> ${escapeHtml(t('transfer.download', 'Download'))}
+        </button>
+        <div style="width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 4px"></div>
+        <button class="vscode-btn" onclick="saveDeviceTextFile('${tabId}')" title="${escapeHtml(t('transfer.save_to_device', 'Save to device (Ctrl+S)'))}">
+          <i class="codicon codicon-save" style="margin-right: 4px"></i> ${escapeHtml(t('buttons.save', 'Save'))}
+        </button>
       </div>
       <div class="editor-main">
         <div id="editor_${tabId}" class="ace-editor-container"></div>
