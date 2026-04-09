@@ -839,6 +839,8 @@ body.resizing-panel .sash {
   white-space: nowrap;
   font-family: "Consolas", "Courier New", monospace;
   font-size: 11px;
+  user-select: text;
+  cursor: text;
 }
 
 .editor-toolbar {
