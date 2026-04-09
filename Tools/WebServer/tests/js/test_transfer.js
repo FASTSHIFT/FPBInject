@@ -115,6 +115,12 @@ module.exports = function (w) {
       assertTrue(typeof w.updateTabDirtyState === 'function'));
     it('TEXT_FILE_SIZE_LIMIT is 102400', () =>
       assertEqual(w.TEXT_FILE_SIZE_LIMIT, 102400));
+    it('refreshTextFileTab is a function', () =>
+      assertTrue(typeof w.refreshTextFileTab === 'function'));
+    it('refreshPreviewTab is a function', () =>
+      assertTrue(typeof w.refreshPreviewTab === 'function'));
+    it('formatFileSize is a function', () =>
+      assertTrue(typeof w.formatFileSize === 'function'));
   });
 
   describe('formatTransferStats Function', () => {
@@ -569,6 +575,17 @@ module.exports = function (w) {
     });
     it('handles zero', () => {
       assertEqual(w.formatFileSize(0), '0 B');
+    });
+    it('formats exactly 1KB', () => {
+      const result = w.formatFileSize(1024);
+      assertTrue(result.includes('KB'));
+    });
+    it('formats exactly 1MB', () => {
+      const result = w.formatFileSize(1024 * 1024);
+      assertTrue(result.includes('MB'));
+    });
+    it('formats 1023 bytes as B', () => {
+      assertEqual(w.formatFileSize(1023), '1023 B');
     });
   });
 
@@ -2664,6 +2681,233 @@ module.exports = function (w) {
           (wr) => wr.msg && wr.msg.includes('Not connected'),
         ),
       );
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('refreshTextFileTab Function', () => {
+    it('is async function', () =>
+      assertTrue(w.refreshTextFileTab.constructor.name === 'AsyncFunction'));
+
+    it('returns early when not connected', async () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      await w.refreshTextFileTab('textfile_test');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns early for non-textfile tab', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [{ id: 'tab1', type: 'asm' }];
+      await w.refreshTextFileTab('tab1');
+      // Should not log anything (just returns)
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('prompts confirm if dirty', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        {
+          id: 'textfile_dirty',
+          type: 'textfile',
+          title: 'dirty.txt',
+          remotePath: '/dirty.txt',
+          dirty: true,
+        },
+      ];
+      const origConfirm = browserGlobals.confirm;
+      browserGlobals.confirm = () => false;
+      global.confirm = browserGlobals.confirm;
+      await w.refreshTextFileTab('textfile_dirty');
+      // Should not proceed since user cancelled
+      w.FPBState.editorTabs = [];
+      browserGlobals.confirm = origConfirm;
+      global.confirm = origConfirm;
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns early for missing tab', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [];
+      await w.refreshTextFileTab('nonexistent');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles download failure', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        {
+          id: 'textfile_rf',
+          type: 'textfile',
+          title: 'rf.txt',
+          remotePath: '/rf.txt',
+          dirty: false,
+        },
+      ];
+      setFetchResponse('/api/transfer/download', {
+        _stream: [
+          'data: {"type":"result","success":false,"error":"Read failed"}\n',
+        ],
+      });
+      await w.refreshTextFileTab('textfile_rf');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Refresh failed'),
+        ),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('updates editor content on success', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      const mockEditor = {
+        _value: 'old content',
+        setValue: function (v) {
+          this._value = v;
+        },
+        getValue: function () {
+          return this._value;
+        },
+      };
+      w.FPBState.editorTabs = [
+        {
+          id: 'textfile_rs',
+          type: 'textfile',
+          title: 'rs.txt',
+          remotePath: '/rs.txt',
+          dirty: false,
+          originalContent: 'old content',
+        },
+      ];
+      w.FPBState.aceEditors.set('textfile_rs', mockEditor);
+
+      // Mock successful download with base64 text data
+      const b64 = btoa('new content from device');
+      setFetchResponse('/api/transfer/download', {
+        _stream: [
+          `data: {"type":"result","success":true,"data":"${b64}","size":22}\n`,
+        ],
+      });
+      await w.refreshTextFileTab('textfile_rs');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Refreshed'),
+        ),
+      );
+      assertFalse(w.FPBState.editorTabs[0].dirty);
+      w.FPBState.aceEditors.delete('textfile_rs');
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+  });
+
+  describe('refreshPreviewTab Function', () => {
+    it('is async function', () =>
+      assertTrue(w.refreshPreviewTab.constructor.name === 'AsyncFunction'));
+
+    it('returns early when not connected', async () => {
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = new MockTerminal();
+      await w.refreshPreviewTab('preview_test');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Not connected'),
+        ),
+      );
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns early for non-preview tab', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [{ id: 'tab1', type: 'textfile' }];
+      await w.refreshPreviewTab('tab1');
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('returns early for missing tab', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [];
+      await w.refreshPreviewTab('nonexistent');
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('handles download failure', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        {
+          id: 'preview_img',
+          type: 'preview',
+          title: 'img.png',
+          remotePath: '/img.png',
+          blobUrl: 'blob:old',
+        },
+      ];
+      setFetchResponse('/api/transfer/download', {
+        _stream: [
+          'data: {"type":"result","success":false,"error":"Read failed"}\n',
+        ],
+      });
+      await w.refreshPreviewTab('preview_img');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Refresh failed'),
+        ),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
+      w.FPBState.toolTerminal = null;
+    });
+
+    it('updates image on success', async () => {
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      w.FPBState.editorTabs = [
+        {
+          id: 'preview_rp',
+          type: 'preview',
+          title: 'rp.png',
+          remotePath: '/rp.png',
+          blobUrl: 'blob:old',
+        },
+      ];
+
+      const b64 = btoa('fake png data');
+      setFetchResponse('/api/transfer/download', {
+        _stream: [
+          `data: {"type":"result","success":true,"data":"${b64}","size":13}\n`,
+        ],
+      });
+      await w.refreshPreviewTab('preview_rp');
+      assertTrue(
+        w.FPBState.toolTerminal._writes.some(
+          (wr) => wr.msg && wr.msg.includes('Refreshed'),
+        ),
+      );
+      w.FPBState.editorTabs = [];
+      w.FPBState.isConnected = false;
       w.FPBState.toolTerminal = null;
     });
   });

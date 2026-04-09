@@ -1053,6 +1053,9 @@ async function openDeviceTextFile(remotePath, fileName, forceText = false) {
       <div class="editor-toolbar" style="display: flex;">
         <span class="textfile-path" title="${escapeHtml(remotePath)}">${escapeHtml(remotePath)}</span>
         <div class="spacer"></div>
+        <button class="vscode-btn secondary" onclick="refreshTextFileTab('${tabId}')" title="${escapeHtml(t('buttons.refresh', 'Refresh'))}">
+          <i class="codicon codicon-refresh" style="margin-right: 4px"></i> ${escapeHtml(t('buttons.refresh', 'Refresh'))}
+        </button>
         <button class="vscode-btn secondary" onclick="downloadTextFileLocal('${tabId}')" title="${escapeHtml(t('transfer.download_to_pc', 'Download to PC'))}">
           <i class="codicon codicon-desktop-download" style="margin-right: 4px"></i> ${escapeHtml(t('transfer.download', 'Download'))}
         </button>
@@ -1187,6 +1190,149 @@ function downloadTextFileLocal(tabId) {
 }
 
 /**
+ * Refresh a text file tab by re-downloading from device.
+ */
+async function refreshTextFileTab(tabId) {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    log.error('Not connected to device');
+    return;
+  }
+
+  const tabInfo = state.editorTabs.find((tab) => tab.id === tabId);
+  if (!tabInfo || tabInfo.type !== 'textfile') return;
+
+  if (tabInfo.dirty) {
+    const discard = confirm(
+      t(
+        'transfer.unsaved_changes',
+        'File {{name}} has unsaved changes. Discard?',
+        { name: tabInfo.title },
+      ),
+    );
+    if (!discard) return;
+  }
+
+  log.info(`Refreshing ${tabInfo.title}...`);
+  updateTransferControls(true);
+
+  try {
+    const result = await downloadFileFromDevice(
+      tabInfo.remotePath,
+      (downloaded, total, percent, speed, eta, stats) => {
+        updateTransferProgress(
+          percent,
+          `${percent.toFixed(1)}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
+          speed,
+          eta,
+          stats,
+        );
+      },
+    );
+
+    hideTransferProgress();
+    updateTransferControls(false);
+
+    if (!result.success) {
+      log.error(`Refresh failed: ${result.error || 'Download error'}`);
+      return;
+    }
+
+    const blob = result.blob || new Blob([result.data]);
+    const textContent = await blob.text();
+
+    const { aceEditors } = state;
+    const editor = aceEditors.get(tabId);
+    if (editor) {
+      editor.setValue(textContent, -1);
+    }
+    tabInfo.originalContent = textContent;
+    updateTabDirtyState(tabId, false);
+    log.success(`Refreshed: ${tabInfo.title}`);
+  } catch (e) {
+    hideTransferProgress();
+    updateTransferControls(false);
+    log.error(`Refresh error: ${e}`);
+  }
+}
+
+/**
+ * Refresh an image preview tab by re-downloading from device.
+ */
+async function refreshPreviewTab(tabId) {
+  const state = window.FPBState;
+  if (!state.isConnected) {
+    log.error('Not connected');
+    return;
+  }
+
+  const tabInfo = state.editorTabs.find((tab) => tab.id === tabId);
+  if (!tabInfo || tabInfo.type !== 'preview') return;
+
+  log.info(`Refreshing ${tabInfo.title}...`);
+  updateTransferControls(true);
+
+  try {
+    const result = await downloadFileFromDevice(
+      tabInfo.remotePath,
+      (downloaded, total, percent, speed, eta, stats) => {
+        updateTransferProgress(
+          percent,
+          `${percent.toFixed(1)}% (${formatFileSize(downloaded)}/${formatFileSize(total)})`,
+          speed,
+          eta,
+          stats,
+        );
+      },
+    );
+
+    hideTransferProgress();
+    updateTransferControls(false);
+
+    if (!result.success) {
+      log.error(`Refresh failed: ${result.error || 'Download error'}`);
+      return;
+    }
+
+    // Revoke old blob URL
+    if (tabInfo.blobUrl) {
+      URL.revokeObjectURL(tabInfo.blobUrl);
+    }
+
+    const ext = tabInfo.title.split('.').pop().toLowerCase();
+    const mimeMap = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      bmp: 'image/bmp',
+      svg: 'image/svg+xml',
+      webp: 'image/webp',
+      ico: 'image/x-icon',
+    };
+    const mime = mimeMap[ext] || 'image/png';
+    const blob = result.blob || new Blob([result.data], { type: mime });
+    const blobUrl = URL.createObjectURL(blob);
+    tabInfo.blobUrl = blobUrl;
+
+    // Update the img element
+    const contentDiv = document.getElementById(`tabContent_${tabId}`);
+    if (contentDiv) {
+      const img = contentDiv.querySelector('img');
+      if (img) {
+        img.src = blobUrl;
+      }
+    }
+
+    log.success(`Refreshed: ${tabInfo.title}`);
+  } catch (e) {
+    hideTransferProgress();
+    updateTransferControls(false);
+    log.error(`Refresh error: ${e}`);
+  }
+}
+
+/**
  * Preview an image file from the device in an editor tab.
  * Downloads the file, creates a blob URL, and displays it in a new tab.
  */
@@ -1253,6 +1399,7 @@ async function previewDeviceImage(remotePath, fileName) {
       type: 'preview',
       closable: true,
       blobUrl: blobUrl,
+      remotePath: remotePath,
     });
 
     const tabsHeader = document.getElementById('editorTabsHeader');
@@ -1278,7 +1425,14 @@ async function previewDeviceImage(remotePath, fileName) {
     contentDiv.className = 'tab-content';
     contentDiv.id = `tabContent_${tabId}`;
     contentDiv.innerHTML = `
-      <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: var(--vscode-editor-bg); overflow: auto; padding: 16px;">
+      <div class="editor-toolbar" style="display: flex;">
+        <span class="textfile-path" title="${escapeHtml(remotePath)}">${escapeHtml(remotePath)}</span>
+        <div class="spacer"></div>
+        <button class="vscode-btn secondary" onclick="refreshPreviewTab('${tabId}')" title="${escapeHtml(t('buttons.refresh', 'Refresh'))}">
+          <i class="codicon codicon-refresh" style="margin-right: 4px"></i> ${escapeHtml(t('buttons.refresh', 'Refresh'))}
+        </button>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: center; flex: 1; background: var(--vscode-editor-bg); overflow: auto; padding: 16px;">
         <img src="${blobUrl}" alt="${escapeHtml(fileName)}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
       </div>
     `;
@@ -2190,6 +2344,8 @@ window.downloadTextFileLocal = downloadTextFileLocal;
 window.confirmLargeFile = confirmLargeFile;
 window.updateTabDirtyState = updateTabDirtyState;
 window.TEXT_FILE_SIZE_LIMIT = TEXT_FILE_SIZE_LIMIT;
+window.refreshTextFileTab = refreshTextFileTab;
+window.refreshPreviewTab = refreshPreviewTab;
 window.handleDeviceFileKeydown = handleDeviceFileKeydown;
 window.createDeviceDir = createDeviceDir;
 window.updateTransferProgress = updateTransferProgress;

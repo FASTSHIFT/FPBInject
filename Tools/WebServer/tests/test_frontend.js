@@ -110,6 +110,8 @@ const globalFunctions = [
   'updateTabDirtyState',
   'TEXT_FILE_SIZE_LIMIT',
   'formatFileSize',
+  'refreshTextFileTab',
+  'refreshPreviewTab',
   // Config schema functions
   'loadConfigSchema',
   'getConfigSchema',
