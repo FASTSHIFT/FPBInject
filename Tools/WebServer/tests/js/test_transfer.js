@@ -2912,6 +2912,44 @@ module.exports = function (w) {
     });
   });
 
+  describe('LVGL Binary Image Functions', () => {
+    it('_isLvglBinFile recognizes .bin files', () =>
+      assertTrue(w._isLvglBinFile('image.bin')));
+    it('_isLvglBinFile is case insensitive', () =>
+      assertTrue(w._isLvglBinFile('IMAGE.BIN')));
+    it('_isLvglBinFile rejects .png files', () =>
+      assertFalse(w._isLvglBinFile('image.png')));
+    it('_isLvglBinFile rejects .txt files', () =>
+      assertFalse(w._isLvglBinFile('data.txt')));
+    it('convertLvglToPng is async function', () =>
+      assertTrue(w.convertLvglToPng.constructor.name === 'AsyncFunction'));
+
+    it('convertLvglToPng handles API error', async () => {
+      setFetchResponse('/api/convert/lvgl-to-png', {
+        success: false,
+        error: 'icu tool not installed',
+      });
+      const blob = new Blob([new Uint8Array([1, 2, 3])]);
+      const result = await w.convertLvglToPng(blob);
+      assertFalse(result.success);
+      assertTrue(result.error.includes('icu'));
+    });
+
+    it('convertLvglToPng returns PNG blob on success', async () => {
+      // Mock a successful conversion returning base64 PNG
+      const fakePng = btoa('fake png');
+      setFetchResponse('/api/convert/lvgl-to-png', {
+        success: true,
+        data: fakePng,
+        size: 8,
+      });
+      const blob = new Blob([new Uint8Array([1, 2, 3])]);
+      const result = await w.convertLvglToPng(blob);
+      assertTrue(result.success);
+      assertTrue(result.blob instanceof Blob);
+    });
+  });
+
   describe('closeTab dirty confirmation', () => {
     it('prompts confirm for dirty textfile tab', () => {
       const origConfirm = browserGlobals.confirm;

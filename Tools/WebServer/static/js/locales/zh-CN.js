@@ -388,6 +388,8 @@ window.i18nResources['zh-CN'] = {
       unsaved_changes: '文件 {{name}} 有未保存的修改，确定丢弃？',
       save_to_device: '保存到设备 (Ctrl+S)',
       download_to_pc: '下载到本地',
+      icu_not_installed:
+        '预览 LVGL 图片需要安装 "icu" 工具，当前未安装。\n是否打开安装页面？',
     },
 
     // 设备

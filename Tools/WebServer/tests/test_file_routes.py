@@ -2,6 +2,7 @@
 """Tests for app/routes/files.py"""
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -305,6 +306,81 @@ class TestFileWriteBinary(FileRoutesBase):
         )
         data = res.get_json()
         self.assertTrue(data["success"])
+
+
+class TestConvertLvglToPng(FileRoutesBase):
+    """Tests for /api/convert/lvgl-to-png endpoint."""
+
+    def test_no_data(self):
+        res = self.client.post("/api/convert/lvgl-to-png", json={})
+        data = res.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("No data", data["error"])
+
+    def test_empty_data(self):
+        res = self.client.post("/api/convert/lvgl-to-png", json={"data": ""})
+        data = res.get_json()
+        self.assertFalse(data["success"])
+
+    def test_invalid_base64(self):
+        res = self.client.post(
+            "/api/convert/lvgl-to-png", json={"data": "!!!invalid!!!"}
+        )
+        data = res.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("Invalid base64", data["error"])
+
+    @patch("shutil.which", return_value=None)
+    def test_icu_not_installed(self, mock_which):
+        import base64
+
+        b64 = base64.b64encode(b"\x00" * 10).decode()
+        res = self.client.post("/api/convert/lvgl-to-png", json={"data": b64})
+        data = res.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("icu tool not installed", data["error"])
+
+    @patch("subprocess.run")
+    @patch("shutil.which", return_value="/usr/bin/icu")
+    def test_conversion_failure(self, mock_which, mock_run):
+        import base64
+
+        mock_run.return_value = unittest.mock.Mock(
+            returncode=1, stdout=b"", stderr=b"Not a valid LVGL image"
+        )
+        b64 = base64.b64encode(b"\x00" * 10).decode()
+        res = self.client.post("/api/convert/lvgl-to-png", json={"data": b64})
+        data = res.get_json()
+        self.assertFalse(data["success"])
+
+    @patch("subprocess.run")
+    @patch("shutil.which", return_value="/usr/bin/icu")
+    def test_conversion_success(self, mock_which, mock_run):
+        import base64
+
+        fake_png = b"\x89PNG\r\n\x1a\nfake"
+        mock_run.return_value = unittest.mock.Mock(
+            returncode=0, stdout=fake_png, stderr=b""
+        )
+        b64 = base64.b64encode(b"\x00" * 10).decode()
+        res = self.client.post("/api/convert/lvgl-to-png", json={"data": b64})
+        data = res.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["size"], len(fake_png))
+        # Verify returned data decodes to the fake PNG
+        decoded = base64.b64decode(data["data"])
+        self.assertEqual(decoded, fake_png)
+
+    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired("icu", 10))
+    @patch("shutil.which", return_value="/usr/bin/icu")
+    def test_conversion_timeout(self, mock_which, mock_run):
+        import base64
+
+        b64 = base64.b64encode(b"\x00" * 10).decode()
+        res = self.client.post("/api/convert/lvgl-to-png", json={"data": b64})
+        data = res.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("timed out", data["error"])
 
 
 if __name__ == "__main__":

@@ -112,6 +112,8 @@ const globalFunctions = [
   'formatFileSize',
   'refreshTextFileTab',
   'refreshPreviewTab',
+  '_isLvglBinFile',
+  'convertLvglToPng',
   // Config schema functions
   'loadConfigSchema',
   'getConfigSchema',

@@ -496,6 +496,8 @@ async function refreshDeviceFiles() {
         refreshDeviceFiles();
       } else if (_isImageFile(entry.name)) {
         previewDeviceImage(item.dataset.path, entry.name);
+      } else if (_isLvglBinFile(entry.name)) {
+        previewDeviceImage(item.dataset.path, entry.name, true);
       } else if (_isTextFile(entry.name)) {
         openDeviceTextFile(item.dataset.path, entry.name);
       }
@@ -774,6 +776,55 @@ const _IMAGE_EXTENSIONS = [
 function _isImageFile(name) {
   const lower = name.toLowerCase();
   return _IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/** LVGL binary image extensions */
+const _LVGL_BIN_EXTENSIONS = ['.bin'];
+
+/**
+ * Check if a filename is an LVGL binary image file.
+ */
+function _isLvglBinFile(name) {
+  const lower = name.toLowerCase();
+  return _LVGL_BIN_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Convert LVGL binary data to PNG via backend icu tool.
+ * @param {Blob} blob - LVGL binary data
+ * @returns {Promise<{success: boolean, blob?: Blob, error?: string}>}
+ */
+async function convertLvglToPng(blob) {
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const b64 = btoa(binary);
+
+    const res = await fetch('/api/convert/lvgl-to-png', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: b64 }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      return { success: false, error: data.error || 'Conversion failed' };
+    }
+
+    const pngBinary = atob(data.data);
+    const pngBytes = new Uint8Array(pngBinary.length);
+    for (let i = 0; i < pngBinary.length; i++) {
+      pngBytes[i] = pngBinary.charCodeAt(i);
+    }
+    const pngBlob = new Blob([pngBytes], { type: 'image/png' });
+    return { success: true, blob: pngBlob };
+  } catch (e) {
+    return { success: false, error: e.message || String(e) };
+  }
 }
 
 /* ===========================
@@ -1335,8 +1386,11 @@ async function refreshPreviewTab(tabId) {
 /**
  * Preview an image file from the device in an editor tab.
  * Downloads the file, creates a blob URL, and displays it in a new tab.
+ * @param {string} remotePath - File path on device
+ * @param {string} fileName - File name for display
+ * @param {boolean} isLvgl - If true, convert LVGL binary to PNG before display
  */
-async function previewDeviceImage(remotePath, fileName) {
+async function previewDeviceImage(remotePath, fileName, isLvgl = false) {
   const state = window.FPBState;
   if (!state.isConnected) {
     log.error('Not connected');
@@ -1376,20 +1430,48 @@ async function previewDeviceImage(remotePath, fileName) {
       return;
     }
 
-    // Create blob URL from downloaded data
-    const ext = fileName.split('.').pop().toLowerCase();
-    const mimeMap = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      gif: 'image/gif',
-      bmp: 'image/bmp',
-      svg: 'image/svg+xml',
-      webp: 'image/webp',
-      ico: 'image/x-icon',
-    };
-    const mime = mimeMap[ext] || 'image/png';
-    const blob = result.blob || new Blob([result.data], { type: mime });
+    let blob;
+    if (isLvgl) {
+      // Convert LVGL binary to PNG via backend
+      const rawBlob = result.blob || new Blob([result.data]);
+      log.info('Converting LVGL image...');
+      const convResult = await convertLvglToPng(rawBlob);
+      if (!convResult.success) {
+        if (
+          convResult.error &&
+          convResult.error.includes('icu tool not installed')
+        ) {
+          const install = confirm(
+            t(
+              'transfer.icu_not_installed',
+              'The "icu" tool is required to preview LVGL images but is not installed.\nOpen the installation page?',
+            ),
+          );
+          if (install) {
+            window.open('https://i.to01.icu', '_blank');
+          }
+        } else {
+          log.error(`LVGL convert failed: ${convResult.error}`);
+        }
+        return;
+      }
+      blob = convResult.blob;
+    } else {
+      // Standard image
+      const ext = fileName.split('.').pop().toLowerCase();
+      const mimeMap = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        bmp: 'image/bmp',
+        svg: 'image/svg+xml',
+        webp: 'image/webp',
+        ico: 'image/x-icon',
+      };
+      const mime = mimeMap[ext] || 'image/png';
+      blob = result.blob || new Blob([result.data], { type: mime });
+    }
     const blobUrl = URL.createObjectURL(blob);
 
     // Create editor tab
@@ -2336,6 +2418,8 @@ window.hideTransferContextMenu = hideTransferContextMenu;
 window.transferContextAction = transferContextAction;
 window.previewDeviceImage = previewDeviceImage;
 window._isImageFile = _isImageFile;
+window._isLvglBinFile = _isLvglBinFile;
+window.convertLvglToPng = convertLvglToPng;
 window._isTextFile = _isTextFile;
 window._getAceMode = _getAceMode;
 window.openDeviceTextFile = openDeviceTextFile;

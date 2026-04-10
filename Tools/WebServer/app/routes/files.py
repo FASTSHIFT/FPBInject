@@ -216,3 +216,65 @@ def api_file_write_binary():
         return jsonify({"success": False, "error": f"Invalid hex data: {e}"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/convert/lvgl-to-png", methods=["POST"])
+def api_convert_lvgl_to_png():
+    """Convert LVGL binary image to PNG using icu CLI tool.
+
+    JSON body:
+        data: base64-encoded LVGL binary image data
+
+    Returns:
+        JSON with base64-encoded PNG data
+    """
+    import base64
+    import shutil
+    import subprocess
+
+    data = request.json or {}
+    b64_data = data.get("data", "")
+
+    if not b64_data:
+        return jsonify({"success": False, "error": "No data provided"})
+
+    # Check if icu tool is available
+    icu_path = shutil.which("icu")
+    if not icu_path:
+        return jsonify({"success": False, "error": "icu tool not installed"})
+
+    try:
+        bin_data = base64.b64decode(b64_data)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Invalid base64 data: {e}"})
+
+    try:
+        result = subprocess.run(
+            [
+                icu_path,
+                "convert",
+                "/dev/stdin",
+                "-f",
+                "lvgl-v9",
+                "-F",
+                "png",
+                "--stdout",
+            ],
+            input=bin_data,
+            capture_output=True,
+            timeout=10,
+        )
+
+        if result.returncode != 0 or not result.stdout:
+            error_msg = result.stderr.decode("utf-8", errors="replace").strip()
+            return jsonify(
+                {"success": False, "error": error_msg or "Conversion failed"}
+            )
+
+        png_b64 = base64.b64encode(result.stdout).decode("ascii")
+        return jsonify({"success": True, "data": png_b64, "size": len(result.stdout)})
+
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "error": "Conversion timed out"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})

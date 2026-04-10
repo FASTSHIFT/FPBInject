@@ -396,6 +396,8 @@ window.i18nResources['en'] = {
       unsaved_changes: 'File {{name}} has unsaved changes. Discard?',
       save_to_device: 'Save to device (Ctrl+S)',
       download_to_pc: 'Download to PC',
+      icu_not_installed:
+        'The "icu" tool is required to preview LVGL images but is not installed.\nOpen the installation page?',
     },
 
     // Device

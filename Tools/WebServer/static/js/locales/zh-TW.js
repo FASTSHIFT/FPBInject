@@ -389,6 +389,8 @@ window.i18nResources['zh-TW'] = {
       unsaved_changes: '檔案 {{name}} 有未儲存的修改，確定捨棄？',
       save_to_device: '儲存到裝置 (Ctrl+S)',
       download_to_pc: '下載到本機',
+      icu_not_installed:
+        '預覽 LVGL 圖片需要安裝 "icu" 工具，目前未安裝。\n是否開啟安裝頁面？',
     },
 
     // 裝置
