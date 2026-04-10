@@ -322,7 +322,8 @@ class TestConvertLvglToPng(FileRoutesBase):
         data = res.get_json()
         self.assertFalse(data["success"])
 
-    def test_invalid_base64(self):
+    @patch("shutil.which", return_value="/usr/bin/icu")
+    def test_invalid_base64(self, mock_which):
         res = self.client.post(
             "/api/convert/lvgl-to-png", json={"data": "!!!invalid!!!"}
         )
