@@ -393,5 +393,155 @@ class TestMainNewArgs(unittest.TestCase):
         self.assertEqual(call_kwargs.kwargs.get("server_url"), "http://myhost:9000")
 
 
+class _CursorMockHandler(http.server.BaseHTTPRequestHandler):
+    """Mock HTTP handler that respects raw_since query parameter."""
+
+    # Simulated log entries: list of {"id": int, "data": str}
+    log_entries = []
+
+    def do_GET(self):
+        from urllib.parse import urlparse, parse_qs
+
+        parsed = urlparse(self.path)
+        path = parsed.path
+        qs = parse_qs(parsed.query)
+
+        if path == "/api/status":
+            body = json.dumps(
+                {"success": True, "connected": True, "port": "/dev/ttyACM0"}
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+        elif path == "/api/logs":
+            raw_since = int(qs.get("raw_since", [0])[0])
+            entries = [e for e in self.log_entries if e["id"] >= raw_since]
+            raw_data = "".join(e["data"] for e in entries)
+            raw_next = (
+                max(e["id"] for e in self.log_entries) + 1 if self.log_entries else 0
+            )
+            body = json.dumps({"raw_data": raw_data, "raw_next": raw_next}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        self.rfile.read(content_length) if content_length else b""
+        self.do_GET()
+
+    def log_message(self, format, *args):
+        pass
+
+
+class TestSerialReadSinceCursor(unittest.TestCase):
+    """Test serial_read --since cursor for incremental reads."""
+
+    @classmethod
+    def setUpClass(cls):
+        _CursorMockHandler.log_entries = [
+            {"id": 0, "data": "line0\n"},
+            {"id": 1, "data": "line1\n"},
+            {"id": 2, "data": "line2\n"},
+        ]
+        cls.server = http.server.HTTPServer(("127.0.0.1", 0), _CursorMockHandler)
+        cls.port = cls.server.server_address[1]
+        cls.server_url = f"http://127.0.0.1:{cls.port}"
+        cls.server_thread = threading.Thread(target=cls.server.serve_forever)
+        cls.server_thread.daemon = True
+        cls.server_thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def _make_cli(self):
+        return FPBCLI(port="/dev/ttyACM0", server_url=self.server_url)
+
+    def test_serial_read_since_zero_returns_all(self):
+        """serial_read(since=0) returns all log entries."""
+        cli = self._make_cli()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read(since=0)
+        result = json.loads(buf.getvalue())
+        self.assertTrue(result["success"])
+        self.assertIn("line0", result["raw_data"])
+        self.assertIn("line1", result["raw_data"])
+        self.assertIn("line2", result["raw_data"])
+        self.assertEqual(result["raw_next"], 3)
+        cli.cleanup()
+
+    def test_serial_read_since_skips_old(self):
+        """serial_read(since=2) returns only entries with id >= 2."""
+        cli = self._make_cli()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read(since=2)
+        result = json.loads(buf.getvalue())
+        self.assertTrue(result["success"])
+        self.assertNotIn("line0", result["raw_data"])
+        self.assertNotIn("line1", result["raw_data"])
+        self.assertIn("line2", result["raw_data"])
+        self.assertEqual(result["raw_next"], 3)
+        cli.cleanup()
+
+    def test_serial_read_since_beyond_returns_empty(self):
+        """serial_read(since=raw_next) returns empty raw_data."""
+        cli = self._make_cli()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read(since=3)
+        result = json.loads(buf.getvalue())
+        self.assertTrue(result["success"])
+        self.assertEqual(result["raw_data"], "")
+        self.assertEqual(result["raw_next"], 3)
+        cli.cleanup()
+
+    def test_serial_read_raw_next_in_output(self):
+        """serial_read output always contains raw_next field."""
+        cli = self._make_cli()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read()
+        result = json.loads(buf.getvalue())
+        self.assertIn("raw_next", result)
+        self.assertIsInstance(result["raw_next"], int)
+        cli.cleanup()
+
+    def test_serial_read_incremental_workflow(self):
+        """Simulate incremental read: first read all, then only new."""
+        cli = self._make_cli()
+
+        # First read: get everything
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read(since=0)
+        r1 = json.loads(buf.getvalue())
+        cursor = r1["raw_next"]
+        self.assertEqual(cursor, 3)
+
+        # Add new entry
+        _CursorMockHandler.log_entries.append({"id": 3, "data": "line3\n"})
+
+        # Second read: only new data
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read(since=cursor)
+        r2 = json.loads(buf.getvalue())
+        self.assertIn("line3", r2["raw_data"])
+        self.assertNotIn("line0", r2["raw_data"])
+        self.assertEqual(r2["raw_next"], 4)
+
+        # Restore
+        _CursorMockHandler.log_entries.pop()
+        cli.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()

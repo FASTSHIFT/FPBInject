@@ -948,12 +948,15 @@ class FPBCLI:
         except Exception as e:
             self.output_error(f"Serial send failed: {str(e)}", e)
 
-    def serial_read(self, timeout: float = 1.0, lines: int = 50) -> None:
+    def serial_read(
+        self, timeout: float = 1.0, lines: int = 50, since: int = 0
+    ) -> None:
         """Read recent serial output from device."""
         try:
             if self._proxy:
-                log_resp = self._proxy.serial_read(raw_since=0)
+                log_resp = self._proxy.serial_read(raw_since=since)
                 raw = log_resp.get("raw_data", "")
+                raw_next = log_resp.get("raw_next", 0)
                 log_lines = [ln for ln in raw.split("\n") if ln.strip()][-lines:]
                 self.output_json(
                     {
@@ -961,6 +964,7 @@ class FPBCLI:
                         "log": log_lines,
                         "log_count": len(log_lines),
                         "raw_data": raw,
+                        "raw_next": raw_next,
                     }
                 )
                 return
@@ -1337,6 +1341,12 @@ Examples:
         default=50,
         help="Max number of log lines to return (default: 50)",
     )
+    serial_read_parser.add_argument(
+        "--since",
+        type=int,
+        default=0,
+        help="Cursor from previous raw_next for incremental reads (default: 0)",
+    )
 
     # file-list command (requires device)
     file_list_parser = subparsers.add_parser(
@@ -1475,7 +1485,7 @@ Examples:
         elif args.command == "serial-send":
             cli.serial_send(args.data, not args.no_read, args.timeout)
         elif args.command == "serial-read":
-            cli.serial_read(args.timeout, args.lines)
+            cli.serial_read(args.timeout, args.lines, args.since)
         elif args.command == "file-list":
             cli.file_list(args.path)
         elif args.command == "file-stat":
