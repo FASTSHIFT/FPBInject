@@ -443,16 +443,6 @@ function renderTutorialStep() {
     startGatePoll();
   }
 
-  // Auto-enter fl mode for hello_verify / hello_unpatch steps
-  if (step.id === 'hello_verify' || step.id === 'hello_unpatch') {
-    if (
-      window.FPBState?.isConnected &&
-      typeof sendTerminalCommand === 'function'
-    ) {
-      sendTerminalCommand('fl\n');
-    }
-  }
-
   if (typeof translatePage === 'function') translatePage();
 }
 
