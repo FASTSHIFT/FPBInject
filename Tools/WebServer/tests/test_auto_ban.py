@@ -128,13 +128,29 @@ class TestAutoBanEngine(unittest.TestCase):
         self.assertGreater(d["ban_remaining"], 0)
 
     def test_rate_limit_triggers_ban(self):
-        """Exceeding rate limit should trigger ban."""
+        """Exceeding rate limit via record_reject should trigger ban."""
         ip = "192.168.1.53"
-        # Send rate_limit + 1 requests with normal paths
+        # Rate limiting only happens through record_reject (auth failures)
         for i in range(self.engine.rate_limit + 1):
-            d = self.engine.check_and_record(ip, f"/page{i}")
+            self.engine.record_reject(ip, f"/page{i}")
+        rec = self.engine.records[ip]
+        self.assertGreater(rec.ban_count, 0)
+        # Verify banned via check_and_record
+        d = self.engine.check_and_record(ip, "/test")
         self.assertEqual(d["action"], "tarpit")
-        self.assertIn("rate_limit", d["reason"])
+
+    def test_authenticated_requests_not_rate_limited(self):
+        """check_and_record alone should NOT trigger rate limit.
+
+        This prevents legitimate authenticated users from being banned
+        by normal frontend polling (e.g. /api/status every 5 seconds).
+        """
+        ip = "192.168.1.70"
+        # Send many requests via check_and_record (simulates authenticated traffic)
+        for i in range(50):
+            d = self.engine.check_and_record(ip, f"/api/status")
+        # Should still be allowed — rate limit only via record_reject
+        self.assertEqual(d["action"], "allow")
 
     def test_ban_expires(self):
         """Ban should expire after duration."""
@@ -388,6 +404,32 @@ class TestAutoBanMiddlewareIntegration(unittest.TestCase):
         # Empty token
         resp = self.client.get("/test?token=", environ_base=remote)
         self.assertEqual(resp.status_code, 403)
+
+    def test_authenticated_remote_high_frequency_not_banned(self):
+        """Authenticated remote user with frequent polling must NOT be banned.
+
+        Regression test: frontend polls /api/status, /api/watch/auto_inject_status,
+        /api/watch/elf_status etc. every few seconds. With a valid token, these
+        should never trigger rate limiting, even at 50+ requests in 10 seconds.
+        """
+        remote = {"REMOTE_ADDR": "192.168.99.30"}
+        polling_paths = [
+            "/api/ports",
+            "/test",
+            "/api/ports",
+            "/test",
+            "/api/ports",
+        ]
+        # Send 50 authenticated requests rapidly
+        for i in range(50):
+            path = polling_paths[i % len(polling_paths)]
+            resp = self.client.get(f"{path}?token={self.token}", environ_base=remote)
+            self.assertEqual(
+                resp.status_code,
+                200,
+                f"Request #{i + 1} to {path} was blocked (status {resp.status_code}). "
+                f"Authenticated users should never be rate-limited.",
+            )
 
 
 if __name__ == "__main__":

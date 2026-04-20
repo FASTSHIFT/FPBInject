@@ -238,7 +238,16 @@ class AutoBanEngine:
         return any(p.lower() in path_lower for p in MALICIOUS_PATH_PATTERNS)
 
     def check_and_record(self, ip, path):
-        """Check IP behavior and return action decision.
+        """Pre-auth check: only ban status and malicious path detection.
+
+        This is called BEFORE token verification. It only checks:
+        1. Whether the IP is already banned (tarpit)
+        2. Whether the path matches known malicious fingerprints
+
+        Rate limiting is NOT done here — it is handled by record_reject()
+        which is called only after token verification fails. This prevents
+        legitimate authenticated users from being rate-limited by normal
+        frontend polling.
 
         Args:
             ip: Client IP address.
@@ -267,7 +276,7 @@ class AutoBanEngine:
             remaining = rec.banned_until - now
             return {"action": "tarpit", "reason": "banned", "ban_remaining": remaining}
 
-        # Malicious path detection
+        # Malicious path detection (ban immediately on threshold)
         if self.is_malicious_path(path):
             rec.malicious_score += 1
             rec.reject_count += 1
@@ -282,23 +291,6 @@ class AutoBanEngine:
                     "reason": f"banned: malicious_score={rec.malicious_score}",
                     "ban_remaining": rec.banned_until - now,
                 }
-
-        # Rate limiting
-        rec.recent_timestamps.append(now)
-        cutoff = now - self.rate_window
-        rec.recent_timestamps = [t for t in rec.recent_timestamps if t > cutoff]
-
-        if len(rec.recent_timestamps) > self.rate_limit:
-            self._ban_ip(
-                ip,
-                rec,
-                f"rate limit ({len(rec.recent_timestamps)}/{self.rate_window}s)",
-            )
-            return {
-                "action": "tarpit",
-                "reason": "banned: rate_limit exceeded",
-                "ban_remaining": rec.banned_until - now,
-            }
 
         return {"action": "allow", "reason": "passed", "ban_remaining": 0}
 
