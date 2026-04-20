@@ -78,10 +78,14 @@ async function loadConfig() {
 
     // Sync language from server config if different from localStorage
     if (data.ui_language && typeof changeLanguage === 'function') {
-      const currentLang = localStorage.getItem('fpbinject_ui_language') || 'en';
-      if (data.ui_language !== currentLang) {
-        changeLanguage(data.ui_language);
+      if (data.ui_language !== 'auto') {
+        const currentLang =
+          localStorage.getItem('fpbinject_ui_language') || 'en';
+        if (data.ui_language !== currentLang) {
+          changeLanguage(data.ui_language);
+        }
       }
+      // "auto" means use browser detection — already handled by initI18n
     }
 
     // Sync theme from server config if different from localStorage
@@ -215,9 +219,15 @@ async function saveConfig(silent = false) {
 
   // Handle language change
   if (config.ui_language && typeof changeLanguage === 'function') {
-    const currentLang = localStorage.getItem('fpbinject_ui_language') || 'en';
-    if (config.ui_language !== currentLang) {
-      changeLanguage(config.ui_language);
+    if (config.ui_language === 'auto') {
+      // Auto: re-detect from browser
+      const browserLang = navigator.language || 'en';
+      changeLanguage(browserLang);
+    } else {
+      const currentLang = localStorage.getItem('fpbinject_ui_language') || 'en';
+      if (config.ui_language !== currentLang) {
+        changeLanguage(config.ui_language);
+      }
     }
   }
 

@@ -17,6 +17,19 @@ async function initI18n(language = 'en') {
     return false;
   }
 
+  // Normalize browser language codes to supported ones
+  // e.g. "zh" -> "zh-CN", "zh-TW" stays, "en-US" -> "en"
+  const supported = ['en', 'zh-CN', 'zh-TW'];
+  if (!supported.includes(language)) {
+    if (language.startsWith('zh-TW') || language.startsWith('zh-Hant')) {
+      language = 'zh-TW';
+    } else if (language.startsWith('zh')) {
+      language = 'zh-CN';
+    } else {
+      language = 'en';
+    }
+  }
+
   try {
     await i18next.init({
       lng: language,

@@ -82,7 +82,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     // Initialize i18n first (async, will translate page when ready)
-    const savedLang = localStorage.getItem("fpbinject_ui_language") || "en";
+    const savedLang = localStorage.getItem("fpbinject_ui_language") || navigator.language || "en";
     initI18n(savedLang);
 
     setInterval(updateClock, 1000);

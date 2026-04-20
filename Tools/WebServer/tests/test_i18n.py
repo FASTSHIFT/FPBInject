@@ -194,16 +194,17 @@ class TestConfigSchemaI18n(unittest.TestCase):
         ui_lang = next(item for item in CONFIG_SCHEMA if item.key == "ui_language")
         option_values = [opt[0] for opt in ui_lang.options]
 
+        self.assertIn("auto", option_values)
         self.assertIn("en", option_values)
         self.assertIn("zh-CN", option_values)
         self.assertIn("zh-TW", option_values)
 
-    def test_ui_language_default_is_english(self):
-        """Test that ui_language default is English."""
+    def test_ui_language_default_is_auto(self):
+        """Test that ui_language default is auto-detect."""
         from core.config_schema import CONFIG_SCHEMA
 
         ui_lang = next(item for item in CONFIG_SCHEMA if item.key == "ui_language")
-        self.assertEqual(ui_lang.default, "en")
+        self.assertEqual(ui_lang.default, "auto")
 
     def test_ui_group_exists(self):
         """Test that UI config group exists."""

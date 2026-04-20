@@ -417,9 +417,14 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         label="Language",
         group=ConfigGroup.UI,
         config_type=ConfigType.SELECT,
-        default="en",
-        options=[("en", "English"), ("zh-CN", "简体中文"), ("zh-TW", "繁體中文")],
-        tooltip="Interface display language",
+        default="auto",
+        options=[
+            ("auto", "Auto"),
+            ("en", "English"),
+            ("zh-CN", "简体中文"),
+            ("zh-TW", "繁體中文"),
+        ],
+        tooltip="Interface display language (Auto = detect from browser)",
         order=10,
     ),
 ]
