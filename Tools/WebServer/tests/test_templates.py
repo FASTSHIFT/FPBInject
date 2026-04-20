@@ -372,6 +372,117 @@ class TestPartialTemplates(unittest.TestCase):
         )
         self.app.config["TESTING"] = True
 
+
+class TestCSPvsTemplateConsistency(unittest.TestCase):
+    """Cross-validate CSP header against actual CDN resources in templates.
+
+    This test class ensures that when new CDN resources are added to
+    base.html, the CSP in middleware.py is updated accordingly.
+    Without this, adding a new CDN dependency silently breaks in
+    production while all unit tests pass.
+    """
+
+    def setUp(self):
+        """Set up Flask app with auth middleware for CSP testing."""
+        import re
+
+        self.app = Flask(
+            __name__,
+            template_folder=os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "templates",
+            ),
+        )
+        self.app.config["TESTING"] = True
+
+        from app.middleware import init_auth
+
+        init_auth(self.app, "testtoken")
+
+        @self.app.route("/test")
+        def test_route():
+            return "ok"
+
+        self.client = self.app.test_client()
+
+        # Extract CDN domains from base.html
+        with self.app.app_context():
+            from flask import render_template
+
+            html = render_template("index.html")
+
+        # Find all external https:// URLs in link/script tags
+        self.cdn_urls = re.findall(r'(?:src|href)="(https://[^"]+)"', html)
+        # Extract unique domains
+        self.cdn_domains = set()
+        for url in self.cdn_urls:
+            # https://cdn.jsdelivr.net/... -> https://cdn.jsdelivr.net
+            parts = url.split("/")
+            if len(parts) >= 3:
+                self.cdn_domains.add(f"{parts[0]}//{parts[2]}")
+
+    def _get_csp(self):
+        resp = self.client.get("/test")
+        return resp.headers.get("Content-Security-Policy", "")
+
+    def test_all_cdn_script_domains_in_csp(self):
+        """Every CDN domain used in <script src=...> must be in script-src."""
+        import re
+
+        csp = self._get_csp()
+
+        with self.app.app_context():
+            from flask import render_template
+
+            html = render_template("index.html")
+
+        script_urls = re.findall(r'<script\s+src="(https://[^"]+)"', html)
+        script_domains = set()
+        for url in script_urls:
+            parts = url.split("/")
+            if len(parts) >= 3:
+                script_domains.add(f"{parts[0]}//{parts[2]}")
+
+        for domain in script_domains:
+            self.assertIn(
+                domain,
+                csp,
+                f"CDN domain {domain} used in <script> but not in CSP script-src. "
+                f"This will cause the browser to block the script.",
+            )
+
+    def test_all_cdn_style_domains_in_csp(self):
+        """Every CDN domain used in <link rel=stylesheet> must be in style-src."""
+        import re
+
+        csp = self._get_csp()
+
+        with self.app.app_context():
+            from flask import render_template
+
+            html = render_template("index.html")
+
+        style_urls = re.findall(
+            r'<link\s+[^>]*rel="stylesheet"[^>]*href="(https://[^"]+)"', html
+        )
+        # Also match href before rel
+        style_urls += re.findall(
+            r'<link\s+[^>]*href="(https://[^"]+)"[^>]*rel="stylesheet"', html
+        )
+        style_domains = set()
+        for url in style_urls:
+            parts = url.split("/")
+            if len(parts) >= 3:
+                style_domains.add(f"{parts[0]}//{parts[2]}")
+
+        for domain in style_domains:
+            self.assertIn(
+                domain,
+                csp,
+                f"CDN domain {domain} used in <link stylesheet> but not in CSP style-src. "
+                f"This will cause the browser to block the stylesheet.",
+            )
+
     def test_titlebar_standalone(self):
         """Test titlebar partial renders standalone."""
         with self.app.app_context():

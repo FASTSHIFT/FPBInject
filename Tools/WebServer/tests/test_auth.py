@@ -164,5 +164,174 @@ class TestNoAuthMode(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
+class TestSecurityHardening(unittest.TestCase):
+    """Tests for security hardening measures."""
+
+    def setUp(self):
+        self.token = "a3f8b2c1"
+        self.app = Flask(__name__)
+        self.app.config["TESTING"] = True
+        init_auth(self.app, self.token)
+
+        @self.app.route("/test")
+        def test_route():
+            return "ok"
+
+        self.client = self.app.test_client()
+
+    def test_csp_header_present(self):
+        """Content-Security-Policy header should be set."""
+        resp = self.client.get("/test")
+        csp = resp.headers.get("Content-Security-Policy", "")
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("script-src", csp)
+        self.assertIn("connect-src 'self'", csp)
+        # CDN whitelist for codicon/xterm/highlight.js
+        self.assertIn("https://cdn.jsdelivr.net", csp)
+
+    def test_csp_allows_cdn_resources(self):
+        """CSP must whitelist cdn.jsdelivr.net in script/style/font directives.
+
+        base.html loads codicon fonts, xterm.js, highlight.js, and ace editor
+        from cdn.jsdelivr.net. If CSP doesn't whitelist this domain in the
+        correct directives, these resources will be blocked by the browser.
+
+        This test was added after a regression where CSP blocked codicon fonts,
+        causing all sidebar icons to disappear.
+        """
+        resp = self.client.get("/test")
+        csp = resp.headers.get("Content-Security-Policy", "")
+
+        # Parse CSP directives into a dict
+        directives = {}
+        for part in csp.split(";"):
+            part = part.strip()
+            if not part:
+                continue
+            tokens = part.split()
+            directives[tokens[0]] = tokens[1:]
+
+        cdn = "https://cdn.jsdelivr.net"
+
+        # script-src: xterm.js, highlight.js, ace editor loaded from CDN
+        self.assertIn(
+            cdn,
+            directives.get("script-src", []),
+            "CDN missing from script-src — will block xterm/ace/highlight.js",
+        )
+
+        # style-src: codicon CSS, xterm CSS loaded from CDN
+        self.assertIn(
+            cdn,
+            directives.get("style-src", []),
+            "CDN missing from style-src — will block codicon/xterm CSS",
+        )
+
+        # font-src: codicon woff2 font loaded from CDN
+        self.assertIn(
+            cdn,
+            directives.get("font-src", []),
+            "CDN missing from font-src — will block codicon icon font",
+        )
+
+    def test_csp_allows_blob_urls(self):
+        """CSP must allow blob: URLs for file download and image preview.
+
+        Multiple JS features use URL.createObjectURL(blob) for:
+        - File download triggers (symbols.js, editor.js, quick-commands.js)
+        - Image preview in transfer tab (transfer.js)
+        - Ace editor web workers
+
+        If blob: is missing from img-src/worker-src, these features break.
+        """
+        resp = self.client.get("/test")
+        csp = resp.headers.get("Content-Security-Policy", "")
+
+        self.assertIn(
+            "blob:",
+            csp,
+            "blob: missing from CSP — will break file downloads and image previews",
+        )
+
+    def test_csp_worker_src_allows_cdn(self):
+        """CSP worker-src must allow CDN for Ace editor syntax checking.
+
+        Ace editor loads worker-c_cpp.js from cdn.jsdelivr.net for
+        C/C++ syntax checking. Without CDN in worker-src, the worker
+        silently fails and syntax checking is disabled.
+        """
+        resp = self.client.get("/test")
+        csp = resp.headers.get("Content-Security-Policy", "")
+
+        directives = {}
+        for part in csp.split(";"):
+            part = part.strip()
+            if not part:
+                continue
+            tokens = part.split()
+            directives[tokens[0]] = tokens[1:]
+
+        worker_src = directives.get("worker-src", [])
+        self.assertIn(
+            "https://cdn.jsdelivr.net",
+            worker_src,
+            "CDN missing from worker-src — Ace editor syntax checking will fail",
+        )
+
+    def test_referrer_policy_header_present(self):
+        """Referrer-Policy header should be set."""
+        resp = self.client.get("/test")
+        self.assertEqual(resp.headers.get("Referrer-Policy"), "same-origin")
+
+    def test_constant_time_compare_rejects_none(self):
+        """Token comparison should reject None values safely."""
+        from app.middleware import _constant_time_compare
+
+        self.assertFalse(_constant_time_compare(None, "token"))
+        self.assertFalse(_constant_time_compare("token", None))
+        self.assertFalse(_constant_time_compare(None, None))
+
+    def test_constant_time_compare_correct(self):
+        """Token comparison should accept matching tokens."""
+        from app.middleware import _constant_time_compare
+
+        self.assertTrue(_constant_time_compare("abc123", "abc123"))
+        self.assertFalse(_constant_time_compare("abc123", "abc124"))
+        self.assertFalse(_constant_time_compare("abc123", "abc12"))
+
+    def test_tarpit_returns_403_streaming(self):
+        """Tarpit response should be a 403 streaming response."""
+        from app.middleware import _make_tarpit_response
+
+        resp = _make_tarpit_response(0.001)
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.headers.get("Cache-Control"), "no-store")
+
+    def test_no_token_cookie_not_set_on_reject(self):
+        """Rejected requests should not receive a Set-Cookie header."""
+        resp = self.client.get("/test", environ_base={"REMOTE_ADDR": "192.168.1.100"})
+        self.assertEqual(resp.status_code, 403)
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        self.assertNotIn("fpbinject_token", set_cookie)
+
+    def test_cache_control_on_403(self):
+        """403 responses should have Cache-Control: no-store."""
+        resp = self.client.get("/test", environ_base={"REMOTE_ADDR": "192.168.1.100"})
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.headers.get("Cache-Control"), "no-store")
+
+    def test_security_headers_on_all_status_codes(self):
+        """Security headers should be present on 200 and 403."""
+        # 200
+        resp_ok = self.client.get("/test")
+        self.assertIn("X-Content-Type-Options", resp_ok.headers)
+        self.assertIn("Content-Security-Policy", resp_ok.headers)
+        # 403
+        resp_err = self.client.get(
+            "/test", environ_base={"REMOTE_ADDR": "192.168.1.100"}
+        )
+        self.assertIn("X-Content-Type-Options", resp_err.headers)
+
+
 if __name__ == "__main__":
     unittest.main()
