@@ -360,6 +360,7 @@ window.i18nResources['zh-TW'] = {
       ungrouped: '（未分組）',
       nothing_to_import: '沒有可匯入的指令',
       conflict_skip: '跳過',
+      conflict: '衝突',
       conflict_overwrite: '覆蓋',
       conflict_strategy: '衝突策略：',
       strategy_per_item: '逐項選擇',

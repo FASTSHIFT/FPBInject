@@ -368,6 +368,7 @@ window.i18nResources['en'] = {
       ungrouped: '(Ungrouped)',
       nothing_to_import: 'No commands to import',
       conflict_skip: 'Skip',
+      conflict: 'Conflict',
       conflict_overwrite: 'Overwrite',
       conflict_strategy: 'Conflict strategy:',
       strategy_per_item: 'Ask per item',

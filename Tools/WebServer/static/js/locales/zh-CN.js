@@ -359,6 +359,7 @@ window.i18nResources['zh-CN'] = {
       ungrouped: '（未分组）',
       nothing_to_import: '没有可导入的命令',
       conflict_skip: '跳过',
+      conflict: '冲突',
       conflict_overwrite: '覆盖',
       conflict_strategy: '冲突策略：',
       strategy_per_item: '逐项选择',

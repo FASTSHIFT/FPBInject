@@ -1377,7 +1377,9 @@ function openImportDialog(fileData) {
       '">';
     if (conflict) {
       line +=
-        '<span class="qc-import-conflict-icon" title="Conflict">⚠</span> ' +
+        '<span class="qc-import-conflict-icon" title="' +
+        t('quick_commands.conflict', 'Conflict') +
+        '">⚠</span> ' +
         '<span class="qc-import-label">' +
         label +
         '</span>' +
