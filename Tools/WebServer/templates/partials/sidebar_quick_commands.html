@@ -181,3 +181,89 @@
     <span data-i18n="quick_commands.clear_all">Clear All</span>
   </div>
 </div>
+
+<!-- Group Context Menu -->
+<div class="qc-context-menu" id="qcGroupContextMenu" style="display: none">
+  <div class="qc-context-item" onclick="qcGroupContextAction('rename')">
+    <i class="codicon codicon-edit"></i>
+    <span data-i18n="quick_commands.rename_group">Rename Group</span>
+  </div>
+  <div class="qc-context-separator"></div>
+  <div class="qc-context-item danger" onclick="qcGroupContextAction('delete')">
+    <i class="codicon codicon-trash"></i>
+    <span data-i18n="quick_commands.delete_group">Delete Group</span>
+  </div>
+</div>
+
+<!-- Export Dialog -->
+<div class="modal-overlay" id="qcExportModal">
+  <div class="modal" style="width: 480px">
+    <div class="modal-header">
+      <h3 style="margin: 0" data-i18n="quick_commands.export_title">Export Commands</h3>
+      <button class="vscode-btn icon-only secondary" onclick="closeExportDialog()">
+        <i class="codicon codicon-close"></i>
+      </button>
+    </div>
+    <div
+      class="modal-body"
+      style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto"
+    >
+      <div id="qcExportList"></div>
+    </div>
+    <div class="modal-footer">
+      <span id="qcExportCount" style="margin-right: auto; font-size: 11px; opacity: 0.8"></span>
+      <button class="vscode-btn secondary" onclick="closeExportDialog()" data-i18n="buttons.cancel">Cancel</button>
+      <button class="vscode-btn" id="qcExportBtn" onclick="executeExport()" data-i18n="quick_commands.export_btn">
+        Export
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Dialog -->
+<div class="modal-overlay" id="qcImportModal">
+  <div class="modal" style="width: 520px">
+    <div class="modal-header">
+      <h3 style="margin: 0" data-i18n="quick_commands.import_title">Import Commands</h3>
+      <button class="vscode-btn icon-only secondary" onclick="closeImportDialog()">
+        <i class="codicon codicon-close"></i>
+      </button>
+    </div>
+    <div class="modal-body" style="display: flex; flex-direction: column; gap: 8px">
+      <div id="qcImportList" style="max-height: 300px; overflow-y: auto"></div>
+      <div class="qc-import-strategy" style="border-top: 1px solid var(--vscode-panel-border); padding-top: 8px">
+        <div style="font-size: 11px; margin-bottom: 4px" data-i18n="quick_commands.conflict_strategy">
+          Conflict strategy:
+        </div>
+        <label class="qc-radio-label">
+          <input
+            type="radio"
+            name="qcImportStrategy"
+            value="per_item"
+            checked
+            onchange="onImportStrategyChange('per_item')"
+          />
+          <span data-i18n="quick_commands.strategy_per_item">Ask per item</span>
+        </label>
+        <label class="qc-radio-label">
+          <input type="radio" name="qcImportStrategy" value="skip_all" onchange="onImportStrategyChange('skip_all')" />
+          <span data-i18n="quick_commands.strategy_skip_all">Skip all duplicates</span>
+        </label>
+        <label class="qc-radio-label">
+          <input
+            type="radio"
+            name="qcImportStrategy"
+            value="overwrite_all"
+            onchange="onImportStrategyChange('overwrite_all')"
+          />
+          <span data-i18n="quick_commands.strategy_overwrite_all">Overwrite all duplicates</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="qcImportSummary" style="margin-right: auto; font-size: 11px; opacity: 0.8"></span>
+      <button class="vscode-btn secondary" onclick="closeImportDialog()" data-i18n="buttons.cancel">Cancel</button>
+      <button class="vscode-btn" onclick="executeImport()" data-i18n="quick_commands.import_btn">Import</button>
+    </div>
+  </div>
+</div>
