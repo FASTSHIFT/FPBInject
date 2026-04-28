@@ -42,7 +42,7 @@ if(CONFIG_FPBINJECT)
     MODULE
     ${CONFIG_FPBINJECT}
     SRCS
-    App/func_loader/fl_port_nuttx.c
+    ${CMAKE_CURRENT_LIST_DIR}/../App/func_loader/fl_port_nuttx.c
     ${FL_SOURCES}
     ${FPB_SOURCES}
     INCLUDE_DIRECTORIES
