@@ -26,6 +26,8 @@ import logging
 import os
 import signal
 import socket
+import uuid
+from pathlib import Path
 from typing import Optional
 
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
@@ -34,6 +36,30 @@ logger = logging.getLogger(__name__)
 
 SERVICE_TYPE = "_fpbinject._tcp.local."
 TXT_SCHEMA_VERSION = "1"
+
+_SERVER_ID_FILE = Path(__file__).resolve().parent.parent / ".fpbinject_server_id"
+
+
+def _load_or_create_server_id() -> str:
+    """Return a stable per-installation UUID, persisted next to WebServer/.
+
+    The id survives port/hostname changes and lets the CLI keep the same
+    handle for the same server. Wiping ``.fpbinject_server_id`` is the only
+    way to mint a new identity.
+    """
+    try:
+        if _SERVER_ID_FILE.exists():
+            text = _SERVER_ID_FILE.read_text().strip()
+            if text:
+                return text
+    except OSError as exc:
+        logger.debug("read server-id failed: %s", exc)
+    new_id = f"fpb:{uuid.uuid4()}"
+    try:
+        _SERVER_ID_FILE.write_text(new_id + "\n")
+    except OSError as exc:
+        logger.warning("persist server-id failed (%s); using volatile id", exc)
+    return new_id
 
 
 class MdnsAdvertiser:
@@ -83,6 +109,7 @@ class MdnsAdvertiser:
             "auth": self._auth_mode,
             "device": "none",
             "path": self._path,
+            "id": _load_or_create_server_id(),
         }
         return ServiceInfo(
             type_=SERVICE_TYPE,
