@@ -49,7 +49,7 @@ The CLI obtains the token from the server's startup banner (`🔑 Token: …`), 
 
 ## Client discovery
 
-`Tools/WebServer/cli/discover.py::discover_sync(timeout: float = 1.0)` returns `list[FPBServer]`.
+`Tools/WebServer/cli/discover.py::discover_sync(timeout: float = 3.0)` returns `list[FPBServer]`.
 
 Each `FPBServer` is a dataclass:
 
@@ -74,7 +74,7 @@ FPBServer(
 2. `FPB_SERVER_URL` env variable (when no flag).
 3. Subcommand is offline-only (e.g. `analyze`, `disasm`, `compile`) → skip discovery; URL is `None`. Zero discovery delay.
 4. `--no-discovery` flag → skip discovery; fall back to `http://127.0.0.1:5500`.
-5. mDNS browse for 1.0 s:
+5. mDNS browse for 3.0 s:
    - 0 results → fall back to `http://127.0.0.1:5500`.
    - 1 result → use silently (verbose log: "Using discovered server …").
    - ≥2 results → list candidates on stderr, exit code `2`.
