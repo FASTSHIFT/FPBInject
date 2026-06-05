@@ -41,12 +41,19 @@ Options:
   --tx-chunk-delay <secs>    Delay between TX fragments (default: 0.005)
   --max-retries <num>        Max retry attempts for file transfer (default: 10)
   --direct                   Force direct serial (skip proxy detection)
-  --server-url <url>         WebServer URL. If omitted, the CLI uses
-                             FPB_SERVER_URL env, then mDNS auto-discovery,
-                             then falls back to http://127.0.0.1:5500.
+  -s, --server <handle>      Pick a server by discovery handle, hostname,
+                             or full URL. Examples:
+                                 -s bench:5501
+                                 -s bench             (when unique on LAN)
+                                 -s http://1.2.3.4:5500
+                             If omitted: FPB_SERVER env, then mDNS
+                             auto-discovery, then http://127.0.0.1:5500.
   --no-discovery             Disable mDNS auto-discovery
-  --token <token>            Auth token for remote servers (or set FPB_TOKEN env)
+  --token <token>            Auth token (or set FPB_TOKEN env). Required
+                             when the server returns 401/403.
 ```
+
+`--server-url` and `FPB_SERVER_URL` still work for backwards compatibility but are deprecated; use `-s` / `FPB_SERVER` instead.
 
 ### About `--port`
 
@@ -74,32 +81,42 @@ The CLI runs in exactly one of four mutually-exclusive modes. The mode is decide
 The resolver runs through this list and stops at the first match:
 
 1. **Offline / admin subcommand** → Offline.
-2. **`--direct`** → Direct Serial. Requires `--port`. Rejected with `--server-url`.
-3. **`--server-url <URL>`** → Local or Remote Proxy depending on whether the URL points at this host.
-4. **`FPB_SERVER_URL`** env var → same classification as `--server-url`.
-5. **A single CLI-launched server** found via PID file → Local Proxy on `127.0.0.1:<port>`.
-6. **`http://127.0.0.1:5500/api/status` reachable** → Local Proxy on the default port.
-7. **`--no-discovery`** → Local Proxy on `http://127.0.0.1:5500` (no probe of LAN).
-8. **mDNS browse for ~3 s** on `_fpbinject._tcp.local.`:
-   - 0 results → Local Proxy on `http://127.0.0.1:5500` (fallback).
-   - 1 result → Local or Remote Proxy. If the service is on this host (loopback or local interface) the URL is normalized to `127.0.0.1:<port>`.
-   - 2+ results → list candidates on stderr, exit `2`. Re-run with `--server-url` to pick.
+2. **`--direct`** → Direct Serial. Requires `--port`. Rejected with `-s` / `--server-url`.
+3. **`-s / --server <handle>`** → resolve the handle, then Local or Remote Proxy.
+4. **`FPB_SERVER`** env var → same handle resolution as `-s`.
+5. *(deprecated)* `--server-url <URL>` → URL only.
+6. *(deprecated)* `FPB_SERVER_URL` env → URL only.
+7. **A single CLI-launched server** found via PID file → Local Proxy on `127.0.0.1:<port>`.
+8. **`http://127.0.0.1:5500/api/status` reachable** → Local Proxy on the default port.
+9. **`--no-discovery`** → Local Proxy on `http://127.0.0.1:5500` (no probe of LAN).
+10. **mDNS browse for ~3 s** on `_fpbinject._tcp.local.`:
+    - 0 results → Local Proxy on `http://127.0.0.1:5500` (fallback).
+    - 1 result → Local or Remote Proxy (already loopback-normalized when same-host).
+    - 2+ results → list candidates on stderr, exit `2`. Re-run with `-s host:port`.
 
-`--port` only ever names the **device serial port**, never the server port. To talk to a server on a non-default TCP port, use `--server-url http://127.0.0.1:5501`.
+`--port` only ever names the **device serial port**, never the server port. To talk to a server on a non-default TCP port, use `-s 127.0.0.1:5501`.
+
+### Handle forms accepted by `-s` / `FPB_SERVER`
+
+| Form | Example | Behaviour |
+|------|---------|-----------|
+| URL | `http://1.2.3.4:5500` | Used verbatim. |
+| `host:port` | `bench:5501` | Looked up via mDNS; must match exactly one server. |
+| `host` | `bench` | Looked up via mDNS; must match exactly one server (else exit `2` with hints). |
 
 ### Exit codes
 
 | Code | Meaning |
 |------|---------|
 | `0`  | Success |
-| `1`  | Runtime failure (connect / auth / IO / invalid flag combination) |
-| `2`  | Multiple servers discovered without `--server-url` — disambiguate |
+| `1`  | Runtime failure (connect / auth / IO / invalid flag combination / unresolvable handle) |
+| `2`  | Multiple servers matched a handle or were discovered with no `-s` — disambiguate |
 
 ### Invalid flag combinations
 
 | Combo | Reason | Behaviour |
 |-------|--------|-----------|
-| `--direct --server-url …` | Direct mode bypasses the WebServer | Rejected with one-line error, exit `1` |
+| `--direct -s …` (or `--direct --server-url …`) | Direct mode bypasses the WebServer | Rejected with one-line error, exit `1` |
 | `--direct` without `--port` for a device command | Direct mode opens a serial port — there is nothing to do without one | Rejected with one-line error, exit `1` |
 
 ## Remote Control
@@ -109,14 +126,21 @@ The resolver runs through this list and stops at the first match:
 ./main.py --host 0.0.0.0 --port 5500
 #   🔑 Token: dd88d5df
 
-# On the controlling machine (A):
+# On the controlling machine (A) — pick the server by hostname or handle:
 export FPB_TOKEN=dd88d5df
-fpb_cli.py --server-url http://192.168.1.20:5500 info
-fpb_cli.py --server-url http://192.168.1.20:5500 mem-read 0x20000000 64
-fpb_cli.py --server-url http://192.168.1.20:5500 serial-send "ps"
+export FPB_SERVER=B-host:5500           # use this server for the whole shell
+fpb_cli.py info
+fpb_cli.py mem-read 0x20000000 64
+fpb_cli.py serial-send "ps"
+
+# Or per-command:
+fpb_cli.py -s B-host:5500 info
 
 # If the remote server has no device connected yet:
-fpb_cli.py --server-url http://192.168.1.20:5500 --port /dev/ttyACM0 connect
+fpb_cli.py -s B-host:5500 --port /dev/ttyACM0 connect
+
+# URL still works when DNS-style names aren't available:
+fpb_cli.py -s http://192.168.1.20:5500 info
 ```
 
 Notes:
@@ -127,18 +151,28 @@ Notes:
 
 ## Auto-Discovery (mDNS)
 
-The discovery step in the resolver above browses `_fpbinject._tcp.local.`. Two important details:
+The discovery step browses `_fpbinject._tcp.local.`. Three behaviours worth knowing:
 
 - **Same-host normalization.** A server advertising both `127.0.0.1` and a LAN IP (e.g. on a multi-homed machine) is always classified as Local Proxy and the URL is rewritten to `127.0.0.1:<port>`. You will never be prompted for a token to talk to a server you started yourself.
-- **Token never travels over mDNS.** TXT records carry only `txtvers`, `version`, `auth` (advertised intent), `device`, and `path`. Tokens come from `--token`, `FPB_TOKEN`, or the server's startup banner.
+- **Handle resolution.** `-s bench:5501` and `-s bench` both browse mDNS to find the matching server, so you don't have to copy URLs by hand. `-s` of a URL skips discovery.
+- **Token never travels over mDNS.** TXT records carry `txtvers`, `version`, `auth` (advertised intent), `device`, `path`, `id` (stable per-installation UUID). Tokens come from `--token`, `FPB_TOKEN`, or the server's startup banner.
 
-### `discover` — List visible servers
+### `discover` — list visible servers
 
 ```bash
-fpb_cli.py discover [--timeout 3.0]
+fpb_cli.py discover [--timeout 3.0] [--json]
 ```
 
-Emits a JSON list of every FPBInject WebServer reachable via mDNS. Useful for scripts and AI agents that want to enumerate servers before picking one.
+Default output is a human-friendly table:
+
+```text
+HANDLE        URL                       AUTH   DEVICE  VERSION
+bench:5500     http://127.0.0.1:5500    token  none    1.6.6
+bench:5501     http://127.0.0.1:5501    none   none    1.6.6
+bench:5500    http://192.168.1.20:5500 token  sensor  1.6.6
+```
+
+`--json` returns a machine-readable list (used to be the default).
 
 For the full protocol contract see [Tools/WebServer/Docs/Discovery.md](../Tools/WebServer/Docs/Discovery.md).
 
