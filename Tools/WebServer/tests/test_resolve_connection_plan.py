@@ -29,11 +29,19 @@ def _import_resolver():
 
 
 def _ns(**kwargs):
-    """argparse.Namespace with defaults that mirror build_parser()."""
+    """argparse.Namespace with defaults that mirror build_parser().
+
+    For convenience, ``server_url=URL`` is mapped to ``server=URL`` (URL is
+    one of the three forms ``-s`` accepts) so existing test bodies remain
+    readable. ``server_url_legacy`` exercises the deprecated --server-url path.
+    """
+    if "server_url" in kwargs:
+        kwargs.setdefault("server", kwargs.pop("server_url"))
     defaults = dict(
         command="info",
         command_policy=CommandPolicy.DEVICE,
-        server_url=None,
+        server=None,
+        server_url_legacy=None,
         no_discovery=False,
         token=None,
         port=None,
@@ -56,6 +64,8 @@ def _fake_server(host="192.168.1.20", port=5500, version="1.6.6", auth="token"):
         device="none",
         path="/api",
         url=f"http://{host}:{port}",
+        id=f"fpb:fake-{host}-{port}",
+        handle=f"{host}:{port}",
     )
 
 
@@ -127,10 +137,10 @@ class TestExplicitServerUrl(unittest.TestCase):
     @patch.dict(os.environ, {"FPB_SERVER_URL": "http://192.168.1.30:5501"}, clear=False)
     def test_env_url_used_when_no_flag(self):
         resolve = _import_resolver()
-        plan = resolve(_ns(server_url=None))
+        plan = resolve(_ns(server=None))
         self.assertEqual(plan.mode, ConnectionMode.REMOTE_PROXY)
         self.assertEqual(plan.server_url, "http://192.168.1.30:5501")
-        self.assertEqual(plan.source, "env")
+        self.assertEqual(plan.source, "legacy-env")
 
     @patch.dict(os.environ, {}, clear=True)
     def test_explicit_url_does_not_call_discovery(self):

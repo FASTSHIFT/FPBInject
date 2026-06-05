@@ -216,6 +216,8 @@ def _fake_server(host="192.168.1.20", port=5500, version="1.6.6"):
         device="none",
         path="/api",
         url=f"http://{host}:{port}",
+        id=f"fpb:fake-{host}-{port}",
+        handle=f"{host}:{port}",
     )
 
 
@@ -317,7 +319,7 @@ class TestCmdDiscoverJson(unittest.TestCase):
         with patch("cli.fpb_cli.discover_sync", return_value=servers):
             out = io.StringIO()
             with redirect_stdout(out):
-                rc = cmd_discover(_ns(timeout=0.1))
+                rc = cmd_discover(_ns(timeout=0.1, json=True))
         self.assertEqual(rc, 0)
         parsed = json.loads(out.getvalue())
         self.assertIsInstance(parsed, list)
@@ -325,13 +327,15 @@ class TestCmdDiscoverJson(unittest.TestCase):
         self.assertIn("url", parsed[0])
         self.assertIn("version", parsed[0])
         self.assertIn("auth", parsed[0])
+        self.assertIn("handle", parsed[0])
+        self.assertIn("id", parsed[0])
 
     def test_discover_subcommand_empty_emits_empty_list(self):
         _, cmd_discover = _import_cli_helpers()
         with patch("cli.fpb_cli.discover_sync", return_value=[]):
             out = io.StringIO()
             with redirect_stdout(out):
-                rc = cmd_discover(_ns(timeout=0.1))
+                rc = cmd_discover(_ns(timeout=0.1, json=True))
         self.assertEqual(rc, 0)
         parsed = json.loads(out.getvalue())
         self.assertEqual(parsed, [])
