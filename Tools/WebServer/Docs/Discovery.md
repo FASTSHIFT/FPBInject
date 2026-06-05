@@ -68,23 +68,38 @@ FPBServer(
 
 ### CLI precedence ladder
 
-`fpb_cli.py` resolves the server URL with this strict order:
+`fpb_cli.py::resolve_connection_plan(args)` runs through this list and stops at the first match. Each step produces a final `ConnectionPlan` (mode + URL + token + serial port + flags); the connector consumes the plan once.
 
-1. `--server-url <URL>` flag (always wins).
-2. `FPB_SERVER_URL` env variable (when no flag).
-3. Subcommand is offline-only (e.g. `analyze`, `disasm`, `compile`) → skip discovery; URL is `None`. Zero discovery delay.
-4. `--no-discovery` flag → skip discovery; fall back to `http://127.0.0.1:5500`.
-5. mDNS browse for 3.0 s:
-   - 0 results → fall back to `http://127.0.0.1:5500`.
-   - 1 result → use silently (verbose log: "Using discovered server …").
-   - ≥2 results → list candidates on stderr, exit code `2`.
+1. **Subcommand is offline or admin-only** (`analyze`, `disasm`, `decompile`, `signature`, `search`, `get-symbols`, `compile`, `discover`, `server-stop`, `disconnect`) — return Offline plan, skip everything below. Zero discovery delay.
+2. **`--direct`** — return Direct plan. Requires `--port`. Rejected with `--server-url`.
+3. **`--server-url <URL>`** — classify the URL as local or remote, return the matching proxy plan.
+4. **`FPB_SERVER_URL`** env var — same classification.
+5. **Single CLI-launched server** (PID file in `Tools/WebServer/.cli_server_*.pid`) — Local Proxy on `127.0.0.1:<pid_port>`. No mDNS.
+6. **`http://127.0.0.1:5500/api/status` reachable** — Local Proxy on the default port. No mDNS.
+7. **`--no-discovery`** — Local Proxy on `http://127.0.0.1:5500` (fallback only, no LAN browse).
+8. **mDNS browse** for 3.0 s on `_fpbinject._tcp.local.`:
+   - 0 results → Local Proxy on `http://127.0.0.1:5500` (fallback).
+   - 1 result → classify the address. Same-host hits (loopback or local interface IP) are normalized to `127.0.0.1:<port>` so the user is never asked for a token to talk to a server they themselves started.
+   - ≥ 2 results → list candidates on stderr, `sys.exit(2)`.
+
+### Localhost preference
+
+Within step 8, when a single mDNS service announces multiple addresses (very common on multi-homed hosts), the resolver sorts them with this key:
+
+| Class | Key |
+|-------|-----|
+| Loopback (`127.0.0.0/8`) | `(0, addr)` |
+| Local interface IP (matches `socket.getaddrinfo(gethostname())`) | `(1, addr)` |
+| Anything else | `(2, addr)` |
+
+Lowest tuple wins. If the winner is loopback or a local-interface IP, the host field of the resulting `FPBServer` is rewritten to `127.0.0.1` and the URL becomes `http://127.0.0.1:<port>`. This eliminates the LAN-IP-from-localhost trap that previously caused spurious 403s.
 
 ### Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | Success. |
-| `1` | Runtime failure (connect/auth/IO). |
+| `1` | Runtime failure (connect/auth/IO/invalid flag combination). |
 | `2` | Multiple servers discovered without `--server-url`; user must disambiguate. |
 
 ## v1 limitations

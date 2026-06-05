@@ -60,18 +60,49 @@ Without `--port` the CLI never opens a serial port directly — it either attach
 
 ## Operating Modes
 
-| Mode | Trigger | Behavior |
-|------|---------|----------|
-| Offline (local) | No `--port`, no local server (or server has no device) | ELF analysis / compile only |
-| Local proxy (port-less) | No `--port`, local server already has a device | Attach to server's existing connection |
-| Local proxy | `--port` + local server running | Attach to server, forward device ops |
-| Local auto-launch | `--port` + no local server | Auto-launch server, then proxy |
-| Local direct | `--direct --port` | Open serial directly (bypass server) |
-| Remote proxy | `--server-url http://remote:port` | Pure proxy to remote server, no auto-launch (attaches even if no device yet) |
+The CLI runs in exactly one of four mutually-exclusive modes. The mode is decided once, before any command is dispatched, by the connection resolver. You don't pick a mode by name — you pick it by the inputs the resolver reads.
+
+| Mode | When | Auth |
+|------|------|------|
+| **Offline** | The subcommand is ELF-only (`analyze`, `disasm`, `decompile`, `signature`, `search`, `get-symbols`, `compile`) or admin-only (`discover`, `server-stop`, `disconnect`) | Never |
+| **Local Proxy** | Server is on this host (loopback or a local interface IP) | None for localhost; LAN-bound server admins should still set a token |
+| **Remote Proxy** | Server is on another host | `--token` / `FPB_TOKEN` required when the server returns 401/403 |
+| **Direct Serial** | `--direct` is set explicitly | None; bypasses the WebServer entirely |
+
+### How the mode is chosen
+
+The resolver runs through this list and stops at the first match:
+
+1. **Offline / admin subcommand** → Offline.
+2. **`--direct`** → Direct Serial. Requires `--port`. Rejected with `--server-url`.
+3. **`--server-url <URL>`** → Local or Remote Proxy depending on whether the URL points at this host.
+4. **`FPB_SERVER_URL`** env var → same classification as `--server-url`.
+5. **A single CLI-launched server** found via PID file → Local Proxy on `127.0.0.1:<port>`.
+6. **`http://127.0.0.1:5500/api/status` reachable** → Local Proxy on the default port.
+7. **`--no-discovery`** → Local Proxy on `http://127.0.0.1:5500` (no probe of LAN).
+8. **mDNS browse for ~3 s** on `_fpbinject._tcp.local.`:
+   - 0 results → Local Proxy on `http://127.0.0.1:5500` (fallback).
+   - 1 result → Local or Remote Proxy. If the service is on this host (loopback or local interface) the URL is normalized to `127.0.0.1:<port>`.
+   - 2+ results → list candidates on stderr, exit `2`. Re-run with `--server-url` to pick.
+
+`--port` only ever names the **device serial port**, never the server port. To talk to a server on a non-default TCP port, use `--server-url http://127.0.0.1:5501`.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Success |
+| `1`  | Runtime failure (connect / auth / IO / invalid flag combination) |
+| `2`  | Multiple servers discovered without `--server-url` — disambiguate |
+
+### Invalid flag combinations
+
+| Combo | Reason | Behaviour |
+|-------|--------|-----------|
+| `--direct --server-url …` | Direct mode bypasses the WebServer | Rejected with one-line error, exit `1` |
+| `--direct` without `--port` for a device command | Direct mode opens a serial port — there is nothing to do without one | Rejected with one-line error, exit `1` |
 
 ## Remote Control
-
-To operate a device attached to another machine:
 
 ```bash
 # On the machine with the device (B): start WebServer
@@ -89,44 +120,25 @@ fpb_cli.py --server-url http://192.168.1.20:5500 --port /dev/ttyACM0 connect
 ```
 
 Notes:
-- `--token` is required for non-localhost servers. Use `FPB_TOKEN` env to avoid shell history exposure.
+
+- `--token` is required when the remote server returns 401/403. Use `FPB_TOKEN` env to keep it out of shell history.
 - `--elf` / `--compile-commands` paths in inject commands refer to **server-side** paths.
 - ELF analysis commands (analyze/disasm/search) always operate on the **local** ELF file.
 
 ## Auto-Discovery (mDNS)
 
-When `--server-url` is omitted (and `FPB_SERVER_URL` is unset), the CLI browses the LAN for FPBInject WebServers via mDNS / DNS-SD on `_fpbinject._tcp.local.`.
+The discovery step in the resolver above browses `_fpbinject._tcp.local.`. Two important details:
 
-Resolution order:
+- **Same-host normalization.** A server advertising both `127.0.0.1` and a LAN IP (e.g. on a multi-homed machine) is always classified as Local Proxy and the URL is rewritten to `127.0.0.1:<port>`. You will never be prompted for a token to talk to a server you started yourself.
+- **Token never travels over mDNS.** TXT records carry only `txtvers`, `version`, `auth` (advertised intent), `device`, and `path`. Tokens come from `--token`, `FPB_TOKEN`, or the server's startup banner.
 
-1. `--server-url <URL>` flag.
-2. `FPB_SERVER_URL` env var.
-3. Offline subcommands (analyze / disasm / decompile / signature / search / get-symbols / compile) skip discovery entirely (no discovery delay).
-4. `--no-discovery` falls back to `http://127.0.0.1:5500`.
-5. mDNS browse for ~3 s:
-   - 0 results -> fallback to `http://127.0.0.1:5500`.
-   - 1 result  -> attach silently.
-   - 2+ results -> list candidates on stderr, exit code `2`. Re-run with `--server-url` to pick.
-
-Exit codes:
-
-| Code | Meaning |
-|------|---------|
-| `0`  | Success |
-| `1`  | Runtime failure (connect / auth / IO) |
-| `2`  | Multiple servers discovered without `--server-url` — disambiguate |
-
-### `discover` - List visible servers
+### `discover` — List visible servers
 
 ```bash
-fpb_cli.py discover [--timeout 1.0]
+fpb_cli.py discover [--timeout 3.0]
 ```
 
 Emits a JSON list of every FPBInject WebServer reachable via mDNS. Useful for scripts and AI agents that want to enumerate servers before picking one.
-
-### Security
-
-The auth token is **never** published in mDNS. Discovery only carries host, port, version, auth-mode, device-state, and API path. Tokens must be supplied through `--token`, the `FPB_TOKEN` env var, or copied from the server's startup banner.
 
 For the full protocol contract see [Tools/WebServer/Docs/Discovery.md](../Tools/WebServer/Docs/Discovery.md).
 
