@@ -1679,19 +1679,23 @@ Notes:
     if hasattr(args, "elf_path") and args.elf_path:
         elf_path = args.elf_path
 
-    cli = FPBCLI(
-        verbose=args.verbose,
-        port=args.port,
-        baudrate=args.baudrate,
-        elf_path=elf_path,
-        compile_commands=args.compile_commands,
-        tx_chunk_size=args.tx_chunk_size,
-        tx_chunk_delay=args.tx_chunk_delay,
-        max_retries=args.max_retries,
-        direct=args.direct,
-        server_url=args.server_url,
-        token=args.token,
-    )
+    try:
+        cli = FPBCLI(
+            verbose=args.verbose,
+            port=args.port,
+            baudrate=args.baudrate,
+            elf_path=elf_path,
+            compile_commands=args.compile_commands,
+            tx_chunk_size=args.tx_chunk_size,
+            tx_chunk_delay=args.tx_chunk_delay,
+            max_retries=args.max_retries,
+            direct=args.direct,
+            server_url=args.server_url,
+            token=args.token,
+        )
+    except FPBCLIError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     OFFLINE_COMMANDS = {
         "analyze",
@@ -1705,7 +1709,11 @@ Notes:
         "disconnect",
     }
     if args.command not in OFFLINE_COMMANDS:
-        cli.try_attach_local_server()
+        try:
+            cli.try_attach_local_server()
+        except FPBCLIError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
     try:
         if args.command == "analyze":
