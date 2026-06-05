@@ -10,3 +10,7 @@ package-lock.json
 coverage/
 .nyc_output/
 tests/coverage/
+
+
+# Per-machine stable server id minted by the mDNS advertiser.
+.fpbinject_server_id
