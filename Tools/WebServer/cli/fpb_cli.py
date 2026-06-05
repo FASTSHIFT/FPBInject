@@ -30,7 +30,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 from fpb_inject import FPBInject  # noqa: E402
 from core.state import DeviceStateBase  # noqa: E402
 from utils.port_lock import PortLock  # noqa: E402
-from cli.server_proxy import ServerProxy, DEFAULT_SERVER_URL, DEFAULT_PORT  # noqa: E402
+from cli.server_proxy import (  # noqa: E402
+    ServerProxy,
+    ProxyAuthError,
+    DEFAULT_SERVER_URL,
+    DEFAULT_PORT,
+)
 
 try:
     import serial
@@ -78,9 +83,16 @@ class DeviceState(DeviceStateBase):
 class FPBCLI:
     """Lightweight CLI wrapper for FPBInject.
 
-    By default operates in pure-proxy mode: all device operations are
-    forwarded to the WebServer via HTTP API.  If the WebServer is not
-    running it is auto-launched as a background subprocess.
+    Operates in proxy mode whenever a WebServer is reachable: device
+    operations are forwarded via HTTP API. The serial port belongs to the
+    server, so ``--port`` is optional in proxy mode — it is only used to ask
+    the server to open a port when no device is connected yet.
+
+    - Local server already running: attach to it (``--port`` optional).
+    - Local, no server, ``--port`` given: auto-launch a server, else fall
+      back to opening the serial port directly.
+    - Remote ``--server-url``: pure proxy, no auto-launch, no direct fallback.
+    - No ``--port`` and no server: stay offline (ELF analysis / compile only).
 
     Pass ``direct=True`` to bypass the proxy and open the serial port
     directly (legacy / escape-hatch mode).
@@ -98,6 +110,7 @@ class FPBCLI:
         max_retries: int = 10,
         direct: bool = False,
         server_url: str = DEFAULT_SERVER_URL,
+        token: Optional[str] = None,
     ):
         self.verbose = verbose
         self.setup_logging()
@@ -114,45 +127,141 @@ class FPBCLI:
         self._proxy = None
         self._port_lock = None
 
-        if direct and port:
-            # --direct: bypass proxy, open serial directly
-            self._direct_connect(port, baudrate)
+        remote = self._is_remote_url(server_url)
+
+        # Direct mode: bypass proxy, open a local serial port.
+        if direct:
+            if remote:
+                raise FPBCLIError(
+                    "--direct cannot be combined with a remote --server-url. "
+                    "Direct mode opens a local serial port; remote control must "
+                    "go through the WebServer proxy."
+                )
+            if port:
+                self._direct_connect(port, baudrate)
             return
 
-        if port:
-            # Default: pure-proxy mode
-            proxy = ServerProxy(base_url=server_url)
+        # Remote mode: always proxy. The device lives on the remote host, so
+        # --port is OPTIONAL — when the remote server already has a device
+        # connected the client needs no port. Never auto-launch or fall back
+        # to a local serial connection.
+        if remote:
+            self._init_remote_proxy(server_url, port, baudrate, token)
+            return
 
-            # 1) If server already running, use it
-            if proxy.is_server_running():
-                self._proxy = proxy
-                self._device_state.connected = proxy.is_device_connected()
-                # If server is up but device not connected, connect via proxy
-                if not self._device_state.connected:
-                    result = proxy.connect(port, baudrate)
-                    self._device_state.connected = result.get("success", False)
-                if self.verbose:
-                    logging.info(f"Using WebServer proxy mode ({server_url})")
-                return
+        # Local mode. A serial port is needed to engage the proxy/device:
+        # locally the device is attached to this machine, and auto-launch
+        # needs to know which port to open. Without a port we stay offline so
+        # ELF analysis / compile commands run fast and self-contained.
+        if not port:
+            return
 
-            # 2) Server not running — auto-launch it
+        proxy = ServerProxy(base_url=server_url, token=token)
+
+        # 1) If a server is already running, attach to it.
+        if proxy.is_server_running():
+            self._attach_proxy(proxy, port, baudrate)
             if self.verbose:
-                logging.info("WebServer not running, auto-launching...")
-            if proxy.launch_server():
-                self._proxy = proxy
-                # Server just started, connect device via proxy
+                logging.info(f"Using WebServer proxy mode ({server_url})")
+            return
+
+        # 2) Server not running — auto-launch it.
+        if self.verbose:
+            logging.info("WebServer not running, auto-launching...")
+        if proxy.launch_server():
+            self._attach_proxy(proxy, port, baudrate)
+            if self.verbose:
+                logging.info(f"WebServer launched, proxy mode active ({server_url})")
+            return
+
+        # 3) Auto-launch failed — fall back to direct serial.
+        if self.verbose:
+            logging.warning("Auto-launch failed, falling back to direct mode")
+        self._direct_connect(port, baudrate)
+
+    @staticmethod
+    def _is_remote_url(server_url: str) -> bool:
+        """Return True if server_url points to a non-localhost host.
+
+        Remote URLs require proxy-only behavior (no auto-launch, no direct
+        serial fallback) since the device is attached to the remote machine.
+        """
+        try:
+            from urllib.parse import urlparse
+
+            host = (urlparse(server_url).hostname or "").lower()
+        except Exception:
+            return False
+        return host not in ("", "127.0.0.1", "localhost", "::1")
+
+    def _attach_proxy(
+        self, proxy: ServerProxy, port: Optional[str], baudrate: int
+    ) -> None:
+        """Attach to a reachable WebServer as a proxy.
+
+        If the server has no device connected and a ``port`` was supplied,
+        ask the server to open that port. ``port`` is optional: when the
+        server already has a device, no port is needed.
+        """
+        self._proxy = proxy
+        try:
+            connected = proxy.is_device_connected()
+            if not connected and port:
                 result = proxy.connect(port, baudrate)
-                self._device_state.connected = result.get("success", False)
-                if self.verbose:
-                    logging.info(
-                        f"WebServer launched, proxy mode active ({server_url})"
-                    )
-                return
+                connected = result.get("success", False)
+            self._device_state.connected = connected
+        except ProxyAuthError as e:
+            raise FPBCLIError(str(e))
 
-            # 3) Auto-launch failed — fall back to direct mode
-            if self.verbose:
-                logging.warning("Auto-launch failed, falling back to direct mode")
-            self._direct_connect(port, baudrate)
+    def _init_remote_proxy(
+        self,
+        server_url: str,
+        port: Optional[str],
+        baudrate: int,
+        token: Optional[str],
+    ) -> None:
+        """Set up proxy for a remote WebServer (no auto-launch / direct fallback).
+
+        ``--port`` is optional: the device lives on the remote host, so when
+        the remote server already has a device connected the client needs no
+        port. A port is only forwarded so the server can open it when no
+        device is connected yet.
+
+        Reachability handling:
+        - Unreachable + port given  -> error (the user clearly wanted the device).
+        - Unreachable + no port      -> stay offline (allow local ELF analysis).
+        - Auth failure (403/401)     -> always error (token required).
+        """
+        proxy = ServerProxy(base_url=server_url, token=token)
+
+        # Probe via get_status so we can distinguish "unreachable" from
+        # "reachable but unauthorized" (403 -> ProxyAuthError).
+        try:
+            status = proxy.get_status()
+        except ProxyAuthError as e:
+            # Auth errors are always actionable, regardless of port.
+            raise FPBCLIError(str(e))
+        except Exception:
+            if port:
+                raise FPBCLIError(
+                    f"Remote WebServer not reachable: {server_url}. "
+                    "Check the URL/port and that the server is running."
+                )
+            # No port: nothing device-related requested; stay offline.
+            return
+
+        if not status.get("success", False):
+            if port:
+                raise FPBCLIError(
+                    f"Remote WebServer not reachable: {server_url}. "
+                    "Check the URL/port and that the server is running."
+                )
+            return
+
+        self._attach_proxy(proxy, port, baudrate)
+
+        if self.verbose:
+            logging.info(f"Using remote WebServer proxy ({server_url})")
 
     def _direct_connect(self, port: str, baudrate: int):
         """Open serial port directly (legacy / escape-hatch mode)."""
@@ -1068,54 +1177,26 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Analyze a function (no device needed)
+  # ELF analysis works offline — no device, no --port:
   fpb_cli.py analyze firmware.elf digitalWrite
+  fpb_cli.py search firmware.elf gpio
+  fpb_cli.py compile patch.c --elf firmware.elf --compile-commands build/compile_commands.json
 
-  # Get disassembly (no device needed)
-  fpb_cli.py disasm firmware.elf digitalRead | jq .disasm
-
-  # Search functions (no device needed)
-  fpb_cli.py search firmware.elf "gpio"
-
-  # Get all symbols (no device needed)
-  fpb_cli.py get-symbols firmware.elf --filter "gpio" --limit 50
-
-  # Compile patch (no device needed)
-  fpb_cli.py compile my_patch.c --elf firmware.elf --compile-commands build/compile_commands.json
-
-  # Get device info (requires device)
+  # Local device commands — auto-launch/attach to a WebServer:
   fpb_cli.py --port /dev/ttyACM0 info
+  fpb_cli.py --port /dev/ttyACM0 inject digitalWrite patch.c --elf firmware.elf
 
-  # Inject patch (requires device)
-  fpb_cli.py --port /dev/ttyACM0 --elf firmware.elf --compile-commands build/compile_commands.json \\
-      inject digitalWrite patch.c
+  # Remote control — the device lives on the server, so no --port needed:
+  fpb_cli.py --server-url http://192.168.1.20:5500 --token TOKEN info
+  # Only pass --port to tell the remote server which port to open if it has none:
+  fpb_cli.py --server-url http://192.168.1.20:5500 --token TOKEN --port /dev/ttyACM0 connect
 
-  # Remove patch (requires device)
-  fpb_cli.py --port /dev/ttyACM0 unpatch --comp 0
-
-  # Remove all patches (requires device)
-  fpb_cli.py --port /dev/ttyACM0 unpatch --all
-
-  # List files on device (requires device)
-  fpb_cli.py --port /dev/ttyACM0 file-list /data
-
-  # Get file info on device (requires device)
-  fpb_cli.py --port /dev/ttyACM0 file-stat /data/log.bin
-
-  # Download file from device (requires device)
-  fpb_cli.py --port /dev/ttyACM0 file-download /data/log.bin ./log.bin
-
-  # Upload file to device (requires device)
-  fpb_cli.py --port /dev/ttyACM0 file-upload ./firmware.bin /data/firmware.bin
-
-  # Remove file on device (requires device)
-  fpb_cli.py --port /dev/ttyACM0 file-remove /data/old.bin
-
-  # Create directory on device (requires device)
-  fpb_cli.py --port /dev/ttyACM0 file-mkdir /data/logs
-
-  # Rename file on device (requires device)
-  fpb_cli.py --port /dev/ttyACM0 file-rename /data/old.bin /data/new.bin
+Notes:
+  The serial port belongs to the WebServer, not the CLI. In proxy mode --port
+  is optional and only used to ask the server to open a port when no device is
+  connected yet. --token (or FPB_TOKEN env) is required for remote servers.
+  Output is JSON on stdout; pipe to jq for filtering.
+  Run 'fpb_cli.py <command> --help' for command-specific options.
         """,
     )
 
@@ -1124,7 +1205,14 @@ Examples:
         "-v", "--verbose", action="store_true", help="Enable verbose output"
     )
     parser.add_argument("--version", action="version", version="%(prog)s 1.0")
-    parser.add_argument("--port", "-p", help="Serial port (e.g., /dev/ttyACM0, COM3)")
+    parser.add_argument(
+        "--port",
+        "-p",
+        help="Serial port (e.g., /dev/ttyACM0, COM3). Optional in proxy mode: "
+        "the server owns the port. Only needed to open a port the server "
+        "hasn't connected yet, or for local auto-launch/direct mode. "
+        "Not used by offline ELF analysis (analyze/disasm/search/compile).",
+    )
     parser.add_argument(
         "--baudrate",
         "-b",
@@ -1162,6 +1250,13 @@ Examples:
         type=str,
         default=DEFAULT_SERVER_URL,
         help=f"WebServer URL for proxy mode (default: {DEFAULT_SERVER_URL}).",
+    )
+    parser.add_argument(
+        "--token",
+        type=str,
+        default=os.environ.get("FPB_TOKEN"),
+        help="Auth token for the WebServer. Required for remote (non-localhost) "
+        "--server-url. Can also be set via the FPB_TOKEN environment variable.",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -1214,12 +1309,12 @@ Examples:
     )
 
     # info command (requires device)
-    subparsers.add_parser("info", help="Get device FPB info (requires --port)")
+    subparsers.add_parser("info", help="Get device FPB info (requires device)")
 
     # test-serial command (requires device)
     test_serial_parser = subparsers.add_parser(
         "test-serial",
-        help="Test serial throughput to find max transfer size (requires --port)",
+        help="Test serial throughput to find max transfer size (requires device)",
     )
     test_serial_parser.add_argument(
         "--start-size",
@@ -1242,7 +1337,7 @@ Examples:
 
     # inject command (requires device)
     inject_parser = subparsers.add_parser(
-        "inject", help="Inject patch to device (requires --port)"
+        "inject", help="Inject patch to device (requires device)"
     )
     inject_parser.add_argument("target_func", help="Target function name to replace")
     inject_parser.add_argument("source_file", help="Source C file")
@@ -1261,7 +1356,7 @@ Examples:
 
     # unpatch command (requires device)
     unpatch_parser = subparsers.add_parser(
-        "unpatch", help="Remove patch (requires --port)"
+        "unpatch", help="Remove patch (requires device)"
     )
     unpatch_parser.add_argument(
         "--comp", type=int, default=0, help="FPB comparator slot to unpatch"
@@ -1270,7 +1365,7 @@ Examples:
 
     # mem-read command (requires device)
     memread_parser = subparsers.add_parser(
-        "mem-read", help="Read memory from device (requires --port)"
+        "mem-read", help="Read memory from device (requires device)"
     )
     memread_parser.add_argument(
         "addr", type=lambda x: int(x, 0), help="Memory address (hex: 0x20000000)"
@@ -1287,7 +1382,7 @@ Examples:
 
     # mem-write command (requires device)
     memwrite_parser = subparsers.add_parser(
-        "mem-write", help="Write memory to device (requires --port)"
+        "mem-write", help="Write memory to device (requires device)"
     )
     memwrite_parser.add_argument(
         "addr", type=lambda x: int(x, 0), help="Memory address (hex: 0x20000000)"
@@ -1298,7 +1393,7 @@ Examples:
 
     # mem-dump command (requires device)
     memdump_parser = subparsers.add_parser(
-        "mem-dump", help="Dump memory region to file (requires --port)"
+        "mem-dump", help="Dump memory region to file (requires device)"
     )
     memdump_parser.add_argument(
         "addr", type=lambda x: int(x, 0), help="Start address (hex: 0x20000000)"
@@ -1310,7 +1405,7 @@ Examples:
 
     # serial-send command (requires device)
     serial_send_parser = subparsers.add_parser(
-        "serial-send", help="Send data to device serial port (requires --port)"
+        "serial-send", help="Send data to device serial port (requires device)"
     )
     serial_send_parser.add_argument("data", help="String to send to device")
     serial_send_parser.add_argument(
@@ -1327,7 +1422,7 @@ Examples:
 
     # serial-read command (requires device)
     serial_read_parser = subparsers.add_parser(
-        "serial-read", help="Read recent serial output (requires --port)"
+        "serial-read", help="Read recent serial output (requires device)"
     )
     serial_read_parser.add_argument(
         "--timeout",
@@ -1350,7 +1445,7 @@ Examples:
 
     # file-list command (requires device)
     file_list_parser = subparsers.add_parser(
-        "file-list", help="List directory contents on device (requires --port)"
+        "file-list", help="List directory contents on device (requires device)"
     )
     file_list_parser.add_argument(
         "path", nargs="?", default="/", help="Directory path on device (default: /)"
@@ -1358,13 +1453,13 @@ Examples:
 
     # file-stat command (requires device)
     file_stat_parser = subparsers.add_parser(
-        "file-stat", help="Get file/directory info on device (requires --port)"
+        "file-stat", help="Get file/directory info on device (requires device)"
     )
     file_stat_parser.add_argument("path", help="File or directory path on device")
 
     # file-download command (requires device)
     file_download_parser = subparsers.add_parser(
-        "file-download", help="Download file from device (requires --port)"
+        "file-download", help="Download file from device (requires device)"
     )
     file_download_parser.add_argument(
         "remote_path", help="Source file path on device (e.g., /data/log.bin)"
@@ -1375,7 +1470,7 @@ Examples:
 
     # file-upload command (requires device)
     file_upload_parser = subparsers.add_parser(
-        "file-upload", help="Upload local file to device (requires --port)"
+        "file-upload", help="Upload local file to device (requires device)"
     )
     file_upload_parser.add_argument(
         "local_path", help="Source file path on local machine"
@@ -1386,25 +1481,25 @@ Examples:
 
     # file-remove command (requires device)
     file_remove_parser = subparsers.add_parser(
-        "file-remove", help="Remove file on device (requires --port)"
+        "file-remove", help="Remove file on device (requires device)"
     )
     file_remove_parser.add_argument("path", help="File path to remove on device")
 
     # file-mkdir command (requires device)
     file_mkdir_parser = subparsers.add_parser(
-        "file-mkdir", help="Create directory on device (requires --port)"
+        "file-mkdir", help="Create directory on device (requires device)"
     )
     file_mkdir_parser.add_argument("path", help="Directory path to create on device")
 
     # file-rename command (requires device)
     file_rename_parser = subparsers.add_parser(
-        "file-rename", help="Rename file or directory on device (requires --port)"
+        "file-rename", help="Rename file or directory on device (requires device)"
     )
     file_rename_parser.add_argument("old_path", help="Current path on device")
     file_rename_parser.add_argument("new_path", help="New path on device")
 
     # connect command
-    subparsers.add_parser("connect", help="Connect to device (requires --port)")
+    subparsers.add_parser("connect", help="Connect to device (requires device)")
 
     # disconnect command
     subparsers.add_parser("disconnect", help="Disconnect from device")
@@ -1442,6 +1537,7 @@ Examples:
         max_retries=args.max_retries,
         direct=args.direct,
         server_url=args.server_url,
+        token=args.token,
     )
 
     try:

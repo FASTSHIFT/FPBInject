@@ -148,7 +148,7 @@ class TestAutoBanEngine(unittest.TestCase):
         ip = "192.168.1.70"
         # Send many requests via check_and_record (simulates authenticated traffic)
         for i in range(50):
-            d = self.engine.check_and_record(ip, f"/api/status")
+            d = self.engine.check_and_record(ip, "/api/status")
         # Should still be allowed — rate limit only via record_reject
         self.assertEqual(d["action"], "allow")
 

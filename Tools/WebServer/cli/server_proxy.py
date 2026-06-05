@@ -22,9 +22,22 @@ import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
+
+
+class ProxyAuthError(Exception):
+    """Raised when the WebServer rejects a request due to authentication.
+
+    Distinguishes "reachable but unauthenticated/forbidden" (HTTP 401/403)
+    from "server unreachable" (connection errors), so the CLI can give the
+    user actionable guidance about supplying a token.
+    """
+
+    pass
+
 
 # Default WebServer URL
 DEFAULT_SERVER_URL = "http://127.0.0.1:5500"
@@ -155,8 +168,14 @@ class ServerProxy:
         url = self._build_url(path)
         req = Request(url, method="GET")
         req.add_header("Accept", "application/json")
-        with urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
+        if self.token:
+            req.add_header("X-Auth-Token", self.token)
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode())
+        except HTTPError as e:
+            self._raise_for_auth(e)
+            raise
 
     def _post(
         self, path: str, data: Optional[dict] = None, timeout: float = _API_TIMEOUT
@@ -166,8 +185,27 @@ class ServerProxy:
         req = Request(url, data=body, method="POST")
         req.add_header("Content-Type", "application/json")
         req.add_header("Accept", "application/json")
-        with urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
+        if self.token:
+            req.add_header("X-Auth-Token", self.token)
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode())
+        except HTTPError as e:
+            self._raise_for_auth(e)
+            raise
+
+    @staticmethod
+    def _raise_for_auth(err: HTTPError) -> None:
+        """Translate HTTP 401/403 into a clear ProxyAuthError.
+
+        Other HTTP errors are left for the caller to handle.
+        """
+        if err.code in (401, 403):
+            raise ProxyAuthError(
+                "WebServer rejected the request (HTTP "
+                f"{err.code}). A valid auth token is required for remote "
+                "(non-localhost) access. Pass --token or set FPB_TOKEN."
+            )
 
     # ------------------------------------------------------------------
     # Server detection & auto-launch
@@ -411,7 +449,6 @@ class ServerProxy:
     def file_upload(self, local_path: str, remote_path: str) -> dict:
         """Upload file to device via WebServer (multipart form)."""
         import uuid
-        from urllib.request import Request, urlopen
 
         url = self._build_url("/api/transfer/upload")
         boundary = uuid.uuid4().hex
@@ -440,9 +477,15 @@ class ServerProxy:
 
         req = Request(url, data=body, method="POST")
         req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        if self.token:
+            req.add_header("X-Auth-Token", self.token)
 
-        with urlopen(req, timeout=120) as resp:
-            resp_text = resp.read().decode()
+        try:
+            with urlopen(req, timeout=120) as resp:
+                resp_text = resp.read().decode()
+        except HTTPError as e:
+            self._raise_for_auth(e)
+            raise
 
         # SSE endpoint - parse stream for final result
         last_result = None

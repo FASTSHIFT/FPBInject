@@ -15,7 +15,7 @@ from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.server_proxy import ServerProxy, DEFAULT_SERVER_URL
+from cli.server_proxy import ServerProxy, ProxyAuthError, DEFAULT_SERVER_URL
 
 
 class TestServerProxyInit(unittest.TestCase):
@@ -688,3 +688,150 @@ class TestGetPortOwner(unittest.TestCase):
                 self.assertIn("cmdline", result)
         finally:
             sock.close()
+
+
+class _TokenCapturingHandler(http.server.BaseHTTPRequestHandler):
+    """Mock handler that records the X-Auth-Token header and token query."""
+
+    last_header_token = None
+    last_query = None
+
+    def _handle(self):
+        from urllib.parse import urlparse, parse_qs
+
+        parsed = urlparse(self.path)
+        _TokenCapturingHandler.last_header_token = self.headers.get("X-Auth-Token")
+        _TokenCapturingHandler.last_query = parse_qs(parsed.query)
+        body = json.dumps({"success": True, "connected": True}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        self._handle()
+
+    def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length:
+            self.rfile.read(content_length)
+        self._handle()
+
+    def log_message(self, format, *args):
+        pass
+
+
+class TestServerProxyTokenTransmission(unittest.TestCase):
+    """Verify the token is sent both as header and query param."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = http.server.HTTPServer(("127.0.0.1", 0), _TokenCapturingHandler)
+        cls.port = cls.server.server_address[1]
+        cls.base_url = f"http://127.0.0.1:{cls.port}"
+        cls.thread = threading.Thread(target=cls.server.serve_forever)
+        cls.thread.daemon = True
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def test_get_sends_token_header(self):
+        _TokenCapturingHandler.last_header_token = None
+        proxy = ServerProxy(base_url=self.base_url, token="hdr-token")
+        proxy.get_status()
+        self.assertEqual(_TokenCapturingHandler.last_header_token, "hdr-token")
+
+    def test_get_sends_token_query(self):
+        proxy = ServerProxy(base_url=self.base_url, token="qry-token")
+        proxy.get_status()
+        self.assertEqual(_TokenCapturingHandler.last_query.get("token"), ["qry-token"])
+
+    def test_post_sends_token_header(self):
+        _TokenCapturingHandler.last_header_token = None
+        proxy = ServerProxy(base_url=self.base_url, token="post-token")
+        proxy.connect("/dev/ttyACM0")
+        self.assertEqual(_TokenCapturingHandler.last_header_token, "post-token")
+
+    def test_no_token_no_header(self):
+        _TokenCapturingHandler.last_header_token = None
+        proxy = ServerProxy(base_url=self.base_url)
+        proxy.get_status()
+        self.assertIsNone(_TokenCapturingHandler.last_header_token)
+
+
+class _ForbiddenHandler(http.server.BaseHTTPRequestHandler):
+    """Mock handler that always returns 403 Forbidden."""
+
+    def _deny(self):
+        body = json.dumps({"success": False, "error": "Forbidden"}).encode()
+        self.send_response(403)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        self._deny()
+
+    def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length:
+            self.rfile.read(content_length)
+        self._deny()
+
+    def log_message(self, format, *args):
+        pass
+
+
+class TestServerProxyAuthError(unittest.TestCase):
+    """Verify 403/401 responses become ProxyAuthError."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = http.server.HTTPServer(("127.0.0.1", 0), _ForbiddenHandler)
+        cls.port = cls.server.server_address[1]
+        cls.base_url = f"http://127.0.0.1:{cls.port}"
+        cls.thread = threading.Thread(target=cls.server.serve_forever)
+        cls.thread.daemon = True
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def test_get_raises_auth_error(self):
+        proxy = ServerProxy(base_url=self.base_url)
+        with self.assertRaises(ProxyAuthError):
+            proxy.get_status()
+
+    def test_post_raises_auth_error(self):
+        proxy = ServerProxy(base_url=self.base_url)
+        with self.assertRaises(ProxyAuthError):
+            proxy.connect("/dev/ttyACM0")
+
+    def test_is_server_running_false_on_forbidden(self):
+        """is_server_running swallows the auth error and returns False."""
+        proxy = ServerProxy(base_url=self.base_url)
+        self.assertFalse(proxy.is_server_running())
+
+    def test_auth_error_message_mentions_token(self):
+        proxy = ServerProxy(base_url=self.base_url)
+        try:
+            proxy.info()
+            self.fail("expected ProxyAuthError")
+        except ProxyAuthError as e:
+            self.assertIn("token", str(e).lower())
+
+    def test_file_upload_raises_auth_error(self):
+        """file_upload also surfaces auth errors."""
+        proxy = ServerProxy(base_url=self.base_url)
+        with tempfile.NamedTemporaryFile(delete=False) as tf:
+            tf.write(b"data")
+            tf.flush()
+            local_path = tf.name
+        try:
+            with self.assertRaises(ProxyAuthError):
+                proxy.file_upload(local_path, "/data/test.bin")
+        finally:
+            os.unlink(local_path)
