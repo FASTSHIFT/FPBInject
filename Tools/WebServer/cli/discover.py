@@ -11,7 +11,9 @@ The protocol (service type, TXT records) is documented in
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import socket
 from dataclasses import dataclass
 from typing import Optional
 
@@ -24,6 +26,58 @@ SERVICE_TYPE = "_fpbinject._tcp.local."
 
 DEFAULT_TIMEOUT_S = 3.0
 RESOLVE_TIMEOUT_MS = 2000
+
+
+def _local_interface_ips() -> frozenset[str]:
+    """IPv4 addresses bound on this host (loopback + every NIC).
+
+    Used so a service advertising ``10.0.0.5:5500`` from THIS host gets
+    classified as local rather than remote, preventing the "why is the CLI
+    asking for a token to talk to a server I just started?" trap.
+
+    Tries ``ifaddr`` (already a transitive dep of ``zeroconf``) so we get
+    every interface, then falls back to ``socket.getaddrinfo(hostname)``
+    for environments where ``ifaddr`` is unavailable.
+    """
+    ips: set[str] = {"127.0.0.1"}
+
+    try:
+        import ifaddr
+        for adapter in ifaddr.get_adapters():
+            for ip in adapter.ips:
+                if isinstance(ip.ip, str):
+                    ips.add(ip.ip)
+    except Exception:
+        pass
+
+    try:
+        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+        for info in infos:
+            ips.add(info[4][0])
+    except OSError:
+        pass
+
+    return frozenset(ips)
+
+
+def _is_loopback(addr: str) -> bool:
+    try:
+        return ipaddress.ip_address(addr).is_loopback
+    except ValueError:
+        return False
+
+
+def _address_sort_key(addr: str, local_ips: frozenset[str]) -> tuple[int, str]:
+    """Loopback (0) < local-interface (1) < other (2)."""
+    if _is_loopback(addr):
+        return (0, addr)
+    if addr in local_ips:
+        return (1, addr)
+    return (2, addr)
+
+
+def _is_same_host(addr: str, local_ips: frozenset[str]) -> bool:
+    return _is_loopback(addr) or addr in local_ips
 
 
 @dataclass(frozen=True)
@@ -62,10 +116,15 @@ async def _resolve(aiozc: AsyncZeroconf, name: str) -> Optional[FPBServer]:
     addresses = info.parsed_scoped_addresses() or []
     if not addresses:
         return None
-    host = addresses[0]
     port = int(info.port or 0)
     if port <= 0:
         return None
+
+    local_ips = _local_interface_ips()
+    sorted_addrs = sorted(addresses, key=lambda a: _address_sort_key(a, local_ips))
+    raw_host = sorted_addrs[0]
+    host = "127.0.0.1" if _is_same_host(raw_host, local_ips) else raw_host
+
     props = info.properties or {}
     decoded = {
         (k.decode() if isinstance(k, bytes) else str(k)): _decode_txt_value(v)
