@@ -76,7 +76,7 @@ class MdnsAdvertiser:
 
     def _build_info(self) -> ServiceInfo:
         hostname = socket.gethostname() or "fpbinject"
-        instance = f"FPBInject on {hostname}"
+        instance = f"FPBInject on {hostname}:{self._port}"
         properties = {
             "txtvers": TXT_SCHEMA_VERSION,
             "version": self._version,
