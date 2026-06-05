@@ -31,6 +31,7 @@ Keys are case-insensitive. Values are printable UTF-8.
 | `auth` | `token` \| `none` | Advertised auth intent. `token` means a token is required for non-localhost access; `none` means the server was started with `--no-auth`. |
 | `device` | `none` (v1) | Whether the server has a serial device attached. **v1 limitation: this value is set once at startup as `none` and is not updated at runtime.** Real-time updates may be added in a later schema version (will bump `txtvers`). |
 | `path` | `/api` | API base path. Reserved for future protocol revs. |
+| `id` | `fpb:<uuid>` | Stable per-installation UUID; persisted on the server in `Tools/WebServer/.fpbinject_server_id`. Survives port and hostname changes; deleting the file mints a new identity. Reserved for future client-side identity matching. |
 
 ### Security: token must not appear in TXT
 
@@ -55,14 +56,16 @@ Each `FPBServer` is a dataclass:
 
 ```
 FPBServer(
-    name:    str,    # service instance name from mDNS
-    host:    str,    # IPv4 or hostname
+    name:    str,    # full mDNS instance name
+    host:    str,    # IPv4 or hostname (loopback when same-host)
     port:    int,
     version: str,    # from TXT
     auth:    str,    # "token" | "none"
     device:  str,    # "none" (v1)
     path:    str,    # "/api"
     url:     str,    # convenience: f"http://{host}:{port}"
+    id:      str,    # from TXT (empty for legacy servers)
+    handle:  str,    # "<host>:<port>" — the human-friendly id `-s` accepts
 )
 ```
 
@@ -71,20 +74,25 @@ FPBServer(
 `fpb_cli.py::resolve_connection_plan(args)` runs through this list and stops at the first match. Each step produces a final `ConnectionPlan` (mode + URL + token + serial port + flags); the connector consumes the plan once.
 
 1. **Subcommand is offline or admin-only** (`analyze`, `disasm`, `decompile`, `signature`, `search`, `get-symbols`, `compile`, `discover`, `server-stop`, `disconnect`) — return Offline plan, skip everything below. Zero discovery delay.
-2. **`--direct`** — return Direct plan. Requires `--port`. Rejected with `--server-url`.
-3. **`--server-url <URL>`** — classify the URL as local or remote, return the matching proxy plan.
-4. **`FPB_SERVER_URL`** env var — same classification.
-5. **Single CLI-launched server** (PID file in `Tools/WebServer/.cli_server_*.pid`) — Local Proxy on `127.0.0.1:<pid_port>`. No mDNS.
-6. **`http://127.0.0.1:5500/api/status` reachable** — Local Proxy on the default port. No mDNS.
-7. **`--no-discovery`** — Local Proxy on `http://127.0.0.1:5500` (fallback only, no LAN browse).
-8. **mDNS browse** for 3.0 s on `_fpbinject._tcp.local.`:
-   - 0 results → Local Proxy on `http://127.0.0.1:5500` (fallback).
-   - 1 result → classify the address. Same-host hits (loopback or local interface IP) are normalized to `127.0.0.1:<port>` so the user is never asked for a token to talk to a server they themselves started.
-   - ≥ 2 results → list candidates on stderr, `sys.exit(2)`.
+2. **`--direct`** — return Direct plan. Requires `--port`. Rejected with `-s` / `--server-url`.
+3. **`-s / --server <handle>`** — handle resolution:
+   - URL (contains `://`) → used verbatim.
+   - `host:port` → mDNS browse, exact `handle` match.
+   - `host` → mDNS browse, must match exactly one server (else exit `2` with hints).
+4. **`FPB_SERVER`** env var — same handle resolution as `-s`.
+5. *(deprecated)* **`--server-url <URL>`** — URL only. Warns under `-v` and is removed in a future release.
+6. *(deprecated)* **`FPB_SERVER_URL`** env — URL only.
+7. **Single CLI-launched server** (PID file in `Tools/WebServer/.cli_server_*.pid`) — Local Proxy on `127.0.0.1:<pid_port>`. No mDNS.
+8. **`http://127.0.0.1:5500/api/status` reachable** — Local Proxy on the default port. No mDNS.
+9. **`--no-discovery`** — Local Proxy on `http://127.0.0.1:5500` (fallback only, no LAN browse).
+10. **mDNS browse** for 3.0 s on `_fpbinject._tcp.local.`:
+    - 0 results → Local Proxy on `http://127.0.0.1:5500` (fallback).
+    - 1 result → classify the address. Same-host hits (loopback or local interface IP) are normalized to `127.0.0.1:<port>` so the user is never asked for a token to talk to a server they themselves started.
+    - ≥ 2 results → list candidates on stderr, `sys.exit(2)`.
 
 ### Localhost preference
 
-Within step 8, when a single mDNS service announces multiple addresses (very common on multi-homed hosts), the resolver sorts them with this key:
+Within step 10, when a single mDNS service announces multiple addresses (very common on multi-homed hosts), the resolver sorts them with this key:
 
 | Class | Key |
 |-------|-----|
