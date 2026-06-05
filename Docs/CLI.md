@@ -41,7 +41,10 @@ Options:
   --tx-chunk-delay <secs>    Delay between TX fragments (default: 0.005)
   --max-retries <num>        Max retry attempts for file transfer (default: 10)
   --direct                   Force direct serial (skip proxy detection)
-  --server-url <url>         WebServer URL (default: http://127.0.0.1:5500)
+  --server-url <url>         WebServer URL. If omitted, the CLI uses
+                             FPB_SERVER_URL env, then mDNS auto-discovery,
+                             then falls back to http://127.0.0.1:5500.
+  --no-discovery             Disable mDNS auto-discovery
   --token <token>            Auth token for remote servers (or set FPB_TOKEN env)
 ```
 
@@ -89,6 +92,43 @@ Notes:
 - `--token` is required for non-localhost servers. Use `FPB_TOKEN` env to avoid shell history exposure.
 - `--elf` / `--compile-commands` paths in inject commands refer to **server-side** paths.
 - ELF analysis commands (analyze/disasm/search) always operate on the **local** ELF file.
+
+## Auto-Discovery (mDNS)
+
+When `--server-url` is omitted (and `FPB_SERVER_URL` is unset), the CLI browses the LAN for FPBInject WebServers via mDNS / DNS-SD on `_fpbinject._tcp.local.`.
+
+Resolution order:
+
+1. `--server-url <URL>` flag.
+2. `FPB_SERVER_URL` env var.
+3. Offline subcommands (analyze / disasm / decompile / signature / search / get-symbols / compile) skip discovery entirely (no 1 s delay).
+4. `--no-discovery` falls back to `http://127.0.0.1:5500`.
+5. mDNS browse for ~1 s:
+   - 0 results -> fallback to `http://127.0.0.1:5500`.
+   - 1 result  -> attach silently.
+   - 2+ results -> list candidates on stderr, exit code `2`. Re-run with `--server-url` to pick.
+
+Exit codes:
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Success |
+| `1`  | Runtime failure (connect / auth / IO) |
+| `2`  | Multiple servers discovered without `--server-url` — disambiguate |
+
+### `discover` - List visible servers
+
+```bash
+fpb_cli.py discover [--timeout 1.0]
+```
+
+Emits a JSON list of every FPBInject WebServer reachable via mDNS. Useful for scripts and AI agents that want to enumerate servers before picking one.
+
+### Security
+
+The auth token is **never** published in mDNS. Discovery only carries host, port, version, auth-mode, device-state, and API path. Tokens must be supplied through `--token`, the `FPB_TOKEN` env var, or copied from the server's startup banner.
+
+For the full protocol contract see [Tools/WebServer/Docs/Discovery.md](../Tools/WebServer/Docs/Discovery.md).
 
 ## Commands
 
