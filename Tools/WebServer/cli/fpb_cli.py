@@ -1282,18 +1282,60 @@ def _attach_serial_port(plan: ConnectionPlan, port: Optional[str], baudrate: int
     )
 
 
+def _resolve_handle_to_url(value: str, *, source: str) -> str:
+    """Turn a user-supplied -s/FPB_SERVER value into a server URL.
+
+    Three forms accepted:
+      * URL (anything containing ``://``) -> used verbatim.
+      * ``host:port`` handle -> mDNS browse, must match exactly one server.
+      * ``host`` only        -> mDNS browse, must match exactly one server
+                                 (multiple matches -> exit 2 with hints).
+
+    The ``source`` string ("-s flag" / "FPB_SERVER env") is only used in
+    error messages.
+    """
+    from cli.discover import classify_handle, find_by_handle
+
+    kind = classify_handle(value)
+    if kind == "url":
+        return value
+
+    if discover_sync is None:
+        raise FPBCLIError(
+            f"Cannot resolve {source} '{value}': zeroconf not installed. "
+            "Pass a full URL instead."
+        )
+
+    servers = discover_sync()
+    matches = find_by_handle(servers, value)
+    if not matches:
+        raise FPBCLIError(
+            f"No FPBInject server matches {source} '{value}'. "
+            "Run 'fpb_cli.py discover' to list visible servers."
+        )
+    if len(matches) > 1:
+        msg = [f"{source} '{value}' is ambiguous; matches multiple servers:"]
+        for s in matches:
+            msg.append(f"  {s.handle}  {s.url}")
+        msg.append("Be more specific (use 'host:port' form).")
+        raise FPBCLIError("\n".join(msg))
+    return matches[0].url
+
+
 def resolve_connection_plan(args) -> ConnectionPlan:
     """Single resolver: return the ConnectionPlan for ``args``.
 
     Precedence (first hit wins):
         1. command_policy in {OFFLINE, SERVER_ADMIN} -> OFFLINE plan
         2. --direct flag                              -> DIRECT plan
-        3. --server-url                               -> classify URL
-        4. FPB_SERVER_URL env                         -> classify URL
-        5. Single CLI-launched local PID              -> LOCAL_PROXY 127.0.0.1:<pid_port>
-        6. http://127.0.0.1:5500 reachable            -> LOCAL_PROXY default
-        7. --no-discovery                             -> LOCAL_PROXY default fallback
-        8. mDNS browse:
+        3. -s / --server                              -> resolve handle, classify URL
+        4. FPB_SERVER env                             -> resolve handle, classify URL
+        5. --server-url (legacy)                      -> classify URL (deprecation warning)
+        6. FPB_SERVER_URL env (legacy)                -> classify URL
+        7. Single CLI-launched local PID              -> LOCAL_PROXY 127.0.0.1:<pid_port>
+        8. http://127.0.0.1:5500 reachable            -> LOCAL_PROXY default
+        9. --no-discovery                             -> LOCAL_PROXY default fallback
+       10. mDNS browse:
              0 results  -> LOCAL_PROXY default
              1 result   -> classify (already normalized to 127.0.0.1 if same-host)
              2+ results -> stderr list + sys.exit(2)
@@ -1312,9 +1354,9 @@ def resolve_connection_plan(args) -> ConnectionPlan:
     verbose = getattr(args, "verbose", False)
 
     if getattr(args, "direct", False):
-        if getattr(args, "server_url", None):
+        if getattr(args, "server", None) or getattr(args, "server_url_legacy", None):
             raise FPBCLIError(
-                "--direct cannot be combined with --server-url; "
+                "--direct cannot be combined with --server / --server-url; "
                 "direct mode bypasses the WebServer."
             )
         if not port:
@@ -1326,16 +1368,40 @@ def resolve_connection_plan(args) -> ConnectionPlan:
             source="direct",
         )
 
-    explicit_url = getattr(args, "server_url", None)
-    if explicit_url:
+    server_handle = getattr(args, "server", None)
+    if server_handle:
+        url = _resolve_handle_to_url(server_handle, source="-s flag")
         return _attach_serial_port(
-            _classify_url(explicit_url, token=token, source="flag"), port, baudrate
+            _classify_url(url, token=token, source="flag"), port, baudrate
         )
 
-    env_url = os.environ.get("FPB_SERVER_URL")
-    if env_url:
+    env_handle = os.environ.get("FPB_SERVER")
+    if env_handle:
+        url = _resolve_handle_to_url(env_handle, source="FPB_SERVER env")
         return _attach_serial_port(
-            _classify_url(env_url, token=token, source="env"), port, baudrate
+            _classify_url(url, token=token, source="env"), port, baudrate
+        )
+
+    legacy_url = getattr(args, "server_url_legacy", None)
+    if legacy_url:
+        if verbose:
+            print(
+                "warning: --server-url is deprecated; use -s / --server instead.",
+                file=sys.stderr,
+            )
+        return _attach_serial_port(
+            _classify_url(legacy_url, token=token, source="legacy-flag"), port, baudrate
+        )
+
+    legacy_env_url = os.environ.get("FPB_SERVER_URL")
+    if legacy_env_url:
+        if verbose:
+            print(
+                "warning: FPB_SERVER_URL is deprecated; use FPB_SERVER instead.",
+                file=sys.stderr,
+            )
+        return _attach_serial_port(
+            _classify_url(legacy_env_url, token=token, source="legacy-env"), port, baudrate
         )
 
     pid_servers = list_cli_servers()
@@ -1441,26 +1507,46 @@ def resolve_server_url(args):
 
 
 def cmd_discover(args):
-    """Implement the ``discover`` subcommand: print servers as JSON."""
+    """``discover`` subcommand: human table by default, JSON with ``--json``."""
     if discover_sync is None:
-        print("[]")
+        if getattr(args, "json", False):
+            print("[]")
+        else:
+            print("(zeroconf not installed; cannot discover)", file=sys.stderr)
         return 1
+
     timeout = getattr(args, "timeout", 3.0)
     servers = discover_sync(timeout=timeout)
-    payload = [
-        {
-            "name": s.name,
-            "host": s.host,
-            "port": s.port,
-            "url": s.url,
-            "version": s.version,
-            "auth": s.auth,
-            "device": s.device,
-            "path": s.path,
-        }
-        for s in servers
-    ]
-    print(json.dumps(payload, indent=2))
+
+    if getattr(args, "json", False):
+        payload = [
+            {
+                "name": s.name,
+                "host": s.host,
+                "port": s.port,
+                "url": s.url,
+                "version": s.version,
+                "auth": s.auth,
+                "device": s.device,
+                "path": s.path,
+                "id": s.id,
+                "handle": s.handle,
+            }
+            for s in servers
+        ]
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    if not servers:
+        print("No FPBInject servers found.", file=sys.stderr)
+        return 0
+
+    rows = [("HANDLE", "URL", "AUTH", "DEVICE", "VERSION")]
+    for s in servers:
+        rows.append((s.handle, s.url, s.auth or "?", s.device or "?", s.version or "?"))
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+    for r in rows:
+        print("  ".join(c.ljust(widths[i]) for i, c in enumerate(r)))
     return 0
 
 
@@ -1545,25 +1631,31 @@ Notes:
         help="Force direct serial connection (skip WebServer proxy detection).",
     )
     parser.add_argument(
-        "--server-url",
+        "-s", "--server",
         type=str,
         default=None,
-        help="WebServer URL for proxy mode. If omitted, the CLI tries the "
-        "FPB_SERVER_URL env var, then mDNS auto-discovery, then "
-        f"falls back to {DEFAULT_SERVER_URL}.",
+        help="Server to talk to. Accepts a discovery handle (e.g. "
+        "'bench:5501'), a hostname when unique on the LAN, or a full URL. "
+        "Falls back to FPB_SERVER env var, then auto-discovery.",
+    )
+    parser.add_argument(
+        "--server-url",
+        dest="server_url_legacy",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--no-discovery",
         action="store_true",
-        help="Disable mDNS auto-discovery and fall back to "
-        f"{DEFAULT_SERVER_URL} when no --server-url / FPB_SERVER_URL is set.",
+        help=f"Disable mDNS auto-discovery and fall back to {DEFAULT_SERVER_URL}.",
     )
     parser.add_argument(
         "--token",
         type=str,
         default=os.environ.get("FPB_TOKEN"),
-        help="Auth token for the WebServer. Required for remote (non-localhost) "
-        "--server-url. Can also be set via the FPB_TOKEN environment variable.",
+        help="Auth token for the WebServer. Required when the server returns "
+        "401/403. Can also be set via the FPB_TOKEN environment variable.",
     )
 
     parser.set_defaults(command_policy=CommandPolicy.DEVICE)
@@ -1822,7 +1914,7 @@ Notes:
 
     # discover command — list FPBInject WebServers visible via mDNS
     discover_parser = subparsers.add_parser(
-        "discover", help="List FPBInject WebServers visible via mDNS as JSON"
+        "discover", help="List FPBInject WebServers visible via mDNS"
     )
     discover_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     discover_parser.add_argument(
@@ -1830,6 +1922,11 @@ Notes:
         type=float,
         default=3.0,
         help="Discovery timeout in seconds (default: 3.0).",
+    )
+    discover_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON instead of the default human table.",
     )
 
     # server-stop command
