@@ -37,6 +37,12 @@ from cli.server_proxy import (  # noqa: E402
     DEFAULT_PORT,
 )
 
+try:  # Optional: discovery requires the zeroconf package.
+    from cli.discover import discover_sync, FPBServer  # noqa: E402
+except Exception:  # pragma: no cover
+    discover_sync = None
+    FPBServer = None
+
 try:
     import serial
 
@@ -1211,6 +1217,74 @@ class FPBCLI:
         self.output_json(stop_cli_server(port))
 
 
+def resolve_server_url(args):
+    """Resolve the WebServer URL the CLI should talk to.
+
+    Precedence ladder (first hit wins):
+        1. ``args.server_url`` (--server-url flag)
+        2. ``FPB_SERVER_URL`` env var
+        3. Offline subcommand (``args.requires_server is False``) -> None
+        4. ``--no-discovery`` flag -> DEFAULT_SERVER_URL fallback
+        5. mDNS browse: 0 -> fallback, 1 -> use, 2+ -> exit 2
+
+    Exit codes:
+        0 ok, 2 ambiguous (multi-result without --server-url).
+    """
+    if getattr(args, "server_url", None):
+        return args.server_url
+    env_url = os.environ.get("FPB_SERVER_URL")
+    if env_url:
+        return env_url
+    if not getattr(args, "requires_server", True):
+        return None
+    if getattr(args, "no_discovery", False):
+        return DEFAULT_SERVER_URL
+    if discover_sync is None:
+        return DEFAULT_SERVER_URL
+    servers = discover_sync(timeout=1.0)
+    if not servers:
+        return DEFAULT_SERVER_URL
+    if len(servers) == 1:
+        s = servers[0]
+        if getattr(args, "verbose", False):
+            print(f"Using discovered server {s.url} (version={s.version})", file=sys.stderr)
+        return s.url
+    print(
+        "Multiple FPBInject servers discovered; pass --server-url to choose:",
+        file=sys.stderr,
+    )
+    for s in servers:
+        print(
+            f"  {s.url}  version={s.version}  auth={s.auth}  device={s.device}",
+            file=sys.stderr,
+        )
+    sys.exit(2)
+
+
+def cmd_discover(args):
+    """Implement the ``discover`` subcommand: print servers as JSON."""
+    if discover_sync is None:
+        print("[]")
+        return 1
+    timeout = getattr(args, "timeout", 1.0)
+    servers = discover_sync(timeout=timeout)
+    payload = [
+        {
+            "name": s.name,
+            "host": s.host,
+            "port": s.port,
+            "url": s.url,
+            "version": s.version,
+            "auth": s.auth,
+            "device": s.device,
+            "path": s.path,
+        }
+        for s in servers
+    ]
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="FPBInject CLI - Lightweight interface for binary patching",
@@ -1294,8 +1368,16 @@ Notes:
     parser.add_argument(
         "--server-url",
         type=str,
-        default=DEFAULT_SERVER_URL,
-        help=f"WebServer URL for proxy mode (default: {DEFAULT_SERVER_URL}).",
+        default=None,
+        help="WebServer URL for proxy mode. If omitted, the CLI tries the "
+        "FPB_SERVER_URL env var, then mDNS auto-discovery, then "
+        f"falls back to {DEFAULT_SERVER_URL}.",
+    )
+    parser.add_argument(
+        "--no-discovery",
+        action="store_true",
+        help="Disable mDNS auto-discovery and fall back to "
+        f"{DEFAULT_SERVER_URL} when no --server-url / FPB_SERVER_URL is set.",
     )
     parser.add_argument(
         "--token",
@@ -1305,30 +1387,36 @@ Notes:
         "--server-url. Can also be set via the FPB_TOKEN environment variable.",
     )
 
+    parser.set_defaults(requires_server=True)
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # analyze command
     analyze_parser = subparsers.add_parser("analyze", help="Analyze function")
+    analyze_parser.set_defaults(requires_server=False)
     analyze_parser.add_argument("elf_path", help="Path to ELF file")
     analyze_parser.add_argument("func_name", help="Function name to analyze")
 
     # disasm command
     disasm_parser = subparsers.add_parser("disasm", help="Get disassembly")
+    disasm_parser.set_defaults(requires_server=False)
     disasm_parser.add_argument("elf_path", help="Path to ELF file")
     disasm_parser.add_argument("func_name", help="Function name")
 
     # decompile command
     decomp_parser = subparsers.add_parser("decompile", help="Decompile function")
+    decomp_parser.set_defaults(requires_server=False)
     decomp_parser.add_argument("elf_path", help="Path to ELF file")
     decomp_parser.add_argument("func_name", help="Function name")
 
     # signature command
     sig_parser = subparsers.add_parser("signature", help="Get function signature")
+    sig_parser.set_defaults(requires_server=False)
     sig_parser.add_argument("elf_path", help="Path to ELF file")
     sig_parser.add_argument("func_name", help="Function name")
 
     # search command
     search_parser = subparsers.add_parser("search", help="Search functions")
+    search_parser.set_defaults(requires_server=False)
     search_parser.add_argument("elf_path", help="Path to ELF file")
     search_parser.add_argument("pattern", help="Search pattern")
 
@@ -1336,6 +1424,7 @@ Notes:
     symbols_parser = subparsers.add_parser(
         "get-symbols", help="Get all symbols from ELF file (via nm)"
     )
+    symbols_parser.set_defaults(requires_server=False)
     symbols_parser.add_argument("elf_path", help="Path to ELF file")
     symbols_parser.add_argument(
         "--filter", default="", help="Filter pattern (case-insensitive)"
@@ -1346,6 +1435,7 @@ Notes:
 
     # compile command
     compile_parser = subparsers.add_parser("compile", help="Compile patch source")
+    compile_parser.set_defaults(requires_server=False)
     compile_parser.add_argument("source_file", help="Source C file")
     compile_parser.add_argument(
         "--addr",
@@ -1550,6 +1640,18 @@ Notes:
     # disconnect command
     subparsers.add_parser("disconnect", help="Disconnect from device")
 
+    # discover command — list FPBInject WebServers visible via mDNS
+    discover_parser = subparsers.add_parser(
+        "discover", help="List FPBInject WebServers visible via mDNS as JSON"
+    )
+    discover_parser.set_defaults(requires_server=False)
+    discover_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=1.0,
+        help="Discovery timeout in seconds (default: 1.0).",
+    )
+
     # server-stop command
     server_stop_parser = subparsers.add_parser(
         "server-stop", help="Stop a CLI-launched WebServer background process"
@@ -1566,6 +1668,11 @@ Notes:
     if not args.command:
         parser.print_help()
         sys.exit(1)
+
+    if args.command == "discover":
+        sys.exit(cmd_discover(args))
+
+    args.server_url = resolve_server_url(args)
 
     # Determine ELF path - can come from global --elf or command-specific arg
     elf_path = args.elf
