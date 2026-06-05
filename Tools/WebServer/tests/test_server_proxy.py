@@ -14,8 +14,10 @@ from pathlib import Path
 from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from cli.server_proxy import ServerProxy, ProxyAuthError, DEFAULT_SERVER_URL
+from fixtures.mock_http import MockHTTPHandler as _MockHTTPHandler
 
 
 class TestServerProxyInit(unittest.TestCase):
@@ -56,53 +58,6 @@ class TestServerProxyBuildUrl(unittest.TestCase):
         proxy = ServerProxy(base_url="http://localhost:5500", token="tok123")
         url = proxy._build_url("/api/status?foo=bar")
         self.assertEqual(url, "http://localhost:5500/api/status?foo=bar&token=tok123")
-
-
-class _MockHTTPHandler(http.server.BaseHTTPRequestHandler):
-    """Simple mock HTTP handler for testing."""
-
-    # Class-level response configuration
-    responses = {}
-    sse_responses = {}
-
-    def do_GET(self):
-        path = self.path.split("?")[0]  # Strip query params
-        if path in self.responses:
-            body = json.dumps(self.responses[path]).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(body)
-        else:
-            self.send_response(404)
-
-    def do_POST(self):
-        content_length = int(self.headers.get("Content-Length", 0))
-        if content_length:
-            self.rfile.read(content_length)
-        path = self.path.split("?")[0]
-        # SSE responses for streaming endpoints
-        if path in self.sse_responses:
-            sse_data = self.sse_responses[path]
-            body = ""
-            for event in sse_data:
-                body += f"data: {json.dumps(event)}\n\n"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.end_headers()
-            self.wfile.write(body.encode())
-        elif path in self.responses:
-            resp_body = json.dumps(self.responses[path]).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(resp_body)
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def log_message(self, format, *args):
-        pass  # Suppress log output
 
 
 class TestServerProxyWithMockServer(unittest.TestCase):
