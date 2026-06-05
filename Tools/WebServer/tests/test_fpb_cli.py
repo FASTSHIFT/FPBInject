@@ -140,6 +140,71 @@ class TestFPBCLI(unittest.TestCase):
         self.assertTrue(cli._device_state.connected)
         cli.cleanup()
 
+    def test_init_no_port_no_probe(self):
+        """FPBCLI() without --port must not perform any network probe.
+
+        This guarantees offline ELF/compile commands stay self-contained
+        and unit tests do not depend on ambient network state.
+        """
+        with patch("cli.fpb_cli.ServerProxy") as mock_proxy_cls:
+            cli = FPBCLI()
+            try:
+                mock_proxy_cls.assert_not_called()
+                self.assertIsNone(cli._proxy)
+                self.assertFalse(cli._device_state.connected)
+            finally:
+                cli.cleanup()
+
+    @patch("cli.fpb_cli.ServerProxy")
+    def test_try_attach_local_server_with_device(self, mock_proxy_cls):
+        """try_attach_local_server attaches when local server has a connected device."""
+        proxy = MagicMock()
+        proxy.probe_status.return_value = {"success": True, "connected": True}
+        proxy.is_device_connected.return_value = True
+        mock_proxy_cls.return_value = proxy
+
+        cli = FPBCLI()
+        try:
+            self.assertTrue(cli.try_attach_local_server())
+            self.assertIs(cli._proxy, proxy)
+            self.assertTrue(cli._device_state.connected)
+            proxy.connect.assert_not_called()
+            # Single status probe, no extra is_server_running()/is_device_connected() round-trip.
+            proxy.probe_status.assert_called_once()
+            proxy.is_server_running.assert_not_called()
+        finally:
+            cli.cleanup()
+
+    @patch("cli.fpb_cli.ServerProxy")
+    def test_try_attach_local_server_without_device(self, mock_proxy_cls):
+        """Server running but no device → try_attach_local_server stays offline."""
+        proxy = MagicMock()
+        proxy.probe_status.return_value = {"success": True, "connected": False}
+        mock_proxy_cls.return_value = proxy
+
+        cli = FPBCLI()
+        try:
+            self.assertFalse(cli.try_attach_local_server())
+            self.assertIsNone(cli._proxy)
+            self.assertFalse(cli._device_state.connected)
+            proxy.connect.assert_not_called()
+        finally:
+            cli.cleanup()
+
+    @patch("cli.fpb_cli.ServerProxy")
+    def test_try_attach_local_server_unreachable(self, mock_proxy_cls):
+        """No server running → try_attach_local_server returns False, no exception."""
+        proxy = MagicMock()
+        proxy.probe_status.return_value = {}
+        mock_proxy_cls.return_value = proxy
+
+        cli = FPBCLI()
+        try:
+            self.assertFalse(cli.try_attach_local_server())
+            self.assertIsNone(cli._proxy)
+        finally:
+            cli.cleanup()
+
     def test_output_json(self):
         """Test JSON output formatting"""
         data = {"success": True, "message": "Test"}
@@ -1731,8 +1796,18 @@ class TestFPBCLICommands(unittest.TestCase):
         cls.cli_path = Path(__file__).parent.parent / "fpb_cli.py"
 
     def run_cli(self, *args):
-        """Helper to run CLI and parse JSON output"""
-        cmd = [sys.executable, str(self.cli_path)] + list(args)
+        """Helper to run CLI and parse JSON output.
+
+        Pins --server-url to an unreachable local port so tests stay
+        deterministic even when an unrelated WebServer is listening on
+        the default 5500 on the developer's machine.
+        """
+        cmd = [
+            sys.executable,
+            str(self.cli_path),
+            "--server-url",
+            "http://127.0.0.1:1",
+        ] + list(args)
         result = subprocess.run(cmd, capture_output=True, text=True)
         try:
             return json.loads(result.stdout), result.returncode

@@ -126,6 +126,9 @@ class FPBCLI:
         # Proxy and lock state
         self._proxy = None
         self._port_lock = None
+        self._pending_local_server_url = None
+        self._pending_local_token = None
+        self._pending_local_baudrate = baudrate
 
         remote = self._is_remote_url(server_url)
 
@@ -149,11 +152,15 @@ class FPBCLI:
             self._init_remote_proxy(server_url, port, baudrate, token)
             return
 
-        # Local mode. A serial port is needed to engage the proxy/device:
-        # locally the device is attached to this machine, and auto-launch
-        # needs to know which port to open. Without a port we stay offline so
-        # ELF analysis / compile commands run fast and self-contained.
+        # Local mode. Without --port we stay offline by default so ELF
+        # analysis / compile commands run fast and self-contained. Callers
+        # that need a device without --port can call
+        # try_attach_local_server() to opportunistically attach to a
+        # locally-running server that already owns a connected device.
         if not port:
+            self._pending_local_server_url = server_url
+            self._pending_local_token = token
+            self._pending_local_baudrate = baudrate
             return
 
         proxy = ServerProxy(base_url=server_url, token=token)
@@ -178,6 +185,39 @@ class FPBCLI:
         if self.verbose:
             logging.warning("Auto-launch failed, falling back to direct mode")
         self._direct_connect(port, baudrate)
+
+    def try_attach_local_server(self) -> bool:
+        """Opportunistically attach to a local WebServer with a connected device.
+
+        Called from main() before dispatching device-needing commands when the
+        user did not supply --port. Returns True if a proxy was attached or
+        was already attached; False if no usable local server is reachable.
+        Init keeps this lazy so unit tests instantiating FPBCLI() never trigger
+        a network probe.
+        """
+        if self._proxy is not None:
+            return True
+        if not self._pending_local_server_url:
+            return False
+
+        proxy = ServerProxy(
+            base_url=self._pending_local_server_url,
+            token=self._pending_local_token,
+        )
+        # Single probe instead of is_server_running()+is_device_connected()
+        # so we avoid two /api/status round-trips and any inconsistency
+        # between them under races.
+        status = proxy.probe_status()
+        if not (status.get("success") and status.get("connected")):
+            return False
+
+        self._attach_proxy(proxy, None, self._pending_local_baudrate)
+        if self.verbose and self._device_state.connected:
+            logging.info(
+                f"Using WebServer proxy mode "
+                f"({self._pending_local_server_url}, server-owned port)"
+            )
+        return self._device_state.connected
 
     @staticmethod
     def _is_remote_url(server_url: str) -> bool:
@@ -1182,9 +1222,13 @@ Examples:
   fpb_cli.py search firmware.elf gpio
   fpb_cli.py compile patch.c --elf firmware.elf --compile-commands build/compile_commands.json
 
-  # Local device commands — auto-launch/attach to a WebServer:
+  # Local device commands — first time, --port triggers auto-launch:
   fpb_cli.py --port /dev/ttyACM0 info
   fpb_cli.py --port /dev/ttyACM0 inject digitalWrite patch.c --elf firmware.elf
+
+  # Once a local server has the device connected, --port is no longer needed:
+  fpb_cli.py info
+  fpb_cli.py file-stat /etc/init.d/rcS
 
   # Remote control — the device lives on the server, so no --port needed:
   fpb_cli.py --server-url http://192.168.1.20:5500 --token TOKEN info
@@ -1192,9 +1236,11 @@ Examples:
   fpb_cli.py --server-url http://192.168.1.20:5500 --token TOKEN --port /dev/ttyACM0 connect
 
 Notes:
-  The serial port belongs to the WebServer, not the CLI. In proxy mode --port
-  is optional and only used to ask the server to open a port when no device is
-  connected yet. --token (or FPB_TOKEN env) is required for remote servers.
+  The serial port belongs to the WebServer, not the CLI. In proxy mode (local
+  or remote) --port is optional whenever the server already has a connected
+  device; it is only required to open a port when no device is connected yet,
+  or for direct/auto-launch on a fresh local environment.
+  --token (or FPB_TOKEN env) is required for remote servers.
   Output is JSON on stdout; pipe to jq for filtering.
   Run 'fpb_cli.py <command> --help' for command-specific options.
         """,
@@ -1539,6 +1585,20 @@ Notes:
         server_url=args.server_url,
         token=args.token,
     )
+
+    OFFLINE_COMMANDS = {
+        "analyze",
+        "disasm",
+        "decompile",
+        "signature",
+        "search",
+        "get-symbols",
+        "compile",
+        "server-stop",
+        "disconnect",
+    }
+    if args.command not in OFFLINE_COMMANDS:
+        cli.try_attach_local_server()
 
     try:
         if args.command == "analyze":

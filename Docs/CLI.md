@@ -47,21 +47,24 @@ Options:
 
 ### About `--port`
 
-The serial port belongs to the **WebServer**, not the CLI. When a server is already running and has a device connected, `--port` is not needed — the CLI attaches to the server's existing connection.
+The serial port belongs to the **WebServer**, not the CLI. When a server is already running and has a device connected, `--port` is not needed — the CLI attaches to the server's existing connection. This applies to **both local and remote** servers: as long as `/api/status` reports `connected=true`, you can run device commands without `--port`.
 
 `--port` is only required when:
 - No server is running locally (triggers auto-launch + direct fallback).
-- The remote server has no device connected yet (tells it which port to open).
+- The local or remote server is reachable but has no device connected yet (tells it which port to open).
+
+Without `--port` the CLI never opens a serial port directly — it either attaches to a server that already owns one, or stays offline (ELF analysis / compile commands always work). In remote mode the CLI still attaches to a reachable server even before a device is connected; device commands will fail until you connect a device, but offline ELF/compile commands remain available.
 
 ## Operating Modes
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| Offline | No `--port`, no server | ELF analysis / compile only |
+| Offline (local) | No `--port`, no local server (or server has no device) | ELF analysis / compile only |
+| Local proxy (port-less) | No `--port`, local server already has a device | Attach to server's existing connection |
 | Local proxy | `--port` + local server running | Attach to server, forward device ops |
 | Local auto-launch | `--port` + no local server | Auto-launch server, then proxy |
 | Local direct | `--direct --port` | Open serial directly (bypass server) |
-| Remote proxy | `--server-url http://remote:port` | Pure proxy to remote server, no auto-launch |
+| Remote proxy | `--server-url http://remote:port` | Pure proxy to remote server, no auto-launch (attaches even if no device yet) |
 
 ## Remote Control
 

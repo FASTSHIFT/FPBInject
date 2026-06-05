@@ -231,6 +231,19 @@ class ServerProxy:
         """Get full WebServer status."""
         return self._get("/api/status")
 
+    def probe_status(self) -> dict:
+        """One-shot status probe with the short PROBE timeout.
+
+        Returns the raw /api/status response (with at least 'success' and
+        'connected' keys), or an empty dict on any error. Use this when a
+        caller needs both reachability and connection state in one call;
+        avoids issuing two probes that may also disagree under races.
+        """
+        try:
+            return self._get("/api/status", timeout=_PROBE_TIMEOUT)
+        except Exception:
+            return {}
+
     def ensure_server(self) -> bool:
         """Ensure the WebServer is running, auto-launching if needed.
 
