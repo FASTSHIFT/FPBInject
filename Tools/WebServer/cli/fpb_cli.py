@@ -1241,7 +1241,7 @@ def resolve_server_url(args):
         return DEFAULT_SERVER_URL
     if discover_sync is None:
         return DEFAULT_SERVER_URL
-    servers = discover_sync(timeout=1.0)
+    servers = discover_sync()
     if not servers:
         return DEFAULT_SERVER_URL
     if len(servers) == 1:
@@ -1266,7 +1266,7 @@ def cmd_discover(args):
     if discover_sync is None:
         print("[]")
         return 1
-    timeout = getattr(args, "timeout", 1.0)
+    timeout = getattr(args, "timeout", 3.0)
     servers = discover_sync(timeout=timeout)
     payload = [
         {
@@ -1648,8 +1648,8 @@ Notes:
     discover_parser.add_argument(
         "--timeout",
         type=float,
-        default=1.0,
-        help="Discovery timeout in seconds (default: 1.0).",
+        default=3.0,
+        help="Discovery timeout in seconds (default: 3.0).",
     )
 
     # server-stop command

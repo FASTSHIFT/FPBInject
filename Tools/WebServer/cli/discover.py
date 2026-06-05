@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 SERVICE_TYPE = "_fpbinject._tcp.local."
 
-DEFAULT_TIMEOUT_S = 1.0
-RESOLVE_TIMEOUT_MS = 1500
+DEFAULT_TIMEOUT_S = 3.0
+RESOLVE_TIMEOUT_MS = 2000
 
 
 @dataclass(frozen=True)

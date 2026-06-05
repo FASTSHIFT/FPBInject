@@ -101,9 +101,9 @@ Resolution order:
 
 1. `--server-url <URL>` flag.
 2. `FPB_SERVER_URL` env var.
-3. Offline subcommands (analyze / disasm / decompile / signature / search / get-symbols / compile) skip discovery entirely (no 1 s delay).
+3. Offline subcommands (analyze / disasm / decompile / signature / search / get-symbols / compile) skip discovery entirely (no discovery delay).
 4. `--no-discovery` falls back to `http://127.0.0.1:5500`.
-5. mDNS browse for ~1 s:
+5. mDNS browse for ~3 s:
    - 0 results -> fallback to `http://127.0.0.1:5500`.
    - 1 result  -> attach silently.
    - 2+ results -> list candidates on stderr, exit code `2`. Re-run with `--server-url` to pick.
