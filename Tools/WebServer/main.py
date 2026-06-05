@@ -205,6 +205,11 @@ def parse_args():
         action="store_true",
         help="Disable token authentication for non-localhost access",
     )
+    parser.add_argument(
+        "--no-mdns",
+        action="store_true",
+        help="Disable mDNS service advertisement",
+    )
     return parser.parse_args()
 
 
@@ -400,7 +405,26 @@ def main():
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, args=[local_url]).start()
 
-    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
+    advertiser = None
+    if not args.no_mdns:
+        try:
+            from services.mdns_advertiser import MdnsAdvertiser
+            from version import __version__ as _server_version
+            advertiser = MdnsAdvertiser(
+                port=args.port,
+                version=_server_version,
+                auth_mode="none" if args.no_auth else "token",
+            )
+            advertiser.register()
+        except Exception as e:
+            logger.warning("mDNS advertise failed (continuing without): %s", e)
+            advertiser = None
+
+    try:
+        app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
+    finally:
+        if advertiser is not None:
+            advertiser.unregister()
 
 
 if __name__ == "__main__":
