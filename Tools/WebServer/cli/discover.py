@@ -86,6 +86,13 @@ class FPBServer:
 
     ``url`` is convenience derived from ``host:port``; the auth token (if any)
     is NOT carried by mDNS and must be supplied separately by the user.
+
+    ``id`` is the stable per-installation UUID (TXT ``id``). Empty string when
+    talking to legacy servers that don't publish the field.
+
+    ``handle`` is the human-friendly identifier the CLI accepts via ``-s``.
+    Today that is ``<hostname>:<port>`` derived from the mDNS instance name;
+    a future version may shorten to ``<hostname>`` when unique.
     """
 
     name: str
@@ -96,6 +103,8 @@ class FPBServer:
     device: str
     path: str
     url: str
+    id: str = ""
+    handle: str = ""
 
 
 def _decode_txt_value(value) -> str:
@@ -139,7 +148,56 @@ async def _resolve(aiozc: AsyncZeroconf, name: str) -> Optional[FPBServer]:
         device=decoded.get("device", ""),
         path=decoded.get("path", ""),
         url=f"http://{host}:{port}",
+        id=decoded.get("id", ""),
+        handle=_handle_from_name(name, port),
     )
+
+
+def _handle_from_name(service_name: str, port: int) -> str:
+    """Extract ``<hostname>:<port>`` from a ``FPBInject on <host>:<port>...`` instance name.
+
+    Falls back to ``host:port`` only when parsing fails (truly weird names).
+    The handle is what the user types after ``-s``.
+    """
+    prefix = "FPBInject on "
+    base = service_name.split(f".{SERVICE_TYPE}")[0]
+    if base.startswith(prefix):
+        candidate = base[len(prefix):]
+        if candidate:
+            return candidate
+    return f"unknown:{port}"
+
+
+def classify_handle(value: str) -> str:
+    """Decide what kind of value the user passed to ``-s/--server``.
+
+    Returns one of ``"url"``, ``"host_port"``, ``"host"``.
+    The CLI uses this to route into URL-direct, mDNS handle-lookup, or
+    mDNS unique-host-lookup paths respectively.
+    """
+    if "://" in value:
+        return "url"
+    if ":" in value:
+        host, _, port = value.rpartition(":")
+        if host and port.isdigit():
+            return "host_port"
+    return "host"
+
+
+def find_by_handle(servers: list, value: str) -> list:
+    """Filter a discovery result list by user-supplied ``-s`` handle.
+
+    Matching:
+      * ``host:port``: exact handle match.
+      * ``host``     : every server whose handle starts with ``host:`` AND
+                       every server whose host attribute equals ``host``.
+
+    Returns 0, 1, or N matches; the caller decides what to do with N>1.
+    """
+    kind = classify_handle(value)
+    if kind == "host_port":
+        return [s for s in servers if s.handle == value]
+    return [s for s in servers if s.handle.split(":", 1)[0] == value or s.host == value]
 
 
 async def discover(timeout: float = DEFAULT_TIMEOUT_S) -> list[FPBServer]:
