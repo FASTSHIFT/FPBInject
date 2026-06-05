@@ -7,3 +7,4 @@ pyserial
 pygdbmi
 watchdog
 tree_sitter
+zeroconf>=0.131
