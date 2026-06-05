@@ -35,6 +35,7 @@ from cli.server_proxy import (  # noqa: E402
     ProxyAuthError,
     DEFAULT_SERVER_URL,
     DEFAULT_PORT,
+    list_cli_servers,
 )
 
 try:  # Optional: discovery requires the zeroconf package.
@@ -42,6 +43,12 @@ try:  # Optional: discovery requires the zeroconf package.
 except Exception:  # pragma: no cover
     discover_sync = None
     FPBServer = None
+
+from cli.connection_plan import (  # noqa: E402
+    CommandPolicy,
+    ConnectionMode,
+    ConnectionPlan,
+)
 
 try:
     import serial
@@ -115,12 +122,12 @@ class FPBCLI:
         tx_chunk_delay: float = 0.002,
         max_retries: int = 10,
         direct: bool = False,
-        server_url: str = DEFAULT_SERVER_URL,
+        server_url: Optional[str] = None,
         token: Optional[str] = None,
+        plan: Optional[ConnectionPlan] = None,
     ):
         self.verbose = verbose
         self.setup_logging()
-        # Create device state (used for offline ELF operations & direct mode)
         self._device_state = DeviceState()
         self._device_state.elf_path = elf_path
         self._device_state.compile_commands_path = compile_commands
@@ -129,116 +136,158 @@ class FPBCLI:
         self._device_state.transfer_max_retries = max_retries
         self._fpb = FPBInject(self._device_state)
 
-        # Proxy and lock state
         self._proxy = None
         self._port_lock = None
-        self._pending_local_server_url = None
-        self._pending_local_token = None
-        self._pending_local_baudrate = baudrate
 
-        remote = self._is_remote_url(server_url)
+        if plan is None:
+            plan = self._legacy_kwargs_to_plan(
+                direct=direct,
+                server_url=server_url,
+                token=token,
+                port=port,
+                baudrate=baudrate,
+            )
+        self._connect_from_plan(plan)
 
-        # Direct mode: bypass proxy, open a local serial port.
+    @staticmethod
+    def _legacy_kwargs_to_plan(
+        *,
+        direct: bool,
+        server_url: Optional[str],
+        token: Optional[str],
+        port: Optional[str],
+        baudrate: int,
+    ) -> ConnectionPlan:
+        """Translate the historical __init__ kwargs into a ConnectionPlan.
+
+        Preserves the old behavior used by 65+ tests:
+        - direct=True opens the serial port directly.
+        - server_url=None or localhost + port: local proxy with auto-launch
+          and direct-serial fallback enabled.
+        - server_url=None and no port: pure offline (no probe).
+        - non-local server_url: remote proxy, no auto-launch, no fallback.
+        """
         if direct:
-            if remote:
+            if server_url and not _is_local_url(server_url):
                 raise FPBCLIError(
                     "--direct cannot be combined with a remote --server-url. "
                     "Direct mode opens a local serial port; remote control must "
                     "go through the WebServer proxy."
                 )
-            if port:
-                self._direct_connect(port, baudrate)
-            return
-
-        # Remote mode: always proxy. The device lives on the remote host, so
-        # --port is OPTIONAL — when the remote server already has a device
-        # connected the client needs no port. Never auto-launch or fall back
-        # to a local serial connection.
-        if remote:
-            self._init_remote_proxy(server_url, port, baudrate, token)
-            return
-
-        # Local mode. Without --port we stay offline by default so ELF
-        # analysis / compile commands run fast and self-contained. Callers
-        # that need a device without --port can call
-        # try_attach_local_server() to opportunistically attach to a
-        # locally-running server that already owns a connected device.
-        if not port:
-            self._pending_local_server_url = server_url
-            self._pending_local_token = token
-            self._pending_local_baudrate = baudrate
-            return
-
-        proxy = ServerProxy(base_url=server_url, token=token)
-
-        # 1) If a server is already running, attach to it.
-        if proxy.is_server_running():
-            self._attach_proxy(proxy, port, baudrate)
-            if self.verbose:
-                logging.info(f"Using WebServer proxy mode ({server_url})")
-            return
-
-        # 2) Server not running — auto-launch it.
-        if self.verbose:
-            logging.info("WebServer not running, auto-launching...")
-        if proxy.launch_server():
-            self._attach_proxy(proxy, port, baudrate)
-            if self.verbose:
-                logging.info(f"WebServer launched, proxy mode active ({server_url})")
-            return
-
-        # 3) Auto-launch failed — fall back to direct serial.
-        if self.verbose:
-            logging.warning("Auto-launch failed, falling back to direct mode")
-        self._direct_connect(port, baudrate)
-
-    def try_attach_local_server(self) -> bool:
-        """Opportunistically attach to a local WebServer with a connected device.
-
-        Called from main() before dispatching device-needing commands when the
-        user did not supply --port. Returns True if a proxy was attached or
-        was already attached; False if no usable local server is reachable.
-        Init keeps this lazy so unit tests instantiating FPBCLI() never trigger
-        a network probe.
-        """
-        if self._proxy is not None:
-            return True
-        if not self._pending_local_server_url:
-            return False
-
-        proxy = ServerProxy(
-            base_url=self._pending_local_server_url,
-            token=self._pending_local_token,
-        )
-        # Single probe instead of is_server_running()+is_device_connected()
-        # so we avoid two /api/status round-trips and any inconsistency
-        # between them under races.
-        status = proxy.probe_status()
-        if not (status.get("success") and status.get("connected")):
-            return False
-
-        self._attach_proxy(proxy, None, self._pending_local_baudrate)
-        if self.verbose and self._device_state.connected:
-            logging.info(
-                f"Using WebServer proxy mode "
-                f"({self._pending_local_server_url}, server-owned port)"
+            return ConnectionPlan(
+                mode=ConnectionMode.DIRECT,
+                serial_port=port,
+                baudrate=baudrate,
+                source="legacy-direct",
             )
-        return self._device_state.connected
 
-    @staticmethod
-    def _is_remote_url(server_url: str) -> bool:
-        """Return True if server_url points to a non-localhost host.
+        if server_url is None:
+            if port is None:
+                return ConnectionPlan(mode=ConnectionMode.OFFLINE, source="legacy-offline")
+            url = DEFAULT_SERVER_URL
+            return ConnectionPlan(
+                mode=ConnectionMode.LOCAL_PROXY,
+                server_url=url,
+                token=token,
+                serial_port=port,
+                baudrate=baudrate,
+                allow_launch=True,
+                allow_direct_fallback=True,
+                source="legacy-local-default",
+            )
 
-        Remote URLs require proxy-only behavior (no auto-launch, no direct
-        serial fallback) since the device is attached to the remote machine.
-        """
+        if _is_local_url(server_url):
+            return ConnectionPlan(
+                mode=ConnectionMode.LOCAL_PROXY,
+                server_url=server_url,
+                token=token,
+                serial_port=port,
+                baudrate=baudrate,
+                allow_launch=bool(port),
+                allow_direct_fallback=bool(port),
+                source="legacy-local-explicit",
+            )
+
+        return ConnectionPlan(
+            mode=ConnectionMode.REMOTE_PROXY,
+            server_url=server_url,
+            token=token,
+            serial_port=port,
+            baudrate=baudrate,
+            allow_launch=False,
+            allow_direct_fallback=False,
+            source="legacy-remote",
+        )
+
+    def _connect_from_plan(self, plan: ConnectionPlan) -> None:
+        """Single connection executor — consumes a ConnectionPlan."""
+        if plan.mode is ConnectionMode.OFFLINE:
+            return
+
+        if plan.mode is ConnectionMode.DIRECT:
+            if plan.serial_port:
+                self._direct_connect(plan.serial_port, plan.baudrate)
+            return
+
+        if plan.mode is ConnectionMode.REMOTE_PROXY:
+            self._connect_remote(plan)
+            return
+
+        self._connect_local(plan)
+
+    def _connect_local(self, plan: ConnectionPlan) -> None:
+        proxy = ServerProxy(base_url=plan.server_url, token=plan.token)
+
+        if proxy.is_server_running():
+            self._attach_proxy(proxy, plan.serial_port, plan.baudrate)
+            if self.verbose:
+                logging.info(f"Using WebServer proxy mode ({plan.server_url})")
+            return
+
+        if not plan.serial_port:
+            return
+
+        if plan.allow_launch:
+            if self.verbose:
+                logging.info("WebServer not running, auto-launching...")
+            if proxy.launch_server():
+                self._attach_proxy(proxy, plan.serial_port, plan.baudrate)
+                if self.verbose:
+                    logging.info(
+                        f"WebServer launched, proxy mode active ({plan.server_url})"
+                    )
+                return
+
+        if plan.allow_direct_fallback:
+            if self.verbose:
+                logging.warning("Auto-launch failed, falling back to direct mode")
+            self._direct_connect(plan.serial_port, plan.baudrate)
+
+    def _connect_remote(self, plan: ConnectionPlan) -> None:
+        proxy = ServerProxy(base_url=plan.server_url, token=plan.token)
         try:
-            from urllib.parse import urlparse
-
-            host = (urlparse(server_url).hostname or "").lower()
+            status = proxy.get_status()
+        except ProxyAuthError as e:
+            raise FPBCLIError(str(e))
         except Exception:
-            return False
-        return host not in ("", "127.0.0.1", "localhost", "::1")
+            if plan.serial_port:
+                raise FPBCLIError(
+                    f"Remote WebServer not reachable: {plan.server_url}. "
+                    "Check the URL/port and that the server is running."
+                )
+            return
+
+        if not status.get("success", False):
+            if plan.serial_port:
+                raise FPBCLIError(
+                    f"Remote WebServer not reachable: {plan.server_url}. "
+                    "Check the URL/port and that the server is running."
+                )
+            return
+
+        self._attach_proxy(proxy, plan.serial_port, plan.baudrate)
+        if self.verbose:
+            logging.info(f"Using remote WebServer proxy ({plan.server_url})")
 
     def _attach_proxy(
         self, proxy: ServerProxy, port: Optional[str], baudrate: int
@@ -258,56 +307,6 @@ class FPBCLI:
             self._device_state.connected = connected
         except ProxyAuthError as e:
             raise FPBCLIError(str(e))
-
-    def _init_remote_proxy(
-        self,
-        server_url: str,
-        port: Optional[str],
-        baudrate: int,
-        token: Optional[str],
-    ) -> None:
-        """Set up proxy for a remote WebServer (no auto-launch / direct fallback).
-
-        ``--port`` is optional: the device lives on the remote host, so when
-        the remote server already has a device connected the client needs no
-        port. A port is only forwarded so the server can open it when no
-        device is connected yet.
-
-        Reachability handling:
-        - Unreachable + port given  -> error (the user clearly wanted the device).
-        - Unreachable + no port      -> stay offline (allow local ELF analysis).
-        - Auth failure (403/401)     -> always error (token required).
-        """
-        proxy = ServerProxy(base_url=server_url, token=token)
-
-        # Probe via get_status so we can distinguish "unreachable" from
-        # "reachable but unauthorized" (403 -> ProxyAuthError).
-        try:
-            status = proxy.get_status()
-        except ProxyAuthError as e:
-            # Auth errors are always actionable, regardless of port.
-            raise FPBCLIError(str(e))
-        except Exception:
-            if port:
-                raise FPBCLIError(
-                    f"Remote WebServer not reachable: {server_url}. "
-                    "Check the URL/port and that the server is running."
-                )
-            # No port: nothing device-related requested; stay offline.
-            return
-
-        if not status.get("success", False):
-            if port:
-                raise FPBCLIError(
-                    f"Remote WebServer not reachable: {server_url}. "
-                    "Check the URL/port and that the server is running."
-                )
-            return
-
-        self._attach_proxy(proxy, port, baudrate)
-
-        if self.verbose:
-            logging.info(f"Using remote WebServer proxy ({server_url})")
 
     def _direct_connect(self, port: str, baudrate: int):
         """Open serial port directly (legacy / escape-hatch mode)."""
@@ -1217,13 +1216,192 @@ class FPBCLI:
         self.output_json(stop_cli_server(port))
 
 
+def _is_local_url(url: str) -> bool:
+    """True if ``url`` points at this host (loopback or local interface IP)."""
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname or ""
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if host in ("localhost",):
+        return True
+    try:
+        from cli.discover import _is_loopback, _local_interface_ips
+        if _is_loopback(host):
+            return True
+        return host in _local_interface_ips()
+    except Exception:
+        return host == "127.0.0.1"
+
+
+def _localhost_status_ok(port: int = DEFAULT_PORT, timeout: float = 0.3) -> bool:
+    """Quick TCP probe — does http://127.0.0.1:port answer /api/status?"""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/status", timeout=timeout
+        ) as resp:
+            return 200 <= resp.status < 500
+    except Exception:
+        return False
+
+
+def _classify_url(url: str, *, token: Optional[str], source: str) -> ConnectionPlan:
+    if _is_local_url(url):
+        return ConnectionPlan(
+            mode=ConnectionMode.LOCAL_PROXY,
+            server_url=url,
+            token=token,
+            source=source,
+        )
+    return ConnectionPlan(
+        mode=ConnectionMode.REMOTE_PROXY,
+        server_url=url,
+        token=token,
+        source=source,
+    )
+
+
+def _attach_serial_port(plan: ConnectionPlan, port: Optional[str], baudrate: int) -> ConnectionPlan:
+    """Return a new plan with serial_port/baudrate filled and launch flags set
+    according to whether the plan is local + has a serial port."""
+    if not port:
+        return plan
+    is_local = plan.mode is ConnectionMode.LOCAL_PROXY
+    return ConnectionPlan(
+        mode=plan.mode,
+        server_url=plan.server_url,
+        token=plan.token,
+        serial_port=port,
+        baudrate=baudrate,
+        allow_launch=is_local,
+        allow_direct_fallback=is_local,
+        source=plan.source,
+    )
+
+
+def resolve_connection_plan(args) -> ConnectionPlan:
+    """Single resolver: return the ConnectionPlan for ``args``.
+
+    Precedence (first hit wins):
+        1. command_policy in {OFFLINE, SERVER_ADMIN} -> OFFLINE plan
+        2. --direct flag                              -> DIRECT plan
+        3. --server-url                               -> classify URL
+        4. FPB_SERVER_URL env                         -> classify URL
+        5. Single CLI-launched local PID              -> LOCAL_PROXY 127.0.0.1:<pid_port>
+        6. http://127.0.0.1:5500 reachable            -> LOCAL_PROXY default
+        7. --no-discovery                             -> LOCAL_PROXY default fallback
+        8. mDNS browse:
+             0 results  -> LOCAL_PROXY default
+             1 result   -> classify (already normalized to 127.0.0.1 if same-host)
+             2+ results -> stderr list + sys.exit(2)
+
+    Local plans gain ``allow_launch`` and ``allow_direct_fallback`` only
+    when ``--port`` is present (preserves the legacy "auto-launch failed
+    -> direct serial" path while keeping it scoped).
+    """
+    policy = getattr(args, "command_policy", CommandPolicy.DEVICE)
+    if policy in (CommandPolicy.OFFLINE, CommandPolicy.SERVER_ADMIN):
+        return ConnectionPlan(mode=ConnectionMode.OFFLINE, source="offline-command")
+
+    port = getattr(args, "port", None)
+    baudrate = getattr(args, "baudrate", 115200)
+    token = getattr(args, "token", None)
+    verbose = getattr(args, "verbose", False)
+
+    if getattr(args, "direct", False):
+        if getattr(args, "server_url", None):
+            raise FPBCLIError(
+                "--direct cannot be combined with --server-url; "
+                "direct mode bypasses the WebServer."
+            )
+        if not port:
+            raise FPBCLIError("--direct requires --port for device commands.")
+        return ConnectionPlan(
+            mode=ConnectionMode.DIRECT,
+            serial_port=port,
+            baudrate=baudrate,
+            source="direct",
+        )
+
+    explicit_url = getattr(args, "server_url", None)
+    if explicit_url:
+        return _attach_serial_port(
+            _classify_url(explicit_url, token=token, source="flag"), port, baudrate
+        )
+
+    env_url = os.environ.get("FPB_SERVER_URL")
+    if env_url:
+        return _attach_serial_port(
+            _classify_url(env_url, token=token, source="env"), port, baudrate
+        )
+
+    pid_servers = list_cli_servers()
+    if len(pid_servers) == 1:
+        pid_port = pid_servers[0]["port"]
+        url = f"http://127.0.0.1:{pid_port}"
+        return _attach_serial_port(
+            _classify_url(url, token=token, source="pid"), port, baudrate
+        )
+
+    if _localhost_status_ok(DEFAULT_PORT):
+        return _attach_serial_port(
+            _classify_url(DEFAULT_SERVER_URL, token=token, source="localhost-default"),
+            port,
+            baudrate,
+        )
+
+    if getattr(args, "no_discovery", False) or discover_sync is None:
+        return _attach_serial_port(
+            _classify_url(
+                DEFAULT_SERVER_URL, token=token, source="localhost-fallback"
+            ),
+            port,
+            baudrate,
+        )
+
+    servers = discover_sync()
+    if not servers:
+        return _attach_serial_port(
+            _classify_url(
+                DEFAULT_SERVER_URL, token=token, source="localhost-fallback"
+            ),
+            port,
+            baudrate,
+        )
+    if len(servers) == 1:
+        s = servers[0]
+        if verbose:
+            print(
+                f"Using discovered server {s.url} (version={s.version})",
+                file=sys.stderr,
+            )
+        return _attach_serial_port(
+            _classify_url(s.url, token=token, source="mdns"), port, baudrate
+        )
+
+    print(
+        "Multiple FPBInject servers discovered; pass --server-url to choose:",
+        file=sys.stderr,
+    )
+    for s in servers:
+        print(
+            f"  {s.url}  version={s.version}  auth={s.auth}  device={s.device}",
+            file=sys.stderr,
+        )
+    sys.exit(2)
+
+
 def resolve_server_url(args):
     """Resolve the WebServer URL the CLI should talk to.
 
     Precedence ladder (first hit wins):
         1. ``args.server_url`` (--server-url flag)
         2. ``FPB_SERVER_URL`` env var
-        3. Offline subcommand (``args.requires_server is False``) -> None
+        3. Non-server-needing subcommand
+           (``command_policy in {OFFLINE, SERVER_ADMIN}``) -> None
         4. ``--no-discovery`` flag -> DEFAULT_SERVER_URL fallback
         5. mDNS browse: 0 -> fallback, 1 -> use, 2+ -> exit 2
 
@@ -1235,7 +1413,8 @@ def resolve_server_url(args):
     env_url = os.environ.get("FPB_SERVER_URL")
     if env_url:
         return env_url
-    if not getattr(args, "requires_server", True):
+    policy = getattr(args, "command_policy", CommandPolicy.DEVICE)
+    if policy in (CommandPolicy.OFFLINE, CommandPolicy.SERVER_ADMIN):
         return None
     if getattr(args, "no_discovery", False):
         return DEFAULT_SERVER_URL
@@ -1387,36 +1566,36 @@ Notes:
         "--server-url. Can also be set via the FPB_TOKEN environment variable.",
     )
 
-    parser.set_defaults(requires_server=True)
+    parser.set_defaults(command_policy=CommandPolicy.DEVICE)
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # analyze command
     analyze_parser = subparsers.add_parser("analyze", help="Analyze function")
-    analyze_parser.set_defaults(requires_server=False)
+    analyze_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     analyze_parser.add_argument("elf_path", help="Path to ELF file")
     analyze_parser.add_argument("func_name", help="Function name to analyze")
 
     # disasm command
     disasm_parser = subparsers.add_parser("disasm", help="Get disassembly")
-    disasm_parser.set_defaults(requires_server=False)
+    disasm_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     disasm_parser.add_argument("elf_path", help="Path to ELF file")
     disasm_parser.add_argument("func_name", help="Function name")
 
     # decompile command
     decomp_parser = subparsers.add_parser("decompile", help="Decompile function")
-    decomp_parser.set_defaults(requires_server=False)
+    decomp_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     decomp_parser.add_argument("elf_path", help="Path to ELF file")
     decomp_parser.add_argument("func_name", help="Function name")
 
     # signature command
     sig_parser = subparsers.add_parser("signature", help="Get function signature")
-    sig_parser.set_defaults(requires_server=False)
+    sig_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     sig_parser.add_argument("elf_path", help="Path to ELF file")
     sig_parser.add_argument("func_name", help="Function name")
 
     # search command
     search_parser = subparsers.add_parser("search", help="Search functions")
-    search_parser.set_defaults(requires_server=False)
+    search_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     search_parser.add_argument("elf_path", help="Path to ELF file")
     search_parser.add_argument("pattern", help="Search pattern")
 
@@ -1424,7 +1603,7 @@ Notes:
     symbols_parser = subparsers.add_parser(
         "get-symbols", help="Get all symbols from ELF file (via nm)"
     )
-    symbols_parser.set_defaults(requires_server=False)
+    symbols_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     symbols_parser.add_argument("elf_path", help="Path to ELF file")
     symbols_parser.add_argument(
         "--filter", default="", help="Filter pattern (case-insensitive)"
@@ -1435,7 +1614,7 @@ Notes:
 
     # compile command
     compile_parser = subparsers.add_parser("compile", help="Compile patch source")
-    compile_parser.set_defaults(requires_server=False)
+    compile_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     compile_parser.add_argument("source_file", help="Source C file")
     compile_parser.add_argument(
         "--addr",
@@ -1638,13 +1817,14 @@ Notes:
     subparsers.add_parser("connect", help="Connect to device (requires device)")
 
     # disconnect command
-    subparsers.add_parser("disconnect", help="Disconnect from device")
+    disconnect_parser = subparsers.add_parser("disconnect", help="Disconnect from device")
+    disconnect_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
 
     # discover command — list FPBInject WebServers visible via mDNS
     discover_parser = subparsers.add_parser(
         "discover", help="List FPBInject WebServers visible via mDNS as JSON"
     )
-    discover_parser.set_defaults(requires_server=False)
+    discover_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
     discover_parser.add_argument(
         "--timeout",
         type=float,
@@ -1656,6 +1836,7 @@ Notes:
     server_stop_parser = subparsers.add_parser(
         "server-stop", help="Stop a CLI-launched WebServer background process"
     )
+    server_stop_parser.set_defaults(command_policy=CommandPolicy.SERVER_ADMIN)
     server_stop_parser.add_argument(
         "--server-port",
         type=int,
@@ -1672,48 +1853,25 @@ Notes:
     if args.command == "discover":
         sys.exit(cmd_discover(args))
 
-    args.server_url = resolve_server_url(args)
-
-    # Determine ELF path - can come from global --elf or command-specific arg
     elf_path = args.elf
     if hasattr(args, "elf_path") and args.elf_path:
         elf_path = args.elf_path
 
     try:
+        plan = resolve_connection_plan(args)
         cli = FPBCLI(
             verbose=args.verbose,
-            port=args.port,
-            baudrate=args.baudrate,
             elf_path=elf_path,
             compile_commands=args.compile_commands,
             tx_chunk_size=args.tx_chunk_size,
             tx_chunk_delay=args.tx_chunk_delay,
             max_retries=args.max_retries,
-            direct=args.direct,
-            server_url=args.server_url,
-            token=args.token,
+            plan=plan,
         )
     except FPBCLIError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
-
-    OFFLINE_COMMANDS = {
-        "analyze",
-        "disasm",
-        "decompile",
-        "signature",
-        "search",
-        "get-symbols",
-        "compile",
-        "server-stop",
-        "disconnect",
-    }
-    if args.command not in OFFLINE_COMMANDS:
-        try:
-            cli.try_attach_local_server()
-        except FPBCLIError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+    args.server_url = plan.server_url
 
     try:
         if args.command == "analyze":

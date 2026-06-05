@@ -186,11 +186,19 @@ def _ns(**kwargs):
 
     Defaults match what build_parser will populate; tests override per scenario.
     """
+    from cli.connection_plan import CommandPolicy
+
+    if "requires_server" in kwargs:
+        # Back-compat for callers using the legacy boolean.
+        kwargs.setdefault(
+            "command_policy",
+            CommandPolicy.DEVICE if kwargs.pop("requires_server") else CommandPolicy.OFFLINE,
+        )
     defaults = dict(
         command=None,
         server_url=None,
         no_discovery=False,
-        requires_server=True,
+        command_policy=CommandPolicy.DEVICE,
         token=None,
     )
     defaults.update(kwargs)
