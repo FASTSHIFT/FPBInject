@@ -155,56 +155,6 @@ class TestFPBCLI(unittest.TestCase):
             finally:
                 cli.cleanup()
 
-    @patch("cli.fpb_cli.ServerProxy")
-    def test_try_attach_local_server_with_device(self, mock_proxy_cls):
-        """try_attach_local_server attaches when local server has a connected device."""
-        proxy = MagicMock()
-        proxy.probe_status.return_value = {"success": True, "connected": True}
-        proxy.is_device_connected.return_value = True
-        mock_proxy_cls.return_value = proxy
-
-        cli = FPBCLI()
-        try:
-            self.assertTrue(cli.try_attach_local_server())
-            self.assertIs(cli._proxy, proxy)
-            self.assertTrue(cli._device_state.connected)
-            proxy.connect.assert_not_called()
-            # Single status probe, no extra is_server_running()/is_device_connected() round-trip.
-            proxy.probe_status.assert_called_once()
-            proxy.is_server_running.assert_not_called()
-        finally:
-            cli.cleanup()
-
-    @patch("cli.fpb_cli.ServerProxy")
-    def test_try_attach_local_server_without_device(self, mock_proxy_cls):
-        """Server running but no device → try_attach_local_server stays offline."""
-        proxy = MagicMock()
-        proxy.probe_status.return_value = {"success": True, "connected": False}
-        mock_proxy_cls.return_value = proxy
-
-        cli = FPBCLI()
-        try:
-            self.assertFalse(cli.try_attach_local_server())
-            self.assertIsNone(cli._proxy)
-            self.assertFalse(cli._device_state.connected)
-            proxy.connect.assert_not_called()
-        finally:
-            cli.cleanup()
-
-    @patch("cli.fpb_cli.ServerProxy")
-    def test_try_attach_local_server_unreachable(self, mock_proxy_cls):
-        """No server running → try_attach_local_server returns False, no exception."""
-        proxy = MagicMock()
-        proxy.probe_status.return_value = {}
-        mock_proxy_cls.return_value = proxy
-
-        cli = FPBCLI()
-        try:
-            self.assertFalse(cli.try_attach_local_server())
-            self.assertIsNone(cli._proxy)
-        finally:
-            cli.cleanup()
-
     def test_output_json(self):
         """Test JSON output formatting"""
         data = {"success": True, "message": "Test"}
@@ -2033,9 +1983,10 @@ class TestMainArgumentParsing(unittest.TestCase):
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
-                call_kwargs = mock_cli_class.call_args.kwargs
-                self.assertEqual(call_kwargs.get("port"), "/dev/ttyACM0")
-                self.assertEqual(call_kwargs.get("baudrate"), 9600)
+                plan = mock_cli_class.call_args.kwargs.get("plan")
+                self.assertIsNotNone(plan)
+                self.assertEqual(plan.serial_port, "/dev/ttyACM0")
+                self.assertEqual(plan.baudrate, 9600)
 
     def test_main_file_list_command(self):
         """Test main with file-list command"""
