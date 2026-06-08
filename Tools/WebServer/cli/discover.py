@@ -200,28 +200,53 @@ def find_by_handle(servers: list, value: str) -> list:
     return [s for s in servers if s.handle.split(":", 1)[0] == value or s.host == value]
 
 
-async def discover(timeout: float = DEFAULT_TIMEOUT_S) -> list[FPBServer]:
+async def discover(
+    timeout: float = DEFAULT_TIMEOUT_S,
+    *,
+    early_match: Optional[callable] = None,
+) -> list[FPBServer]:
     """Browse the LAN for FPBInject servers.
 
     Returns the list of resolved servers (deduplicated by service name) seen
     within ``timeout`` seconds. Always closes its Zeroconf instance.
+
+    ``early_match``: optional ``callable(FPBServer) -> bool``. When it returns
+    True for a freshly-resolved server, the browse stops immediately and
+    returns. Used by ``discover_one_by_handle`` to short-circuit the typical
+    case where the user already knows the handle they want.
     """
     found: dict[str, FPBServer] = {}
     pending: list[asyncio.Task] = []
+    done = asyncio.Event()
 
     async with AsyncZeroconf(ip_version=IPVersion.V4Only) as aiozc:
         loop = asyncio.get_event_loop()
 
+        async def _collect_and_check(name: str) -> None:
+            try:
+                server = await _resolve(aiozc, name)
+            except Exception as exc:
+                logger.debug("resolve(%s) failed: %s", name, exc)
+                return
+            if server is None or name in found:
+                return
+            found[name] = server
+            if early_match is not None and early_match(server):
+                done.set()
+
         def _on_state_change(zeroconf, service_type, name, state_change):
             if state_change is not ServiceStateChange.Added:
                 return
-            pending.append(loop.create_task(_collect(aiozc, name, found)))
+            pending.append(loop.create_task(_collect_and_check(name)))
 
         browser = AsyncServiceBrowser(
             aiozc.zeroconf, [SERVICE_TYPE], handlers=[_on_state_change]
         )
         try:
-            await asyncio.sleep(timeout)
+            try:
+                await asyncio.wait_for(done.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                pass
         finally:
             try:
                 await browser.async_cancel()
@@ -234,15 +259,6 @@ async def discover(timeout: float = DEFAULT_TIMEOUT_S) -> list[FPBServer]:
     return sorted(found.values(), key=lambda s: (s.host, s.port))
 
 
-async def _collect(aiozc: AsyncZeroconf, name: str, found: dict) -> None:
-    try:
-        server = await _resolve(aiozc, name)
-        if server is not None and name not in found:
-            found[name] = server
-    except Exception as exc:
-        logger.debug("resolve(%s) failed: %s", name, exc)
-
-
 def discover_sync(timeout: float = DEFAULT_TIMEOUT_S) -> list[FPBServer]:
     """Blocking wrapper around :func:`discover`.
 
@@ -250,3 +266,29 @@ def discover_sync(timeout: float = DEFAULT_TIMEOUT_S) -> list[FPBServer]:
     event loop via ``asyncio.run``.
     """
     return asyncio.run(discover(timeout))
+
+
+def discover_sync_by_handle(
+    value: str,
+    timeout: float = DEFAULT_TIMEOUT_S,
+) -> list[FPBServer]:
+    """Find FPBInject servers matching a user-supplied -s handle.
+
+    Short-circuits as soon as enough servers match:
+      * ``host:port`` form -> returns the moment the exact match is resolved
+        (typically <100 ms on a warm mDNS cache, vs the full ``timeout``
+        budget when blindly listing).
+      * ``host`` form (or URL form) -> falls back to a normal full browse
+        because we cannot tell from the value alone whether more matches
+        might arrive.
+
+    Returns 0, 1, or N FPBServer records; the caller decides what to do.
+    """
+    kind = classify_handle(value)
+    if kind != "host_port":
+        return discover_sync(timeout)
+
+    def _is_target(s: FPBServer) -> bool:
+        return s.handle == value
+
+    return asyncio.run(discover(timeout, early_match=_is_target))

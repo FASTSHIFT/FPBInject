@@ -39,9 +39,14 @@ from cli.server_proxy import (  # noqa: E402
 )
 
 try:  # Optional: discovery requires the zeroconf package.
-    from cli.discover import discover_sync, FPBServer  # noqa: E402
+    from cli.discover import (  # noqa: E402
+        discover_sync,
+        discover_sync_by_handle,
+        FPBServer,
+    )
 except Exception:  # pragma: no cover
     discover_sync = None
+    discover_sync_by_handle = None
     FPBServer = None
 
 from cli.connection_plan import (  # noqa: E402
@@ -1300,13 +1305,13 @@ def _resolve_handle_to_url(value: str, *, source: str) -> str:
     if kind == "url":
         return value
 
-    if discover_sync is None:
+    if discover_sync_by_handle is None:
         raise FPBCLIError(
             f"Cannot resolve {source} '{value}': zeroconf not installed. "
             "Pass a full URL instead."
         )
 
-    servers = discover_sync()
+    servers = discover_sync_by_handle(value)
     matches = find_by_handle(servers, value)
     if not matches:
         raise FPBCLIError(
