@@ -225,7 +225,12 @@ class FPBCLI:
         )
 
     def _connect_from_plan(self, plan: ConnectionPlan) -> None:
-        """Single connection executor — consumes a ConnectionPlan."""
+        """Single connection executor — consumes a ConnectionPlan.
+
+        If the plan came from the handle cache and the connect raises,
+        the cache entry is invalidated so the next invocation re-runs
+        mDNS rather than re-trying the dead URL.
+        """
         if plan.mode is ConnectionMode.OFFLINE:
             return
 
@@ -234,11 +239,15 @@ class FPBCLI:
                 self._direct_connect(plan.serial_port, plan.baudrate)
             return
 
-        if plan.mode is ConnectionMode.REMOTE_PROXY:
-            self._connect_remote(plan)
-            return
-
-        self._connect_local(plan)
+        try:
+            if plan.mode is ConnectionMode.REMOTE_PROXY:
+                self._connect_remote(plan)
+            else:
+                self._connect_local(plan)
+        except FPBCLIError:
+            if plan.cache_handle:
+                invalidate_cached_handle(plan.cache_handle)
+            raise
 
     def _connect_local(self, plan: ConnectionPlan) -> None:
         proxy = ServerProxy(base_url=plan.server_url, token=plan.token)
@@ -1284,6 +1293,25 @@ def _attach_serial_port(plan: ConnectionPlan, port: Optional[str], baudrate: int
         allow_launch=is_local,
         allow_direct_fallback=is_local,
         source=plan.source,
+        cache_handle=plan.cache_handle,
+    )
+
+
+def _with_cache_handle(plan: ConnectionPlan, cache_handle: Optional[str]) -> ConnectionPlan:
+    """Return a new plan tagged with the cache handle (so a connect failure
+    can invalidate the right entry)."""
+    if cache_handle is None:
+        return plan
+    return ConnectionPlan(
+        mode=plan.mode,
+        server_url=plan.server_url,
+        token=plan.token,
+        serial_port=plan.serial_port,
+        baudrate=plan.baudrate,
+        allow_launch=plan.allow_launch,
+        allow_direct_fallback=plan.allow_direct_fallback,
+        source=plan.source,
+        cache_handle=cache_handle,
     )
 
 
@@ -1292,14 +1320,26 @@ def _resolve_handle_to_url(value: str, *, source: str) -> str:
 
     Three forms accepted:
       * URL (anything containing ``://``) -> used verbatim.
-      * ``host:port`` handle -> mDNS browse, must match exactly one server.
+      * ``host:port`` handle -> cache lookup, falls back to mDNS browse.
       * ``host`` only        -> mDNS browse, must match exactly one server
                                  (multiple matches -> exit 2 with hints).
+
+    Cache contract for ``host:port``:
+
+      * Hit: return the cached URL immediately (no mDNS), AND spawn a
+        daemon thread that re-runs the mDNS lookup to refresh the entry.
+        The user does not block on the refresh.
+      * Miss / expired / FPB_NO_CACHE=1: synchronous mDNS, then store.
+
+    A cached URL that turns out to be unreachable triggers a connection
+    error inside the connector; ``invalidate_cached_handle`` lets the
+    caller wipe the bad entry and try again.
 
     The ``source`` string ("-s flag" / "FPB_SERVER env") is only used in
     error messages.
     """
     from cli.discover import classify_handle, find_by_handle
+    from cli import handle_cache
 
     kind = classify_handle(value)
     if kind == "url":
@@ -1310,6 +1350,12 @@ def _resolve_handle_to_url(value: str, *, source: str) -> str:
             f"Cannot resolve {source} '{value}': zeroconf not installed. "
             "Pass a full URL instead."
         )
+
+    if kind == "host_port":
+        cached = handle_cache.lookup(value)
+        if cached and cached.get("url"):
+            handle_cache.spawn_refresh(lambda: _refresh_handle_cache(value))
+            return cached["url"]
 
     servers = discover_sync_by_handle(value)
     matches = find_by_handle(servers, value)
@@ -1324,7 +1370,38 @@ def _resolve_handle_to_url(value: str, *, source: str) -> str:
             msg.append(f"  {s.handle}  {s.url}")
         msg.append("Be more specific (use 'host:port' form).")
         raise FPBCLIError("\n".join(msg))
-    return matches[0].url
+
+    chosen = matches[0]
+    if kind == "host_port":
+        handle_cache.store(value, url=chosen.url, server_id=chosen.id)
+    return chosen.url
+
+
+def _refresh_handle_cache(value: str) -> None:
+    """Background-thread entrypoint: re-run mDNS for ``value`` and update cache.
+
+    Errors are swallowed because this is a best-effort refresh; the next
+    foreground call will fall back to a synchronous lookup.
+    """
+    from cli.discover import find_by_handle
+    from cli import handle_cache
+
+    try:
+        servers = discover_sync_by_handle(value, timeout=1.5)
+        matches = find_by_handle(servers, value)
+        if len(matches) == 1:
+            chosen = matches[0]
+            handle_cache.store(value, url=chosen.url, server_id=chosen.id)
+        elif not matches:
+            handle_cache.invalidate(value)
+    except Exception:
+        pass
+
+
+def invalidate_cached_handle(value: str) -> None:
+    """Public hook so the connector can drop a bad cache entry."""
+    from cli import handle_cache
+    handle_cache.invalidate(value)
 
 
 def resolve_connection_plan(args) -> ConnectionPlan:
@@ -1376,16 +1453,20 @@ def resolve_connection_plan(args) -> ConnectionPlan:
     server_handle = getattr(args, "server", None)
     if server_handle:
         url = _resolve_handle_to_url(server_handle, source="-s flag")
-        return _attach_serial_port(
-            _classify_url(url, token=token, source="flag"), port, baudrate
-        )
+        from cli.discover import classify_handle
+        cache_key = server_handle if classify_handle(server_handle) == "host_port" else None
+        plan = _classify_url(url, token=token, source="flag")
+        plan = _attach_serial_port(plan, port, baudrate)
+        return _with_cache_handle(plan, cache_key)
 
     env_handle = os.environ.get("FPB_SERVER")
     if env_handle:
         url = _resolve_handle_to_url(env_handle, source="FPB_SERVER env")
-        return _attach_serial_port(
-            _classify_url(url, token=token, source="env"), port, baudrate
-        )
+        from cli.discover import classify_handle
+        cache_key = env_handle if classify_handle(env_handle) == "host_port" else None
+        plan = _classify_url(url, token=token, source="env")
+        plan = _attach_serial_port(plan, port, baudrate)
+        return _with_cache_handle(plan, cache_key)
 
     legacy_url = getattr(args, "server_url_legacy", None)
     if legacy_url:
