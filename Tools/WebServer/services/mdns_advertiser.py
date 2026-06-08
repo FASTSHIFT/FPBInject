@@ -99,18 +99,23 @@ class MdnsAdvertiser:
         self._registered = False
         self._prev_sigint = None
         self._prev_sigterm = None
+        self._server_id = ""
+
+    def _build_txt(self, device_state: str) -> dict:
+        return {
+            "txtvers": TXT_SCHEMA_VERSION,
+            "version": self._version,
+            "auth": self._auth_mode,
+            "device": device_state,
+            "path": self._path,
+            "id": self._server_id,
+        }
 
     def _build_info(self) -> ServiceInfo:
         hostname = socket.gethostname() or "fpbinject"
         instance = f"FPBInject on {hostname}:{self._port}"
-        properties = {
-            "txtvers": TXT_SCHEMA_VERSION,
-            "version": self._version,
-            "auth": self._auth_mode,
-            "device": "none",
-            "path": self._path,
-            "id": _load_or_create_server_id(),
-        }
+        self._server_id = _load_or_create_server_id()
+        properties = self._build_txt("none")
         return ServiceInfo(
             type_=SERVICE_TYPE,
             name=f"{instance}.{SERVICE_TYPE}",
@@ -190,13 +195,7 @@ class MdnsAdvertiser:
             return
         if state not in ("none", "connected"):
             raise ValueError(f"state must be 'none' or 'connected', got {state!r}")
-        new_props = {
-            "txtvers": TXT_SCHEMA_VERSION,
-            "version": self._version,
-            "auth": self._auth_mode,
-            "device": state,
-            "path": self._path,
-        }
+        new_props = self._build_txt(state)
         try:
             self._info._set_properties(new_props)
             self._zc.update_service(self._info)

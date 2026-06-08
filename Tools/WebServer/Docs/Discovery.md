@@ -13,7 +13,7 @@ This document specifies the mDNS / DNS-SD service that FPBInject WebServer insta
 | Field | Value |
 |---|---|
 | Service type | `_fpbinject._tcp.local.` |
-| Instance name | `FPBInject on <hostname>` (RFC 6763 §4.1.1 user-visible name) |
+| Instance name | `FPBInject on <hostname>:<port>` (RFC 6763 §4.1.1 user-visible name; the port suffix lets multiple servers on one host coexist and is the source of the client-side ``handle`` value). |
 | Port | The TCP port the WebServer is listening on (default `5500`, follows `--port`). |
 | Address | All interfaces zeroconf binds to (IPv4 only by default). |
 | Server hostname | `<hostname>.local.` |

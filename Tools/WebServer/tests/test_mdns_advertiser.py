@@ -145,6 +145,18 @@ class TestMdnsAdvertiserUpdateDeviceState(unittest.TestCase):
         adv.update_device_state("connected")
         self.assertTrue(zc.update_service.called)
 
+    @patch("services.mdns_advertiser.Zeroconf")
+    def test_update_device_state_preserves_id_and_all_txt_keys(self, MockZeroconf):
+        adv = _make_advertiser()
+        adv.register()
+        register_keys = set(adv._build_txt("none").keys())
+
+        connected_props = adv._build_txt("connected")
+        self.assertEqual(set(connected_props.keys()), register_keys)
+        self.assertEqual(connected_props["id"], adv._server_id)
+        self.assertEqual(connected_props["device"], "connected")
+        self.assertNotEqual(connected_props["id"], "")
+
 
 class TestMdnsAdvertiserIdempotentUnregister(unittest.TestCase):
     """unregister() is safe to call repeatedly."""

@@ -304,8 +304,9 @@ class TestResolveServerUrl(unittest.TestCase):
                 with self.assertRaises(SystemExit) as cm:
                     resolve_server_url(_ns(server_url=None, requires_server=True))
             self.assertEqual(cm.exception.code, 2)
-            self.assertIn("10.0.0.10", err.getvalue())
-            self.assertIn("10.0.0.11", err.getvalue())
+            self.assertIn("10.0.0.10:5500", err.getvalue())
+            self.assertIn("10.0.0.11:5500", err.getvalue())
+            self.assertIn("-s ", err.getvalue())
 
 
 # ---- cmd_discover() JSON output (S8) ----------------------------------------
