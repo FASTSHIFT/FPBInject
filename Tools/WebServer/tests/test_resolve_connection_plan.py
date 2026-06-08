@@ -19,12 +19,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from cli.connection_plan import (  # noqa: E402
     CommandPolicy,
     ConnectionMode,
-    ConnectionPlan,
 )
 
 
 def _import_resolver():
     from cli.fpb_cli import resolve_connection_plan  # noqa: E402
+
     return resolve_connection_plan
 
 
@@ -55,6 +55,7 @@ def _ns(**kwargs):
 
 def _fake_server(host="192.168.1.20", port=5500, version="1.6.6", auth="token"):
     from cli.discover import FPBServer
+
     return FPBServer(
         name=f"fake-{host}-{port}",
         host=host,
@@ -80,7 +81,9 @@ class TestOfflineAndAdmin(unittest.TestCase):
 
     def test_server_admin_command_returns_offline_plan(self):
         resolve = _import_resolver()
-        plan = resolve(_ns(command="server-stop", command_policy=CommandPolicy.SERVER_ADMIN))
+        plan = resolve(
+            _ns(command="server-stop", command_policy=CommandPolicy.SERVER_ADMIN)
+        )
         self.assertEqual(plan.mode, ConnectionMode.OFFLINE)
         self.assertIsNone(plan.server_url)
 
@@ -102,14 +105,18 @@ class TestInvalidFlagCombos(unittest.TestCase):
 
     def test_direct_with_server_url_rejected(self):
         from cli.fpb_cli import FPBCLIError
+
         resolve = _import_resolver()
         with self.assertRaises(FPBCLIError) as cm:
-            resolve(_ns(direct=True, server_url="http://1.2.3.4:5500", port="/dev/ttyACM0"))
+            resolve(
+                _ns(direct=True, server_url="http://1.2.3.4:5500", port="/dev/ttyACM0")
+            )
         self.assertIn("--direct", str(cm.exception))
         self.assertIn("--server-url", str(cm.exception))
 
     def test_direct_without_port_for_device_command_rejected(self):
         from cli.fpb_cli import FPBCLIError
+
         resolve = _import_resolver()
         with self.assertRaises(FPBCLIError) as cm:
             resolve(_ns(direct=True, port=None, command_policy=CommandPolicy.DEVICE))
@@ -256,9 +263,7 @@ class TestPlanProperties(unittest.TestCase):
 
     def test_local_plan_with_serial_port_allows_launch_and_direct_fallback(self):
         resolve = _import_resolver()
-        plan = resolve(
-            _ns(server_url="http://127.0.0.1:5500", port="/dev/ttyACM0")
-        )
+        plan = resolve(_ns(server_url="http://127.0.0.1:5500", port="/dev/ttyACM0"))
         self.assertEqual(plan.mode, ConnectionMode.LOCAL_PROXY)
         self.assertEqual(plan.serial_port, "/dev/ttyACM0")
         self.assertTrue(plan.allow_launch)

@@ -410,6 +410,7 @@ def main():
         try:
             from services.mdns_advertiser import MdnsAdvertiser
             from version import __version__ as _server_version
+
             advertiser = MdnsAdvertiser(
                 port=args.port,
                 version=_server_version,

@@ -43,6 +43,7 @@ def _local_interface_ips() -> frozenset[str]:
 
     try:
         import ifaddr
+
         for adapter in ifaddr.get_adapters():
             for ip in adapter.ips:
                 if isinstance(ip.ip, str):
@@ -162,7 +163,7 @@ def _handle_from_name(service_name: str, port: int) -> str:
     prefix = "FPBInject on "
     base = service_name.split(f".{SERVICE_TYPE}")[0]
     if base.startswith(prefix):
-        candidate = base[len(prefix):]
+        candidate = base[len(prefix) :]
         if candidate:
             return candidate
     return f"unknown:{port}"

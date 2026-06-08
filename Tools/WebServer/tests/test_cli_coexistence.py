@@ -371,11 +371,15 @@ class TestMainNewArgs(unittest.TestCase):
     @patch("sys.argv", ["fpb_cli.py", "--direct", "--port", "/dev/ttyACM0", "info"])
     def test_direct_arg_passed(self, mock_cli_cls):
         """--direct argument is passed to FPBCLI."""
+        from cli.connection_plan import ConnectionMode
+
         mock_cli = MagicMock()
         mock_cli_cls.return_value = mock_cli
         main()
-        call_kwargs = mock_cli_cls.call_args
-        self.assertTrue(call_kwargs.kwargs.get("direct", False))
+        plan = mock_cli_cls.call_args.kwargs.get("plan")
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.mode, ConnectionMode.DIRECT)
+        self.assertEqual(plan.serial_port, "/dev/ttyACM0")
 
     @patch("cli.fpb_cli.FPBCLI")
     @patch(
@@ -394,8 +398,9 @@ class TestMainNewArgs(unittest.TestCase):
         mock_cli = MagicMock()
         mock_cli_cls.return_value = mock_cli
         main()
-        call_kwargs = mock_cli_cls.call_args
-        self.assertEqual(call_kwargs.kwargs.get("server_url"), "http://myhost:9000")
+        plan = mock_cli_cls.call_args.kwargs.get("plan")
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.server_url, "http://myhost:9000")
 
 
 class _CursorMockHandler(http.server.BaseHTTPRequestHandler):
@@ -549,26 +554,38 @@ class TestSerialReadSinceCursor(unittest.TestCase):
 
 
 class TestFPBCLIIsRemoteUrl(unittest.TestCase):
-    """Test the _is_remote_url host classifier."""
+    """Test the URL locality classifier."""
 
     def test_localhost_ip_is_local(self):
-        self.assertFalse(FPBCLI._is_remote_url("http://127.0.0.1:5500"))
+        from cli.fpb_cli import _is_local_url
+
+        self.assertTrue(_is_local_url("http://127.0.0.1:5500"))
 
     def test_localhost_name_is_local(self):
-        self.assertFalse(FPBCLI._is_remote_url("http://localhost:5500"))
+        from cli.fpb_cli import _is_local_url
+
+        self.assertTrue(_is_local_url("http://localhost:5500"))
 
     def test_ipv6_loopback_is_local(self):
-        self.assertFalse(FPBCLI._is_remote_url("http://[::1]:5500"))
+        from cli.fpb_cli import _is_local_url
+
+        self.assertTrue(_is_local_url("http://[::1]:5500"))
 
     def test_lan_ip_is_remote(self):
-        self.assertTrue(FPBCLI._is_remote_url("http://192.168.1.20:5500"))
+        from cli.fpb_cli import _is_local_url
+
+        self.assertFalse(_is_local_url("http://192.168.1.20:5500"))
 
     def test_hostname_is_remote(self):
-        self.assertTrue(FPBCLI._is_remote_url("http://buildbox:9000"))
+        from cli.fpb_cli import _is_local_url
+
+        self.assertFalse(_is_local_url("http://buildbox:9000"))
 
     def test_malformed_url_is_local(self):
-        # Unparseable -> treated as local (safe default, no remote restrictions)
-        self.assertFalse(FPBCLI._is_remote_url("not a url"))
+        # Unparseable -> treated as local (safe default, no remote restrictions).
+        from cli.fpb_cli import _is_local_url
+
+        self.assertFalse(_is_local_url("not a url"))
 
 
 class TestFPBCLIRemoteMode(unittest.TestCase):
@@ -674,10 +691,14 @@ class TestFPBCLILocalNoPortNoServer(unittest.TestCase):
 
     @patch("cli.fpb_cli.ServerProxy")
     def test_offline_no_proxy_no_launch(self, mock_proxy_cls):
-        """No port locally -> offline, never construct a proxy or auto-launch."""
+        """No port locally -> offline, no proxy retained, no auto-launch attempted."""
+        proxy = MagicMock()
+        proxy.is_server_running.return_value = False
+        proxy.launch_server.return_value = False
+        mock_proxy_cls.return_value = proxy
         cli = FPBCLI(server_url="http://127.0.0.1:19999")
         self.assertIsNone(cli._proxy)
-        mock_proxy_cls.assert_not_called()
+        proxy.launch_server.assert_not_called()
         cli.cleanup()
 
 
@@ -703,7 +724,9 @@ class TestMainTokenArg(unittest.TestCase):
         mock_cli = MagicMock()
         mock_cli_cls.return_value = mock_cli
         main()
-        self.assertEqual(mock_cli_cls.call_args.kwargs.get("token"), "abc123")
+        plan = mock_cli_cls.call_args.kwargs.get("plan")
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.token, "abc123")
 
     @patch("cli.fpb_cli.FPBCLI")
     @patch.dict(os.environ, {"FPB_TOKEN": "env-token"}, clear=False)
@@ -717,7 +740,9 @@ class TestMainTokenArg(unittest.TestCase):
         mock_cli = MagicMock()
         mock_cli_cls.return_value = mock_cli
         main()
-        self.assertEqual(mock_cli_cls.call_args.kwargs.get("token"), "env-token")
+        plan = mock_cli_cls.call_args.kwargs.get("plan")
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.token, "env-token")
 
 
 if __name__ == "__main__":
