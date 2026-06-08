@@ -240,7 +240,9 @@ class TestMdnsBranches(unittest.TestCase):
         self.assertEqual(plan.server_url, "http://192.168.1.20:5500")
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_two_results_lists_and_exits_2(self):
+    def test_two_results_raises_ambiguous_server_error(self):
+        from cli.fpb_cli import AmbiguousServerError
+
         resolve = _import_resolver()
         servers = [
             _fake_server(host="10.0.0.10", port=5500),
@@ -249,13 +251,12 @@ class TestMdnsBranches(unittest.TestCase):
         with patch("cli.fpb_cli.list_cli_servers", return_value=[]), patch(
             "cli.fpb_cli._localhost_status_ok", return_value=False
         ), patch("cli.fpb_cli.discover_sync", return_value=servers):
-            err = io.StringIO()
-            with redirect_stderr(err):
-                with self.assertRaises(SystemExit) as cm:
-                    resolve(_ns())
-            self.assertEqual(cm.exception.code, 2)
-            self.assertIn("10.0.0.10", err.getvalue())
-            self.assertIn("10.0.0.11", err.getvalue())
+            with self.assertRaises(AmbiguousServerError) as cm:
+                resolve(_ns())
+        self.assertEqual(cm.exception.exit_code, 2)
+        self.assertIn("10.0.0.10:5500", str(cm.exception))
+        self.assertIn("10.0.0.11:5500", str(cm.exception))
+        self.assertIn("-s ", str(cm.exception))
 
 
 class TestPlanProperties(unittest.TestCase):

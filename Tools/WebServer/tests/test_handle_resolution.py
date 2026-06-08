@@ -141,7 +141,7 @@ class TestServerFlagResolves(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_host_only_ambiguous_raises(self):
-        from cli.fpb_cli import FPBCLIError
+        from cli.fpb_cli import AmbiguousServerError
 
         resolve = _import_resolver()
         with patch(
@@ -151,9 +151,10 @@ class TestServerFlagResolves(unittest.TestCase):
                 _server("127.0.0.1", 5501, handle="bench:5501"),
             ],
         ):
-            with self.assertRaises(FPBCLIError) as cm:
+            with self.assertRaises(AmbiguousServerError) as cm:
                 resolve(_ns(server="bench"))
         self.assertIn("ambiguous", str(cm.exception))
+        self.assertEqual(cm.exception.exit_code, 2)
 
     @patch.dict(os.environ, {}, clear=True)
     def test_handle_no_match_raises(self):

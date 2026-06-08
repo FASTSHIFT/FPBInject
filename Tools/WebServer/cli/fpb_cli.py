@@ -64,9 +64,20 @@ except ImportError:
 
 
 class FPBCLIError(Exception):
-    """CLI specific errors"""
+    """CLI-specific error. ``exit_code`` defaults to 1.
 
-    pass
+    Raise the ``AmbiguousServerError`` subclass when more than one server
+    matches a discovery handle so main() can exit ``2`` (the documented
+    ladder code for "needs disambiguation").
+    """
+
+    exit_code = 1
+
+
+class AmbiguousServerError(FPBCLIError):
+    """Multi-match on discovery handle / mDNS browse; exits ``2``."""
+
+    exit_code = 2
 
 
 class DeviceState(DeviceStateBase):
@@ -1378,7 +1389,7 @@ def _resolve_handle_to_url(value: str, *, source: str) -> str:
         for s in matches:
             msg.append(f"  {s.handle}  {s.url}")
         msg.append("Be more specific (use 'host:port' form).")
-        raise FPBCLIError("\n".join(msg))
+        raise AmbiguousServerError("\n".join(msg))
 
     chosen = matches[0]
     if kind == "host_port":
@@ -1546,16 +1557,14 @@ def resolve_connection_plan(args) -> ConnectionPlan:
             _classify_url(s.url, token=token, source="mdns"), port, baudrate
         )
 
-    print(
-        "Multiple FPBInject servers discovered; pass --server-url to choose:",
-        file=sys.stderr,
-    )
+    lines = [
+        "Multiple FPBInject servers discovered; pass -s <handle> to choose:",
+    ]
     for s in servers:
-        print(
-            f"  {s.url}  version={s.version}  auth={s.auth}  device={s.device}",
-            file=sys.stderr,
+        lines.append(
+            f"  -s {s.handle}    version={s.version}  auth={s.auth}  device={s.device}"
         )
-    sys.exit(2)
+    raise AmbiguousServerError("\n".join(lines))
 
 
 def resolve_server_url(args):
@@ -1596,12 +1605,12 @@ def resolve_server_url(args):
             )
         return s.url
     print(
-        "Multiple FPBInject servers discovered; pass --server-url to choose:",
+        "Multiple FPBInject servers discovered; pass -s <handle> to choose:",
         file=sys.stderr,
     )
     for s in servers:
         print(
-            f"  {s.url}  version={s.version}  auth={s.auth}  device={s.device}",
+            f"  -s {s.handle}    version={s.version}  auth={s.auth}  device={s.device}",
             file=sys.stderr,
         )
     sys.exit(2)
@@ -2062,16 +2071,21 @@ Notes:
         plan = resolve_connection_plan(args)
         cli = FPBCLI(
             verbose=args.verbose,
+            port=args.port,
+            baudrate=args.baudrate,
             elf_path=elf_path,
             compile_commands=args.compile_commands,
             tx_chunk_size=args.tx_chunk_size,
             tx_chunk_delay=args.tx_chunk_delay,
             max_retries=args.max_retries,
+            direct=args.direct,
+            server_url=plan.server_url,
+            token=args.token,
             plan=plan,
         )
     except FPBCLIError as e:
         print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(e.exit_code)
     args.server_url = plan.server_url
 
     try:
@@ -2139,7 +2153,7 @@ Notes:
             cli.server_stop(port)
     except FPBCLIError as e:
         cli.output_error(str(e))
-        sys.exit(1)
+        sys.exit(e.exit_code)
     except KeyboardInterrupt:
         print("\nInterrupted by user", file=sys.stderr)
         sys.exit(130)
