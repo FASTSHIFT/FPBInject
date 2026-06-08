@@ -64,3 +64,4 @@ class ConnectionPlan:
     allow_launch: bool = False
     allow_direct_fallback: bool = False
     source: str = ""
+    cache_handle: Optional[str] = None

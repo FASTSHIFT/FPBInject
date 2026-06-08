@@ -102,6 +102,24 @@ Within step 10, when a single mDNS service announces multiple addresses (very co
 
 Lowest tuple wins. If the winner is loopback or a local-interface IP, the host field of the resulting `FPBServer` is rewritten to `127.0.0.1` and the URL becomes `http://127.0.0.1:<port>`. This eliminates the LAN-IP-from-localhost trap that previously caused spurious 403s.
 
+### Handle cache (stale-while-revalidate)
+
+`-s host:port` and `FPB_SERVER=host:port` consult a per-user cache before doing any mDNS work. The cache is a JSON file at `${XDG_CACHE_HOME:-$HOME/.cache}/fpbinject/handles.json` mapping each handle to its last-known URL plus the server's TXT `id`.
+
+Behaviour:
+
+| Outcome | What happens | Time |
+|---------|--------------|------|
+| Hit, fresh (≤ 24 h) | Return the cached URL **immediately**. A daemon thread re-runs the mDNS lookup and updates the entry for next time. The user does not block on the refresh. | ~100 ms |
+| Hit, but the cached URL refuses connection | The connector raises `FPBCLIError` and invalidates the cache entry; the next call falls back to a synchronous mDNS lookup. | (this call fails fast; next call ~1.3 s) |
+| Miss / expired / `FPB_NO_CACHE=1` | Synchronous mDNS browse, then write the cache. | ~1.3 s |
+
+The `host` (no port) form is **never** cached because it is allowed to match multiple servers and would race with the LAN topology.
+
+`FPB_NO_CACHE=1` disables both reads and writes. `rm ~/.cache/fpbinject/handles.json` wipes the cache. Both are safe at any time.
+
+Atomic writes use `tempfile + os.replace`, so concurrent CLI invocations cannot produce a half-written file. Last writer wins.
+
 ### Exit codes
 
 | Code | Meaning |
