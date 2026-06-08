@@ -35,13 +35,16 @@ class TempCache:
         else:
             os.environ["XDG_CACHE_HOME"] = self._old_xdg
         import shutil
+
         shutil.rmtree(self._tmp, ignore_errors=True)
 
 
 class TestStoreAndLookup(unittest.TestCase):
     def test_store_then_lookup_returns_url(self):
         with TempCache():
-            handle_cache.store("bench:5500", url="http://1.2.3.4:5500", server_id="fpb:abc")
+            handle_cache.store(
+                "bench:5500", url="http://1.2.3.4:5500", server_id="fpb:abc"
+            )
             entry = handle_cache.lookup("bench:5500")
         self.assertIsNotNone(entry)
         self.assertEqual(entry["url"], "http://1.2.3.4:5500")

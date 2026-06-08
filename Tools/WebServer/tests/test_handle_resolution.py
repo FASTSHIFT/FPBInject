@@ -102,6 +102,7 @@ class TestFindByHandle(unittest.TestCase):
 
 def _import_resolver():
     from cli.fpb_cli import resolve_connection_plan  # noqa: E402
+
     return resolve_connection_plan
 
 
@@ -141,6 +142,7 @@ class TestServerFlagResolves(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_host_only_ambiguous_raises(self):
         from cli.fpb_cli import FPBCLIError
+
         resolve = _import_resolver()
         with patch(
             "cli.fpb_cli.discover_sync_by_handle",
@@ -156,6 +158,7 @@ class TestServerFlagResolves(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_handle_no_match_raises(self):
         from cli.fpb_cli import FPBCLIError
+
         resolve = _import_resolver()
         with patch("cli.fpb_cli.discover_sync_by_handle", return_value=[]):
             with self.assertRaises(FPBCLIError) as cm:
@@ -204,6 +207,7 @@ class TestLegacyServerUrlDeprecation(unittest.TestCase):
     def test_legacy_flag_warns_under_verbose(self):
         import io
         from contextlib import redirect_stderr
+
         resolve = _import_resolver()
         err = io.StringIO()
         with redirect_stderr(err):

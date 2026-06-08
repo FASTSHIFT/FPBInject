@@ -22,7 +22,7 @@ import time
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -192,7 +192,11 @@ def _ns(**kwargs):
         # Back-compat for callers using the legacy boolean.
         kwargs.setdefault(
             "command_policy",
-            CommandPolicy.DEVICE if kwargs.pop("requires_server") else CommandPolicy.OFFLINE,
+            (
+                CommandPolicy.DEVICE
+                if kwargs.pop("requires_server")
+                else CommandPolicy.OFFLINE
+            ),
         )
     defaults = dict(
         command=None,

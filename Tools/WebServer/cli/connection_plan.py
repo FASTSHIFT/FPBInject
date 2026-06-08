@@ -23,8 +23,8 @@ class CommandPolicy(Enum):
     resolver and the dispatcher don't keep parallel hard-coded sets.
     """
 
-    OFFLINE = "offline"            # ELF analysis only; never connects
-    DEVICE = "device"              # needs a connected device to succeed
+    OFFLINE = "offline"  # ELF analysis only; never connects
+    DEVICE = "device"  # needs a connected device to succeed
     SERVER_ADMIN = "server_admin"  # talks to a specific server only (server-stop)
 
 

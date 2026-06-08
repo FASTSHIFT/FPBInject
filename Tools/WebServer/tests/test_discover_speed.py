@@ -110,7 +110,13 @@ class TestEarlyReturnByHandle(unittest.TestCase):
         name = "FPBInject on bench:5500._fpbinject._tcp.local."
         Browser = _slow_browser_factory([name], fire_after=0.05)
         Info = _fast_info_factory(
-            {name: {"port": 5500, "addresses": ["127.0.0.1"], "properties": dict(_PROPS)}}
+            {
+                name: {
+                    "port": 5500,
+                    "addresses": ["127.0.0.1"],
+                    "properties": dict(_PROPS),
+                }
+            }
         )
         with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
             "cli.discover.AsyncServiceInfo", Info
@@ -133,7 +139,13 @@ class TestEarlyReturnByHandle(unittest.TestCase):
         name = "FPBInject on other:5500._fpbinject._tcp.local."
         Browser = _slow_browser_factory([name], fire_after=0.05)
         Info = _fast_info_factory(
-            {name: {"port": 5500, "addresses": ["127.0.0.1"], "properties": dict(_PROPS)}}
+            {
+                name: {
+                    "port": 5500,
+                    "addresses": ["127.0.0.1"],
+                    "properties": dict(_PROPS),
+                }
+            }
         )
         with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
             "cli.discover.AsyncServiceInfo", Info
@@ -149,9 +161,7 @@ class TestEarlyMatchPredicate(unittest.TestCase):
     """``discover()`` early_match predicate stops the loop on first hit."""
 
     def test_early_match_stops_loop(self):
-        names = [
-            f"FPBInject on srv{i}:5500._fpbinject._tcp.local." for i in range(3)
-        ]
+        names = [f"FPBInject on srv{i}:5500._fpbinject._tcp.local." for i in range(3)]
         Browser = _slow_browser_factory(names, fire_after=0.05)
         Info = _fast_info_factory(
             {

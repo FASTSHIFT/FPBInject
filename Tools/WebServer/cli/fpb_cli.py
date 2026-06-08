@@ -188,7 +188,9 @@ class FPBCLI:
 
         if server_url is None:
             if port is None:
-                return ConnectionPlan(mode=ConnectionMode.OFFLINE, source="legacy-offline")
+                return ConnectionPlan(
+                    mode=ConnectionMode.OFFLINE, source="legacy-offline"
+                )
             url = DEFAULT_SERVER_URL
             return ConnectionPlan(
                 mode=ConnectionMode.LOCAL_PROXY,
@@ -1233,6 +1235,7 @@ class FPBCLI:
 def _is_local_url(url: str) -> bool:
     """True if ``url`` points at this host (loopback or local interface IP)."""
     from urllib.parse import urlparse
+
     try:
         host = urlparse(url).hostname or ""
     except ValueError:
@@ -1243,6 +1246,7 @@ def _is_local_url(url: str) -> bool:
         return True
     try:
         from cli.discover import _is_loopback, _local_interface_ips
+
         if _is_loopback(host):
             return True
         return host in _local_interface_ips()
@@ -1253,6 +1257,7 @@ def _is_local_url(url: str) -> bool:
 def _localhost_status_ok(port: int = DEFAULT_PORT, timeout: float = 0.3) -> bool:
     """Quick TCP probe — does http://127.0.0.1:port answer /api/status?"""
     import urllib.request
+
     try:
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/api/status", timeout=timeout
@@ -1278,7 +1283,9 @@ def _classify_url(url: str, *, token: Optional[str], source: str) -> ConnectionP
     )
 
 
-def _attach_serial_port(plan: ConnectionPlan, port: Optional[str], baudrate: int) -> ConnectionPlan:
+def _attach_serial_port(
+    plan: ConnectionPlan, port: Optional[str], baudrate: int
+) -> ConnectionPlan:
     """Return a new plan with serial_port/baudrate filled and launch flags set
     according to whether the plan is local + has a serial port."""
     if not port:
@@ -1297,7 +1304,9 @@ def _attach_serial_port(plan: ConnectionPlan, port: Optional[str], baudrate: int
     )
 
 
-def _with_cache_handle(plan: ConnectionPlan, cache_handle: Optional[str]) -> ConnectionPlan:
+def _with_cache_handle(
+    plan: ConnectionPlan, cache_handle: Optional[str]
+) -> ConnectionPlan:
     """Return a new plan tagged with the cache handle (so a connect failure
     can invalidate the right entry)."""
     if cache_handle is None:
@@ -1401,6 +1410,7 @@ def _refresh_handle_cache(value: str) -> None:
 def invalidate_cached_handle(value: str) -> None:
     """Public hook so the connector can drop a bad cache entry."""
     from cli import handle_cache
+
     handle_cache.invalidate(value)
 
 
@@ -1454,7 +1464,10 @@ def resolve_connection_plan(args) -> ConnectionPlan:
     if server_handle:
         url = _resolve_handle_to_url(server_handle, source="-s flag")
         from cli.discover import classify_handle
-        cache_key = server_handle if classify_handle(server_handle) == "host_port" else None
+
+        cache_key = (
+            server_handle if classify_handle(server_handle) == "host_port" else None
+        )
         plan = _classify_url(url, token=token, source="flag")
         plan = _attach_serial_port(plan, port, baudrate)
         return _with_cache_handle(plan, cache_key)
@@ -1463,6 +1476,7 @@ def resolve_connection_plan(args) -> ConnectionPlan:
     if env_handle:
         url = _resolve_handle_to_url(env_handle, source="FPB_SERVER env")
         from cli.discover import classify_handle
+
         cache_key = env_handle if classify_handle(env_handle) == "host_port" else None
         plan = _classify_url(url, token=token, source="env")
         plan = _attach_serial_port(plan, port, baudrate)
@@ -1487,7 +1501,9 @@ def resolve_connection_plan(args) -> ConnectionPlan:
                 file=sys.stderr,
             )
         return _attach_serial_port(
-            _classify_url(legacy_env_url, token=token, source="legacy-env"), port, baudrate
+            _classify_url(legacy_env_url, token=token, source="legacy-env"),
+            port,
+            baudrate,
         )
 
     pid_servers = list_cli_servers()
@@ -1507,9 +1523,7 @@ def resolve_connection_plan(args) -> ConnectionPlan:
 
     if getattr(args, "no_discovery", False) or discover_sync is None:
         return _attach_serial_port(
-            _classify_url(
-                DEFAULT_SERVER_URL, token=token, source="localhost-fallback"
-            ),
+            _classify_url(DEFAULT_SERVER_URL, token=token, source="localhost-fallback"),
             port,
             baudrate,
         )
@@ -1517,9 +1531,7 @@ def resolve_connection_plan(args) -> ConnectionPlan:
     servers = discover_sync()
     if not servers:
         return _attach_serial_port(
-            _classify_url(
-                DEFAULT_SERVER_URL, token=token, source="localhost-fallback"
-            ),
+            _classify_url(DEFAULT_SERVER_URL, token=token, source="localhost-fallback"),
             port,
             baudrate,
         )
@@ -1578,7 +1590,10 @@ def resolve_server_url(args):
     if len(servers) == 1:
         s = servers[0]
         if getattr(args, "verbose", False):
-            print(f"Using discovered server {s.url} (version={s.version})", file=sys.stderr)
+            print(
+                f"Using discovered server {s.url} (version={s.version})",
+                file=sys.stderr,
+            )
         return s.url
     print(
         "Multiple FPBInject servers discovered; pass --server-url to choose:",
@@ -1717,7 +1732,8 @@ Notes:
         help="Force direct serial connection (skip WebServer proxy detection).",
     )
     parser.add_argument(
-        "-s", "--server",
+        "-s",
+        "--server",
         type=str,
         default=None,
         help="Server to talk to. Accepts a discovery handle (e.g. "
@@ -1995,7 +2011,9 @@ Notes:
     subparsers.add_parser("connect", help="Connect to device (requires device)")
 
     # disconnect command
-    disconnect_parser = subparsers.add_parser("disconnect", help="Disconnect from device")
+    disconnect_parser = subparsers.add_parser(
+        "disconnect", help="Disconnect from device"
+    )
     disconnect_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
 
     # discover command — list FPBInject WebServers visible via mDNS
