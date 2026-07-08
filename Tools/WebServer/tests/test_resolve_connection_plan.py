@@ -6,11 +6,9 @@ fixes ONE row of the matrix so a regression points at the exact rule.
 """
 
 import argparse
-import io
 import os
 import sys
 import unittest
-from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
