@@ -52,6 +52,7 @@ extern "C" {
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "fpb_attributes.h"
 
 /**
  * @brief FPB API Result Codes
@@ -162,7 +163,7 @@ fpb_result_t fpb_clear_patch(uint8_t comp_id);
  * @retval FPB_ERR_NOT_INIT: FPB not initialized
  * @retval FPB_ERR_INVALID_COMP: Invalid comparator ID
  */
-fpb_result_t fpb_enable_patch(uint8_t comp_id, bool enable);
+FPB_NOINLINE fpb_result_t fpb_enable_patch(uint8_t comp_id, bool enable);
 
 /**
  * @brief  Get FPB state information

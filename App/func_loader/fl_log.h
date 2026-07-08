@@ -34,6 +34,7 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
+#include "fpb_attributes.h"
 
 /* Callback types */
 typedef void (*fl_output_cb_t)(void* user, const char* str);
@@ -51,27 +52,27 @@ void fl_log_init(fl_output_cb_t output_cb, void* output_user);
  * @param fmt Printf-style format string
  * @param ... Format arguments
  */
-void fl_response(bool ok, const char* fmt, ...);
+FPB_NOINLINE void fl_response(bool ok, const char* fmt, ...);
 
 /**
  * @brief Print a message without OK/ERR prefix
  * @param fmt Printf-style format string
  * @param ... Format arguments
  */
-void fl_print(const char* fmt, ...);
+FPB_NOINLINE void fl_print(const char* fmt, ...);
 
 /**
  * @brief Print a message with newline at the end
  * @param fmt Printf-style format string
  * @param ... Format arguments
  */
-void fl_println(const char* fmt, ...);
+FPB_NOINLINE void fl_println(const char* fmt, ...);
 
 /**
  * @brief Print a raw string without formatting (no buffer limit)
  * @param str String to output
  */
-void fl_print_raw(const char* str);
+FPB_NOINLINE void fl_print_raw(const char* str);
 
 #ifdef __cplusplus
 }
