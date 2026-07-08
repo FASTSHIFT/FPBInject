@@ -26,6 +26,7 @@
  */
 
 #include "fl_cmd.h"
+#include "fpb_attributes.h"
 #include "fpbinject_version.h"
 #include <string.h>
 
@@ -106,7 +107,7 @@ fl_error_t fl_cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
     return FL_OK;
 }
 
-__attribute__((noinline)) void fl_hello(void) {
+FPB_NOINLINE void fl_hello(void) {
     fl_response(true, "HELLO from original fl_hello(%p) function!", (void*)fl_hello);
 }
 

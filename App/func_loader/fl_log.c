@@ -27,6 +27,7 @@
  */
 
 #include "fl_log.h"
+#include "fpb_attributes.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -44,7 +45,7 @@ void fl_log_init(fl_output_cb_t output_cb, void* output_user) {
     g_output_user = output_user;
 }
 
-void fl_response(bool ok, const char* fmt, ...) {
+FPB_NOINLINE void fl_response(bool ok, const char* fmt, ...) {
     va_list args;
 
     fl_print_raw(ok ? "[FLOK] " : "[FLERR] ");
@@ -55,7 +56,7 @@ void fl_response(bool ok, const char* fmt, ...) {
     fl_print_raw("\n[FLEND]\n");
 }
 
-void fl_print(const char* fmt, ...) {
+FPB_NOINLINE void fl_print(const char* fmt, ...) {
     va_list args;
 
     va_start(args, fmt);
@@ -64,7 +65,7 @@ void fl_print(const char* fmt, ...) {
     fl_print_raw(log_buf);
 }
 
-void fl_println(const char* fmt, ...) {
+FPB_NOINLINE void fl_println(const char* fmt, ...) {
     va_list args;
 
     va_start(args, fmt);
@@ -74,7 +75,7 @@ void fl_println(const char* fmt, ...) {
     fl_print_raw("\n");
 }
 
-void fl_print_raw(const char* str) {
+FPB_NOINLINE void fl_print_raw(const char* str) {
     if (g_output_cb) {
         g_output_cb(g_output_user, str);
     }

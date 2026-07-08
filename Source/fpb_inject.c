@@ -37,6 +37,7 @@
  */
 
 #include "fpb_inject.h"
+#include "fpb_attributes.h"
 #include "fpb_regs.h"
 #include <string.h>
 
@@ -255,7 +256,7 @@ fpb_result_t fpb_clear_patch(uint8_t comp_id) {
     return FPB_OK;
 }
 
-fpb_result_t fpb_enable_patch(uint8_t comp_id, bool enable) {
+FPB_NOINLINE fpb_result_t fpb_enable_patch(uint8_t comp_id, bool enable) {
     if (!g_fpb_state.initialized) {
         return FPB_ERR_NOT_INIT;
     }
