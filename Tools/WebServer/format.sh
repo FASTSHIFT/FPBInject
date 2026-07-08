@@ -34,6 +34,7 @@ FIND_EXCLUDE_COMMON=(
     -not -path "./node_modules/*"
     -not -path "./.venv/*"
     -not -path "./venv/*"
+    -not -path "./static/js/lib/*"
 )
 
 # ============================================================
