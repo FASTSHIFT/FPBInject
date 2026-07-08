@@ -45,10 +45,13 @@
  *
  *   FPB_NOINLINE void my_function(void) { ... }
  */
-/* GCC, Clang, Keil (armcc/armclang), IAR all support __attribute__((noinline)) */
+/* GCC, Clang, Keil (armcc/armclang), IAR all support __attribute__((noinline)).
+ * externally_visible prevents LTO from localizing symbols that are only
+ * referenced via --just-symbols at hot-patch link time (no direct call site
+ * in the firmware), keeping them global in the final ELF. */
 #if defined(__GNUC__) || defined(__clang__) || defined(__CC_ARM) || defined(__ARMCC_VERSION) \
     || defined(__IAR_SYSTEMS_ICC__)
-#define FPB_NOINLINE __attribute__((noinline))
+#define FPB_NOINLINE __attribute__((noinline, externally_visible))
 #else
 #define FPB_NOINLINE
 #endif
