@@ -58,8 +58,8 @@ static fl_error_t exec_comp_cmd(const char* cmd) {
     return fl_exec_cmd(&test_ctx, 5, argv);
 }
 
-static fl_error_t exec_enable_cmd(void) {
-    const char* argv[] = {"fl", "--cmd", "enable", "--comp", "0", "--enable", "1"};
+static fl_error_t exec_enable_cmd(const char* cmd) {
+    const char* argv[] = {"fl", "--cmd", cmd, "--comp", "0", "--enable", "1"};
     return fl_exec_cmd(&test_ctx, 7, argv);
 }
 
@@ -67,44 +67,32 @@ static fl_error_t exec_enable_cmd(void) {
  * Patch Command Tests
  * ============================================================================ */
 
-static void test_no_fpb_patch_returns_disabled(void) {
+static void assert_cmd_disabled(const char* cmd, fl_error_t (*exec)(const char*)) {
     setup_no_fpb();
-    fl_error_t ret = exec_patch_cmd("patch");
+    fl_error_t ret = exec(cmd);
     TEST_ASSERT_EQUAL(FL_ERR_DISABLED, ret);
     TEST_ASSERT_TRUE(mock_output_contains("[FLERR]"));
     TEST_ASSERT_TRUE(mock_output_contains("FPB disabled"));
+}
+
+static void test_no_fpb_patch_returns_disabled(void) {
+    assert_cmd_disabled("patch", exec_patch_cmd);
 }
 
 static void test_no_fpb_tpatch_returns_disabled(void) {
-    setup_no_fpb();
-    fl_error_t ret = exec_patch_cmd("tpatch");
-    TEST_ASSERT_EQUAL(FL_ERR_DISABLED, ret);
-    TEST_ASSERT_TRUE(mock_output_contains("[FLERR]"));
-    TEST_ASSERT_TRUE(mock_output_contains("FPB disabled"));
+    assert_cmd_disabled("tpatch", exec_patch_cmd);
 }
 
 static void test_no_fpb_dpatch_returns_disabled(void) {
-    setup_no_fpb();
-    fl_error_t ret = exec_patch_cmd("dpatch");
-    TEST_ASSERT_EQUAL(FL_ERR_DISABLED, ret);
-    TEST_ASSERT_TRUE(mock_output_contains("[FLERR]"));
-    TEST_ASSERT_TRUE(mock_output_contains("FPB disabled"));
+    assert_cmd_disabled("dpatch", exec_patch_cmd);
 }
 
 static void test_no_fpb_unpatch_returns_disabled(void) {
-    setup_no_fpb();
-    fl_error_t ret = exec_comp_cmd("unpatch");
-    TEST_ASSERT_EQUAL(FL_ERR_DISABLED, ret);
-    TEST_ASSERT_TRUE(mock_output_contains("[FLERR]"));
-    TEST_ASSERT_TRUE(mock_output_contains("FPB disabled"));
+    assert_cmd_disabled("unpatch", exec_comp_cmd);
 }
 
 static void test_no_fpb_enable_returns_disabled(void) {
-    setup_no_fpb();
-    fl_error_t ret = exec_enable_cmd();
-    TEST_ASSERT_EQUAL(FL_ERR_DISABLED, ret);
-    TEST_ASSERT_TRUE(mock_output_contains("[FLERR]"));
-    TEST_ASSERT_TRUE(mock_output_contains("FPB disabled"));
+    assert_cmd_disabled("enable", exec_enable_cmd);
 }
 
 /* ============================================================================

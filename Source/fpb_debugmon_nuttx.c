@@ -112,6 +112,19 @@ static struct {
 } g_debugmon_state;
 
 /* ============================================================================
+ * Debugpoint helper
+ * ============================================================================ */
+
+/* Determine debugpoint type and size based on target address.
+ * - Code region (0x00000000-0x1FFFFFFF): FPB breakpoint, size=0
+ * - Other regions (SRAM, PSRAM, etc.): breakpoint with size=2 (Thumb)
+ */
+static void debugpoint_params(uint32_t addr, int* type, size_t* size) {
+    *type = DEBUGPOINT_BREAKPOINT;
+    *size = (addr < 0x20000000UL) ? 0 : 2;
+}
+
+/* ============================================================================
  * Debugpoint callback
  * ============================================================================ */
 
@@ -233,27 +246,14 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
     g_debugmon_state.redirects[comp_id].original_addr = match_addr;
     g_debugmon_state.redirects[comp_id].redirect_addr = redirect_addr | 1; /* Ensure Thumb bit */
 
-    /* Determine debugpoint type based on address region:
-     * - Code region (0x00000000-0x1FFFFFFF): Use BREAKPOINT (FPB)
-     * - Other regions (SRAM, PSRAM, etc.): Use WATCHPOINT_RO (DWT) as execute monitor
-     *
-     * Note: DWT watchpoint in RO mode can detect instruction fetches,
-     * which effectively acts as an execute breakpoint for non-Code regions.
-     */
+    /* Determine debugpoint type based on address region */
     int type;
     size_t size;
+    debugpoint_params(match_addr, &type, &size);
 
     if (match_addr < 0x20000000UL) {
-        /* Code region - use FPB breakpoint */
-        type = DEBUGPOINT_BREAKPOINT;
-        size = 0;
         DBGMON_INFO("using BREAKPOINT (FPB) for code region\n");
     } else {
-        /* Non-code region - use DWT watchpoint
-         * WATCHPOINT_RO monitors read accesses including instruction fetches
-         */
-        type = DEBUGPOINT_BREAKPOINT; /* Try breakpoint first */
-        size = 2;                     /* Thumb instruction size */
         DBGMON_INFO("using BREAKPOINT for non-code region 0x%08lX\n", (unsigned long)match_addr);
     }
 
@@ -286,11 +286,10 @@ int fpb_debugmon_clear_redirect(uint8_t comp_id) {
 
     uint32_t match_addr = g_debugmon_state.redirects[comp_id].original_addr;
 
-    /* Determine type based on address */
-    int type = (match_addr < 0x20000000UL) ? DEBUGPOINT_BREAKPOINT : DEBUGPOINT_BREAKPOINT;
-    size_t size = (match_addr < 0x20000000UL) ? 0 : 2;
-
     /* Remove debugpoint */
+    int type;
+    size_t size;
+    debugpoint_params(match_addr, &type, &size);
     up_debugpoint_remove(type, (void*)(uintptr_t)match_addr, size);
 
     /* Clear redirect entry */
