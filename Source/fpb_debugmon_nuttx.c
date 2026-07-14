@@ -78,6 +78,15 @@ extern int arm_dbgmonitor(int irq, void* context, void* arg);
 
 #endif /* FPB_HOST_TESTING_NUTTX */
 
+/* ============================================================================
+ * Logging macros - auto-prefix [DBGMON], no-op in host test mode
+ * ============================================================================ */
+
+#define DBGMON_LOG(level, fmt, ...) syslog(level, "[DBGMON] " fmt, ##__VA_ARGS__)
+#define DBGMON_INFO(fmt, ...) DBGMON_LOG(LOG_INFO, fmt, ##__VA_ARGS__)
+#define DBGMON_ERR(fmt, ...) DBGMON_LOG(LOG_ERR, fmt, ##__VA_ARGS__)
+#define DBGMON_WARN(fmt, ...) DBGMON_LOG(LOG_WARNING, fmt, ##__VA_ARGS__)
+
 /* Stack frame offsets for Cortex-M */
 #define STACK_R0 0
 #define STACK_R1 1
@@ -120,7 +129,7 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
     debugmon_redirect_t* redirect = (debugmon_redirect_t*)arg;
 
     if (!redirect || redirect->original_addr == 0) {
-        syslog(LOG_WARNING, "[DBGMON] callback: no redirect\n");
+        DBGMON_WARN("callback: no redirect\n");
         return;
     }
 
@@ -136,10 +145,10 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
     uint32_t* regs = (uint32_t*)running_regs();
     if (!regs) {
 #ifdef FPB_RUNNING_REGS_FALLBACK_NULL
-        syslog(LOG_ERR, "[DBGMON] callback: running_regs() unavailable on this NuttX version "
-                        "(need >= Sept 2024 or CURRENT_REGS). dpatch not supported.\n");
+        DBGMON_ERR("callback: running_regs() unavailable on this NuttX version "
+                   "(need >= Sept 2024 or CURRENT_REGS). dpatch not supported.\n");
 #else
-        syslog(LOG_ERR, "[DBGMON] callback: no regs context\n");
+        DBGMON_ERR("callback: no regs context\n");
 #endif
         return;
     }
@@ -149,8 +158,8 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
     regs[REG_PC] = redirect->redirect_addr;
 
     (void)old_pc;
-    // syslog(LOG_DEBUG, "[DBGMON] redirect: 0x%08lX -> 0x%08lX\n", (unsigned long)old_pc,
-    //        (unsigned long)redirect->redirect_addr);
+    // DBGMON_LOG(LOG_DEBUG, "redirect: 0x%08lX -> 0x%08lX\n", (unsigned long)old_pc,
+    //            (unsigned long)redirect->redirect_addr);
 }
 
 /* ============================================================================
@@ -158,7 +167,7 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
  * ============================================================================ */
 
 int fpb_debugmon_init(void) {
-    syslog(LOG_INFO, "[DBGMON] NuttX init\n");
+    DBGMON_INFO("NuttX init\n");
 
     memset(&g_debugmon_state, 0, sizeof(g_debugmon_state));
 
@@ -173,9 +182,9 @@ int fpb_debugmon_init(void) {
 
     /* Initialize FPB and DWT hardware */
     arm_enable_dbgmonitor();
-    syslog(LOG_INFO, "[DBGMON] Attached NuttX arm_dbgmonitor handler\n");
+    DBGMON_INFO("Attached NuttX arm_dbgmonitor handler\n");
 #else
-    syslog(LOG_ERR, "[DBGMON] CONFIG_ARCH_HAVE_DEBUG not enabled!\n");
+    DBGMON_ERR("CONFIG_ARCH_HAVE_DEBUG not enabled!\n");
     return -1;
 #endif
 
@@ -199,16 +208,16 @@ void fpb_debugmon_deinit(void) {
 }
 
 int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t redirect_addr) {
-    syslog(LOG_INFO, "[DBGMON] set_redirect comp=%d orig=0x%08lX redir=0x%08lX\n", comp_id,
-           (unsigned long)original_addr, (unsigned long)redirect_addr);
+    DBGMON_INFO("set_redirect comp=%d orig=0x%08lX redir=0x%08lX\n", comp_id, (unsigned long)original_addr,
+                (unsigned long)redirect_addr);
 
     if (!g_debugmon_state.initialized) {
-        syslog(LOG_ERR, "[DBGMON] not initialized\n");
+        DBGMON_ERR("not initialized\n");
         return -1;
     }
 
     if (comp_id >= FPB_DEBUGMON_MAX_REDIRECTS) {
-        syslog(LOG_ERR, "[DBGMON] invalid comp_id %d\n", comp_id);
+        DBGMON_ERR("invalid comp_id %d\n", comp_id);
         return -1;
     }
 
@@ -238,27 +247,27 @@ int fpb_debugmon_set_redirect(uint8_t comp_id, uint32_t original_addr, uint32_t 
         /* Code region - use FPB breakpoint */
         type = DEBUGPOINT_BREAKPOINT;
         size = 0;
-        syslog(LOG_INFO, "[DBGMON] using BREAKPOINT (FPB) for code region\n");
+        DBGMON_INFO("using BREAKPOINT (FPB) for code region\n");
     } else {
         /* Non-code region - use DWT watchpoint
          * WATCHPOINT_RO monitors read accesses including instruction fetches
          */
         type = DEBUGPOINT_BREAKPOINT; /* Try breakpoint first */
         size = 2;                     /* Thumb instruction size */
-        syslog(LOG_INFO, "[DBGMON] using BREAKPOINT for non-code region 0x%08lX\n", (unsigned long)match_addr);
+        DBGMON_INFO("using BREAKPOINT for non-code region 0x%08lX\n", (unsigned long)match_addr);
     }
 
     /* Add debugpoint using NuttX API */
     int ret = up_debugpoint_add(type, (void*)(uintptr_t)match_addr, size, debugmon_callback,
                                 &g_debugmon_state.redirects[comp_id]);
     if (ret < 0) {
-        syslog(LOG_ERR, "[DBGMON] up_debugpoint_add failed: %d\n", ret);
+        DBGMON_ERR("up_debugpoint_add failed: %d\n", ret);
         g_debugmon_state.redirects[comp_id].original_addr = 0;
         g_debugmon_state.redirects[comp_id].redirect_addr = 0;
         return -1;
     }
 
-    syslog(LOG_INFO, "[DBGMON] set_redirect OK\n");
+    DBGMON_INFO("set_redirect OK\n");
     return 0;
 }
 
