@@ -39,6 +39,19 @@ CFLAGS += -DFL_NUTTX_BUF_SIZE=$(CONFIG_FPBINJECT_BUF_SIZE) \
           -DFL_USE_FILE=1 \
           -DFL_FILE_USE_POSIX=1
 
+# FPB feature switches (mapped from Kconfig)
+ifdef CONFIG_FPBINJECT_NO_FPB
+CFLAGS += -DFL_NO_FPB
+endif
+
+ifdef CONFIG_FPBINJECT_NO_TRAMPOLINE
+CFLAGS += -DFPB_NO_TRAMPOLINE
+endif
+
+ifdef CONFIG_FPBINJECT_NO_DEBUGMON
+CFLAGS += -DFPB_NO_DEBUGMON
+endif
+
 CFLAGS += ${INCDIR_PREFIX}$(FPBINJECT_DIR)/App/func_loader \
           ${INCDIR_PREFIX}$(FPBINJECT_DIR)/App/func_loader/argparse \
           ${INCDIR_PREFIX}$(FPBINJECT_DIR)/Source

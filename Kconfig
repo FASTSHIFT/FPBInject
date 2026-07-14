@@ -35,4 +35,29 @@ config FPBINJECT_LINE_SIZE
 	---help---
 		Size of the command line input buffer for interactive mode.
 
+config FPBINJECT_NO_FPB
+	bool "Disable FPB hardware"
+	default n
+	depends on ARCH_ARM && (ARCH_CORTEXM3 || ARCH_CORTEXM4 || ARCH_CORTEXM7 || ARCH_CORTEXM33 || ARCH_CORTEXM55)
+	---help---
+		Disable all FPB hardware operations. Patch/tpatch/dpatch/unpatch/enable
+		commands will return FL_ERR_DISABLED. Useful for platforms without FPB
+		support or for memory-only injection scenarios.
+
+config FPBINJECT_NO_TRAMPOLINE
+	bool "Disable trampoline mode"
+	default n
+	depends on !FPBINJECT_NO_FPB
+	---help---
+		Disable trampoline-based injection. tpatch command will return error.
+		Use when FPB can REMAP to RAM directly without trampoline intermediaries.
+
+config FPBINJECT_NO_DEBUGMON
+	bool "Disable DebugMonitor mode"
+	default n
+	depends on !FPBINJECT_NO_FPB
+	---help---
+		Disable DebugMonitor-based injection. dpatch command will return error.
+		Use on platforms without DebugMonitor exception support.
+
 endif # FPBINJECT

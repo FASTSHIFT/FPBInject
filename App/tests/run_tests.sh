@@ -88,8 +88,18 @@ run_tests() {
     ./test_runner_fatfs
     FATFS_EXIT_CODE=$?
     
+    # Run NuttX compat tests
+    print_info "Running NuttX compat tests..."
+    ./test_runner_nuttx_compat
+    COMPAT_EXIT_CODE=$?
+    
+    # Run FL_NO_FPB tests
+    print_info "Running FL_NO_FPB tests..."
+    ./test_runner_no_fpb
+    NO_FPB_EXIT_CODE=$?
+    
     # Check results
-    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ]; then
+    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ] && [ $COMPAT_EXIT_CODE -eq 0 ] && [ $NO_FPB_EXIT_CODE -eq 0 ]; then
         print_success "All tests passed"
     else
         if [ $MAIN_EXIT_CODE -ne 0 ]; then
@@ -100,6 +110,12 @@ run_tests() {
         fi
         if [ $FATFS_EXIT_CODE -ne 0 ]; then
             print_error "FatFS tests failed (exit code: $FATFS_EXIT_CODE)"
+        fi
+        if [ $COMPAT_EXIT_CODE -ne 0 ]; then
+            print_error "NuttX compat tests failed (exit code: $COMPAT_EXIT_CODE)"
+        fi
+        if [ $NO_FPB_EXIT_CODE -ne 0 ]; then
+            print_error "FL_NO_FPB tests failed (exit code: $NO_FPB_EXIT_CODE)"
         fi
         exit 1
     fi

@@ -70,6 +70,12 @@ extern int arm_dbgmonitor(int irq, void* context, void* arg);
 #define NVIC_IRQ_DBGMONITOR 12
 #endif
 
+/* Include compatibility shim AFTER NuttX headers, so that running_regs()
+ * (defined in nuttx/sched.h) is detected correctly. On older NuttX without
+ * running_regs(), the shim provides a fallback (CURRENT_REGS or NULL).
+ */
+#include "fpb_nuttx_compat.h"
+
 #endif /* FPB_HOST_TESTING_NUTTX */
 
 /* Stack frame offsets for Cortex-M */
@@ -121,10 +127,20 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
     /* Get current register context from NuttX
      * In exception handler, running_regs() points to the saved register context
      * which was set up by arm_doirq(): tcb->xcp.regs = regs;
+     *
+     * On older NuttX versions (before Sept 2024), running_regs() may not exist.
+     * fpb_nuttx_compat.h provides a fallback:
+     *   - CURRENT_REGS macro (pre-April 2024) → works transparently
+     *   - NULL (intermediate period) → dpatch disabled, logs error
      */
     uint32_t* regs = (uint32_t*)running_regs();
     if (!regs) {
+#ifdef FPB_RUNNING_REGS_FALLBACK_NULL
+        syslog(LOG_ERR, "[DBGMON] callback: running_regs() unavailable on this NuttX version "
+                        "(need >= Sept 2024 or CURRENT_REGS). dpatch not supported.\n");
+#else
         syslog(LOG_ERR, "[DBGMON] callback: no regs context\n");
+#endif
         return;
     }
 
