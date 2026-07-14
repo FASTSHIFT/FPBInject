@@ -170,6 +170,25 @@ target_compile_definitions(test_runner_fatfs PRIVATE FL_USE_FILE=1
 target_link_libraries(test_runner_fatfs m)
 
 # ============================================================================
+# NuttX compat (running_regs) test executable
+# ============================================================================
+add_executable(
+  test_runner_nuttx_compat
+  ${TEST_FRAMEWORK_SOURCES} test_fpb_nuttx_compat.c
+  scenario1_running_regs_defined.c scenario2_current_regs_fallback.c
+  scenario3_null_fallback.c)
+target_link_libraries(test_runner_nuttx_compat m)
+
+# ============================================================================
+# FL_NO_FPB test executable (compiled with FL_NO_FPB to test stub branch)
+# ============================================================================
+
+add_executable(test_runner_no_fpb ${SUT_SOURCES_COMMON} ${MOCK_SOURCES}
+                                  ${TEST_FRAMEWORK_SOURCES} test_no_fpb.c)
+target_compile_definitions(test_runner_no_fpb PRIVATE FL_NO_FPB=1)
+target_link_libraries(test_runner_no_fpb m)
+
+# ============================================================================
 # library.cmake integration tests (compile-only, verifies exported variables)
 # ============================================================================
 
@@ -228,7 +247,14 @@ add_custom_target(
   COMMAND ${CMAKE_COMMAND} -E echo ""
   COMMAND ${CMAKE_COMMAND} -E echo "=== Running FatFS tests ==="
   COMMAND ./test_runner_fatfs
+  COMMAND ${CMAKE_COMMAND} -E echo ""
+  COMMAND ${CMAKE_COMMAND} -E echo "=== Running NuttX compat tests ==="
+  COMMAND ./test_runner_nuttx_compat
+  COMMAND ${CMAKE_COMMAND} -E echo ""
+  COMMAND ${CMAKE_COMMAND} -E echo "=== Running FL_NO_FPB tests ==="
+  COMMAND ./test_runner_no_fpb
   DEPENDS test_runner test_runner_nuttx test_runner_fatfs
+          test_runner_nuttx_compat test_runner_no_fpb
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   COMMENT "Running all unit tests...")
 
@@ -245,8 +271,8 @@ if(COVERAGE)
               coverage/coverage.info --ignore-errors mismatch
       COMMAND
         ${LCOV} --remove coverage/coverage.info '/usr/*' '*/test_*' '*/mock_*'
-        '*/fpb_mock_*' '*/argparse/*' --output-file coverage/coverage.info
-        --ignore-errors mismatch
+        '*/fpb_mock_*' '*/argparse/*' '*/scenario*' --output-file
+        coverage/coverage.info --ignore-errors mismatch
       COMMAND ${GENHTML} coverage/coverage.info --output-directory coverage/html
       COMMAND ${CMAKE_COMMAND} -E echo
               "Coverage report generated in coverage/html/index.html"
