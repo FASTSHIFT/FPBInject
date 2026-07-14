@@ -150,19 +150,13 @@ static void debugmon_callback(int type, void* addr, size_t size, void* arg) {
      * In exception handler, running_regs() points to the saved register context
      * which was set up by arm_doirq(): tcb->xcp.regs = regs;
      *
-     * On older NuttX versions (before Sept 2024), running_regs() may not exist.
-     * fpb_nuttx_compat.h provides a fallback:
-     *   - CURRENT_REGS macro (pre-April 2024) → works transparently
-     *   - NULL (intermediate period) → dpatch disabled, logs error
+     * fpb_nuttx_compat.h maps running_regs() to CURRENT_REGS on old NuttX
+     * (< April 2024). On the intermediate period (April-Sept 2024), users
+     * must manually define running_regs() via build flags.
      */
     uint32_t* regs = (uint32_t*)running_regs();
     if (!regs) {
-#ifdef FPB_RUNNING_REGS_FALLBACK_NULL
-        DBGMON_ERR("callback: running_regs() unavailable on this NuttX version "
-                   "(need >= Sept 2024 or CURRENT_REGS). dpatch not supported.\n");
-#else
         DBGMON_ERR("callback: no regs context\n");
-#endif
         return;
     }
 

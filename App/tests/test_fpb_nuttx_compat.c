@@ -52,12 +52,12 @@ static void test_scenario2_current_regs_fallback(void) {
 }
 
 static void test_scenario3_null_fallback(void) {
-    /* Intermediate NuttX: running_regs() returns NULL */
+    /* Intermediate NuttX with manual override: running_regs() works */
     uint32_t pc = scenario3_get_pc();
-    TEST_ASSERT_EQUAL_HEX(0, pc);
+    TEST_ASSERT_EQUAL_HEX(0x12345678, pc);
 
-    /* FPB_RUNNING_REGS_FALLBACK_NULL SHOULD be defined */
-    TEST_ASSERT_EQUAL(1, scenario3_fallback_null_defined());
+    /* FPB_RUNNING_REGS_FALLBACK_NULL should NOT be defined */
+    TEST_ASSERT_EQUAL(0, scenario3_fallback_null_defined());
 }
 
 /* ============================================================================
