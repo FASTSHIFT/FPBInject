@@ -13,11 +13,13 @@
 /* Simulate __NuttX__ being defined */
 #define __NuttX__
 
-/* Simulate running_regs() already being defined by NuttX headers */
+/* Simulate modern NuttX: CURRENT_REGS is NOT defined, running_regs() is
+ * already provided by nuttx/sched.h. Define it here to simulate that. */
 static uint32_t s_scenario1_regs[16] = {0};
 #define running_regs() ((void*)s_scenario1_regs)
 
-/* Now include the compat header — it should NOT redefine running_regs */
+/* Now include the compat header — CURRENT_REGS is not defined, so it
+ * should NOT redefine running_regs() */
 #include "fpb_nuttx_compat.h"
 
 uint32_t scenario1_get_pc(void) {

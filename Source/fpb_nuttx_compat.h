@@ -66,36 +66,26 @@
 /* Only apply compatibility for real NuttX builds (not host testing mocks) */
 #if defined(__NuttX__) && !defined(FPB_HOST_TESTING_NUTTX)
 
-#ifndef running_regs
-
-/* running_regs() not available — try fallbacks */
+/* Detect old NuttX via CURRENT_REGS — an object-like macro that existed
+ * before April 2024 and was removed when running_regs() was introduced.
+ * #ifdef on object-like macros is reliable (unlike function-like macros). */
 
 #ifdef CURRENT_REGS
-/* Oldest API: CURRENT_REGS macro (pre-April 2024 NuttX).
- * CURRENT_REGS is `volatile uint32_t *`, cast to void * for compatibility
- * with the running_regs() return type (FAR void **).
- * The caller (fpb_debugmon_nuttx.c) casts to uint32_t* anyway. */
+
+/* Old NuttX (< April 2024): running_regs() does not exist.
+ * Map it to CURRENT_REGS. */
 #define running_regs() ((void*)CURRENT_REGS)
 
 #else
-/* Neither running_regs nor CURRENT_REGS is available.
- * This covers the intermediate period (April-Sept 2024) where only
- * up_current_regs() existed, and any future/exotic configurations.
- *
- * We define running_regs() as NULL rather than trying to call
- * up_current_regs() (which we can't detect with #ifdef). The dpatch
- * callback in fpb_debugmon_nuttx.c already handles NULL gracefully:
- *   if (!regs) { syslog(LOG_ERR, "no regs context\n"); return; }
- *
- * If users on the intermediate NuttX version need dpatch support,
- * they can manually define running_regs in their build flags:
- *   -Drunning_regs\(\)=up_current_regs\(\)
- */
-#define running_regs() (NULL)
-#define FPB_RUNNING_REGS_FALLBACK_NULL 1
-#endif
 
-#endif /* !running_regs */
+/* Modern NuttX (>= Sept 2024): running_regs() is already defined by
+ * nuttx/sched.h. Nothing to do.
+ *
+ * Note: The intermediate period (April-Sept 2024) had up_current_regs()
+ * but neither CURRENT_REGS nor running_regs(). Users on that narrow
+ * window can manually add: -Drunning_regs()=up_current_regs() */
+
+#endif
 
 #endif /* __NuttX__ && !FPB_HOST_TESTING_NUTTX */
 
