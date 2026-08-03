@@ -73,8 +73,6 @@ graph TB
         STATE["AppState<br/>DeviceState"]
     end
 
-    MCP["MCP Server<br/>AI Agent Interface"]
-
     R_FPB --> FPI
     R_PATCH --> PGEN
     R_SYM --> GS
@@ -92,7 +90,6 @@ graph TB
     FPI --> DW
     PROTO --> DW
     FW -->|"File Change"| FPI
-    MCP --> FPI
     DW --> STATE
 ```
 
@@ -279,7 +276,7 @@ The core value of GDB in FPBInject is not debugging, but serving as a **DWARF pa
 | Symbol address resolution | `info address func_name` | `FPBInject._resolve_symbol_addr()` |
 | Type information query | `ptype struct_name` | Frontend Watch expressions |
 | Struct layout | `print sizeof(struct)` | Frontend symbol search |
-| Function signature extraction | `whatis func_name` | MCP Server `signature()` |
+| Function signature extraction | `whatis func_name` | CLI `signature` command |
 
 The internal RSP Bridge forwards GDB memory read/write requests (`m`/`M` packets) to device serial commands (`fl --cmd read/write`), enabling GDB to transparently access device memory. The external RSP Bridge (port 3333) allows IDEs to connect directly.
 

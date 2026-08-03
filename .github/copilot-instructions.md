@@ -132,7 +132,7 @@ refactor(module): 重构描述
 chore(module): 杂项描述
 ```
 
-常用 module：`main`, `compiler`, `cli`, `mcp`, `WebServer`, `serial`
+常用 module：`main`, `compiler`, `cli`, `WebServer`, `serial`
 
 ---
 
@@ -142,7 +142,6 @@ chore(module): 杂项描述
 |------|------|
 | `main.py` | WebServer 入口，Flask 应用启动 |
 | `fpb_inject.py` | 注入工作流编排 |
-| `fpb_mcp_server.py` | MCP Server，包装 CLI 工具 |
 | `cli/fpb_cli.py` | CLI 命令行工具 |
 | `core/compiler.py` | 编译注入代码 |
 | `core/patch_generator.py` | 检测 FPB_INJECT 标记 |
