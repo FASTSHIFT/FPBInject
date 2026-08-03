@@ -127,10 +127,23 @@ class DeviceWorker:
                     task_start = time.time()
 
                     if cmd_type == "call":
-                        try:
-                            cmd_data()
-                        except Exception as e:
-                            self._logger.warning(f"Worker call error: {e}")
+                        # Mute virtual-serial passthrough during FPB binary
+                        # protocol operations so external bytes cannot corrupt
+                        # protocol frames.
+                        vserial = getattr(self.device, "vserial", None)
+                        if vserial is not None and vserial.is_enabled():
+                            vserial.mute()
+                            try:
+                                cmd_data()
+                            except Exception as e:
+                                self._logger.warning(f"Worker call error: {e}")
+                            finally:
+                                vserial.unmute()
+                        else:
+                            try:
+                                cmd_data()
+                            except Exception as e:
+                                self._logger.warning(f"Worker call error: {e}")
                     elif cmd_type == "write":
                         self._serial_write_direct(cmd_data)
 
@@ -154,6 +167,9 @@ class DeviceWorker:
 
             # Process incoming serial data
             self._process_serial_rx()
+
+            # Forward external input from virtual serial passthrough to device
+            self._process_vserial_tx()
 
             # Calculate sleep time until next timer or use default
             sleep_time = 0.05  # 50ms default
@@ -195,11 +211,24 @@ class DeviceWorker:
                     data_str = raw_data.decode(errors="replace")
                     # Add to raw serial log for terminal display
                     self._add_raw_serial_log(data_str)
+                    # Forward to virtual serial passthrough (if enabled)
+                    vserial = getattr(self.device, "vserial", None)
+                    if vserial is not None and vserial.is_enabled():
+                        vserial.forward_rx(raw_data)
                     # Add formatted log entries
                     for line in data_str.splitlines(keepends=True):
                         self._add_serial_log("RX", line)
         except Exception:
             pass
+
+    def _process_vserial_tx(self):
+        """Poll virtual serial passthrough and forward input to the device."""
+        vserial = getattr(self.device, "vserial", None)
+        if vserial is None or not vserial.is_enabled():
+            return
+        data = vserial.poll_tx()
+        if data:
+            self._serial_write_direct(data)
 
     def _add_serial_log(self, direction, data):
         """Add a log entry to device's serial log."""
