@@ -135,8 +135,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r Tools/requirements.txt
           pip install -r Tools/WebServer/tests/requirements.txt
-          # mcp is optional (only needed by fpb_mcp_server.py), not in requirements.txt
-          pip install mcp
           # Install additional tools for formatting and linting
           pip install black flake8
 

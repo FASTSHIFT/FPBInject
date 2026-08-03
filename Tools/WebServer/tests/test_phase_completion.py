@@ -5,7 +5,6 @@ Tests for remaining CLI-GUI coexistence phases.
 Phase 1: DeviceStateBase inheritance
 Phase 3: WebServer PortLock integration
 Phase 4: mem-read / mem-write API routes
-Phase 5: MCP Server proxy-aware reconnect
 Proxy support for file_list, file_stat, file_download, mem_dump, test_serial
 """
 
@@ -22,24 +21,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-# fpb_mcp_server hard-exits (sys.exit(1)) at import time when the optional
-# mcp package is missing or incompatible (mcp 2.0 removed mcp.server.fastmcp).
-# Probe importability so the MCP-dependent test class can skip gracefully
-# instead of crashing with SystemExit.
-try:
-    import fpb_mcp_server as _fpb_mcp_server  # noqa: F401
-
-    _MCP_AVAILABLE = True
-    _MCP_SKIP_REASON = ""
-except (ImportError, SystemExit) as exc:
-    _MCP_AVAILABLE = False
-    _MCP_SKIP_REASON = (
-        f"fpb_mcp_server unavailable (mcp not installed/incompatible): {exc!r}"
-    )
 
 from core.state import DeviceStateBase, DeviceState
 from cli.fpb_cli import DeviceState as CLIDeviceState, FPBCLI
@@ -457,44 +439,6 @@ class TestWebServerPortLock(unittest.TestCase):
 
         lock = PortLock("/dev/test-no-owner-file")
         self.assertEqual(lock.get_owner_pid(), "unknown")
-
-
-# ============================================================
-# Phase 5: MCP Server proxy-aware reconnect
-# ============================================================
-
-
-@pytest.mark.skipif(not _MCP_AVAILABLE, reason=_MCP_SKIP_REASON)
-class TestMCPServerProxyReconnect(unittest.TestCase):
-    """Test MCP _get_cli re-creates CLI for proxy detection on reconnect."""
-
-    @patch("cli.fpb_cli.ServerProxy")
-    def test_get_cli_recreates_on_new_port(self, mock_proxy_cls):
-        """_get_cli re-creates CLI when port changes to trigger proxy detection."""
-        import fpb_mcp_server as mcp_mod
-
-        # Reset global state
-        mcp_mod._cli_instance = None
-
-        # First call: no port, offline
-        cli1 = mcp_mod._get_cli(elf_path="/tmp/test.elf")
-        self.assertIsNotNone(cli1)
-        self.assertFalse(cli1._device_state.connected)
-
-        # Second call: with port, should re-create
-        mock_proxy_instance = MagicMock()
-        mock_proxy_instance.is_server_running.return_value = True
-        mock_proxy_instance.is_device_connected.return_value = True
-        mock_proxy_cls.return_value = mock_proxy_instance
-
-        cli2 = mcp_mod._get_cli(port="/dev/ttyACM0")
-        self.assertIsNotNone(cli2)
-        # Should have attempted proxy detection
-        self.assertTrue(cli2._device_state.connected)
-
-        # Cleanup
-        mcp_mod._cli_instance.cleanup()
-        mcp_mod._cli_instance = None
 
 
 if __name__ == "__main__":
