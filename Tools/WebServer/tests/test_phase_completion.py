@@ -22,7 +22,24 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# fpb_mcp_server hard-exits (sys.exit(1)) at import time when the optional
+# mcp package is missing or incompatible (mcp 2.0 removed mcp.server.fastmcp).
+# Probe importability so the MCP-dependent test class can skip gracefully
+# instead of crashing with SystemExit.
+try:
+    import fpb_mcp_server as _fpb_mcp_server  # noqa: F401
+
+    _MCP_AVAILABLE = True
+    _MCP_SKIP_REASON = ""
+except (ImportError, SystemExit) as exc:
+    _MCP_AVAILABLE = False
+    _MCP_SKIP_REASON = (
+        f"fpb_mcp_server unavailable (mcp not installed/incompatible): {exc!r}"
+    )
 
 from core.state import DeviceStateBase, DeviceState
 from cli.fpb_cli import DeviceState as CLIDeviceState, FPBCLI
@@ -447,6 +464,7 @@ class TestWebServerPortLock(unittest.TestCase):
 # ============================================================
 
 
+@pytest.mark.skipif(not _MCP_AVAILABLE, reason=_MCP_SKIP_REASON)
 class TestMCPServerProxyReconnect(unittest.TestCase):
     """Test MCP _get_cli re-creates CLI for proxy detection on reconnect."""
 
