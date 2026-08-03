@@ -132,6 +132,9 @@ class DeviceState(DeviceStateBase):
         # Worker thread reference
         self.worker = None
 
+        # Virtual serial passthrough service (created on connect if enabled)
+        self.vserial = None
+
         # Auto inject state
         self.auto_inject_status = (
             "idle"  # idle, detecting, generating, compiling, injecting, success, failed

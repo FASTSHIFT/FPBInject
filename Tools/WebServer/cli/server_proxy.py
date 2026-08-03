@@ -378,6 +378,33 @@ class ServerProxy:
         return self._get(f"/api/logs?raw_since={raw_since}&tool_since=999999999")
 
     # ------------------------------------------------------------------
+    # Virtual serial passthrough (proxied to WebServer connection routes)
+    # ------------------------------------------------------------------
+
+    def vserial_status(self) -> dict:
+        """Get virtual serial passthrough status via WebServer."""
+        return self._get("/api/vserial/status")
+
+    def vserial_start(
+        self, symlink: Optional[str] = None, mute_policy: Optional[str] = None
+    ) -> dict:
+        """Start virtual serial passthrough on the server.
+
+        The PTY is created in the WebServer process (a long-lived host),
+        so the device node persists for external tools to open.
+        """
+        payload: Dict[str, Any] = {}
+        if symlink is not None:
+            payload["symlink"] = symlink
+        if mute_policy is not None:
+            payload["mute_policy"] = mute_policy
+        return self._post("/api/vserial/start", payload)
+
+    def vserial_stop(self) -> dict:
+        """Stop virtual serial passthrough on the server."""
+        return self._post("/api/vserial/stop")
+
+    # ------------------------------------------------------------------
     # Device operations (proxied to WebServer)
     # ------------------------------------------------------------------
 

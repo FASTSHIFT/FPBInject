@@ -274,6 +274,21 @@ def restore_state():
 
     device.ser = ser
 
+    # Start virtual serial passthrough if enabled
+    if getattr(device, "vserial_enable", False):
+        from services.virtual_serial import VirtualSerialService
+
+        if device.vserial is None:
+            device.vserial = VirtualSerialService(device)
+        vs_ok, vs_err = device.vserial.start(
+            symlink=getattr(device, "vserial_symlink", "/tmp/fpb-tty0"),
+            mute_policy=getattr(device, "vserial_mute_policy", "buffer"),
+        )
+        if vs_ok:
+            logger.info(f"Virtual serial ready: {device.vserial.status().get('slave')}")
+        else:
+            logger.warning(f"Virtual serial start failed: {vs_err}")
+
     # Acquire port lock for auto-connected port
     lock = PortLock(device.port)
     if lock.acquire():

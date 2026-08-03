@@ -62,6 +62,30 @@ def _start_elf_watcher(elf_path):
     start_elf_watcher(elf_path)
 
 
+def _start_vserial(device):
+    """Create and start the virtual serial passthrough service."""
+    from services.virtual_serial import VirtualSerialService
+
+    if device.vserial is None:
+        device.vserial = VirtualSerialService(device)
+
+    symlink = getattr(device, "vserial_symlink", "/tmp/fpb-tty0")
+    mute_policy = getattr(device, "vserial_mute_policy", "buffer")
+    success, error = device.vserial.start(symlink=symlink, mute_policy=mute_policy)
+    if success:
+        status = device.vserial.status()
+        logger.info(f"Virtual serial ready: {status.get('slave')}")
+    else:
+        logger.warning(f"Virtual serial start failed: {error}")
+    return success, error
+
+
+def _stop_vserial(device):
+    """Stop the virtual serial passthrough service if running."""
+    if device.vserial is not None:
+        device.vserial.stop()
+
+
 @bp.route("/ports", methods=["GET"])
 def api_get_ports():
     """Get available serial ports."""
@@ -148,6 +172,10 @@ def api_connect():
     device.auto_connect = True
     state.save_config()
 
+    # Start virtual serial passthrough if enabled
+    if getattr(device, "vserial_enable", False):
+        _start_vserial(device)
+
     # Acquire port lock
     lock = PortLock(port)
     if lock.acquire():
@@ -180,6 +208,10 @@ def api_disconnect():
             device.ser = None
 
     run_in_device_worker(device, do_disconnect, timeout=2.0)
+
+    # Stop virtual serial passthrough before stopping the worker
+    _stop_vserial(device)
+
     stop_worker(device)
 
     # Release port lock
@@ -239,8 +271,53 @@ def api_status():
             "last_inject_time": device.last_inject_time,
             "device_info": device.device_info,
             "external_gdb_port": external_gdb_port,
+            "vserial": device.vserial.status() if device.vserial else None,
         }
     )
+
+
+@bp.route("/vserial/status", methods=["GET"])
+def api_vserial_status():
+    """Get virtual serial passthrough status."""
+    device = state.device
+    if device.vserial is None:
+        return jsonify({"success": True, "enabled": False, "slave": None})
+    status = device.vserial.status()
+    status["success"] = True
+    return jsonify(status)
+
+
+@bp.route("/vserial/start", methods=["POST"])
+def api_vserial_start():
+    """Start virtual serial passthrough at runtime."""
+    device = state.device
+
+    connected = False
+    try:
+        connected = device.ser is not None and device.ser.isOpen()
+    except Exception:
+        pass
+    if not connected:
+        return jsonify({"success": False, "error": "Connect to a serial port first"})
+
+    success, error = _start_vserial(device)
+    if success:
+        device.vserial_enable = True
+        state.save_config()
+        status = device.vserial.status()
+        status["success"] = True
+        return jsonify(status)
+    return jsonify({"success": False, "error": error})
+
+
+@bp.route("/vserial/stop", methods=["POST"])
+def api_vserial_stop():
+    """Stop virtual serial passthrough at runtime."""
+    device = state.device
+    _stop_vserial(device)
+    device.vserial_enable = False
+    state.save_config()
+    return jsonify({"success": True})
 
 
 @bp.route("/config", methods=["GET"])

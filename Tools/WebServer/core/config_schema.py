@@ -369,6 +369,40 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         tooltip="Echo TX commands to SERIAL panel (for debugging)",
         order=30,
     ),
+    ConfigItem(
+        key="vserial_enable",
+        label="Virtual Serial",
+        group=ConfigGroup.CONNECTION,
+        config_type=ConfigType.BOOLEAN,
+        default=False,
+        tooltip="Create a virtual serial device (PTY) on connect for passthrough "
+        "to external tools (minicom, pyserial). Linux/macOS only.",
+        show_in_sidebar=False,
+        order=100,
+    ),
+    ConfigItem(
+        key="vserial_symlink",
+        label="Virtual Serial Symlink",
+        group=ConfigGroup.CONNECTION,
+        config_type=ConfigType.STRING,
+        default="/tmp/fpb-tty0",
+        tooltip="Stable symlink path to the virtual serial device "
+        "(empty to disable symlink).",
+        show_in_sidebar=False,
+        order=110,
+    ),
+    ConfigItem(
+        key="vserial_mute_policy",
+        label="Virtual Serial Mute Policy",
+        group=ConfigGroup.CONNECTION,
+        config_type=ConfigType.SELECT,
+        default="buffer",
+        options=[("buffer", "Buffer"), ("drop", "Drop")],
+        tooltip="How to handle external input during FPB protocol operations: "
+        "buffer (replay after) or drop.",
+        show_in_sidebar=False,
+        order=120,
+    ),
     # === Analysis Tools ===
     ConfigItem(
         key="external_gdb_port",

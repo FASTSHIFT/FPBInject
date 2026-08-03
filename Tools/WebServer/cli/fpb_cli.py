@@ -1214,6 +1214,55 @@ class FPBCLI:
         except Exception as e:
             self.output_error(f"Disconnect failed: {str(e)}", e)
 
+    def _require_proxy_for_vserial(self) -> None:
+        """Virtual serial is only available in proxy mode.
+
+        The PTY device node lives in the long-lived WebServer process, so
+        it persists after this short-lived CLI invocation exits. This is
+        exactly what a headless (no-desktop) host needs: the server hands
+        out /dev/pts/N and any local serial tool (minicom, pyserial) opens
+        it. Direct mode has no persistent process and therefore cannot host
+        a virtual serial device.
+        """
+        if not self._proxy:
+            raise FPBCLIError(
+                "Virtual serial requires a running WebServer (proxy mode). "
+                "The PTY must be hosted by the long-lived server process; a "
+                "one-shot direct CLI cannot keep the device node alive.\n"
+                "Start a server first (it auto-launches headless when you run "
+                "a device command with --port), then retry."
+            )
+
+    def vserial_start(
+        self,
+        symlink: Optional[str] = None,
+        mute_policy: Optional[str] = None,
+    ) -> None:
+        """Create the virtual serial device on the server (proxy mode only)."""
+        try:
+            self._require_proxy_for_vserial()
+            self.output_json(
+                self._proxy.vserial_start(symlink=symlink, mute_policy=mute_policy)
+            )
+        except Exception as e:
+            self.output_error(f"Virtual serial start failed: {str(e)}", e)
+
+    def vserial_stop(self) -> None:
+        """Remove the virtual serial device on the server (proxy mode only)."""
+        try:
+            self._require_proxy_for_vserial()
+            self.output_json(self._proxy.vserial_stop())
+        except Exception as e:
+            self.output_error(f"Virtual serial stop failed: {str(e)}", e)
+
+    def vserial_status(self) -> None:
+        """Query the virtual serial device status (proxy mode only)."""
+        try:
+            self._require_proxy_for_vserial()
+            self.output_json(self._proxy.vserial_status())
+        except Exception as e:
+            self.output_error(f"Virtual serial status failed: {str(e)}", e)
+
     def cleanup(self):
         """Cleanup resources"""
         self._device_state.disconnect()
@@ -2025,6 +2074,37 @@ Notes:
     )
     disconnect_parser.set_defaults(command_policy=CommandPolicy.OFFLINE)
 
+    # vserial-start command — create virtual serial passthrough (proxy mode only)
+    vserial_start_parser = subparsers.add_parser(
+        "vserial-start",
+        help="Create virtual serial passthrough on the server (requires server)",
+    )
+    vserial_start_parser.add_argument(
+        "--symlink",
+        default=None,
+        help="Stable symlink path for the virtual serial device "
+        "(default: server config, /tmp/fpb-tty0). Empty string disables symlink.",
+    )
+    vserial_start_parser.add_argument(
+        "--mute-policy",
+        choices=["buffer", "drop"],
+        default=None,
+        help="How to handle external input during FPB protocol ops "
+        "(default: server config).",
+    )
+
+    # vserial-stop command — remove virtual serial passthrough
+    subparsers.add_parser(
+        "vserial-stop",
+        help="Remove virtual serial passthrough on the server (requires server)",
+    )
+
+    # vserial-status command — query virtual serial passthrough
+    subparsers.add_parser(
+        "vserial-status",
+        help="Query virtual serial passthrough status (requires server)",
+    )
+
     # discover command — list FPBInject WebServers visible via mDNS
     discover_parser = subparsers.add_parser(
         "discover", help="List FPBInject WebServers visible via mDNS"
@@ -2148,6 +2228,12 @@ Notes:
             cli.connect(args.port, args.baudrate)
         elif args.command == "disconnect":
             cli.disconnect()
+        elif args.command == "vserial-start":
+            cli.vserial_start(args.symlink, args.mute_policy)
+        elif args.command == "vserial-stop":
+            cli.vserial_stop()
+        elif args.command == "vserial-status":
+            cli.vserial_status()
         elif args.command == "server-stop":
             port = args.server_port if args.server_port else DEFAULT_PORT
             cli.server_stop(port)
