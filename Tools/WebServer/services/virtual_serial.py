@@ -11,22 +11,21 @@ Creates a PTY (pseudo-terminal) whose slave end is a real device file
 can open. Bytes are transparently forwarded to/from the physical serial
 port, which remains exclusively owned by the DeviceWorker thread.
 
-All PTY I/O is performed from the DeviceWorker thread (single owner),
-so no additional locking is required and the physical-port single-owner
-invariant (ThreadCheckedSerial) is preserved.
+Full passthrough: the device->host stream is mirrored via a tee installed
+on ThreadCheckedSerial, so it captures *all* traffic — including FPB
+binary-protocol I/O (inject / mem / file transfer) that bypasses the
+worker's RX polling path. The host->device stream (external input) is
+polled from the PTY master in the worker loop and written to the port.
 
-During FPB binary-protocol operations (inject / mem / file transfer) the
-passthrough is *muted* by the worker so external bytes cannot corrupt
-protocol frames.
+All PTY I/O is performed from the DeviceWorker thread (single owner), so
+no additional locking is required and the physical-port single-owner
+invariant (ThreadCheckedSerial) is preserved.
 """
 
 import logging
 import os
 
 logger = logging.getLogger(__name__)
-
-# Upper bound for buffered external input while muted (bytes).
-_MAX_MUTE_BUFFER = 4096
 
 
 class VirtualSerialService:
@@ -39,18 +38,19 @@ class VirtualSerialService:
     def __init__(self, device_state):
         self.device = device_state
         self._master_fd = None
+        self._slave_fd = None
         self._slave_name = None
         self._symlink_path = None
         self._enabled = False
-        self._muted = False
-        self._mute_policy = "buffer"  # "buffer" | "drop"
-        self._mute_buffer = bytearray()
 
     # ------------------------------------------------------------------
     # Lifecycle (may be called from request threads)
     # ------------------------------------------------------------------
-    def start(self, symlink="/tmp/fpb-tty0", mute_policy="buffer"):
+    def start(self, symlink="/tmp/fpb-tty0", mute_policy=None):
         """Create the PTY and optional stable symlink.
+
+        ``mute_policy`` is accepted for backward-compatible call sites but
+        ignored: passthrough is now unconditional (full transparency).
 
         Returns (success: bool, error: str|None).
         """
@@ -59,10 +59,6 @@ class VirtualSerialService:
 
         if not hasattr(os, "openpty"):
             return False, "PTY not supported on this platform"
-
-        self._mute_policy = (
-            mute_policy if mute_policy in ("buffer", "drop") else "buffer"
-        )
 
         try:
             master_fd, slave_fd = os.openpty()
@@ -98,9 +94,15 @@ class VirtualSerialService:
             except OSError as e:
                 logger.warning(f"Could not create symlink {symlink}: {e}")
 
-        self._muted = False
-        self._mute_buffer = bytearray()
         self._enabled = True
+
+        # Install a tee on the serial wrapper so ALL device->host bytes are
+        # mirrored to the PTY, including protocol traffic that never reaches
+        # the worker RX polling path.
+        ser = getattr(self.device, "ser", None)
+        if ser is not None and hasattr(ser, "set_tee"):
+            ser.set_tee(rx=self.forward_rx)
+
         logger.info(
             f"Virtual serial started: {self._slave_name}"
             + (f" (-> {self._symlink_path})" if self._symlink_path else "")
@@ -111,6 +113,11 @@ class VirtualSerialService:
         """Tear down the PTY and remove the symlink."""
         if not self._enabled:
             return
+
+        # Remove the tee from the serial wrapper.
+        ser = getattr(self.device, "ser", None)
+        if ser is not None and hasattr(ser, "set_tee"):
+            ser.set_tee(rx=None, tx=None)
 
         if self._symlink_path:
             try:
@@ -129,8 +136,6 @@ class VirtualSerialService:
                 setattr(self, fd_attr, None)
 
         self._enabled = False
-        self._muted = False
-        self._mute_buffer = bytearray()
         logger.info("Virtual serial stopped")
 
     def is_enabled(self):
@@ -142,33 +147,18 @@ class VirtualSerialService:
             "enabled": self._enabled,
             "slave": self._slave_name,
             "symlink": self._symlink_path,
-            "muted": self._muted,
-            "mute_policy": self._mute_policy,
         }
-
-    # ------------------------------------------------------------------
-    # Gate control (worker thread)
-    # ------------------------------------------------------------------
-    def mute(self):
-        """Close the passthrough gate (during FPB protocol operations)."""
-        self._muted = True
-
-    def unmute(self):
-        """Reopen the gate and flush any buffered external input."""
-        self._muted = False
 
     # ------------------------------------------------------------------
     # Data plane (worker thread only)
     # ------------------------------------------------------------------
     def forward_rx(self, data):
-        """Forward physical-serial RX bytes to the PTY master.
+        """Forward device->host bytes to the PTY master (full passthrough).
 
-        Skipped while muted so binary protocol frames don't reach the
-        user's terminal as garbage.
+        Called both from the worker RX path and from the ThreadCheckedSerial
+        tee during protocol I/O, so external tools see the complete stream.
         """
-        if not self._enabled or self._master_fd is None:
-            return
-        if self._muted or not data:
+        if not self._enabled or self._master_fd is None or not data:
             return
         try:
             os.write(self._master_fd, data)
@@ -178,35 +168,16 @@ class VirtualSerialService:
             logger.debug(f"forward_rx write error: {e}")
 
     def poll_tx(self):
-        """Read external input from the PTY master (non-blocking).
+        """Read external (host->device) input from the PTY master.
 
-        Returns bytes to write to the physical port, or None. While muted,
-        input is buffered (bounded) or dropped per policy; the buffer is
-        flushed on the first poll after unmute.
+        Non-blocking. Returns bytes to write to the physical port, or None.
         """
         if not self._enabled or self._master_fd is None:
             return None
-
-        chunk = None
         try:
             chunk = os.read(self._master_fd, 4096)
         except (BlockingIOError, InterruptedError):
-            chunk = None
-        except OSError:
-            chunk = None
-
-        if self._muted:
-            if chunk and self._mute_policy == "buffer":
-                room = _MAX_MUTE_BUFFER - len(self._mute_buffer)
-                if room > 0:
-                    self._mute_buffer.extend(chunk[:room])
             return None
-
-        # Not muted: flush any buffered input first, then current chunk.
-        out = bytearray()
-        if self._mute_buffer:
-            out.extend(self._mute_buffer)
-            self._mute_buffer = bytearray()
-        if chunk:
-            out.extend(chunk)
-        return bytes(out) if out else None
+        except OSError:
+            return None
+        return chunk or None

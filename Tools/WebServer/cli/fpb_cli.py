@@ -1233,17 +1233,11 @@ class FPBCLI:
                 "a device command with --port), then retry."
             )
 
-    def vserial_start(
-        self,
-        symlink: Optional[str] = None,
-        mute_policy: Optional[str] = None,
-    ) -> None:
+    def vserial_start(self, symlink: Optional[str] = None) -> None:
         """Create the virtual serial device on the server (proxy mode only)."""
         try:
             self._require_proxy_for_vserial()
-            self.output_json(
-                self._proxy.vserial_start(symlink=symlink, mute_policy=mute_policy)
-            )
+            self.output_json(self._proxy.vserial_start(symlink=symlink))
         except Exception as e:
             self.output_error(f"Virtual serial start failed: {str(e)}", e)
 
@@ -2085,13 +2079,6 @@ Notes:
         help="Stable symlink path for the virtual serial device "
         "(default: server config, /tmp/fpb-tty0). Empty string disables symlink.",
     )
-    vserial_start_parser.add_argument(
-        "--mute-policy",
-        choices=["buffer", "drop"],
-        default=None,
-        help="How to handle external input during FPB protocol ops "
-        "(default: server config).",
-    )
 
     # vserial-stop command — remove virtual serial passthrough
     subparsers.add_parser(
@@ -2229,7 +2216,7 @@ Notes:
         elif args.command == "disconnect":
             cli.disconnect()
         elif args.command == "vserial-start":
-            cli.vserial_start(args.symlink, args.mute_policy)
+            cli.vserial_start(args.symlink)
         elif args.command == "vserial-stop":
             cli.vserial_stop()
         elif args.command == "vserial-status":

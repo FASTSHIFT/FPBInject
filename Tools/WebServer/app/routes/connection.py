@@ -70,8 +70,7 @@ def _start_vserial(device):
         device.vserial = VirtualSerialService(device)
 
     symlink = getattr(device, "vserial_symlink", "/tmp/fpb-tty0")
-    mute_policy = getattr(device, "vserial_mute_policy", "buffer")
-    success, error = device.vserial.start(symlink=symlink, mute_policy=mute_policy)
+    success, error = device.vserial.start(symlink=symlink)
     if success:
         status = device.vserial.status()
         logger.info(f"Virtual serial ready: {status.get('slave')}")

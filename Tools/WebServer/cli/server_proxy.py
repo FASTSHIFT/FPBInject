@@ -385,9 +385,7 @@ class ServerProxy:
         """Get virtual serial passthrough status via WebServer."""
         return self._get("/api/vserial/status")
 
-    def vserial_start(
-        self, symlink: Optional[str] = None, mute_policy: Optional[str] = None
-    ) -> dict:
+    def vserial_start(self, symlink: Optional[str] = None) -> dict:
         """Start virtual serial passthrough on the server.
 
         The PTY is created in the WebServer process (a long-lived host),
@@ -396,8 +394,6 @@ class ServerProxy:
         payload: Dict[str, Any] = {}
         if symlink is not None:
             payload["symlink"] = symlink
-        if mute_policy is not None:
-            payload["mute_policy"] = mute_policy
         return self._post("/api/vserial/start", payload)
 
     def vserial_stop(self) -> dict:

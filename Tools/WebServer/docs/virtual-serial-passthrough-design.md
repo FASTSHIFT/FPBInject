@@ -90,20 +90,19 @@ flowchart TB
     end
 
     subgraph WS[WebServer 进程]
-        subgraph VSP[VirtualSerialService 新增]
+        subgraph VSP[VirtualSerialService]
             PTY["PTY master_fd"]
             SLAVE["/dev/pts/N + 符号链接 /tmp/fpb-tty0"]
-            GATE[透传闸门 gate]
         end
 
         subgraph Worker[DeviceWorker 单属主线程]
             LOOP[worker loop]
-            RX[RX 分发]
+            TCS["ThreadCheckedSerial<br/>read/write + tee"]
             TXQ[TX 命令队列]
         end
 
-        FANOUT[RX 扇出]
         RAWLOG[raw_serial_log]
+        PROTO["FPBProtocol / FileTransfer<br/>(worker 'call' 内直接读写)"]
     end
 
     SER["物理串口 /dev/ttyUSB0"]
@@ -113,22 +112,21 @@ flowchart TB
     GDB <--> SLAVE
     SLAVE <--> PTY
 
-    SER -- RX --> RX
-    RX --> FANOUT
-    FANOUT --> RAWLOG
-    FANOUT --> PTY
+    SER -- 全部 device→host 字节 --> TCS
+    TCS -- tee rx --> PTY
+    TCS -- 网页终端读路径 --> RAWLOG
     RAWLOG --> WEBTERM[网页终端 SSE]
+    PROTO -. read/write .-> TCS
 
-    PTY -- 外部输入 --> GATE
-    GATE -- 放行 --> TXQ
+    PTY -- 外部输入 host→device --> POLL[poll_tx]
+    POLL --> TXQ
     WEBSEND["/api/serial/send"] --> TXQ
     CLI[fpb_cli 代理] --> TXQ
-    TXQ --> SER
-
-    GATE -. 注入期间静音 .- INJLOCK[注入互斥标志]
+    TXQ --> TCS
+    TCS --> SER
 ```
 
-核心思想：**虚拟串口是 RX 扇出的又一个订阅者，TX 的又一个来源**，全部汇入既有的单属主 worker 线程，天然与网页/CLI 共存。
+核心思想：**在 `ThreadCheckedSerial` 的 `read()` 出口挂一个 tee**，把所有 device→host 字节（含 FPB 协议帧）镜像给 PTY。这样无论协议层在 worker `"call"` 里怎么直接读写串口，虚拟串口都能拿到**全量**数据流。外部输入则由 `poll_tx` 在 worker 循环里读出、汇入既有 TX 通道。全部 I/O 都在单属主 worker 线程内串行执行，天然与网页/CLI 共存，无需额外锁。
 
 ## 5. 详细设计
 
@@ -144,80 +142,73 @@ class VirtualSerialService:
         self._slave_name = None       # /dev/pts/N
         self._symlink_path = None      # /tmp/fpb-tty0（稳定别名）
         self._enabled = False
-        self._muted = False            # 注入期间闸门关闭
 
     def start(self, symlink="/tmp/fpb-tty0") -> tuple[bool, str]:
-        """openpty() 建主从对，设为 raw + 非阻塞，建符号链接。"""
+        """openpty() 建主从对，设为 raw + 非阻塞，建符号链接；
+        并在 device.ser（ThreadCheckedSerial）上挂 rx tee = forward_rx。"""
 
     def stop(self):
-        """关闭 master_fd，删除符号链接。"""
+        """卸载 tee，关闭 master_fd，删除符号链接。"""
 
     # 由 worker 线程调用（单属主，无需锁）
     def forward_rx(self, data: bytes):
-        """物理串口 RX → PTY master（非阻塞写，忽略 EAGAIN）。"""
+        """device→host 字节 → PTY master（非阻塞写，背压时丢弃，绝不阻塞 worker）。
+        既被 worker RX 路径调用，也被 ThreadCheckedSerial 的 tee 在协议读时调用。"""
 
     def poll_tx(self) -> bytes | None:
-        """从 PTY master 非阻塞读外部输入；闸门关闭时丢弃或缓存。"""
+        """从 PTY master 非阻塞读外部输入（host→device），交给 TX 通道。"""
 ```
 
 要点：
 
-- `os.openpty()` 后用 `tty.setraw(master)` + `termios` 关闭回显/换行转换，保证纯字节透传。
+- `os.openpty()` 后用 `tty.setraw(master/slave)` 关闭回显/换行转换，保证纯字节透传。
 - master_fd 设 `O_NONBLOCK`，读写都在 worker 循环里做，不新开线程（复用现有单线程模型，避免 `ThreadCheckedSerial` 违规）。
 - 符号链接 `/tmp/fpb-tty0` 提供稳定路径，因为 `/dev/pts/N` 的 N 每次不固定。
+- **全量透传的关键**：`start()` 时把 `forward_rx` 注册为 `ThreadCheckedSerial` 的 rx tee。协议层（`FPBProtocol`/`FileTransfer`）在 worker `"call"` 里调用的 `ser.read()` 会同步触发 tee，因此**连注入/文件传输的二进制帧也会完整镜像到 PTY**——不再有"传输时虚拟串口空白"的问题。
 
-### 5.2 接入 DeviceWorker 循环
+### 5.2 接入 ThreadCheckedSerial（tee）与 DeviceWorker 循环
 
-在 `services/device_worker.py::_worker_loop` 中，串口读写已在此线程完成，只需插入两处扇出：
+**device→host（全量透传）** 的关键改动在 `utils/serial.py::ThreadCheckedSerial`：`read()`/`write()` 显式实现，`read()` 返回时把字节同步喂给已注册的 rx tee。
 
 ```python
-# _process_serial_rx() 内，读到 raw_data 后：
-self._add_raw_serial_log(data_str)      # 现有：网页/日志文件
-if self.device.vserial and self.device.vserial._enabled:
-    self.device.vserial.forward_rx(raw_data)   # 新增：透传给 PTY
+# utils/serial.py
+class ThreadCheckedSerial:
+    def set_tee(self, tx=None, rx=None):
+        self._tee_tx, self._tee_rx = tx, rx
 
-# _worker_loop() 内，每轮 tick 增加：
-if self.device.vserial and self.device.vserial._enabled:
-    ext = self.device.vserial.poll_tx()        # 外部程序 → 设备
-    if ext:
-        self._serial_write_direct(ext)         # 复用现有 TX 通道
+    def read(self, *a, **k):
+        self._check_thread("read")
+        data = self._ser.read(*a, **k)
+        if data and self._tee_rx:
+            try: self._tee_rx(data)     # → vserial.forward_rx
+            except Exception: pass
+        return data
 ```
 
-因为 RX 分发和 PTY 读写都在同一个 worker 线程，**串口的单属主约束不被破坏**，也不需要新锁。
+`VirtualSerialService.start()` 里 `device.ser.set_tee(rx=self.forward_rx)`，`stop()` 里 `set_tee(rx=None)`。
 
-### 5.3 与 FPB 二进制协议的仲裁（关键）
+**host→device** 仍在 worker 循环里轮询 PTY：
 
-FPB 注入/内存/文件传输走的是 `core/serial_protocol.py` 的二进制帧协议，运行在 worker 线程回调里，同样独占串口。如果此时外部程序往 PTY 写入字节，会**插进协议帧中间导致 CRC 失败**；反之协议的二进制响应转发给终端只是乱码（无害但可静音）。
-
-> **实现说明**：本方案已落地。闸门的切换**集中在 DeviceWorker 的 `"call"` 命令执行处**——所有 FPB 协议操作（注入/内存/文件传输）都是以 `"call"` 形式排入 worker 队列执行的，因此在执行 `"call"` 前 `mute()`、执行后 `unmute()`，即可一处覆盖全部协议操作，无需在每个 `enter_fl_mode`/inject 入口分别打点。交互式 shell 的自由文本（`"write"` 命令）不触发静音。
-
-仲裁策略——**透传闸门（gate）**：
-
-```mermaid
-sequenceDiagram
-    participant EXT as 外部程序(PTY)
-    participant VSP as VirtualSerialService
-    participant FPB as FPBProtocol
-    participant SER as 物理串口
-
-    Note over FPB: 注入开始，置 mute=True
-    EXT->>VSP: write "hello" (poll_tx)
-    VSP->>VSP: muted → 缓存/丢弃(可配)
-    FPB->>SER: 二进制帧 (Base64+CRC)
-    SER-->>FPB: [FLOK]
-    Note over FPB: 注入结束，置 mute=False
-    VSP->>SER: flush 缓存的 "hello"
-    SER-->>VSP: RX 日志文本
-    VSP->>EXT: forward_rx
+```python
+# _worker_loop() 每轮 tick：
+data = self.device.vserial.poll_tx()   # 外部程序输入
+if data:
+    self._serial_write_direct(data)    # 复用现有 TX 通道
 ```
 
-- 进入 FPB 协议操作前（`FPBProtocol.enter_fl_mode` / 注入 / 传输开始），调用 `vserial.mute()`；结束后 `vserial.unmute()`。
-- mute 期间：
-  - **外部→设备**：默认缓存到有界队列（上限如 4KB），解除后 flush；可配为直接丢弃。
-  - **设备→外部**：默认静音协议帧（避免乱码污染用户终端），可配为透传。
-- 复用现有的注入活动标志（`device.inject_active`）与文件传输状态，集中在一处切换 gate，避免散落。
+因为 tee 回调在 `ser.read()` 的调用栈内同步执行、PTY 读写也在 worker 循环里，**全部串口 I/O 仍在单属主 worker 线程**，单属主约束不被破坏，无需新锁。worker 的 `_process_serial_rx()` 也会经 `ser.read()` 触发 tee，因此**无需**再单独调用 `forward_rx`（避免重复写入）。
 
-> 设计取舍：FPB 协议本身不频繁（注入/传输是离散动作），日常交互式 shell 流量占绝大多数时间，因此闸门只在少数时刻关闭，用户体验基本无感。
+### 5.3 全量透传，不做静音（设计演进）
+
+> **早期方案（已废弃）**：曾在 FPB 协议操作期间"静音（mute）"透传，担心外部输入插进二进制帧导致 CRC 失败。但该方案把 device→host 方向也一并静音，导致**文件传输/注入时虚拟串口一片空白**——违背了"像 fpb_cli 一样完全透传"的目标。故移除 mute，改为 tee 全量透传。
+
+现方案下：
+
+- **device→host**：经 tee **无条件全量镜像**，包括 FPB 二进制帧。外部工具（minicom 等）看到与网页终端完全一致的数据流。
+- **host→device**：外部输入原样写入物理串口（`poll_tx` → TX 通道），语义即"你敲什么就发什么"。
+- **协议帧污染的处理**：若用户在传输进行中恰好从外部敲入字节，可能触发该次传输的一次 CRC 重试——由现有 `transfer_max_retries` 机制自愈。这是完全透传应有的语义，属可接受的极端边缘情况，不再为它牺牲透传能力。
+
+**线程安全**：与 mute 无关。所有串口 I/O（tee 回调、PTY 读写、协议读写）都在单一 worker 线程内同步串行，`ThreadCheckedSerial` 还会强制校验属主线程。`forward_rx` 的 `os.write` 为非阻塞，PTY 缓冲满时丢弃片段（`BlockingIOError`），绝不阻塞 worker。
 
 ### 5.4 生命周期
 
@@ -225,12 +216,9 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> Disabled
     Disabled --> Starting: connect 且 vserial_enable=true
-    Starting --> Active: openpty 成功, 建符号链接
+    Starting --> Active: openpty 成功 + 建符号链接 + 挂 tee
     Starting --> Disabled: 失败(Windows/权限)
-    Active --> Muted: FPB 协议开始
-    Muted --> Active: FPB 协议结束
-    Active --> Disabled: disconnect / stop
-    Muted --> Disabled: disconnect
+    Active --> Disabled: disconnect / stop（卸 tee、删符号链接）
     Disabled --> [*]
 ```
 
@@ -248,20 +236,20 @@ stateDiagram-v2
 |-----|------|------|------|
 | `vserial_enable` | BOOLEAN | `false` | 连接后是否创建虚拟串口 |
 | `vserial_symlink` | STRING | `/tmp/fpb-tty0` | 稳定符号链接路径（空则不建） |
-| `vserial_mute_on_fpb` | BOOLEAN | `true` | FPB 协议期间关闭闸门 |
-| `vserial_mute_policy` | SELECT | `buffer` | `buffer`（缓存后补发）/ `drop`（丢弃） |
-| `vserial_tcp_enable` | BOOLEAN | `false` | 是否同时开 TCP 透传（见 §7） |
-| `vserial_tcp_port` | NUMBER | `0` | TCP 透传端口，0=自动分配 |
+| `vserial_tcp_enable` | BOOLEAN | `false` | 是否同时开 TCP 透传（见 §7，规划中） |
+| `vserial_tcp_port` | NUMBER | `0` | TCP 透传端口，0=自动分配（规划中） |
+
+> 注：早期设计的 `vserial_mute_on_fpb` / `vserial_mute_policy` 已随 mute 机制移除。当前落地的持久化项为 `vserial_enable`、`vserial_symlink`。
 
 ### 5.6 API 路由（`app/routes/connection.py` 或新增 `vserial.py`）
 
 | 方法 | 路径 | 作用 |
 |------|------|------|
-| GET | `/api/vserial/status` | 返回是否启用、slave 路径、符号链接、TCP 端口、mute 状态 |
+| GET | `/api/vserial/status` | 返回是否启用、slave 路径、符号链接 |
 | POST | `/api/vserial/start` | 运行时启用（无需重连） |
 | POST | `/api/vserial/stop` | 运行时停用 |
 
-`/api/status` 响应中附带 `vserial` 字段，供前端在状态栏显示当前虚拟串口路径与连接数，方便用户复制路径。
+`/api/status` 响应中附带 `vserial` 字段，供前端在状态栏显示当前虚拟串口路径，方便用户复制路径。
 
 ### 5.7 前端
 
@@ -282,24 +270,20 @@ sequenceDiagram
 
     MINI->>W: 写 "ls\n" (PTY master)
     W->>SER: TX "ls\n"
-    SER-->>W: RX 目录列表
+    SER-->>W: RX 目录列表 (ser.read)
+    Note over W: ser.read 触发 tee
     W-->>WEB: SSE 推送(raw_serial_log)
     W-->>MINI: forward_rx(PTY)
 
     CLI->>W: POST /api/fpb/inject
-    Note over W: inject_active=true → gate mute
-    W->>SER: 二进制注入帧
-    MINI->>W: 写 "top\n"
-    Note over W: muted → 缓存
+    W->>SER: 二进制注入帧 (ser.write)
+    SER-->>W: 协议响应 (ser.read → tee)
+    W-->>WEB: SSE (raw_serial_log)
+    W-->>MINI: forward_rx(PTY) —— 协议帧也全量镜像
     SER-->>W: [FLOK]
-    Note over W: 注入结束 → unmute, flush
-    W->>SER: TX 缓存的 "top\n"
-    SER-->>W: RX
-    W-->>WEB: SSE
-    W-->>MINI: forward_rx
 ```
 
-三者的公共汇聚点始终是**单属主 worker 线程**，这是共存正确性的根本保证。
+三者的公共汇聚点始终是**单属主 worker 线程**，这是共存正确性的根本保证。注入/文件传输期间，协议帧经 tee **同样全量镜像**到 minicom，不再静音。
 
 ## 7. TCP 透传补充方案（跨平台）
 
@@ -307,7 +291,7 @@ Windows 无 PTY。为覆盖全平台，`VirtualSerialService` 可同时监听一
 
 - 外部通过 `socat pty,link=/dev/ttyV0 tcp:127.0.0.1:<port>` 造本地设备文件，或用 `rfc2217://` 直连。
 - Socket accept/read 放在 worker 循环里用 `select` 非阻塞轮询，或单独 reader 线程仅做 socket→队列（不碰串口，规避 `ThreadCheckedSerial`）。
-- 与 PTY 共用同一套 gate/mute 逻辑与 RX 扇出。
+- 与 PTY 共用同一套 tee 全量透传逻辑（device→host 经 tee 镜像，host→device 汇入 TX）。
 
 > 安全：TCP 透传默认仅绑定 `127.0.0.1`，避免把设备暴露到 LAN。若确需远程，应复用现有 token 鉴权与 `auto_ban` 机制，并在文档明确风险。
 
@@ -325,8 +309,8 @@ Windows 无 PTY。为覆盖全平台，`VirtualSerialService` 可同时监听一
 
 ```bash
 fpb_cli.py vserial-start                       # 让服务器创建 PTY
-fpb_cli.py vserial-start --symlink /tmp/tty0 --mute-policy drop
-fpb_cli.py vserial-status                      # 查询 slave 路径 / 静音状态
+fpb_cli.py vserial-start --symlink /tmp/tty0   # 自定义符号链接
+fpb_cli.py vserial-status                      # 查询 slave 路径
 fpb_cli.py vserial-stop                        # 移除 PTY
 ```
 
@@ -377,28 +361,27 @@ sequenceDiagram
 | 阶段 | 内容 | 改动范围 | 风险 |
 |------|------|----------|------|
 | P1 | `VirtualSerialService`（PTY 创建/收发/符号链接） | 新增 `services/virtual_serial.py` | 低 |
-| P2 | 接入 worker RX 扇出 + TX 轮询 | 改 `services/device_worker.py` | 中 |
-| P3 | gate/mute 仲裁，接 `inject_active`/传输状态 | 改 `serial_protocol.py`、`file_transfer.py` 调用点 | 中 |
+| P2 | tee 全量透传（`ThreadCheckedSerial.set_tee`）+ worker TX 轮询 | 改 `utils/serial.py`、`services/device_worker.py` | 中 |
 | P4 | 配置项 + 连接/断开/自启动生命周期 | 改 `config_schema.py`、`connection.py`、`main.py` | 低 |
-| P5 | API 路由 + 前端状态显示 | 新增 `app/routes/vserial.py`、前端状态栏 | 低 |
+| P5 | API 路由 + 前端状态显示 | `app/routes/connection.py`、前端状态栏 | 低 |
 | P6 | TCP 透传（跨平台） | 扩展 `virtual_serial.py` | 中 |
 
-建议 P1→P2→P4 先打通"能创建、能透传、能随连接生命周期启停"的最小闭环，再做 P3 仲裁与 P5/P6 增强。
+P1/P2/P4/P5 已落地并在真实设备上验证全量透传。P6（TCP 跨平台）待做。原计划中的"P3 gate/mute 仲裁"已废弃——改用 tee 全量透传，不再静音。
 
 ## 10. 测试要点
 
 遵循 `webserver-dev.md`：`tests/` 下新增 `test_virtual_serial.py`，mock `os.openpty`/`os.read`/`os.write`。
 
-- PTY 建立后 `forward_rx` 把 RX 字节写入 master，slave 端可读到。
+- PTY 建立后 `forward_rx` 把字节写入 master，slave 端可读到。
 - `poll_tx` 从 master 读到外部输入并进入 TX 队列。
-- mute 期间 `buffer` 策略缓存、`drop` 策略丢弃；unmute 后 buffer 补发。
-- FPB 注入进行时外部写入不污染协议帧（用 mock 协议交换验证 gate 生效）。
-- 断开时符号链接被清理、master_fd 关闭。
-- 三方并发（网页 SSE + PTY + 代理注入）冒烟测试。
+- `start()` 在 `ThreadCheckedSerial` 上挂 rx tee = `forward_rx`；`stop()` 卸载。
+- 经 tee 喂入的字节（模拟协议层 `ser.read()`）能镜像到 slave —— 验证注入/传输期间的全量透传。
+- 断开时符号链接被清理、master_fd 关闭、tee 卸载。
+- 三方并发（网页 SSE + PTY + 代理注入）冒烟测试（真实设备已验证）。
 
 ## 11. 已知限制
 
 - **Windows 无原生 PTY**：需用 TCP 透传 + `socat`/`com0com`，或第三方虚拟串口驱动。
 - PTY slave 路径 `/dev/pts/N` 不固定，依赖符号链接提供稳定别名；符号链接需要 `/tmp` 可写。
 - 单消费者假设：PTY 主从是点对点，多个外部程序同时打开同一 slave 行为未定义；如需多客户端应走 TCP 多连接扇出。
-- mute 期间的交互延迟：注入/大文件传输时，外部终端输入会被短暂缓存，属预期行为。
+- 全量透传语义：若在文件传输/注入进行中从外部敲入字节，可能触发该次传输的一次 CRC 重试（由 `transfer_max_retries` 自愈）。这是"完全透传"的预期行为，不再静音。
