@@ -282,7 +282,6 @@ def restore_state():
             device.vserial = VirtualSerialService(device)
         vs_ok, vs_err = device.vserial.start(
             symlink=getattr(device, "vserial_symlink", "/tmp/fpb-tty0"),
-            mute_policy=getattr(device, "vserial_mute_policy", "buffer"),
         )
         if vs_ok:
             logger.info(f"Virtual serial ready: {device.vserial.status().get('slave')}")

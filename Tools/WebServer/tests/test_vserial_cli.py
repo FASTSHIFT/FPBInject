@@ -38,8 +38,6 @@ class TestServerProxyVSerial(unittest.TestCase):
                 "enabled": True,
                 "slave": "/dev/pts/7",
                 "symlink": "/tmp/fpb-tty0",
-                "muted": False,
-                "mute_policy": "buffer",
             },
             "/api/vserial/start": {
                 "success": True,
@@ -69,9 +67,7 @@ class TestServerProxyVSerial(unittest.TestCase):
         self.assertEqual(result["slave"], "/dev/pts/7")
 
     def test_vserial_start(self):
-        result = self._proxy().vserial_start(
-            symlink="/tmp/fpb-tty0", mute_policy="buffer"
-        )
+        result = self._proxy().vserial_start(symlink="/tmp/fpb-tty0")
         self.assertTrue(result["success"])
         self.assertTrue(result["enabled"])
 
@@ -142,11 +138,9 @@ class TestCLIVSerialDispatch(unittest.TestCase):
 
     def test_start_dispatch_passes_params(self):
         cli = self._cli_with_mock_proxy()
-        out = self._run(cli, "vserial_start", "/tmp/mytty", "drop")
+        out = self._run(cli, "vserial_start", "/tmp/mytty")
         self.assertTrue(out["success"])
-        cli._proxy.vserial_start.assert_called_once_with(
-            symlink="/tmp/mytty", mute_policy="drop"
-        )
+        cli._proxy.vserial_start.assert_called_once_with(symlink="/tmp/mytty")
 
     def test_stop_dispatch(self):
         cli = self._cli_with_mock_proxy()

@@ -391,18 +391,6 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         show_in_sidebar=False,
         order=110,
     ),
-    ConfigItem(
-        key="vserial_mute_policy",
-        label="Virtual Serial Mute Policy",
-        group=ConfigGroup.CONNECTION,
-        config_type=ConfigType.SELECT,
-        default="buffer",
-        options=[("buffer", "Buffer"), ("drop", "Drop")],
-        tooltip="How to handle external input during FPB protocol operations: "
-        "buffer (replay after) or drop.",
-        show_in_sidebar=False,
-        order=120,
-    ),
     # === Analysis Tools ===
     ConfigItem(
         key="external_gdb_port",

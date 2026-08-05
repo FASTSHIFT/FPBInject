@@ -6,6 +6,7 @@ Virtual serial passthrough tests.
 
 import os
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,9 +14,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.virtual_serial import VirtualSerialService  # noqa: E402
 
 
-class _FakeDevice:
+class _FakeSerial:
+    """Minimal stand-in for ThreadCheckedSerial exposing set_tee."""
+
     def __init__(self):
-        self.ser = None
+        self._tee_rx = None
+        self._tee_tx = None
+
+    def set_tee(self, tx=None, rx=None):
+        self._tee_tx = tx
+        self._tee_rx = rx
+
+
+class _FakeDevice:
+    def __init__(self, ser=None):
+        self.ser = ser
 
 
 @unittest.skipUnless(hasattr(os, "openpty"), "PTY not supported on this platform")
@@ -25,7 +38,6 @@ class TestVirtualSerialService(unittest.TestCase):
     def setUp(self):
         self.device = _FakeDevice()
         self.svc = VirtualSerialService(self.device)
-        # Use a unique temp symlink to avoid clobbering a real one.
         self._symlink = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), f".vtty-{os.getpid()}"
         )
@@ -38,8 +50,8 @@ class TestVirtualSerialService(unittest.TestCase):
         except OSError:
             pass
 
-    def _start(self, mute_policy="buffer"):
-        ok, err = self.svc.start(symlink=self._symlink, mute_policy=mute_policy)
+    def _start(self):
+        ok, err = self.svc.start(symlink=self._symlink)
         self.assertTrue(ok, err)
         return err
 
@@ -73,65 +85,42 @@ class TestVirtualSerialService(unittest.TestCase):
         try:
             slave.write(b"ls\n")
             slave.flush()
-            # Small wait for data to become available on master.
-            import time
-
             time.sleep(0.05)
             out = self.svc.poll_tx()
             self.assertEqual(out, b"ls\n")
         finally:
             slave.close()
 
-    def test_mute_blocks_rx_forwarding(self):
-        self._start()
-        slave = open(self.svc.status()["slave"], "rb", buffering=0)
+    def test_tee_installed_on_start_and_removed_on_stop(self):
+        """Full passthrough: start installs an rx tee; stop removes it."""
+        ser = _FakeSerial()
+        device = _FakeDevice(ser=ser)
+        svc = VirtualSerialService(device)
         try:
-            os.set_blocking(slave.fileno(), False)
-            self.svc.mute()
-            self.svc.forward_rx(b"frame")
-            # Muted: nothing forwarded, non-blocking read yields no data.
+            ok, err = svc.start(symlink=self._symlink)
+            self.assertTrue(ok, err)
+            # The tee must be wired to forward_rx so protocol I/O is mirrored.
+            self.assertEqual(ser._tee_rx, svc.forward_rx)
+        finally:
+            svc.stop()
+        self.assertIsNone(ser._tee_rx)
+
+    def test_tee_rx_mirrors_protocol_bytes_to_slave(self):
+        """Bytes fed through the tee (as protocol reads would) reach the slave."""
+        ser = _FakeSerial()
+        device = _FakeDevice(ser=ser)
+        svc = VirtualSerialService(device)
+        try:
+            svc.start(symlink=self._symlink)
+            slave = open(svc.status()["slave"], "rb", buffering=0)
             try:
-                data = slave.read(5)
-            except (BlockingIOError, OSError):
-                data = None
-            self.assertFalse(data)
+                # Simulate a protocol-layer ser.read() delivering bytes via tee.
+                ser._tee_rx(b"[FLOK]data")
+                self.assertEqual(slave.read(10), b"[FLOK]data")
+            finally:
+                slave.close()
         finally:
-            slave.close()
-
-    def test_mute_buffers_then_flushes(self):
-        self._start(mute_policy="buffer")
-        slave = open(self.svc.status()["slave"], "wb", buffering=0)
-        try:
-            self.svc.mute()
-            slave.write(b"abc")
-            slave.flush()
-            import time
-
-            time.sleep(0.05)
-            # While muted, poll returns nothing (buffered).
-            self.assertIsNone(self.svc.poll_tx())
-            # After unmute, buffered bytes are flushed.
-            self.svc.unmute()
-            self.assertEqual(self.svc.poll_tx(), b"abc")
-        finally:
-            slave.close()
-
-    def test_mute_drop_policy_discards(self):
-        self._start(mute_policy="drop")
-        slave = open(self.svc.status()["slave"], "wb", buffering=0)
-        try:
-            self.svc.mute()
-            slave.write(b"abc")
-            slave.flush()
-            import time
-
-            time.sleep(0.05)
-            self.assertIsNone(self.svc.poll_tx())
-            self.svc.unmute()
-            # Dropped: nothing to flush.
-            self.assertIsNone(self.svc.poll_tx())
-        finally:
-            slave.close()
+            svc.stop()
 
     def test_stop_removes_symlink_and_disables(self):
         self._start()
@@ -143,7 +132,6 @@ class TestVirtualSerialService(unittest.TestCase):
         self.assertIsNone(self.svc.poll_tx())
 
     def test_forward_rx_when_disabled_noop(self):
-        # Should not raise.
         self.svc.forward_rx(b"data")
 
 

@@ -54,6 +54,45 @@ class ThreadCheckedSerial:
         self._ser = ser
         self._owner_thread = None
         self._owner_thread_name = None
+        # Optional tee sinks for full passthrough (e.g. virtual serial).
+        # _tee_tx(bytes): host->device bytes actually written.
+        # _tee_rx(bytes): device->host bytes actually read.
+        self._tee_tx = None
+        self._tee_rx = None
+
+    def set_tee(self, tx=None, rx=None):
+        """Install tee callbacks that observe all raw serial I/O.
+
+        Both callbacks receive raw ``bytes`` and are invoked from the owner
+        (worker) thread. They must not raise or block. Used to mirror the
+        full byte stream — including FPB protocol traffic that bypasses the
+        RX polling path — to the virtual serial passthrough.
+        """
+        self._tee_tx = tx
+        self._tee_rx = rx
+
+    def read(self, *args, **kwargs):
+        self._check_thread("read")
+        data = self._ser.read(*args, **kwargs)
+        if data and self._tee_rx is not None:
+            try:
+                self._tee_rx(data)
+            except Exception:
+                pass
+        return data
+
+    def write(self, data, *args, **kwargs):
+        self._check_thread("write")
+        n = self._ser.write(data, *args, **kwargs)
+        if data and self._tee_tx is not None:
+            try:
+                # Normalize to bytes for the sink.
+                self._tee_tx(
+                    data if isinstance(data, (bytes, bytearray)) else bytes(data)
+                )
+            except Exception:
+                pass
+        return n
 
     def bind_thread(self):
         """Explicitly bind the current thread as the owner."""
