@@ -19,7 +19,9 @@ from fpbinject.core.config_schema import (
     get_config_defaults,
 )
 
-# Config file path (relative to WebServer directory, not core/)
+# Default config file path (legacy location: package/WebServer directory).
+# Retained as the fallback when no explicit --config is provided. Callers
+# (main.py) may override via AppState.configure(config_path=...).
 CONFIG_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json"
 )
@@ -247,7 +249,24 @@ class AppState:
         self.generated_patch = None
         self.patch_template = self._get_default_patch_template()
 
+        # Config path: defaults to the legacy package-dir location for
+        # backward compatibility. None means "in-memory only" (no load/save).
+        # main.py may call configure() after parsing CLI args.
+        self.config_path = CONFIG_FILE
+
         # Load config from file
+        self.first_launch = False
+        self.load_config()
+
+    def configure(self, config_path):
+        """Set the config path and (re)load. Call after parsing CLI args.
+
+        Args:
+            config_path: Path to the config file, or None for in-memory mode
+                (no persistence). A non-existent path triggers first-launch
+                behavior and will be created on the next save_config().
+        """
+        self.config_path = config_path
         self.first_launch = False
         self.load_config()
 
@@ -282,33 +301,57 @@ class AppState:
 """
 
     def load_config(self):
-        """Load configuration from JSON file."""
+        """Load configuration from the JSON file at self.config_path.
+
+        In-memory mode (config_path is None): skip loading, use defaults.
+        Missing file: mark first_launch and use defaults.
+        """
         logger = logging.getLogger(__name__)
-        if not os.path.exists(CONFIG_FILE):
-            logger.info(f"Config file not found: {CONFIG_FILE}, using defaults")
+        path = self.config_path
+
+        if path is None:
+            logger.info("In-memory config mode (no --config): using defaults")
+            self.first_launch = True
+            return
+
+        if not os.path.exists(path):
+            logger.info(f"Config file not found: {path}, using defaults")
             self.first_launch = True
             return
 
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 config = json.load(f)
 
             self.device.from_dict(config)
-            logger.info(f"Config loaded from {CONFIG_FILE}")
+            logger.info(f"Config loaded from {path}")
         except Exception as e:
             logger.exception(f"Error loading config: {e}")
 
     def save_config(self):
-        """Save configuration to JSON file."""
+        """Save configuration to the JSON file at self.config_path.
+
+        No-op in in-memory mode (config_path is None). Creates parent
+        directories as needed on first save.
+        """
         logger = logging.getLogger(__name__)
+        path = self.config_path
+
+        if path is None:
+            return  # in-memory mode: nothing to persist
+
         try:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+
             config = {"version": CONFIG_VERSION}
             config.update(self.device.to_dict())
 
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
 
-            logger.info(f"Config saved to {CONFIG_FILE}")
+            logger.info(f"Config saved to {path}")
         except Exception as e:
             logger.exception(f"Error saving config: {e}")
 

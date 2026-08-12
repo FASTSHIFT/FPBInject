@@ -148,8 +148,8 @@ class TestAppState(unittest.TestCase):
             config_path = f.name
 
         try:
-            with patch("fpbinject.core.state.CONFIG_FILE", config_path):
-                app_state.save_config()
+            app_state.config_path = config_path
+            app_state.save_config()
 
             with open(config_path, "r") as f:
                 saved = json.load(f)
@@ -162,11 +162,13 @@ class TestAppState(unittest.TestCase):
 
     def test_load_config_not_found(self):
         """Test loading config when file not found"""
-        with patch("fpbinject.core.state.CONFIG_FILE", "/nonexistent/config.json"):
+        with patch("fpbinject.core.state.AppState.load_config"):
             app_state = AppState()
+        app_state.configure("/nonexistent/config.json")
 
         # Should use defaults
         self.assertEqual(app_state.device.baudrate, 115200)
+        self.assertTrue(app_state.first_launch)
 
     def test_load_config_success(self):
         """Test loading config successfully"""
@@ -175,8 +177,8 @@ class TestAppState(unittest.TestCase):
             config_path = f.name
 
         try:
-            with patch("fpbinject.core.state.CONFIG_FILE", config_path):
-                app_state = AppState()
+            app_state = AppState()
+            app_state.configure(config_path)
 
             self.assertEqual(app_state.device.port, "/dev/ttyACM0")
             self.assertEqual(app_state.device.baudrate, 460800)
@@ -190,8 +192,9 @@ class TestAppState(unittest.TestCase):
             config_path = f.name
 
         try:
-            with patch("fpbinject.core.state.CONFIG_FILE", config_path):
+            with patch("fpbinject.core.state.AppState.load_config"):
                 app_state = AppState()
+            app_state.configure(config_path)
 
             # Should use defaults on error
             self.assertEqual(app_state.device.baudrate, 115200)

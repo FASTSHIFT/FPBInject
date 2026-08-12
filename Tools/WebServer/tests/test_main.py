@@ -346,6 +346,7 @@ class TestMain(unittest.TestCase):
     def test_main_port_in_use(self, mock_args, mock_check, mock_restore, mock_create):
         """Test main exits when port is in use"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -370,6 +371,7 @@ class TestMain(unittest.TestCase):
     ):
         """Test main starts server successfully"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -399,6 +401,7 @@ class TestMain(unittest.TestCase):
     ):
         """Test main skips port check when skip_port_check is True"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -439,6 +442,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """Browser should auto-open when --no-browser is not set"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -473,6 +477,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """Browser should NOT open when --no-browser is set"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -502,6 +507,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """Browser URL should use the custom port"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=9090,
             debug=False,
@@ -535,6 +541,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """Startup banner should contain server URL"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -567,6 +574,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """Startup banner should show custom port"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=8080,
             debug=False,
@@ -596,6 +604,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """Startup banner should show LAN network URL"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -631,6 +640,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """Startup banner shows 'unavailable' when LAN IP detection fails"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -665,6 +675,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
     ):
         """LAN IP detection should close the socket after use"""
         mock_args.return_value = Mock(
+            config=None,
             host="0.0.0.0",
             port=5500,
             debug=False,
@@ -839,6 +850,7 @@ class TestMainPortConflict(unittest.TestCase):
             skip_port_check=False,
             no_browser=True,
             no_auth=True,
+            config=None,
         )
         defaults.update(overrides)
         return Mock(**defaults)
