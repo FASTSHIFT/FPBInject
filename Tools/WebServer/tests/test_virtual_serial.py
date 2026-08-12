@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.virtual_serial import (  # noqa: E402
+from fpbinject.services.virtual_serial import (  # noqa: E402
     VirtualSerialService,
     default_symlink_for_port,
 )

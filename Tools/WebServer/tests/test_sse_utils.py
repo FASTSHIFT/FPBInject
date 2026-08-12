@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.utils.sse import sse_generator, sse_response  # noqa: E402
+from fpbinject.app.utils.sse import sse_generator, sse_response  # noqa: E402
 
 
 class TestSSEGenerator(unittest.TestCase):

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch, call
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.serial_protocol import FPBProtocol, Platform
+from fpbinject.core.serial_protocol import FPBProtocol, Platform
 
 
 class TestFPBProtocolWakeupShell(unittest.TestCase):
@@ -195,7 +195,7 @@ class TestParseReadResponse(unittest.TestCase):
         """Parse valid READ response with base64 + CRC."""
         import base64
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         raw = b"\x01\x02\x03\x04"
         b64 = base64.b64encode(raw).decode()
@@ -254,7 +254,7 @@ class TestReadMemory(unittest.TestCase):
         """Read data that fits in one chunk."""
         import base64
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         addr = 0x20000000
         raw = b"\xaa" * 16
@@ -273,7 +273,7 @@ class TestReadMemory(unittest.TestCase):
         """Read data spanning multiple chunks."""
         import base64
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.device.download_chunk_size = 4
         base_addr = 0x20000000
@@ -322,7 +322,7 @@ class TestReadMemory(unittest.TestCase):
         """Succeed after transient failure."""
         import base64
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         addr = 0x20000000
         raw = b"\xcc" * 16
@@ -408,7 +408,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """write_memory CRC must cover addr + len + data."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] WRITE 4 bytes")
 
@@ -428,7 +428,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """upload CRC must cover offset + len + data."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] Uploaded 4 bytes")
 
@@ -448,7 +448,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """_parse_read_response must verify CRC over addr + len + data."""
         import base64
         import struct
-        from utils.crc import crc16, crc16_update
+        from fpbinject.utils.crc import crc16, crc16_update
 
         addr = 0x20002000
         raw = b"\xaa\xbb\xcc\xdd"
@@ -470,7 +470,7 @@ class TestEnhancedCRC(unittest.TestCase):
         import re
         import struct
         import base64
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         addr = 0x20000100
         length = 16
@@ -497,7 +497,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """patch must send -r covering comp + orig + target."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] Patch 0")
 
@@ -516,7 +516,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """tpatch must send -r covering comp + orig + target."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] Trampoline 0")
 
@@ -535,7 +535,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """dpatch must send -r covering comp + orig + target."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] DebugMon 0")
 
@@ -552,7 +552,7 @@ class TestEnhancedCRC(unittest.TestCase):
 
     def test_crc16_update_chaining(self):
         """crc16_update chaining must equal crc16 on concatenated data."""
-        from utils.crc import crc16, crc16_update
+        from fpbinject.utils.crc import crc16, crc16_update
 
         a = b"\x01\x02\x03\x04"
         b = b"\x05\x06\x07\x08"
@@ -566,7 +566,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """alloc must send -r covering size(4B)."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(
             return_value="[FLOK] Allocated 256 at 0x20001000"
@@ -587,7 +587,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """unpatch (single slot) must send -r covering comp(4B)."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] Cleared slot 2")
 
@@ -618,7 +618,7 @@ class TestEnhancedCRC(unittest.TestCase):
         """enable (single slot) must send -r covering comp(4B) + enable(4B)."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.protocol.send_cmd = MagicMock(return_value="[FLOK] Enabled patch 1")
 

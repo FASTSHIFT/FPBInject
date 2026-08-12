@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from version import (
+from fpbinject.version import (
     VERSION_MAJOR,
     VERSION_MINOR,
     VERSION_PATCH,

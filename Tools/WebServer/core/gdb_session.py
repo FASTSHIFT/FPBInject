@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 from pygdbmi.IoManager import IoManager
 
-from utils.toolchain import get_tool_path, get_subprocess_env
+from fpbinject.utils.toolchain import get_tool_path, get_subprocess_env
 
 logger = logging.getLogger(__name__)
 

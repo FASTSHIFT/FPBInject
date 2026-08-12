@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.routes.transfer import bp  # noqa: E402
+from fpbinject.app.routes.transfer import bp  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=10.0):
@@ -51,11 +51,11 @@ class TestTransferRoutes(unittest.TestCase):
         self.mock_log_warn = Mock()
 
         # Set up patches
-        self.state_patcher = patch("app.routes.transfer.state")
+        self.state_patcher = patch("fpbinject.app.routes.transfer.state")
         self.mock_state = self.state_patcher.start()
         self.mock_state.device = self.mock_device
 
-        self.helpers_patcher = patch("app.routes.transfer._get_helpers")
+        self.helpers_patcher = patch("fpbinject.app.routes.transfer._get_helpers")
         self.mock_helpers = self.helpers_patcher.start()
         self.mock_helpers.return_value = (
             self.mock_log_info,
@@ -66,7 +66,7 @@ class TestTransferRoutes(unittest.TestCase):
         )
 
         self.worker_patcher = patch(
-            "app.routes.transfer.run_in_device_worker",
+            "fpbinject.app.routes.transfer.run_in_device_worker",
             side_effect=mock_run_in_device_worker,
         )
         self.mock_worker = self.worker_patcher.start()
@@ -109,7 +109,9 @@ class TestTransferRoutes(unittest.TestCase):
     def test_transfer_list_worker_timeout(self):
         """Test listing with worker timeout."""
         self.worker_patcher.stop()
-        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+        with patch(
+            "fpbinject.app.routes.transfer.run_in_device_worker", return_value=False
+        ):
             response = self.client.get("/api/transfer/list?path=/data")
             self.assertEqual(response.status_code, 200)
             data = response.get_json()
@@ -268,7 +270,9 @@ class TestTransferRoutes(unittest.TestCase):
     def test_transfer_rename_worker_timeout(self):
         """Test rename with worker timeout."""
         self.worker_patcher.stop()
-        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+        with patch(
+            "fpbinject.app.routes.transfer.run_in_device_worker", return_value=False
+        ):
             response = self.client.post(
                 "/api/transfer/rename",
                 json={"old_path": "/old.txt", "new_path": "/new.txt"},
@@ -295,7 +299,9 @@ class TestTransferRoutes(unittest.TestCase):
     def test_transfer_stat_worker_timeout(self):
         """Test stat with worker timeout."""
         self.worker_patcher.stop()
-        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+        with patch(
+            "fpbinject.app.routes.transfer.run_in_device_worker", return_value=False
+        ):
             response = self.client.get("/api/transfer/stat?path=/test.txt")
             self.assertEqual(response.status_code, 200)
             data = response.get_json()
@@ -306,7 +312,9 @@ class TestTransferRoutes(unittest.TestCase):
     def test_transfer_mkdir_worker_timeout(self):
         """Test mkdir with worker timeout."""
         self.worker_patcher.stop()
-        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+        with patch(
+            "fpbinject.app.routes.transfer.run_in_device_worker", return_value=False
+        ):
             response = self.client.post(
                 "/api/transfer/mkdir",
                 json={"path": "/newdir"},
@@ -321,7 +329,9 @@ class TestTransferRoutes(unittest.TestCase):
     def test_transfer_delete_worker_timeout(self):
         """Test delete with worker timeout."""
         self.worker_patcher.stop()
-        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+        with patch(
+            "fpbinject.app.routes.transfer.run_in_device_worker", return_value=False
+        ):
             response = self.client.post(
                 "/api/transfer/delete",
                 json={"path": "/test.txt"},
@@ -465,7 +475,7 @@ class TestTransferRoutes(unittest.TestCase):
 
     def test_transfer_cancel_sets_flag(self):
         """Test that cancel sets the _transfer_cancelled flag."""
-        from app.routes.transfer import _transfer_cancelled
+        from fpbinject.app.routes.transfer import _transfer_cancelled
 
         _transfer_cancelled.clear()
         self.assertFalse(_transfer_cancelled.is_set())
@@ -480,13 +490,13 @@ class TestTransferHelpers(unittest.TestCase):
     def test_get_file_transfer(self):
         """Test _get_file_transfer creates FileTransfer instance."""
         mock_fpb = Mock()
-        with patch("app.routes.transfer._get_helpers") as mock_helpers:
+        with patch("fpbinject.app.routes.transfer._get_helpers") as mock_helpers:
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
-            with patch("app.routes.transfer.state") as mock_state:
+            with patch("fpbinject.app.routes.transfer.state") as mock_state:
                 mock_state.device.upload_chunk_size = 512
                 mock_state.device.download_chunk_size = 512
                 mock_state.device.transfer_max_retries = 5
-                from app.routes.transfer import _get_file_transfer
+                from fpbinject.app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
                 self.assertEqual(ft.fpb, mock_fpb)
@@ -496,13 +506,13 @@ class TestTransferHelpers(unittest.TestCase):
     def test_get_file_transfer_default_chunk_size(self):
         """Test _get_file_transfer with default chunk size."""
         mock_fpb = Mock()
-        with patch("app.routes.transfer._get_helpers") as mock_helpers:
+        with patch("fpbinject.app.routes.transfer._get_helpers") as mock_helpers:
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
-            with patch("app.routes.transfer.state") as mock_state:
+            with patch("fpbinject.app.routes.transfer.state") as mock_state:
                 mock_state.device.upload_chunk_size = None
                 mock_state.device.download_chunk_size = None
                 mock_state.device.transfer_max_retries = 10
-                from app.routes.transfer import _get_file_transfer
+                from fpbinject.app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
                 self.assertEqual(ft.upload_chunk_size, 128)
@@ -510,41 +520,45 @@ class TestTransferHelpers(unittest.TestCase):
     def test_get_file_transfer_default_max_retries(self):
         """Test _get_file_transfer with default max_retries when not set."""
         mock_fpb = Mock()
-        with patch("app.routes.transfer._get_helpers") as mock_helpers:
+        with patch("fpbinject.app.routes.transfer._get_helpers") as mock_helpers:
             mock_helpers.return_value = (Mock(), lambda: mock_fpb)
-            with patch("app.routes.transfer.state") as mock_state:
+            with patch("fpbinject.app.routes.transfer.state") as mock_state:
                 mock_state.device.upload_chunk_size = 256
                 mock_state.device.download_chunk_size = 256
                 # Simulate missing transfer_max_retries attribute
                 del mock_state.device.transfer_max_retries
-                from app.routes.transfer import _get_file_transfer
+                from fpbinject.app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
                 self.assertEqual(ft.max_retries, 10)  # Default value
 
     def test_run_serial_op_success(self):
         """Test _run_serial_op with successful operation."""
-        with patch("app.routes.transfer.state") as mock_state:
+        with patch("fpbinject.app.routes.transfer.state") as mock_state:
             mock_state.device = Mock()
-            with patch("app.routes.transfer.run_in_device_worker") as mock_run:
+            with patch(
+                "fpbinject.app.routes.transfer.run_in_device_worker"
+            ) as mock_run:
 
                 def side_effect(device, func, timeout):
                     func()
                     return True
 
                 mock_run.side_effect = side_effect
-                from app.routes.transfer import _run_serial_op
+                from fpbinject.app.routes.transfer import _run_serial_op
 
                 result = _run_serial_op(lambda: {"test": "data"})
                 self.assertEqual(result, {"test": "data"})
 
     def test_run_serial_op_timeout(self):
         """Test _run_serial_op with timeout."""
-        with patch("app.routes.transfer.state") as mock_state:
+        with patch("fpbinject.app.routes.transfer.state") as mock_state:
             mock_state.device = Mock()
-            with patch("app.routes.transfer.run_in_device_worker") as mock_run:
+            with patch(
+                "fpbinject.app.routes.transfer.run_in_device_worker"
+            ) as mock_run:
                 mock_run.return_value = False
-                from app.routes.transfer import _run_serial_op
+                from fpbinject.app.routes.transfer import _run_serial_op
 
                 result = _run_serial_op(lambda: {"test": "data"})
                 self.assertIn("error", result)
@@ -552,16 +566,18 @@ class TestTransferHelpers(unittest.TestCase):
 
     def test_run_serial_op_exception(self):
         """Test _run_serial_op with exception."""
-        with patch("app.routes.transfer.state") as mock_state:
+        with patch("fpbinject.app.routes.transfer.state") as mock_state:
             mock_state.device = Mock()
-            with patch("app.routes.transfer.run_in_device_worker") as mock_run:
+            with patch(
+                "fpbinject.app.routes.transfer.run_in_device_worker"
+            ) as mock_run:
 
                 def side_effect(device, func, timeout):
                     func()
                     return True
 
                 mock_run.side_effect = side_effect
-                from app.routes.transfer import _run_serial_op
+                from fpbinject.app.routes.transfer import _run_serial_op
 
                 def raise_error():
                     raise ValueError("Test error")

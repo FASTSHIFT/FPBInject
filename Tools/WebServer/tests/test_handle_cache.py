@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli import handle_cache  # noqa: E402
+from fpbinject.cli import handle_cache  # noqa: E402
 
 
 class TempCache:
@@ -120,10 +120,12 @@ class TestResolverCacheIntegration(unittest.TestCase):
                 "bench:5500", url="http://127.0.0.1:5500", server_id="fpb:abc"
             )
 
-            from cli.fpb_cli import _resolve_handle_to_url
+            from fpbinject.cli.fpb_cli import _resolve_handle_to_url
 
-            with patch("cli.fpb_cli.discover_sync_by_handle") as mock_disc, patch(
-                "cli.handle_cache.spawn_refresh"
+            with patch(
+                "fpbinject.cli.fpb_cli.discover_sync_by_handle"
+            ) as mock_disc, patch(
+                "fpbinject.cli.handle_cache.spawn_refresh"
             ) as mock_spawn:
                 url = _resolve_handle_to_url("bench:5500", source="-s flag")
 
@@ -133,8 +135,8 @@ class TestResolverCacheIntegration(unittest.TestCase):
 
     def test_cache_miss_falls_back_to_mdns_and_stores(self):
         with TempCache():
-            from cli.discover import FPBServer
-            from cli.fpb_cli import _resolve_handle_to_url
+            from fpbinject.cli.discover import FPBServer
+            from fpbinject.cli.fpb_cli import _resolve_handle_to_url
 
             fake_server = FPBServer(
                 name="FPBInject on bench:5501._fpbinject._tcp.local.",
@@ -149,7 +151,8 @@ class TestResolverCacheIntegration(unittest.TestCase):
                 handle="bench:5501",
             )
             with patch(
-                "cli.fpb_cli.discover_sync_by_handle", return_value=[fake_server]
+                "fpbinject.cli.fpb_cli.discover_sync_by_handle",
+                return_value=[fake_server],
             ):
                 url = _resolve_handle_to_url("bench:5501", source="-s flag")
 

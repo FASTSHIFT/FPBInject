@@ -5,7 +5,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.gdb_session import (
+from fpbinject.core.gdb_session import (
     GDBSession,
     _extract_name_from_decl,
     _split_type_and_name,
@@ -314,8 +314,8 @@ class TestGDBSessionLifecycle(unittest.TestCase):
         session = GDBSession("/path/to/elf")
         self.assertEqual(session.elf_path, "/path/to/elf")
 
-    @patch("core.gdb_session.subprocess.Popen")
-    @patch("core.gdb_session.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_session.subprocess.Popen")
+    @patch("fpbinject.core.gdb_session.os.path.exists", return_value=True)
     def test_start_gdb_not_found(self, mock_exists, mock_popen):
         mock_popen.side_effect = FileNotFoundError("gdb not found")
         session = GDBSession("/fake/elf")
@@ -355,7 +355,7 @@ class TestGDBSessionLifecycle(unittest.TestCase):
         result = session.get_symbols()
         self.assertEqual(result, {})
 
-    @patch("core.gdb_session.os.path.exists", return_value=False)
+    @patch("fpbinject.core.gdb_session.os.path.exists", return_value=False)
     def test_start_elf_not_found(self, mock_exists):
         session = GDBSession("/nonexistent/elf")
         result = session.start(rsp_port=3333)
@@ -369,8 +369,8 @@ class TestGDBSessionLifecycle(unittest.TestCase):
         result = session.start(rsp_port=3333)
         self.assertTrue(result)
 
-    @patch("core.gdb_session.subprocess.Popen")
-    @patch("core.gdb_session.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_session.subprocess.Popen")
+    @patch("fpbinject.core.gdb_session.os.path.exists", return_value=True)
     def test_start_file_cmd_fails(self, mock_exists, mock_popen):
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -379,13 +379,13 @@ class TestGDBSessionLifecycle(unittest.TestCase):
         session = GDBSession("/fake/elf")
         # _write_mi returns None → file command fails → start returns False
         with patch.object(session, "_write_mi", return_value=None), patch(
-            "core.gdb_session.IoManager"
+            "fpbinject.core.gdb_session.IoManager"
         ):
             result = session.start(rsp_port=3333)
         self.assertFalse(result)
 
-    @patch("core.gdb_session.subprocess.Popen")
-    @patch("core.gdb_session.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_session.subprocess.Popen")
+    @patch("fpbinject.core.gdb_session.os.path.exists", return_value=True)
     def test_start_generic_exception(self, mock_exists, mock_popen):
         mock_popen.side_effect = RuntimeError("unexpected")
         session = GDBSession("/fake/elf")

@@ -11,8 +11,8 @@ from unittest.mock import Mock, MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.routes.symbols import bp  # noqa: E402
-from core.state import state  # noqa: E402
+from fpbinject.app.routes.symbols import bp  # noqa: E402
+from fpbinject.core.state import state  # noqa: E402
 
 
 class SymbolRoutesBase(unittest.TestCase):
@@ -33,7 +33,7 @@ class SymbolRoutesBase(unittest.TestCase):
         state.symbols_loaded = False
         state.gdb_session = None
         # Clear module-level caches
-        from app.routes.symbols import (
+        from fpbinject.app.routes.symbols import (
             _struct_layout_cache,
             _symbol_detail_cache,
             _nested_layout_cache,
@@ -154,7 +154,7 @@ class TestSearchSymbols(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=False)
     def test_search_no_gdb_no_cache(self, _mock_gdb):
         """Without GDB and no cache, search returns empty."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -179,7 +179,7 @@ class TestSearchSymbols(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=False)
     def test_search_invalid_hex_fallback(self, _mock_gdb):
         """Non-hex query with no cache/GDB returns empty."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -201,7 +201,7 @@ class TestReloadSymbols(SymbolRoutesBase):
         data = response.get_json()
         self.assertFalse(data["success"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_reload_clears_cache(self, mock_get_fpb):
         """Reload clears symbol cache."""
         mock_fpb = Mock()
@@ -227,7 +227,7 @@ class TestReloadSymbols(SymbolRoutesBase):
             os.unlink(state.device.elf_path)
 
     @patch(
-        "app.routes.symbols._ensure_symbols_loaded",
+        "fpbinject.app.routes.symbols._ensure_symbols_loaded",
         side_effect=Exception("Parse error"),
     )
     def test_reload_exception(self, _mock_ensure):
@@ -251,7 +251,7 @@ class TestSignatureEndpoint(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not specified", data["error"])
 
-    @patch("core.gdb_manager.is_gdb_available")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available")
     def test_signature_found_via_gdb(self, mock_gdb_avail):
         """Finds signature via GDB ptype."""
         mock_gdb_avail.return_value = True
@@ -267,7 +267,7 @@ class TestSignatureEndpoint(SymbolRoutesBase):
         finally:
             state.gdb_session = None
 
-    @patch("core.gdb_manager.is_gdb_available")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available")
     def test_signature_not_found(self, mock_gdb_avail):
         """Returns error when GDB cannot find function."""
         mock_gdb_avail.return_value = True
@@ -282,7 +282,7 @@ class TestSignatureEndpoint(SymbolRoutesBase):
         finally:
             state.gdb_session = None
 
-    @patch("core.gdb_manager.is_gdb_available")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available")
     def test_signature_gdb_not_available(self, mock_gdb_avail):
         """Returns error when GDB session not available and no ELF."""
         mock_gdb_avail.return_value = False
@@ -309,7 +309,7 @@ class TestDisasmEndpoint(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not configured", data["error"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_disasm_success(self, mock_get_fpb):
         mock_fpb = Mock()
         mock_fpb.disassemble_function.return_value = (True, "push {r7, lr}\nmov r7, sp")
@@ -324,7 +324,7 @@ class TestDisasmEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_disasm_failure(self, mock_get_fpb):
         mock_fpb = Mock()
         mock_fpb.disassemble_function.return_value = (False, "Symbol not found")
@@ -338,7 +338,7 @@ class TestDisasmEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_disasm_exception(self, mock_get_fpb):
         mock_get_fpb.side_effect = Exception("ELF error")
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -365,7 +365,7 @@ class TestDecompileEndpoint(SymbolRoutesBase):
         data = response.get_json()
         self.assertFalse(data["success"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_decompile_success(self, mock_get_fpb):
         mock_fpb = Mock()
         mock_fpb.decompile_function.return_value = (True, "void main() { return; }")
@@ -380,7 +380,7 @@ class TestDecompileEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_decompile_failure(self, mock_get_fpb):
         mock_fpb = Mock()
         mock_fpb.decompile_function.return_value = (False, "Ghidra not found")
@@ -394,7 +394,7 @@ class TestDecompileEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_decompile_exception(self, mock_get_fpb):
         mock_get_fpb.side_effect = Exception("Ghidra crash")
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -420,9 +420,9 @@ class TestDecompileStreamEndpoint(SymbolRoutesBase):
         data = response.get_json()
         self.assertFalse(data["success"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     @patch(
-        "core.elf_utils._ghidra_project_cache",
+        "fpbinject.core.elf_utils._ghidra_project_cache",
         {"elf_path": None, "elf_mtime": None, "project_dir": None},
     )
     def test_stream_no_ghidra(self, mock_get_fpb):
@@ -438,9 +438,9 @@ class TestDecompileStreamEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     @patch(
-        "core.elf_utils._ghidra_project_cache",
+        "fpbinject.core.elf_utils._ghidra_project_cache",
         {"elf_path": None, "elf_mtime": None, "project_dir": None},
     )
     def test_stream_success(self, mock_get_fpb):
@@ -463,9 +463,9 @@ class TestDecompileStreamEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     @patch(
-        "core.elf_utils._ghidra_project_cache",
+        "fpbinject.core.elf_utils._ghidra_project_cache",
         {"elf_path": None, "elf_mtime": None, "project_dir": None},
     )
     def test_stream_exception(self, mock_get_fpb):
@@ -485,7 +485,7 @@ class TestDecompileStreamEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_stream_cached_project(self, mock_get_fpb):
         """Uses cached Ghidra project when available."""
         mock_fpb = Mock()
@@ -498,7 +498,7 @@ class TestDecompileStreamEndpoint(SymbolRoutesBase):
 
         with tempfile.TemporaryDirectory() as proj_dir:
             with patch(
-                "core.elf_utils._ghidra_project_cache",
+                "fpbinject.core.elf_utils._ghidra_project_cache",
                 {
                     "elf_path": state.device.elf_path,
                     "elf_mtime": elf_mtime,
@@ -530,7 +530,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_symbol_not_found(self, _mock_gdb):
         state.symbols = {
             "other": {
@@ -551,7 +551,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=False)
     def test_no_gdb_symbol_not_cached(self, _mock_gdb):
         """Without GDB and symbol not in nm cache, returns not-found error."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -564,7 +564,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=False)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=False)
     def test_no_gdb_symbol_in_nm_cache(self, _mock_gdb):
         """Without GDB but symbol in nm cache, returns degraded success."""
         state.symbols = {
@@ -588,7 +588,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_value_const_symbol(self, mock_gdb_avail):
         mock_session = Mock()
         mock_session.read_symbol_value_and_layout.return_value = (
@@ -619,7 +619,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_value_with_struct_layout(self, mock_gdb_avail):
         """struct_layout returned from GDB session."""
         mock_session = Mock()
@@ -650,7 +650,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_value_large_symbol_skips_layout(self, _mock_gdb_avail):
         """Large symbols should skip ptype/layout path to avoid long stalls."""
         mock_session = Mock()
@@ -683,7 +683,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_value_bss_no_data(self, mock_gdb_avail):
         mock_session = Mock()
         mock_session.read_symbol_value_and_layout.return_value = (None, None)
@@ -708,7 +708,7 @@ class TestSymbolValueEndpoint(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_value_old_int_format(self, mock_gdb_avail):
         """Backward compat: symbols stored as plain int."""
         mock_session = Mock()
@@ -789,8 +789,11 @@ class TestReadSymbolFromDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_read_success(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.read_memory.return_value = (b"\xaa\xbb", "Read 2 bytes OK")
@@ -816,8 +819,11 @@ class TestReadSymbolFromDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_read_failure(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.read_memory.return_value = (None, "Read failed at offset 0x0")
@@ -842,9 +848,12 @@ class TestReadSymbolFromDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_struct_layout_cached")
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_struct_layout_cached")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_read_large_symbol_skips_layout(
         self, mock_get_fpb, _mock_run_serial, mock_get_layout
     ):
@@ -931,8 +940,11 @@ class TestWriteSymbolToDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_write_success(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.write_memory.return_value = (True, "Write 4 bytes OK")
@@ -958,8 +970,11 @@ class TestWriteSymbolToDevice(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_write_failure(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.write_memory.return_value = (False, "Write failed at offset 0x0")
@@ -1005,8 +1020,11 @@ class TestWriteSymbolWithOffset(SymbolRoutesBase):
         f.close()
         return f.name
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_write_with_offset(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.write_memory.return_value = (True, "Write 4 bytes OK")
@@ -1102,8 +1120,11 @@ class TestMemoryRead(SymbolRoutesBase):
         data = response.get_json()
         self.assertFalse(data["success"])
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_read_success(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.read_memory.return_value = (b"\xaa\xbb\xcc\xdd", "Read 4 bytes OK")
@@ -1115,8 +1136,11 @@ class TestMemoryRead(SymbolRoutesBase):
         self.assertEqual(data["addr"], "0x20000000")
         self.assertEqual(data["size"], 4)
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_read_failure(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.read_memory.return_value = (None, "Read failed")
@@ -1126,8 +1150,11 @@ class TestMemoryRead(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Read failed", data["error"])
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_read_decimal_addr(self, mock_get_fpb, mock_run_serial):
         """Decimal address should also work."""
         mock_fpb = Mock()
@@ -1171,8 +1198,11 @@ class TestMemoryWrite(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("64KB", data["error"])
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_write_success(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.write_memory.return_value = (True, "Write 4 bytes OK")
@@ -1186,8 +1216,11 @@ class TestMemoryWrite(SymbolRoutesBase):
         self.assertEqual(data["addr"], "0x20001000")
         self.assertEqual(data["size"], 4)
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_write_failure(self, mock_get_fpb, mock_run_serial):
         mock_fpb = Mock()
         mock_fpb.write_memory.return_value = (False, "Write failed")
@@ -1200,8 +1233,11 @@ class TestMemoryWrite(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Write failed", data["error"])
 
-    @patch("app.routes.symbols._run_serial_op", side_effect=lambda func, **kw: func())
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch(
+        "fpbinject.app.routes.symbols._run_serial_op",
+        side_effect=lambda func, **kw: func(),
+    )
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_write_int_addr(self, mock_get_fpb, mock_run_serial):
         """Integer address in JSON should work."""
         mock_fpb = Mock()
@@ -1219,21 +1255,21 @@ class TestDynamicTimeout(SymbolRoutesBase):
     """Test _dynamic_timeout helper."""
 
     def test_small_size(self):
-        from app.routes.symbols import _dynamic_timeout
+        from fpbinject.app.routes.symbols import _dynamic_timeout
 
         # Small reads should get minimum 10s
         self.assertEqual(_dynamic_timeout(4), 10.0)
         self.assertEqual(_dynamic_timeout(128), 10.0)
 
     def test_large_size(self):
-        from app.routes.symbols import _dynamic_timeout
+        from fpbinject.app.routes.symbols import _dynamic_timeout
 
         state.device.download_chunk_size = 128
         # 4096 bytes = 32 chunks * 3s = 96s
         self.assertEqual(_dynamic_timeout(4096), 96.0)
 
     def test_custom_chunk_size(self):
-        from app.routes.symbols import _dynamic_timeout
+        from fpbinject.app.routes.symbols import _dynamic_timeout
 
         state.device.download_chunk_size = 256
         # 1024 bytes = 4 chunks * 3s = 12s
@@ -1244,22 +1280,22 @@ class TestParseAddr(SymbolRoutesBase):
     """Test _parse_addr helper."""
 
     def test_hex_string(self):
-        from app.routes.symbols import _parse_addr
+        from fpbinject.app.routes.symbols import _parse_addr
 
         self.assertEqual(_parse_addr("0x20000000"), 0x20000000)
 
     def test_decimal_string(self):
-        from app.routes.symbols import _parse_addr
+        from fpbinject.app.routes.symbols import _parse_addr
 
         self.assertEqual(_parse_addr("536870912"), 536870912)
 
     def test_int(self):
-        from app.routes.symbols import _parse_addr
+        from fpbinject.app.routes.symbols import _parse_addr
 
         self.assertEqual(_parse_addr(0x20000000), 0x20000000)
 
     def test_invalid(self):
-        from app.routes.symbols import _parse_addr
+        from fpbinject.app.routes.symbols import _parse_addr
 
         self.assertIsNone(_parse_addr("not_a_number"))
         self.assertIsNone(_parse_addr(""))
@@ -1270,7 +1306,7 @@ class TestDecodeFieldValue(unittest.TestCase):
     """Tests for _decode_field_value (hex bytes → display value)."""
 
     def _decode(self, hex_str, type_name):
-        from app.routes.symbols import _decode_field_value
+        from fpbinject.app.routes.symbols import _decode_field_value
 
         return _decode_field_value(bytes.fromhex(hex_str), type_name)
 
@@ -1319,7 +1355,7 @@ class TestDecodeFieldValue(unittest.TestCase):
     def test_typedef_fallback_4bytes(self):
         # lv_coord_t is a typedef — not in int keywords, _decode_field_value
         # returns None, but _decode_field_value_fallback handles it
-        from app.routes.symbols import _decode_field_value_fallback
+        from fpbinject.app.routes.symbols import _decode_field_value_fallback
 
         self.assertIsNone(self._decode("F0000000", "lv_coord_t"))
         self.assertEqual(
@@ -1327,7 +1363,7 @@ class TestDecodeFieldValue(unittest.TestCase):
         )
 
     def test_typedef_fallback_2bytes(self):
-        from app.routes.symbols import _decode_field_value_fallback
+        from fpbinject.app.routes.symbols import _decode_field_value_fallback
 
         self.assertIsNone(self._decode("0A00", "lv_coord_t"))
         self.assertEqual(
@@ -1338,7 +1374,7 @@ class TestDecodeFieldValue(unittest.TestCase):
         self.assertEqual(self._decode("80000000", "size_t"), 128)
 
     def test_empty_bytes(self):
-        from app.routes.symbols import _decode_field_value
+        from fpbinject.app.routes.symbols import _decode_field_value
 
         self.assertIsNone(_decode_field_value(b"", "uint32_t"))
 
@@ -1356,7 +1392,7 @@ class TestDecodeStructValues(unittest.TestCase):
     """Tests for _decode_struct_values (struct_layout + hex → field values)."""
 
     def _decode(self, layout, hex_data):
-        from app.routes.symbols import _decode_struct_values
+        from fpbinject.app.routes.symbols import _decode_struct_values
 
         return _decode_struct_values(layout, hex_data)
 
@@ -1453,7 +1489,7 @@ class TestDecodeStructValues(unittest.TestCase):
         self.assertIsNotNone(result["inner"])
         self.assertNotIsInstance(result["inner"], dict)
 
-    @patch("app.routes.symbols._get_nested_struct_layout")
+    @patch("fpbinject.app.routes.symbols._get_nested_struct_layout")
     def test_nested_struct_no_layout_uses_fallback(self, mock_nested):
         """Unknown nested type without GDB layout uses typedef fallback."""
         mock_nested.return_value = None
@@ -1497,7 +1533,7 @@ class TestReadSymbolStream(SymbolRoutesBase):
     def setUp(self):
         super().setUp()
         self.worker_patcher = patch(
-            "app.routes.symbols.run_in_device_worker",
+            "fpbinject.app.routes.symbols.run_in_device_worker",
             side_effect=_mock_run_worker_sync,
         )
         self.worker_patcher.start()
@@ -1520,7 +1556,7 @@ class TestReadSymbolStream(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("ELF", data["error"])
 
-    @patch("app.routes.symbols._lookup_symbol")
+    @patch("fpbinject.app.routes.symbols._lookup_symbol")
     def test_symbol_not_found(self, mock_lookup):
         """Unknown symbol returns JSON error."""
         mock_lookup.return_value = None
@@ -1536,9 +1572,9 @@ class TestReadSymbolStream(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_struct_layout_cached", return_value=None)
-    @patch("app.routes.symbols._get_fpb_inject")
-    @patch("app.routes.symbols._lookup_symbol")
+    @patch("fpbinject.app.routes.symbols._get_struct_layout_cached", return_value=None)
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._lookup_symbol")
     def test_stream_success(self, mock_lookup, mock_fpb_fn, mock_layout):
         """Successful read emits status + progress + result SSE events."""
         mock_lookup.return_value = {
@@ -1580,8 +1616,8 @@ class TestReadSymbolStream(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
-    @patch("app.routes.symbols._lookup_symbol")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._lookup_symbol")
     def test_stream_read_failure(self, mock_lookup, mock_fpb_fn):
         """Read failure emits result event with success=False."""
         mock_lookup.return_value = {
@@ -1606,9 +1642,9 @@ class TestReadSymbolStream(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_struct_layout_cached")
-    @patch("app.routes.symbols._get_fpb_inject")
-    @patch("app.routes.symbols._lookup_symbol")
+    @patch("fpbinject.app.routes.symbols._get_struct_layout_cached")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._lookup_symbol")
     def test_stream_large_symbol_skips_layout(
         self, mock_lookup, mock_fpb_fn, mock_get_layout
     ):
@@ -1643,8 +1679,8 @@ class TestReadSymbolStream(SymbolRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.symbols._get_fpb_inject")
-    @patch("app.routes.symbols._lookup_symbol")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._lookup_symbol")
     def test_stream_worker_timeout(self, mock_lookup, mock_fpb_fn):
         """Device worker timeout emits result with error."""
         mock_lookup.return_value = {
@@ -1658,7 +1694,7 @@ class TestReadSymbolStream(SymbolRoutesBase):
         # Override worker to return False (timeout)
         self.worker_patcher.stop()
         timeout_patcher = patch(
-            "app.routes.symbols.run_in_device_worker", return_value=False
+            "fpbinject.app.routes.symbols.run_in_device_worker", return_value=False
         )
         timeout_patcher.start()
 
@@ -1676,7 +1712,7 @@ class TestReadSymbolStream(SymbolRoutesBase):
             os.unlink(state.device.elf_path)
             timeout_patcher.stop()
             self.worker_patcher = patch(
-                "app.routes.symbols.run_in_device_worker",
+                "fpbinject.app.routes.symbols.run_in_device_worker",
                 side_effect=_mock_run_worker_sync,
             )
             self.worker_patcher.start()
@@ -1688,7 +1724,7 @@ class TestMemoryReadStream(SymbolRoutesBase):
     def setUp(self):
         super().setUp()
         self.worker_patcher = patch(
-            "app.routes.symbols.run_in_device_worker",
+            "fpbinject.app.routes.symbols.run_in_device_worker",
             side_effect=_mock_run_worker_sync,
         )
         self.worker_patcher.start()
@@ -1723,7 +1759,7 @@ class TestMemoryReadStream(SymbolRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("64KB", data["error"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_stream_success(self, mock_fpb_fn):
         """Successful memory read emits progress + result SSE events."""
         mock_fpb = Mock()
@@ -1752,7 +1788,7 @@ class TestMemoryReadStream(SymbolRoutesBase):
         self.assertEqual(result_evt["size"], 16)
         self.assertEqual(result_evt["hex_data"], "aa" * 16)
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_stream_read_failure(self, mock_fpb_fn):
         """Read failure emits result with success=False."""
         mock_fpb = Mock()
@@ -1767,7 +1803,7 @@ class TestMemoryReadStream(SymbolRoutesBase):
         result_evt = next(e for e in events if e["type"] == "result")
         self.assertFalse(result_evt["success"])
 
-    @patch("app.routes.symbols._get_fpb_inject")
+    @patch("fpbinject.app.routes.symbols._get_fpb_inject")
     def test_stream_exception(self, mock_fpb_fn):
         """Exception in read task emits result with error."""
         mock_fpb = Mock()

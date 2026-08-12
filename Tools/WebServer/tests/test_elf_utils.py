@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import elf_utils  # noqa: E402
+from fpbinject.core import elf_utils  # noqa: E402
 
 
 class TestGetToolPath(unittest.TestCase):

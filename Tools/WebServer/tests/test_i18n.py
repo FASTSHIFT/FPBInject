@@ -137,7 +137,7 @@ class TestTranslationFiles(unittest.TestCase):
 
     def test_config_labels_keys_match_schema(self):
         """Test that config.labels keys match config_schema.py keys."""
-        from core.config_schema import CONFIG_SCHEMA
+        from fpbinject.core.config_schema import CONFIG_SCHEMA
 
         schema_keys = {item.key for item in CONFIG_SCHEMA if item.show_in_sidebar}
 
@@ -175,21 +175,21 @@ class TestConfigSchemaI18n(unittest.TestCase):
 
     def test_ui_language_config_exists(self):
         """Test that ui_language config item exists."""
-        from core.config_schema import CONFIG_SCHEMA
+        from fpbinject.core.config_schema import CONFIG_SCHEMA
 
         ui_lang_items = [item for item in CONFIG_SCHEMA if item.key == "ui_language"]
         self.assertEqual(len(ui_lang_items), 1, "ui_language config item should exist")
 
     def test_ui_language_is_select_type(self):
         """Test that ui_language is SELECT type."""
-        from core.config_schema import CONFIG_SCHEMA, ConfigType
+        from fpbinject.core.config_schema import CONFIG_SCHEMA, ConfigType
 
         ui_lang = next(item for item in CONFIG_SCHEMA if item.key == "ui_language")
         self.assertEqual(ui_lang.config_type, ConfigType.SELECT)
 
     def test_ui_language_has_all_options(self):
         """Test that ui_language has all supported language options."""
-        from core.config_schema import CONFIG_SCHEMA
+        from fpbinject.core.config_schema import CONFIG_SCHEMA
 
         ui_lang = next(item for item in CONFIG_SCHEMA if item.key == "ui_language")
         option_values = [opt[0] for opt in ui_lang.options]
@@ -201,21 +201,21 @@ class TestConfigSchemaI18n(unittest.TestCase):
 
     def test_ui_language_default_is_auto(self):
         """Test that ui_language default is auto-detect."""
-        from core.config_schema import CONFIG_SCHEMA
+        from fpbinject.core.config_schema import CONFIG_SCHEMA
 
         ui_lang = next(item for item in CONFIG_SCHEMA if item.key == "ui_language")
         self.assertEqual(ui_lang.default, "auto")
 
     def test_ui_group_exists(self):
         """Test that UI config group exists."""
-        from core.config_schema import ConfigGroup, GROUP_LABELS
+        from fpbinject.core.config_schema import ConfigGroup, GROUP_LABELS
 
         self.assertTrue(hasattr(ConfigGroup, "UI"))
         self.assertIn(ConfigGroup.UI, GROUP_LABELS)
 
     def test_ui_language_in_ui_group(self):
         """Test that ui_language is in UI group."""
-        from core.config_schema import CONFIG_SCHEMA, ConfigGroup
+        from fpbinject.core.config_schema import CONFIG_SCHEMA, ConfigGroup
 
         ui_lang = next(item for item in CONFIG_SCHEMA if item.key == "ui_language")
         self.assertEqual(ui_lang.group, ConfigGroup.UI)

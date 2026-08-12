@@ -14,7 +14,7 @@ import os
 import threading
 import time
 
-from core.state import state
+from fpbinject.core.state import state
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ _elf_watcher = None
 def start_file_watcher(dirs):
     """Start file watcher for given directories."""
     try:
-        from services.file_watcher import start_watching
+        from fpbinject.services.file_watcher import start_watching
 
         state.file_watcher = start_watching(dirs, _on_file_change)
         return True
@@ -38,7 +38,7 @@ def stop_file_watcher():
     """Stop file watcher."""
     if state.file_watcher:
         try:
-            from services.file_watcher import stop_watching
+            from fpbinject.services.file_watcher import stop_watching
 
             stop_watching(state.file_watcher)
         except Exception:
@@ -74,7 +74,7 @@ def start_elf_watcher(elf_path):
         return False
 
     try:
-        from services.file_watcher import start_watching
+        from fpbinject.services.file_watcher import start_watching
 
         elf_dir = os.path.dirname(elf_path)
 
@@ -101,7 +101,7 @@ def stop_elf_watcher():
 
     if _elf_watcher:
         try:
-            from services.file_watcher import stop_watching
+            from fpbinject.services.file_watcher import stop_watching
 
             stop_watching(_elf_watcher)
         except Exception:
@@ -147,7 +147,7 @@ def acknowledge_elf_change():
 
     # Clear Ghidra decompilation cache since ELF file changed
     try:
-        from core.elf_utils import clear_ghidra_cache
+        from fpbinject.core.elf_utils import clear_ghidra_cache
 
         clear_ghidra_cache()
     except ImportError:
@@ -189,7 +189,7 @@ def _on_file_change(path, change_type):
 
 def _trigger_auto_inject(file_path):
     """Trigger automatic patch generation and injection for a changed file."""
-    from routes import get_fpb_inject
+    from fpbinject.routes import get_fpb_inject
 
     device = state.device
 
@@ -207,8 +207,8 @@ def _trigger_auto_inject(file_path):
 
     def do_auto_inject():
         try:
-            from core.patch_generator import PatchGenerator
-            from services.device_worker import run_in_device_worker
+            from fpbinject.core.patch_generator import PatchGenerator
+            from fpbinject.services.device_worker import run_in_device_worker
 
             gen = PatchGenerator()
 
@@ -314,7 +314,7 @@ def _trigger_auto_inject(file_path):
             inject_result = {"success": False, "result": {}}
 
             # Import cancel flag so auto-inject can be cancelled too
-            from app.routes.fpb import _inject_cancelled, _InjectCancelled
+            from fpbinject.app.routes.fpb import _inject_cancelled, _InjectCancelled
 
             # Speed/ETA tracking state for progress callback
             _upload_state = {

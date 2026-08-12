@@ -32,17 +32,28 @@ import threading
 from flask import Flask
 from flask_cors import CORS
 
-from routes import register_routes
-from core.state import state
-from fpb_inject import serial_open
-from services.device_worker import start_worker
-from services.file_watcher_manager import restore_file_watcher
-from utils.net import is_port_available as check_port_available  # noqa: same API
-from utils.net import get_port_owner
-from utils.port_lock import PortLock
+from fpbinject.routes import register_routes
+from fpbinject.core.state import state
+from fpbinject.fpb_inject import serial_open
+from fpbinject.services.device_worker import start_worker
+from fpbinject.services.file_watcher_manager import restore_file_watcher
+from fpbinject.utils.net import (
+    is_port_available as check_port_available,
+)  # noqa: same API
+from fpbinject.utils.net import get_port_owner
+from fpbinject.utils.port_lock import PortLock
 
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Package root (templates/ static/), resolved via importlib.resources so it
+# works from source and from an installed wheel alike.
+try:
+    from importlib.resources import files as _res_files
+
+    _PKG_DIR = str(_res_files("fpbinject"))
+except Exception:  # pragma: no cover
+    _PKG_DIR = SCRIPT_DIR
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -155,14 +166,14 @@ def create_app(auth_token=None):
                     If None, no authentication is required (--no-auth mode).
     """
     app = Flask(
-        __name__,
-        template_folder=os.path.join(SCRIPT_DIR, "templates"),
-        static_folder=os.path.join(SCRIPT_DIR, "static"),
+        "fpbinject",
+        template_folder=os.path.join(_PKG_DIR, "templates"),
+        static_folder=os.path.join(_PKG_DIR, "static"),
     )
     CORS(app)
 
     if auth_token:
-        from app.middleware import init_auth
+        from fpbinject.app.middleware import init_auth
 
         init_auth(app, auth_token)
 
@@ -227,7 +238,7 @@ def restore_state():
 
     # Restore ELF file watcher if elf_path is configured
     if device.elf_path:
-        from services.file_watcher_manager import start_elf_watcher
+        from fpbinject.services.file_watcher_manager import start_elf_watcher
 
         logger.info(f"Restoring ELF file watcher for: {device.elf_path}")
         if start_elf_watcher(device.elf_path):
@@ -237,7 +248,7 @@ def restore_state():
 
     # Restore log file recording if enabled
     if device.log_file_enabled and device.log_file_path:
-        from services.log_recorder import log_recorder
+        from fpbinject.services.log_recorder import log_recorder
 
         logger.info(f"Restoring log file recording: {device.log_file_path}")
         success, error = log_recorder.start(
@@ -253,7 +264,7 @@ def restore_state():
 
     # Start GDB integration if ELF path is configured (works offline too)
     if device.elf_path and os.path.exists(device.elf_path):
-        from core.gdb_manager import start_gdb_async
+        from fpbinject.core.gdb_manager import start_gdb_async
 
         logger.info(f"Auto-starting GDB for ELF: {device.elf_path}")
         start_gdb_async(state)
@@ -276,7 +287,7 @@ def restore_state():
 
     # Start virtual serial passthrough if enabled
     if getattr(device, "vserial_enable", False):
-        from services.virtual_serial import VirtualSerialService
+        from fpbinject.services.virtual_serial import VirtualSerialService
 
         if device.vserial is None:
             device.vserial = VirtualSerialService(device)
@@ -323,7 +334,7 @@ def main():
             owner = get_port_owner(args.port)
 
             # Check if it's a CLI-launched server
-            from cli.server_proxy import get_cli_server_pid, stop_cli_server
+            from fpbinject.cli.server_proxy import get_cli_server_pid, stop_cli_server
 
             cli_pid = get_cli_server_pid(args.port)
 
@@ -422,8 +433,8 @@ def main():
     advertiser = None
     if not args.no_mdns:
         try:
-            from services.mdns_advertiser import MdnsAdvertiser
-            from version import __version__ as _server_version
+            from fpbinject.services.mdns_advertiser import MdnsAdvertiser
+            from fpbinject.version import __version__ as _server_version
 
             advertiser = MdnsAdvertiser(
                 port=args.port,

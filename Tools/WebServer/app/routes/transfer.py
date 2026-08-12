@@ -15,11 +15,11 @@ import threading
 
 from flask import Blueprint, jsonify, request
 
-from app.utils.sse import sse_response
-from core.file_transfer import FileTransfer
-from core.state import state
-from utils.crc import crc16
-from services.device_worker import run_in_device_worker
+from fpbinject.app.utils.sse import sse_response
+from fpbinject.core.file_transfer import FileTransfer
+from fpbinject.core.state import state
+from fpbinject.utils.crc import crc16
+from fpbinject.services.device_worker import run_in_device_worker
 
 bp = Blueprint("transfer", __name__)
 logger = logging.getLogger(__name__)
@@ -30,8 +30,8 @@ _transfer_cancelled = threading.Event()
 
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
-    from routes import get_fpb_inject
-    from core.state import state, tool_log
+    from fpbinject.routes import get_fpb_inject
+    from fpbinject.core.state import state, tool_log
 
     def log_info(msg):
         tool_log(state.device, "INFO", msg)

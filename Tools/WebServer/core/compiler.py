@@ -16,9 +16,14 @@ import subprocess
 import tempfile
 from typing import Dict, List, Optional, Tuple
 
-from utils.toolchain import get_tool_path, get_subprocess_env
-from core.compile_commands import parse_compile_commands
-from core.compile_commands import parse_dep_file_for_compile_command  # noqa: F401
+from fpbinject.utils.toolchain import get_tool_path, get_subprocess_env
+from fpbinject.core.compile_commands import parse_compile_commands
+
+# Re-exported for callers/tests that reference
+# compiler.parse_dep_file_for_compile_command
+from fpbinject.core import compile_commands as _cc
+
+parse_dep_file_for_compile_command = _cc.parse_dep_file_for_compile_command
 
 logger = logging.getLogger(__name__)
 

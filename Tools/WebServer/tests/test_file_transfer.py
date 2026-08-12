@@ -16,8 +16,8 @@ from unittest.mock import Mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.file_transfer import FileTransfer  # noqa: E402
-from utils.crc import crc16  # noqa: E402
+from fpbinject.core.file_transfer import FileTransfer  # noqa: E402
+from fpbinject.utils.crc import crc16  # noqa: E402
 
 
 class TestCRC16(unittest.TestCase):
@@ -1578,7 +1578,7 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
 
     def test_fopen_sends_crc(self):
         """fopen must send CRC covering path + mode."""
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
@@ -1622,7 +1622,7 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
 
     def test_fremove_sends_crc(self):
         """fremove must send CRC covering path."""
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
         import re
 
         self.mock_fpb.send_fl_cmd.return_value = (
@@ -1639,7 +1639,7 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
 
     def test_frename_sends_crc(self):
         """frename must send CRC covering old_path + new_path."""
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
         import re
 
         self.mock_fpb.send_fl_cmd.return_value = (
@@ -1786,7 +1786,7 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
         """fseek must send CRC covering addr(4B)."""
         import re
         import struct
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FSEEK 100")
         self.ft.fseek(100)
@@ -1800,7 +1800,7 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
     def test_fstat_sends_crc(self):
         """fstat must send CRC covering path."""
         import re
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
@@ -1817,7 +1817,7 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
     def test_flist_sends_crc(self):
         """flist must send CRC covering path."""
         import re
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.mock_fpb.send_fl_cmd.return_value = (
             True,
@@ -1834,7 +1834,7 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
     def test_fmkdir_sends_crc(self):
         """fmkdir must send CRC covering path."""
         import re
-        from utils.crc import crc16_update
+        from fpbinject.utils.crc import crc16_update
 
         self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK] FMKDIR /newdir")
         self.ft.fmkdir("/newdir")

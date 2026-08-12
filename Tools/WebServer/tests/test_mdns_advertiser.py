@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def _import_advertiser():
     """Lazy import so RED phase fails with ImportError, not module-load error."""
-    from services.mdns_advertiser import MdnsAdvertiser  # noqa: E402
+    from fpbinject.services.mdns_advertiser import MdnsAdvertiser  # noqa: E402
 
     return MdnsAdvertiser
 
@@ -47,7 +47,7 @@ def _txt_dict_from_register_call(mock_zc):
 class TestMdnsAdvertiserRegister(unittest.TestCase):
     """Service registration with correct TXT records."""
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_register_uses_fpbinject_service_type(self, MockZeroconf):
         zc = MockZeroconf.return_value
         adv = _make_advertiser()
@@ -56,7 +56,7 @@ class TestMdnsAdvertiserRegister(unittest.TestCase):
         self.assertEqual(info.type, "_fpbinject._tcp.local.")
         self.assertTrue(info.name.endswith("._fpbinject._tcp.local."))
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_register_publishes_required_txt_keys(self, MockZeroconf):
         adv = _make_advertiser()
         adv.register()
@@ -68,7 +68,7 @@ class TestMdnsAdvertiserRegister(unittest.TestCase):
         self.assertIn("device", keys)
         self.assertIn("path", keys)
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_register_advertises_port(self, MockZeroconf):
         adv = _make_advertiser(port=8080)
         adv.register()
@@ -79,7 +79,7 @@ class TestMdnsAdvertiserRegister(unittest.TestCase):
 class TestMdnsAdvertiserAuthIntent(unittest.TestCase):
     """auth TXT reflects advertised intent, not effective state."""
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_auth_token_when_auth_mode_token(self, MockZeroconf):
         adv = _make_advertiser(auth_mode="token")
         adv.register()
@@ -90,7 +90,7 @@ class TestMdnsAdvertiserAuthIntent(unittest.TestCase):
             "token",
         )
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_auth_none_when_auth_mode_none(self, MockZeroconf):
         adv = _make_advertiser(auth_mode="none")
         adv.register()
@@ -105,7 +105,7 @@ class TestMdnsAdvertiserAuthIntent(unittest.TestCase):
 class TestMdnsAdvertiserNoTokenLeak(unittest.TestCase):
     """The actual auth token must never appear in TXT records."""
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_txt_never_contains_token_key(self, MockZeroconf):
         adv = _make_advertiser()
         adv.register()
@@ -122,7 +122,7 @@ class TestMdnsAdvertiserNoTokenLeak(unittest.TestCase):
 class TestMdnsAdvertiserDeviceTxtV1(unittest.TestCase):
     """v1 contract: device TXT is published once at startup as 'none'."""
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_device_is_none_at_register(self, MockZeroconf):
         adv = _make_advertiser()
         adv.register()
@@ -137,7 +137,7 @@ class TestMdnsAdvertiserDeviceTxtV1(unittest.TestCase):
 class TestMdnsAdvertiserUpdateDeviceState(unittest.TestCase):
     """update_device_state() shipped + tested for forward compat (unused in v1)."""
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_update_device_state_calls_update_service(self, MockZeroconf):
         zc = MockZeroconf.return_value
         adv = _make_advertiser()
@@ -145,7 +145,7 @@ class TestMdnsAdvertiserUpdateDeviceState(unittest.TestCase):
         adv.update_device_state("connected")
         self.assertTrue(zc.update_service.called)
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_update_device_state_preserves_id_and_all_txt_keys(self, MockZeroconf):
         adv = _make_advertiser()
         adv.register()
@@ -161,7 +161,7 @@ class TestMdnsAdvertiserUpdateDeviceState(unittest.TestCase):
 class TestMdnsAdvertiserIdempotentUnregister(unittest.TestCase):
     """unregister() is safe to call repeatedly."""
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_double_unregister_calls_unregister_service_once(self, MockZeroconf):
         zc = MockZeroconf.return_value
         adv = _make_advertiser()
@@ -170,7 +170,7 @@ class TestMdnsAdvertiserIdempotentUnregister(unittest.TestCase):
         adv.unregister()
         self.assertEqual(zc.unregister_service.call_count, 1)
 
-    @patch("services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
     def test_unregister_without_register_is_noop(self, MockZeroconf):
         zc = MockZeroconf.return_value
         adv = _make_advertiser()
@@ -186,8 +186,8 @@ class TestMdnsAdvertiserSignalHandlers(unittest.TestCase):
     Explicit False: never install.
     """
 
-    @patch("services.mdns_advertiser.Zeroconf")
-    @patch("services.mdns_advertiser.signal.signal")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.signal.signal")
     def test_signal_handlers_skipped_when_explicitly_disabled(
         self, mock_signal, MockZeroconf
     ):
@@ -195,8 +195,8 @@ class TestMdnsAdvertiserSignalHandlers(unittest.TestCase):
         adv.register()
         self.assertFalse(mock_signal.called)
 
-    @patch("services.mdns_advertiser.Zeroconf")
-    @patch("services.mdns_advertiser.signal.signal")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.signal.signal")
     def test_signal_handlers_installed_when_explicitly_enabled(
         self, mock_signal, MockZeroconf
     ):
@@ -207,8 +207,8 @@ class TestMdnsAdvertiserSignalHandlers(unittest.TestCase):
         self.assertIn(signal.SIGTERM, installed)
 
     @patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test_x"}, clear=False)
-    @patch("services.mdns_advertiser.Zeroconf")
-    @patch("services.mdns_advertiser.signal.signal")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.signal.signal")
     def test_signal_handlers_default_skipped_under_pytest(
         self, mock_signal, MockZeroconf
     ):
@@ -221,8 +221,8 @@ class TestMdnsAdvertiserSignalHandlers(unittest.TestCase):
 class TestMdnsAdvertiserAtexitHook(unittest.TestCase):
     """atexit handler is registered so graceful exits unregister."""
 
-    @patch("services.mdns_advertiser.Zeroconf")
-    @patch("services.mdns_advertiser.atexit.register")
+    @patch("fpbinject.services.mdns_advertiser.Zeroconf")
+    @patch("fpbinject.services.mdns_advertiser.atexit.register")
     def test_register_installs_atexit_unregister(self, mock_atexit, MockZeroconf):
         adv = _make_advertiser()
         adv.register()

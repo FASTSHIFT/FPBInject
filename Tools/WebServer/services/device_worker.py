@@ -15,7 +15,7 @@ import queue
 import threading
 import time
 
-from services.timer import TimerManager
+from fpbinject.services.timer import TimerManager
 
 
 class DeviceWorker:
@@ -238,7 +238,7 @@ class DeviceWorker:
 
         # Write to log file if enabled (line-buffered)
         if self.device.log_file_enabled:
-            from services.log_recorder import log_recorder
+            from fpbinject.services.log_recorder import log_recorder
             import re
 
             # Add to buffer

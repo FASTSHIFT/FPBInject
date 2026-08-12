@@ -27,10 +27,10 @@ from typing import Any, Dict, Optional
 
 # Import from existing WebServer modules
 sys.path.insert(0, str(Path(__file__).parent))
-from fpb_inject import FPBInject  # noqa: E402
-from core.state import DeviceStateBase  # noqa: E402
-from utils.port_lock import PortLock  # noqa: E402
-from cli.server_proxy import (  # noqa: E402
+from fpbinject.fpb_inject import FPBInject  # noqa: E402
+from fpbinject.core.state import DeviceStateBase  # noqa: E402
+from fpbinject.utils.port_lock import PortLock  # noqa: E402
+from fpbinject.cli.server_proxy import (  # noqa: E402
     ServerProxy,
     ProxyAuthError,
     DEFAULT_SERVER_URL,
@@ -39,7 +39,7 @@ from cli.server_proxy import (  # noqa: E402
 )
 
 try:  # Optional: discovery requires the zeroconf package.
-    from cli.discover import (  # noqa: E402
+    from fpbinject.cli.discover import (  # noqa: E402
         discover_sync,
         discover_sync_by_handle,
         FPBServer,
@@ -49,7 +49,7 @@ except Exception:  # pragma: no cover
     discover_sync_by_handle = None
     FPBServer = None
 
-from cli.connection_plan import (  # noqa: E402
+from fpbinject.cli.connection_plan import (  # noqa: E402
     CommandPolicy,
     ConnectionMode,
     ConnectionPlan,
@@ -773,7 +773,7 @@ class FPBCLI:
                 return
 
             self._require_device()
-            from core.file_transfer import FileTransfer
+            from fpbinject.core.file_transfer import FileTransfer
 
             ft = FileTransfer(
                 self._fpb,
@@ -795,7 +795,7 @@ class FPBCLI:
                 return
 
             self._require_device()
-            from core.file_transfer import FileTransfer
+            from fpbinject.core.file_transfer import FileTransfer
 
             ft = FileTransfer(
                 self._fpb,
@@ -833,7 +833,7 @@ class FPBCLI:
                 return
 
             self._require_device()
-            from core.file_transfer import FileTransfer
+            from fpbinject.core.file_transfer import FileTransfer
 
             ft = FileTransfer(
                 self._fpb,
@@ -869,7 +869,7 @@ class FPBCLI:
             with open(local_path, "rb") as f:
                 data = f.read()
 
-            from core.file_transfer import FileTransfer
+            from fpbinject.core.file_transfer import FileTransfer
 
             ft = FileTransfer(
                 self._fpb,
@@ -900,7 +900,7 @@ class FPBCLI:
                 return
 
             self._require_device()
-            from core.file_transfer import FileTransfer
+            from fpbinject.core.file_transfer import FileTransfer
 
             ft = FileTransfer(
                 self._fpb,
@@ -922,7 +922,7 @@ class FPBCLI:
                 return
 
             self._require_device()
-            from core.file_transfer import FileTransfer
+            from fpbinject.core.file_transfer import FileTransfer
 
             ft = FileTransfer(
                 self._fpb,
@@ -944,7 +944,7 @@ class FPBCLI:
                 return
 
             self._require_device()
-            from core.file_transfer import FileTransfer
+            from fpbinject.core.file_transfer import FileTransfer
 
             ft = FileTransfer(
                 self._fpb,
@@ -1266,7 +1266,7 @@ class FPBCLI:
 
     def server_stop(self, port: int = DEFAULT_PORT) -> None:
         """Stop a CLI-launched WebServer on the given port."""
-        from cli.server_proxy import stop_cli_server, list_cli_servers
+        from fpbinject.cli.server_proxy import stop_cli_server, list_cli_servers
 
         if port == DEFAULT_PORT:
             # If user didn't specify, try to find any running CLI server
@@ -1299,7 +1299,7 @@ def _is_local_url(url: str) -> bool:
     if host in ("localhost",):
         return True
     try:
-        from cli.discover import _is_loopback, _local_interface_ips
+        from fpbinject.cli.discover import _is_loopback, _local_interface_ips
 
         if _is_loopback(host):
             return True
@@ -1401,8 +1401,8 @@ def _resolve_handle_to_url(value: str, *, source: str) -> str:
     The ``source`` string ("-s flag" / "FPB_SERVER env") is only used in
     error messages.
     """
-    from cli.discover import classify_handle, find_by_handle
-    from cli import handle_cache
+    from fpbinject.cli.discover import classify_handle, find_by_handle
+    from fpbinject.cli import handle_cache
 
     kind = classify_handle(value)
     if kind == "url":
@@ -1446,8 +1446,8 @@ def _refresh_handle_cache(value: str) -> None:
     Errors are swallowed because this is a best-effort refresh; the next
     foreground call will fall back to a synchronous lookup.
     """
-    from cli.discover import find_by_handle
-    from cli import handle_cache
+    from fpbinject.cli.discover import find_by_handle
+    from fpbinject.cli import handle_cache
 
     try:
         servers = discover_sync_by_handle(value, timeout=1.5)
@@ -1463,7 +1463,7 @@ def _refresh_handle_cache(value: str) -> None:
 
 def invalidate_cached_handle(value: str) -> None:
     """Public hook so the connector can drop a bad cache entry."""
-    from cli import handle_cache
+    from fpbinject.cli import handle_cache
 
     handle_cache.invalidate(value)
 
@@ -1517,7 +1517,7 @@ def resolve_connection_plan(args) -> ConnectionPlan:
     server_handle = getattr(args, "server", None)
     if server_handle:
         url = _resolve_handle_to_url(server_handle, source="-s flag")
-        from cli.discover import classify_handle
+        from fpbinject.cli.discover import classify_handle
 
         cache_key = (
             server_handle if classify_handle(server_handle) == "host_port" else None
@@ -1529,7 +1529,7 @@ def resolve_connection_plan(args) -> ConnectionPlan:
     env_handle = os.environ.get("FPB_SERVER")
     if env_handle:
         url = _resolve_handle_to_url(env_handle, source="FPB_SERVER env")
-        from cli.discover import classify_handle
+        from fpbinject.cli.discover import classify_handle
 
         cache_key = env_handle if classify_handle(env_handle) == "host_port" else None
         plan = _classify_url(url, token=token, source="env")

@@ -12,8 +12,8 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import create_app  # noqa: E402
-from core.state import state  # noqa: E402
+from fpbinject.main import create_app  # noqa: E402
+from fpbinject.core.state import state  # noqa: E402
 
 # Create test app
 app = create_app()
@@ -289,7 +289,7 @@ class TestStateManagement(unittest.TestCase):
 
     def test_state_initial_values(self):
         """Test state initial values"""
-        from core.state import DeviceState
+        from fpbinject.core.state import DeviceState
 
         test_state = DeviceState()
         self.assertIsNone(test_state.ser)
@@ -299,7 +299,7 @@ class TestStateManagement(unittest.TestCase):
 
     def test_state_to_dict(self):
         """Test state to dictionary"""
-        from core.state import DeviceState
+        from fpbinject.core.state import DeviceState
 
         test_state = DeviceState()
         test_state.elf_path = "/test/path.elf"
@@ -313,15 +313,15 @@ class TestFPBInjectModule(unittest.TestCase):
 
     def test_scan_serial_ports(self):
         """Test scanning serial ports"""
-        from fpb_inject import scan_serial_ports
+        from fpbinject.fpb_inject import scan_serial_ports
 
         ports = scan_serial_ports()
         self.assertIsInstance(ports, list)
 
     def test_fpb_inject_init(self):
         """Test FPBInject initialization"""
-        from fpb_inject import FPBInject
-        from core.state import DeviceState
+        from fpbinject.fpb_inject import FPBInject
+        from fpbinject.core.state import DeviceState
 
         device = DeviceState()
         fpb = FPBInject(device)

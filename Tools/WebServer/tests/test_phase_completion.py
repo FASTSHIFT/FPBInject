@@ -23,9 +23,9 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.state import DeviceStateBase, DeviceState
-from cli.fpb_cli import DeviceState as CLIDeviceState, FPBCLI
-from cli.server_proxy import ServerProxy
+from fpbinject.core.state import DeviceStateBase, DeviceState
+from fpbinject.cli.fpb_cli import DeviceState as CLIDeviceState, FPBCLI
+from fpbinject.cli.server_proxy import ServerProxy
 
 # ============================================================
 # Phase 1: DeviceStateBase inheritance tests
@@ -75,15 +75,15 @@ class TestMemReadWriteRoutes(unittest.TestCase):
     """Test /api/fpb/mem-read and /api/fpb/mem-write routes."""
 
     def setUp(self):
-        from app.routes.fpb import bp
+        from fpbinject.app.routes.fpb import bp
         from flask import Flask
 
         self.app = Flask(__name__)
         self.app.register_blueprint(bp, url_prefix="/api")
         self.client = self.app.test_client()
 
-    @patch("app.routes.fpb._run_serial_op")
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._run_serial_op")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_mem_read_hex(self, mock_helpers, mock_run):
         mock_helpers.return_value = (
             MagicMock(),
@@ -108,8 +108,8 @@ class TestMemReadWriteRoutes(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["success"])
 
-    @patch("app.routes.fpb._run_serial_op")
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._run_serial_op")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_mem_write_success(self, mock_helpers, mock_run):
         mock_helpers.return_value = (
             MagicMock(),
@@ -143,8 +143,8 @@ class TestMemReadWriteRoutes(unittest.TestCase):
         self.assertFalse(data["success"])
         self.assertIn("Invalid hex", data["error"])
 
-    @patch("app.routes.fpb._run_serial_op")
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._run_serial_op")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_mem_read_error(self, mock_helpers, mock_run):
         mock_helpers.return_value = (
             MagicMock(),
@@ -389,19 +389,19 @@ class TestWebServerPortLock(unittest.TestCase):
 
     def test_connection_route_imports_port_lock(self):
         """Verify connection.py imports PortLock."""
-        from app.routes import connection
+        from fpbinject.app.routes import connection
 
         self.assertTrue(hasattr(connection, "PortLock"))
 
     def test_main_imports_port_lock(self):
         """Verify main.py imports PortLock."""
-        import main
+        import fpbinject.main as main
 
         self.assertTrue("PortLock" in dir(main) or hasattr(main, "PortLock"))
 
     def test_port_lock_context_manager(self):
         """PortLock works as context manager."""
-        from utils.port_lock import PortLock
+        from fpbinject.utils.port_lock import PortLock
 
         with PortLock("/dev/test-ctx-mgr") as lock:
             self.assertIsNotNone(lock)
@@ -409,7 +409,7 @@ class TestWebServerPortLock(unittest.TestCase):
 
     def test_port_lock_context_manager_conflict(self):
         """PortLock context manager raises on conflict."""
-        from utils.port_lock import PortLock, PortLockError
+        from fpbinject.utils.port_lock import PortLock, PortLockError
 
         lock1 = PortLock("/dev/test-ctx-conflict")
         self.assertTrue(lock1.acquire())
@@ -422,7 +422,7 @@ class TestWebServerPortLock(unittest.TestCase):
 
     def test_port_lock_is_locked(self):
         """is_locked returns correct state."""
-        from utils.port_lock import PortLock
+        from fpbinject.utils.port_lock import PortLock
 
         lock = PortLock("/dev/test-is-locked")
         self.assertFalse(lock.is_locked())
@@ -435,7 +435,7 @@ class TestWebServerPortLock(unittest.TestCase):
 
     def test_port_lock_get_owner_pid_no_file(self):
         """get_owner_pid returns 'unknown' when no lock file."""
-        from utils.port_lock import PortLock
+        from fpbinject.utils.port_lock import PortLock
 
         lock = PortLock("/dev/test-no-owner-file")
         self.assertEqual(lock.get_owner_pid(), "unknown")

@@ -12,8 +12,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.auto_ban import AutoBanEngine, MALICIOUS_PATH_PATTERNS  # noqa: E402
-from app.middleware import init_auth  # noqa: E402
+from fpbinject.app.auto_ban import AutoBanEngine, MALICIOUS_PATH_PATTERNS  # noqa: E402
+from fpbinject.app.middleware import init_auth  # noqa: E402
 
 
 class TestAutoBanEngine(unittest.TestCase):

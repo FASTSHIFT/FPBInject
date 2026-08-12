@@ -14,7 +14,7 @@ import logging
 import os
 import threading
 
-from core.config_schema import (
+from fpbinject.core.config_schema import (
     PERSISTENT_KEYS,
     get_config_defaults,
 )

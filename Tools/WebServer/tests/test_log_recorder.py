@@ -11,7 +11,7 @@ import os
 import tempfile
 import unittest
 
-from services.log_recorder import LogFileRecorder
+from fpbinject.services.log_recorder import LogFileRecorder
 
 
 class TestLogFileRecorder(unittest.TestCase):

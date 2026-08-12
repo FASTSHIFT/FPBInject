@@ -9,8 +9,8 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.routes.watch_expr import bp  # noqa: E402
-from core.state import state  # noqa: E402
+from fpbinject.app.routes.watch_expr import bp  # noqa: E402
+from fpbinject.core.state import state  # noqa: E402
 
 
 class WatchExprRoutesBase(unittest.TestCase):
@@ -23,14 +23,14 @@ class WatchExprRoutesBase(unittest.TestCase):
         self.client = self.app.test_client()
         state.gdb_session = None
         # Reset watch list
-        import app.routes.watch_expr as we
+        import fpbinject.app.routes.watch_expr as we
 
         we._watch_list = []
         we._watch_next_id = 1
 
     def tearDown(self):
         state.gdb_session = None
-        import app.routes.watch_expr as we
+        import fpbinject.app.routes.watch_expr as we
 
         we._watch_list = []
         we._watch_next_id = 1
@@ -53,8 +53,8 @@ class TestWatchEvaluateEndpoint(WatchExprRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("GDB", data["error"])
 
-    @patch("app.routes.watch_expr._read_device_memory")
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.app.routes.watch_expr._read_device_memory")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_evaluate_simple_symbol(self, _mock_gdb_avail, mock_read):
         mock_session = Mock()
         mock_session.execute.side_effect = lambda cmd, **kw: {
@@ -79,7 +79,7 @@ class TestWatchEvaluateEndpoint(WatchExprRoutesBase):
         self.assertEqual(data["hex_data"], "01000000")
         self.assertEqual(data["source"], "device")
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_evaluate_no_read(self, _mock_gdb_avail):
         mock_session = Mock()
         mock_session.execute.side_effect = lambda cmd, **kw: {
@@ -100,7 +100,7 @@ class TestWatchEvaluateEndpoint(WatchExprRoutesBase):
         self.assertIsNone(data["hex_data"])
         self.assertIsNone(data["source"])
 
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_evaluate_error(self, _mock_gdb_avail):
         mock_session = Mock()
         mock_session.execute.return_value = None
@@ -142,8 +142,8 @@ class TestWatchDerefEndpoint(WatchExprRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("GDB", data["error"])
 
-    @patch("app.routes.watch_expr._read_device_memory")
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.app.routes.watch_expr._read_device_memory")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_deref_success(self, _mock_gdb_avail, mock_read):
         mock_session = Mock()
         mock_session.execute.side_effect = lambda cmd, **kw: {
@@ -168,8 +168,8 @@ class TestWatchDerefEndpoint(WatchExprRoutesBase):
         self.assertEqual(data["target_type"], "uint32_t")
         self.assertEqual(data["hex_data"], "DEADBEEF")
 
-    @patch("app.routes.watch_expr._read_device_memory")
-    @patch("core.gdb_manager.is_gdb_available", return_value=True)
+    @patch("fpbinject.app.routes.watch_expr._read_device_memory")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available", return_value=True)
     def test_deref_null_pointer(self, _mock_gdb_avail, mock_read):
         mock_session = Mock()
         state.gdb_session = mock_session

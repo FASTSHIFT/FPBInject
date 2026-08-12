@@ -7,7 +7,7 @@ import struct
 import tempfile
 import unittest
 
-from core.elf_utils import (
+from fpbinject.core.elf_utils import (
     get_memory_regions,
     _merge_regions,
     _REGION_MARGIN,

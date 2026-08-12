@@ -11,16 +11,16 @@ Provides endpoints for serial logs, tool logs, and raw serial data.
 
 from flask import Blueprint, jsonify, request
 
-from core.state import state
-from services.device_worker import run_in_device_worker
+from fpbinject.core.state import state
+from fpbinject.services.device_worker import run_in_device_worker
 
 bp = Blueprint("logs", __name__)
 
 
 def _build_slot_response(device, app_state):
     """Build slot response using shared helper."""
-    from routes import get_fpb_inject
-    from utils.helpers import build_slot_response
+    from fpbinject.routes import get_fpb_inject
+    from fpbinject.utils.helpers import build_slot_response
 
     return build_slot_response(device, app_state, get_fpb_inject)
 
@@ -156,7 +156,7 @@ def api_serial_send():
 @bp.route("/log_file/start", methods=["POST"])
 def api_log_file_start():
     """Start recording logs to file."""
-    from services.log_recorder import log_recorder
+    from fpbinject.services.log_recorder import log_recorder
 
     data = request.json or {}
     path = data.get("path", "")
@@ -182,7 +182,7 @@ def api_log_file_start():
 @bp.route("/log_file/stop", methods=["POST"])
 def api_log_file_stop():
     """Stop recording logs to file."""
-    from services.log_recorder import log_recorder
+    from fpbinject.services.log_recorder import log_recorder
 
     device = state.device
     success, error = log_recorder.stop()
@@ -197,7 +197,7 @@ def api_log_file_stop():
 @bp.route("/log_file/status", methods=["GET"])
 def api_log_file_status():
     """Get log file recording status."""
-    from services.log_recorder import log_recorder
+    from fpbinject.services.log_recorder import log_recorder
 
     device = state.device
     return jsonify(

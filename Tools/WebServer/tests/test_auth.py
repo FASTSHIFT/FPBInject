@@ -11,7 +11,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.middleware import init_auth  # noqa: E402
+from fpbinject.app.middleware import init_auth  # noqa: E402
 
 
 class TestAuthMiddleware(unittest.TestCase):
@@ -285,7 +285,7 @@ class TestSecurityHardening(unittest.TestCase):
 
     def test_constant_time_compare_rejects_none(self):
         """Token comparison should reject None values safely."""
-        from app.middleware import _constant_time_compare
+        from fpbinject.app.middleware import _constant_time_compare
 
         self.assertFalse(_constant_time_compare(None, "token"))
         self.assertFalse(_constant_time_compare("token", None))
@@ -293,7 +293,7 @@ class TestSecurityHardening(unittest.TestCase):
 
     def test_constant_time_compare_correct(self):
         """Token comparison should accept matching tokens."""
-        from app.middleware import _constant_time_compare
+        from fpbinject.app.middleware import _constant_time_compare
 
         self.assertTrue(_constant_time_compare("abc123", "abc123"))
         self.assertFalse(_constant_time_compare("abc123", "abc124"))
@@ -301,7 +301,7 @@ class TestSecurityHardening(unittest.TestCase):
 
     def test_tarpit_returns_403_streaming(self):
         """Tarpit response should be a 403 streaming response."""
-        from app.middleware import _make_tarpit_response
+        from fpbinject.app.middleware import _make_tarpit_response
 
         resp = _make_tarpit_response(0.001)
         self.assertEqual(resp.status_code, 403)

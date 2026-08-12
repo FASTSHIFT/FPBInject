@@ -14,7 +14,7 @@ import unittest
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.crc import crc16
+from fpbinject.utils.crc import crc16
 
 
 class TestCRC16(unittest.TestCase):

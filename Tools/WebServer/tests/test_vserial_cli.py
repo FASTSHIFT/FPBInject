@@ -21,9 +21,9 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from cli.server_proxy import ServerProxy  # noqa: E402
-from cli.connection_plan import ConnectionPlan, ConnectionMode  # noqa: E402
-from cli.fpb_cli import FPBCLI  # noqa: E402
+from fpbinject.cli.server_proxy import ServerProxy  # noqa: E402
+from fpbinject.cli.connection_plan import ConnectionPlan, ConnectionMode  # noqa: E402
+from fpbinject.cli.fpb_cli import FPBCLI  # noqa: E402
 from fixtures.mock_http import MockHTTPHandler as _MockHTTPHandler  # noqa: E402
 
 

@@ -343,7 +343,7 @@ FPBInject 纯 Python（依赖里 `tree_sitter` 等有 C 扩展，但由其自身
 
 | 阶段 | 内容 | 依赖 | 风险 |
 |------|------|------|------|
-| S0 | 包化：模块收进 `fpbinject/`，改导入，去 `sys.path`/`chdir`，资源用 `importlib.resources` | — | **高**（面广，靠测试兜底） |
+| S0 ✅ | 包化：`__init__/__main__`、导入迁移至 `fpbinject.` 前缀、资源用 `importlib.resources`、CI `pip install -e .` | — | **已完成**（2373 测试全绿） |
 | S1 | 配置改造：`resolve_config_path`、`--config`、交互创建、`platformdirs` 落点迁移 | S0 | 中 |
 | S2 | 跨平台收敛：`/tmp`→`tempfile`、串口扫描按 `sys.platform` 分支 | S0 | 低 |
 | S3 | `pyproject.toml` + entry points + `__init__/__main__` | S0 | 低 |
@@ -352,6 +352,18 @@ FPBInject 纯 Python（依赖里 `tree_sitter` 等有 C 扩展，但由其自身
 | S6 | Windows 虚拟串口 TCP 透传（可选，独立） | — | 中 |
 
 建议顺序：**S0 单独分支做透（最关键，全靠测试保驾）→ S1/S2/S3 并行 → S4 验证 → S5 发布**。S6 独立推进。
+
+## 8.1 开发 / 测试工作流（S0 后）
+
+代码已迁移到 `fpbinject.` 命名空间，测试也导入 `fpbinject.*`。因此本地开发需先做一次可编辑安装（把仓库根的 `pyproject.toml` 映射的 `fpbinject` 包装进环境）：
+
+```bash
+pip install -e .            # 仓库根执行；package-dir 映射到 Tools/WebServer
+cd Tools/WebServer
+python tests/run_tests.py --coverage --target 85
+```
+
+CI 已在依赖安装阶段加入 `pip install -e .`，顺带验证打包配置本身可安装。未做可编辑安装时，测试会因 `import fpbinject` 失败——这是预期行为。
 
 ## 9. 决策待确认
 

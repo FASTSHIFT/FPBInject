@@ -395,7 +395,7 @@ class TestCSPvsTemplateConsistency(unittest.TestCase):
         )
         self.app.config["TESTING"] = True
 
-        from app.middleware import init_auth
+        from fpbinject.app.middleware import init_auth
 
         init_auth(self.app, "testtoken")
 

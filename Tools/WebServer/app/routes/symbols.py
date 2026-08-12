@@ -15,9 +15,9 @@ import time
 
 from flask import Blueprint, jsonify, request, Response
 
-from app.utils.sse import sse_response
-from core.state import state
-from services.device_worker import run_in_device_worker
+from fpbinject.app.utils.sse import sse_response
+from fpbinject.core.state import state
+from fpbinject.services.device_worker import run_in_device_worker
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def _get_struct_layout_cached(sym_name):
     if sym_name in _struct_layout_cache:
         return _struct_layout_cache[sym_name]
 
-    from core.gdb_manager import is_gdb_available
+    from fpbinject.core.gdb_manager import is_gdb_available
 
     layout = None
     if is_gdb_available(state):
@@ -58,7 +58,7 @@ def _get_struct_layout_cached(sym_name):
 
 def _get_fpb_inject():
     """Lazy import to avoid circular dependency."""
-    from routes import get_fpb_inject
+    from fpbinject.routes import get_fpb_inject
 
     return get_fpb_inject()
 
@@ -122,7 +122,7 @@ def _get_gdb_values(sym_name, addr, struct_layout):
     Returns dict mapping field_name -> display_string, or None.
     Uses GDB's native 'print' to decode all fields including typedefs.
     """
-    from core.gdb_manager import is_gdb_available
+    from fpbinject.core.gdb_manager import is_gdb_available
 
     if not is_gdb_available(state) or not state.gdb_session:
         return None
@@ -294,7 +294,7 @@ def _get_nested_struct_layout(type_name):
     if type_name in _nested_layout_cache:
         return _nested_layout_cache[type_name]
 
-    from core.gdb_manager import is_gdb_available
+    from fpbinject.core.gdb_manager import is_gdb_available
 
     if not is_gdb_available(state) or not state.gdb_session:
         _nested_layout_cache[type_name] = None
@@ -369,7 +369,7 @@ def _lookup_symbol(sym_name):
     This function uses GDB to get full detail (size, type, section) and caches
     the result in _symbol_detail_cache for subsequent calls.
     """
-    from core.gdb_manager import is_gdb_available
+    from fpbinject.core.gdb_manager import is_gdb_available
 
     # Try detail cache first (dict with addr/size/type/section from GDB)
     if sym_name in _symbol_detail_cache:
@@ -576,7 +576,7 @@ def api_get_function_signature():
     if not func_name:
         return jsonify({"success": False, "error": "Function name not specified"})
 
-    from core.gdb_manager import is_gdb_available
+    from fpbinject.core.gdb_manager import is_gdb_available
 
     signature = None
 
@@ -720,7 +720,7 @@ def api_decompile_symbol():
 def api_decompile_symbol_stream():
     """Decompile a specific function using Ghidra with streaming progress."""
     import json
-    from core import elf_utils
+    from fpbinject.core import elf_utils
 
     func_name = request.args.get("func", "")
     if not func_name:
@@ -781,7 +781,7 @@ def api_get_symbol_value():
 
     Returns hex data and optional struct layout via GDB.
     """
-    from core.gdb_manager import is_gdb_available
+    from fpbinject.core.gdb_manager import is_gdb_available
 
     t_start = time.time()
 
@@ -992,7 +992,7 @@ def api_read_symbol_from_device():
             resp["pointer_value"] = f"0x{ptr_value:08X}"
 
             if ptr_value != 0 and pointer_target:
-                from core.gdb_manager import is_gdb_available
+                from fpbinject.core.gdb_manager import is_gdb_available
 
                 target_size = 0
                 target_layout = None

@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.state import state, DeviceState  # noqa: E402
+from fpbinject.core.state import state, DeviceState  # noqa: E402
 
 
 class TestFileWatcherManager(unittest.TestCase):
@@ -28,10 +28,10 @@ class TestFileWatcherManager(unittest.TestCase):
         """Clean up after each test"""
         state.file_watcher = None
 
-    @patch("services.file_watcher.start_watching")
+    @patch("fpbinject.services.file_watcher.start_watching")
     def test_start_file_watcher_success(self, mock_start):
         """Test starting file watcher successfully"""
-        from services.file_watcher_manager import start_file_watcher
+        from fpbinject.services.file_watcher_manager import start_file_watcher
 
         mock_watcher = Mock()
         mock_start.return_value = mock_watcher
@@ -42,10 +42,10 @@ class TestFileWatcherManager(unittest.TestCase):
         self.assertEqual(state.file_watcher, mock_watcher)
         mock_start.assert_called_once()
 
-    @patch("services.file_watcher.start_watching")
+    @patch("fpbinject.services.file_watcher.start_watching")
     def test_start_file_watcher_failure(self, mock_start):
         """Test starting file watcher with failure"""
-        from services.file_watcher_manager import start_file_watcher
+        from fpbinject.services.file_watcher_manager import start_file_watcher
 
         mock_start.side_effect = Exception("Failed to start")
 
@@ -54,10 +54,10 @@ class TestFileWatcherManager(unittest.TestCase):
         self.assertFalse(result)
         self.assertIsNone(state.file_watcher)
 
-    @patch("services.file_watcher.stop_watching")
+    @patch("fpbinject.services.file_watcher.stop_watching")
     def test_stop_file_watcher(self, mock_stop):
         """Test stopping file watcher"""
-        from services.file_watcher_manager import stop_file_watcher
+        from fpbinject.services.file_watcher_manager import stop_file_watcher
 
         state.file_watcher = Mock()
 
@@ -68,7 +68,7 @@ class TestFileWatcherManager(unittest.TestCase):
 
     def test_stop_file_watcher_when_none(self):
         """Test stopping file watcher when none exists"""
-        from services.file_watcher_manager import stop_file_watcher
+        from fpbinject.services.file_watcher_manager import stop_file_watcher
 
         state.file_watcher = None
 
@@ -77,10 +77,10 @@ class TestFileWatcherManager(unittest.TestCase):
 
         self.assertIsNone(state.file_watcher)
 
-    @patch("services.file_watcher.stop_watching")
+    @patch("fpbinject.services.file_watcher.stop_watching")
     def test_stop_file_watcher_exception(self, mock_stop):
         """Test stopping file watcher with exception"""
-        from services.file_watcher_manager import stop_file_watcher
+        from fpbinject.services.file_watcher_manager import stop_file_watcher
 
         state.file_watcher = Mock()
         mock_stop.side_effect = Exception("Stop failed")
@@ -90,11 +90,11 @@ class TestFileWatcherManager(unittest.TestCase):
 
         self.assertIsNone(state.file_watcher)
 
-    @patch("services.file_watcher_manager.start_file_watcher")
-    @patch("services.file_watcher_manager.stop_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.start_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.stop_file_watcher")
     def test_restart_file_watcher(self, mock_stop, mock_start):
         """Test restarting file watcher"""
-        from services.file_watcher_manager import restart_file_watcher
+        from fpbinject.services.file_watcher_manager import restart_file_watcher
 
         state.device.watch_dirs = ["/tmp/test"]
 
@@ -103,11 +103,11 @@ class TestFileWatcherManager(unittest.TestCase):
         mock_stop.assert_called_once()
         mock_start.assert_called_once_with(["/tmp/test"])
 
-    @patch("services.file_watcher_manager.start_file_watcher")
-    @patch("services.file_watcher_manager.stop_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.start_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.stop_file_watcher")
     def test_restart_file_watcher_no_dirs(self, mock_stop, mock_start):
         """Test restarting file watcher with no watch dirs"""
-        from services.file_watcher_manager import restart_file_watcher
+        from fpbinject.services.file_watcher_manager import restart_file_watcher
 
         state.device.watch_dirs = []
 
@@ -116,10 +116,10 @@ class TestFileWatcherManager(unittest.TestCase):
         mock_stop.assert_called_once()
         mock_start.assert_not_called()
 
-    @patch("services.file_watcher_manager.start_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.start_file_watcher")
     def test_restore_file_watcher_enabled(self, mock_start):
         """Test restoring file watcher when auto_compile is enabled"""
-        from services.file_watcher_manager import restore_file_watcher
+        from fpbinject.services.file_watcher_manager import restore_file_watcher
 
         state.device.auto_compile = True
         state.device.watch_dirs = ["/tmp/test"]
@@ -128,10 +128,10 @@ class TestFileWatcherManager(unittest.TestCase):
 
         mock_start.assert_called_once_with(["/tmp/test"])
 
-    @patch("services.file_watcher_manager.start_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.start_file_watcher")
     def test_restore_file_watcher_disabled(self, mock_start):
         """Test restoring file watcher when auto_compile is disabled"""
-        from services.file_watcher_manager import restore_file_watcher
+        from fpbinject.services.file_watcher_manager import restore_file_watcher
 
         state.device.auto_compile = False
         state.device.watch_dirs = ["/tmp/test"]
@@ -140,10 +140,10 @@ class TestFileWatcherManager(unittest.TestCase):
 
         mock_start.assert_not_called()
 
-    @patch("services.file_watcher_manager.start_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.start_file_watcher")
     def test_restore_file_watcher_no_dirs(self, mock_start):
         """Test restoring file watcher with no watch dirs"""
-        from services.file_watcher_manager import restore_file_watcher
+        from fpbinject.services.file_watcher_manager import restore_file_watcher
 
         state.device.auto_compile = True
         state.device.watch_dirs = []
@@ -152,10 +152,10 @@ class TestFileWatcherManager(unittest.TestCase):
 
         mock_start.assert_not_called()
 
-    @patch("services.file_watcher_manager._trigger_auto_inject")
+    @patch("fpbinject.services.file_watcher_manager._trigger_auto_inject")
     def test_on_file_change_with_auto_compile(self, mock_trigger):
         """Test file change callback with auto_compile enabled"""
-        from services.file_watcher_manager import _on_file_change
+        from fpbinject.services.file_watcher_manager import _on_file_change
 
         state.device.auto_compile = True
 
@@ -165,10 +165,10 @@ class TestFileWatcherManager(unittest.TestCase):
         # Check pending change was added
         self.assertTrue(len(state.pending_changes) > 0)
 
-    @patch("services.file_watcher_manager._trigger_auto_inject")
+    @patch("fpbinject.services.file_watcher_manager._trigger_auto_inject")
     def test_on_file_change_without_auto_compile(self, mock_trigger):
         """Test file change callback with auto_compile disabled"""
-        from services.file_watcher_manager import _on_file_change
+        from fpbinject.services.file_watcher_manager import _on_file_change
 
         state.device.auto_compile = False
 
@@ -190,11 +190,11 @@ class TestTriggerAutoInject(unittest.TestCase):
         func()
         return True
 
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_no_markers(self, mock_gen_class, mock_get_fpb):
         """Test auto inject when no markers found"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -216,14 +216,14 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_no_markers_with_active_inject(
         self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Test auto inject clears injection when markers removed"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Setup: device has active injection
         state.device.inject_active = True
@@ -258,13 +258,13 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_generate_patch_fails(
         self, mock_gen_class, mock_get_fpb
     ):
         """Test auto inject when no markers found (in-place mode has no separate patch generation)"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -286,13 +286,13 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_device_not_connected(
         self, mock_gen_class, mock_get_fpb
     ):
         """Test auto inject when device not connected"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -317,14 +317,14 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_success(
         self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Test successful auto inject"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -376,14 +376,14 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_partial_success(
         self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Test auto inject with partial success"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -440,14 +440,14 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_failure(
         self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Test auto inject failure"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -484,11 +484,11 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_exception(self, mock_gen_class, mock_get_fpb):
         """Test auto inject with exception"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -510,14 +510,14 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_many_functions(
         self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Test auto inject with more than 3 functions"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -571,14 +571,14 @@ class TestTriggerAutoInject(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_trigger_auto_inject_worker_timeout(
         self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Test auto inject when DeviceWorker times out"""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         # Create temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:

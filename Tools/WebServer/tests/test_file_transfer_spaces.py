@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.file_transfer import FileTransfer  # noqa: E402
+from fpbinject.core.file_transfer import FileTransfer  # noqa: E402
 
 
 class TestFileTransferWithSpaces(unittest.TestCase):
@@ -86,7 +86,7 @@ class TestFileTransferWithSpaces(unittest.TestCase):
 
     def test_upload_with_spaces(self):
         """Test upload with filename containing spaces."""
-        from utils.crc import crc16
+        from fpbinject.utils.crc import crc16
 
         data = b"hello"
         expected_crc = crc16(data)
@@ -106,7 +106,7 @@ class TestFileTransferWithSpaces(unittest.TestCase):
 
     def test_download_with_spaces(self):
         """Test download with filename containing spaces."""
-        from utils.crc import crc16
+        from fpbinject.utils.crc import crc16
 
         data = b"hello"
         expected_crc = crc16(data)

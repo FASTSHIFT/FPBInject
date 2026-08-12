@@ -19,7 +19,7 @@ import struct
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
-from utils.toolchain import get_tool_path, get_subprocess_env
+from fpbinject.utils.toolchain import get_tool_path, get_subprocess_env
 
 logger = logging.getLogger(__name__)
 

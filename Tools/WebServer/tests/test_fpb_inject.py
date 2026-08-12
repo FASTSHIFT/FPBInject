@@ -14,15 +14,15 @@ from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fpb_inject import (  # noqa: E402
+from fpbinject.fpb_inject import (  # noqa: E402
     FPBInject,
     FPBInjectError,
     Platform,
     scan_serial_ports,
     serial_open,
 )
-from utils.crc import crc16  # noqa: E402
-from core.state import DeviceState  # noqa: E402
+from fpbinject.utils.crc import crc16  # noqa: E402
+from fpbinject.core.state import DeviceState  # noqa: E402
 
 
 class TestCRC16(unittest.TestCase):
@@ -81,7 +81,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIsNotNone(error)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_success(self, mock_serial):
         """Test successful open"""
         mock_instance = Mock()
@@ -298,7 +298,7 @@ fl>"""
 
     def test_log_raw(self):
         """Test raw log recording with serial echo enabled"""
-        from core.serial_protocol import LogDirection
+        from fpbinject.core.serial_protocol import LogDirection
 
         self.device.serial_echo_enabled = True
         self.fpb._log_raw(LogDirection.TX, "test command")
@@ -308,7 +308,7 @@ fl>"""
 
     def test_log_raw_tx_disabled_by_default(self):
         """Test TX not logged when serial_echo_enabled is False (default)"""
-        from core.serial_protocol import LogDirection
+        from fpbinject.core.serial_protocol import LogDirection
 
         self.device.serial_echo_enabled = False
         self.fpb._log_raw(LogDirection.TX, "test command")
@@ -317,7 +317,7 @@ fl>"""
 
     def test_log_raw_rx_always_logged(self):
         """Test RX is always logged regardless of serial_echo_enabled"""
-        from core.serial_protocol import LogDirection
+        from fpbinject.core.serial_protocol import LogDirection
 
         self.device.serial_echo_enabled = False
         self.fpb._log_raw(LogDirection.RX, "response data")
@@ -327,7 +327,7 @@ fl>"""
 
     def test_log_raw_empty(self):
         """Test empty data not recorded"""
-        from core.serial_protocol import LogDirection
+        from fpbinject.core.serial_protocol import LogDirection
 
         self.device.serial_echo_enabled = True
         self.fpb._log_raw(LogDirection.TX, "")
@@ -336,7 +336,7 @@ fl>"""
 
     def test_log_raw_limit(self):
         """Test log size limit"""
-        from core.serial_protocol import LogDirection
+        from fpbinject.core.serial_protocol import LogDirection
 
         self.device.raw_log_max_size = 10
         self.device.serial_echo_enabled = True
@@ -1513,7 +1513,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_compile_fail(self, mock_compile):
         """Test injection when compilation step fails"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -1545,10 +1545,10 @@ class TestFPBInjectCoverage(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
-    @patch("fpb_inject.FPBInject.unpatch")
-    @patch("fpb_inject.FPBInject.upload")
-    @patch("fpb_inject.FPBInject.tpatch")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.unpatch")
+    @patch("fpbinject.fpb_inject.FPBInject.upload")
+    @patch("fpbinject.fpb_inject.FPBInject.tpatch")
     def test_inject_success_flow(
         self, mock_tpatch, mock_upload, mock_unpatch, mock_compile
     ):
@@ -1605,7 +1605,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_dynamic_allocation(self, mock_compile):
         """Test dynamic allocation injection"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -1657,7 +1657,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_finds_function_by_exact_name(self, mock_compile):
         """Test inject finds function by exact target name (new design - no inject_ prefix)"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -1699,7 +1699,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_no_fpb_marked_function_error(self, mock_compile):
         """Test inject returns error when no FPB_INJECT marked function found"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -1735,7 +1735,7 @@ class TestFPBInjectCoverage(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_fallback_to_first_symbol(self, mock_compile):
         """Test inject uses first symbol as fallback when no exact match"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -1930,7 +1930,7 @@ class TestDecompileFunction(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(msg, "GHIDRA_NOT_CONFIGURED")
 
-    @patch("fpb_inject.FPBInject.decompile_function")
+    @patch("fpbinject.fpb_inject.FPBInject.decompile_function")
     def test_decompile_success_mock(self, mock_decompile):
         """Test successful decompile with mock"""
         mock_decompile.return_value = (
@@ -1943,7 +1943,7 @@ class TestDecompileFunction(unittest.TestCase):
         self.assertTrue(success)
         self.assertIn("test_func", result)
 
-    @patch("fpb_inject.FPBInject.decompile_function")
+    @patch("fpbinject.fpb_inject.FPBInject.decompile_function")
     def test_decompile_function_not_found(self, mock_decompile):
         """Test decompile when function not found"""
         mock_decompile.return_value = (
@@ -2238,8 +2238,8 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
         self.device = DeviceState()
         self.fpb = FPBInject(self.device)
 
-    @patch("core.compiler.subprocess.run")
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.subprocess.run")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_objcopy_error_returns_error_message(self, mock_parse, mock_run):
         """Test that objcopy failure returns error message instead of raising exception"""
         # Setup mock compile config
@@ -2271,7 +2271,7 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
 
         mock_run.side_effect = run_side_effect
 
-        from core.compiler import compile_inject
+        from fpbinject.core.compiler import compile_inject
 
         # Call compile_inject
         data, symbols, error = compile_inject(
@@ -2287,8 +2287,8 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
         self.assertIn("Objcopy error", error)
         self.assertIn("no sections", error)
 
-    @patch("core.compiler.subprocess.run")
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.subprocess.run")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_link_error_returns_error_message(self, mock_parse, mock_run):
         """Test that link failure returns error message"""
         mock_parse.return_value = {
@@ -2319,7 +2319,7 @@ class TestCompileInjectObjcopyError(unittest.TestCase):
 
         mock_run.side_effect = run_side_effect
 
-        from core.compiler import compile_inject
+        from fpbinject.core.compiler import compile_inject
 
         data, symbols, error = compile_inject(
             source_content="/* FPB_INJECT */\nvoid test_func(void) {}",
@@ -2343,7 +2343,7 @@ class TestInjectMulti(unittest.TestCase):
         self.device.ser.in_waiting = 0
         self.fpb = FPBInject(self.device)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_multi_finds_functions_without_prefix(self, mock_compile):
         """Test inject_multi finds functions by original name (no inject_ prefix)"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -2382,7 +2382,7 @@ class TestInjectMulti(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_multi_no_symbols_error(self, mock_compile):
         """Test inject_multi returns error when no functions compiled"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -2400,7 +2400,7 @@ class TestInjectMulti(unittest.TestCase):
             if os.path.exists(self.device.elf_path):
                 os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.FPBInject.compile_inject")
+    @patch("fpbinject.fpb_inject.FPBInject.compile_inject")
     def test_inject_multi_target_not_in_elf(self, mock_compile):
         """Test inject_multi handles function not found in ELF"""
         with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -2548,7 +2548,7 @@ class TestResolveSymbolAddr(unittest.TestCase):
         finally:
             os.remove(self.device.elf_path)
 
-    @patch("fpb_inject.elf_utils.get_symbols")
+    @patch("fpbinject.fpb_inject.elf_utils.get_symbols")
     def test_resolve_via_nm_cache_invalidation(self, mock_get_symbols):
         """Cache should be invalidated when ELF mtime changes."""
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -2592,8 +2592,8 @@ class TestResolveSymbolAddr(unittest.TestCase):
 
         try:
             with patch.object(self.fpb, "_get_elf_symbols", return_value={}), patch(
-                "core.gdb_manager.is_gdb_available", return_value=True
-            ), patch("core.state.state") as mock_state:
+                "fpbinject.core.gdb_manager.is_gdb_available", return_value=True
+            ), patch("fpbinject.core.state.state") as mock_state:
                 mock_session = Mock()
                 mock_session.lookup_symbol.return_value = {"addr": 0x3000}
                 mock_state.gdb_session = mock_session
@@ -2608,9 +2608,9 @@ class TestResolveSymbolAddr(unittest.TestCase):
         """No ELF and no GDB should return None."""
         self.device.elf_path = None
 
-        with patch("core.gdb_manager.is_gdb_available", return_value=False), patch(
-            "core.state.state"
-        ):
+        with patch(
+            "fpbinject.core.gdb_manager.is_gdb_available", return_value=False
+        ), patch("fpbinject.core.state.state"):
             addr = self.fpb._resolve_symbol_addr("any_sym")
             self.assertIsNone(addr)
 

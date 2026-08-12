@@ -14,9 +14,13 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from core.state import state
-from services.device_worker import run_in_device_worker, start_worker, stop_worker
-from utils.port_lock import PortLock
+from fpbinject.core.state import state
+from fpbinject.services.device_worker import (
+    run_in_device_worker,
+    start_worker,
+    stop_worker,
+)
+from fpbinject.utils.port_lock import PortLock
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +29,14 @@ bp = Blueprint("connection", __name__)
 
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
-    from routes import get_fpb_inject
-    from services.file_watcher_manager import (
+    from fpbinject.routes import get_fpb_inject
+    from fpbinject.services.file_watcher_manager import (
         restart_file_watcher,
         stop_file_watcher,
         start_elf_watcher,
     )
-    from fpb_inject import scan_serial_ports, serial_open
-    from core.state import state, tool_log
+    from fpbinject.fpb_inject import scan_serial_ports, serial_open
+    from fpbinject.core.state import state, tool_log
 
     def log_info(msg):
         tool_log(state.device, "INFO", msg)
@@ -64,7 +68,7 @@ def _start_elf_watcher(elf_path):
 
 def _start_vserial(device):
     """Create and start the virtual serial passthrough service."""
-    from services.virtual_serial import VirtualSerialService
+    from fpbinject.services.virtual_serial import VirtualSerialService
 
     if device.vserial is None:
         device.vserial = VirtualSerialService(device)
@@ -219,7 +223,7 @@ def api_disconnect():
         state.port_lock = None
 
     # Stop GDB integration
-    from core.gdb_manager import stop_gdb
+    from fpbinject.core.gdb_manager import stop_gdb
 
     stop_gdb(state)
 
@@ -243,7 +247,7 @@ def api_status():
         pass
 
     # Get external GDB server port
-    from core.gdb_manager import get_external_gdb_port
+    from fpbinject.core.gdb_manager import get_external_gdb_port
 
     external_gdb_port = get_external_gdb_port(state)
 
@@ -322,7 +326,7 @@ def api_vserial_stop():
 @bp.route("/config", methods=["GET"])
 def api_get_config():
     """Get current device configuration."""
-    from core.config_schema import PERSISTENT_KEYS
+    from fpbinject.core.config_schema import PERSISTENT_KEYS
 
     device = state.device
     config_data = {key: getattr(device, key) for key in PERSISTENT_KEYS}
@@ -333,7 +337,7 @@ def api_get_config():
 @bp.route("/config/schema", methods=["GET"])
 def api_get_config_schema():
     """Get configuration schema for frontend dynamic rendering."""
-    from core.config_schema import get_schema_as_dict
+    from fpbinject.core.config_schema import get_schema_as_dict
 
     return jsonify(get_schema_as_dict())
 
@@ -341,7 +345,7 @@ def api_get_config_schema():
 @bp.route("/config", methods=["POST"])
 def api_config():
     """Update device configuration."""
-    from core.config_schema import PERSISTENT_KEYS
+    from fpbinject.core.config_schema import PERSISTENT_KEYS
 
     _, _, _, get_fpb_inject, _restart_file_watcher, _stop_file_watcher, _, _, _ = (
         _get_helpers()
@@ -366,7 +370,7 @@ def api_config():
         _start_elf_watcher(device.elf_path)
 
         # Start GDB integration in background (non-blocking)
-        from core.gdb_manager import start_gdb_async
+        from fpbinject.core.gdb_manager import start_gdb_async
 
         start_gdb_async(state)
 

@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import create_app, WEBSERVER_DIR  # noqa: E402
+from fpbinject.app import create_app, WEBSERVER_DIR  # noqa: E402
 
 
 class TestAppInit(unittest.TestCase):
@@ -25,7 +25,7 @@ class TestAppInit(unittest.TestCase):
         app = create_app()
 
         self.assertIsNotNone(app)
-        self.assertEqual(app.name, "app")
+        self.assertEqual(app.name, "fpbinject")
 
     def test_create_app_has_cors(self):
         """Test CORS is enabled"""

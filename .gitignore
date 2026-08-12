@@ -45,6 +45,13 @@ build/
 build_test/
 __pycache__/
 
+# Python packaging / editable-install artifacts
+*.egg-info/
+dist/
+# Local dev symlink mapping the fpbinject package to Tools/WebServer
+# (CI/users use `pip install -e .` instead)
+/fpbinject
+
 # NuttX build files
 .built
 .depend

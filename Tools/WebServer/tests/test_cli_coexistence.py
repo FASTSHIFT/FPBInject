@@ -19,9 +19,9 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.fpb_cli import FPBCLI, FPBCLIError, main
-from cli.server_proxy import ProxyAuthError
-from utils.port_lock import PortLock
+from fpbinject.cli.fpb_cli import FPBCLI, FPBCLIError, main
+from fpbinject.cli.server_proxy import ProxyAuthError
+from fpbinject.utils.port_lock import PortLock
 
 
 class _MockHandler(http.server.BaseHTTPRequestHandler):
@@ -242,7 +242,7 @@ class TestFPBCLIDirectMode(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
 
-    @patch("cli.fpb_cli.serial.Serial")
+    @patch("fpbinject.cli.fpb_cli.serial.Serial")
     def test_direct_skips_proxy(self, mock_serial):
         """--direct flag forces direct serial connection."""
         mock_serial.return_value = MagicMock()
@@ -267,8 +267,8 @@ class TestFPBCLIPortLockIntegration(unittest.TestCase):
         mock_proxy.launch_server.return_value = False
         return mock_proxy
 
-    @patch("cli.fpb_cli.ServerProxy")
-    @patch("cli.fpb_cli.serial.Serial")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.serial.Serial")
     def test_port_lock_acquired_on_connect(self, mock_serial, mock_proxy_cls):
         """Port lock is acquired when connecting directly."""
         mock_serial.return_value = MagicMock()
@@ -280,8 +280,8 @@ class TestFPBCLIPortLockIntegration(unittest.TestCase):
         self.assertIsNotNone(cli._port_lock)
         cli.cleanup()
 
-    @patch("cli.fpb_cli.ServerProxy")
-    @patch("cli.fpb_cli.serial.Serial")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.serial.Serial")
     def test_port_lock_released_on_cleanup(self, mock_serial, mock_proxy_cls):
         """Port lock is released on cleanup."""
         mock_serial.return_value = MagicMock()
@@ -297,8 +297,8 @@ class TestFPBCLIPortLockIntegration(unittest.TestCase):
         self.assertTrue(lock2.acquire())
         lock2.release()
 
-    @patch("cli.fpb_cli.ServerProxy")
-    @patch("cli.fpb_cli.serial.Serial")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.serial.Serial")
     def test_port_lock_conflict(self, mock_serial, mock_proxy_cls):
         """Second CLI on same port fails with FPBCLIError."""
         mock_serial.return_value = MagicMock()
@@ -352,7 +352,7 @@ class TestFPBCLINoPortNoProxy(unittest.TestCase):
 class TestFPBCLIServerUrlArg(unittest.TestCase):
     """Test --server-url argument."""
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_custom_server_url_unreachable_no_port(self, mock_proxy_cls):
         """Remote URL, no port, unreachable server -> stays offline (no proxy)."""
         proxy = MagicMock()
@@ -367,11 +367,11 @@ class TestFPBCLIServerUrlArg(unittest.TestCase):
 class TestMainNewArgs(unittest.TestCase):
     """Test new CLI arguments in main()."""
 
-    @patch("cli.fpb_cli.FPBCLI")
+    @patch("fpbinject.cli.fpb_cli.FPBCLI")
     @patch("sys.argv", ["fpb_cli.py", "--direct", "--port", "/dev/ttyACM0", "info"])
     def test_direct_arg_passed(self, mock_cli_cls):
         """--direct argument is passed to FPBCLI."""
-        from cli.connection_plan import ConnectionMode
+        from fpbinject.cli.connection_plan import ConnectionMode
 
         mock_cli = MagicMock()
         mock_cli_cls.return_value = mock_cli
@@ -381,7 +381,7 @@ class TestMainNewArgs(unittest.TestCase):
         self.assertEqual(plan.mode, ConnectionMode.DIRECT)
         self.assertEqual(plan.serial_port, "/dev/ttyACM0")
 
-    @patch("cli.fpb_cli.FPBCLI")
+    @patch("fpbinject.cli.fpb_cli.FPBCLI")
     @patch(
         "sys.argv",
         [
@@ -557,33 +557,33 @@ class TestFPBCLIIsRemoteUrl(unittest.TestCase):
     """Test the URL locality classifier."""
 
     def test_localhost_ip_is_local(self):
-        from cli.fpb_cli import _is_local_url
+        from fpbinject.cli.fpb_cli import _is_local_url
 
         self.assertTrue(_is_local_url("http://127.0.0.1:5500"))
 
     def test_localhost_name_is_local(self):
-        from cli.fpb_cli import _is_local_url
+        from fpbinject.cli.fpb_cli import _is_local_url
 
         self.assertTrue(_is_local_url("http://localhost:5500"))
 
     def test_ipv6_loopback_is_local(self):
-        from cli.fpb_cli import _is_local_url
+        from fpbinject.cli.fpb_cli import _is_local_url
 
         self.assertTrue(_is_local_url("http://[::1]:5500"))
 
     def test_lan_ip_is_remote(self):
-        from cli.fpb_cli import _is_local_url
+        from fpbinject.cli.fpb_cli import _is_local_url
 
         self.assertFalse(_is_local_url("http://192.168.1.20:5500"))
 
     def test_hostname_is_remote(self):
-        from cli.fpb_cli import _is_local_url
+        from fpbinject.cli.fpb_cli import _is_local_url
 
         self.assertFalse(_is_local_url("http://buildbox:9000"))
 
     def test_malformed_url_is_local(self):
         # Unparseable -> treated as local (safe default, no remote restrictions).
-        from cli.fpb_cli import _is_local_url
+        from fpbinject.cli.fpb_cli import _is_local_url
 
         self.assertFalse(_is_local_url("not a url"))
 
@@ -598,7 +598,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
         proxy.connect.return_value = {"success": True}
         return proxy
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_remote_uses_proxy_without_launch(self, mock_proxy_cls):
         """Remote mode sets up proxy and never calls launch_server."""
         proxy = self._mock_proxy(ok=True, connected=True)
@@ -609,7 +609,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
         self.assertIsNone(cli._port_lock)
         cli.cleanup()
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_remote_no_port_attaches_proxy(self, mock_proxy_cls):
         """Remote mode works WITHOUT --port when the server has a device."""
         proxy = self._mock_proxy(ok=True, connected=True)
@@ -622,7 +622,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
         proxy.connect.assert_not_called()
         cli.cleanup()
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_remote_passes_token(self, mock_proxy_cls):
         """Token is forwarded to ServerProxy in remote mode."""
         mock_proxy_cls.return_value = self._mock_proxy(ok=True, connected=True)
@@ -635,7 +635,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
         self.assertEqual(kwargs.get("token"), "secret-token")
         cli.cleanup()
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_remote_unreachable_raises(self, mock_proxy_cls):
         """Remote mode raises if the server is not reachable (no local launch)."""
         proxy = MagicMock()
@@ -646,7 +646,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
         self.assertIn("not reachable", str(ctx.exception))
         proxy.launch_server.assert_not_called()
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_remote_status_unsuccessful_raises(self, mock_proxy_cls):
         """Remote mode raises if /api/status returns success=False."""
         proxy = self._mock_proxy(ok=False)
@@ -655,7 +655,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
             FPBCLI(port="/dev/ttyACM0", server_url="http://192.168.1.20:5500")
         self.assertIn("not reachable", str(ctx.exception))
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_remote_auth_error_raises_cli_error(self, mock_proxy_cls):
         """ProxyAuthError during probe becomes a friendly FPBCLIError."""
         proxy = MagicMock()
@@ -665,7 +665,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
             FPBCLI(port="/dev/ttyACM0", server_url="http://192.168.1.20:5500")
         self.assertIn("token", str(ctx.exception).lower())
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_remote_connects_device_when_disconnected(self, mock_proxy_cls):
         """Remote mode connects the device when not already connected (port given)."""
         proxy = self._mock_proxy(ok=True, connected=False)
@@ -689,7 +689,7 @@ class TestFPBCLIRemoteMode(unittest.TestCase):
 class TestFPBCLILocalNoPortNoServer(unittest.TestCase):
     """Local, no port: stay offline (proxy not even constructed)."""
 
-    @patch("cli.fpb_cli.ServerProxy")
+    @patch("fpbinject.cli.fpb_cli.ServerProxy")
     def test_offline_no_proxy_no_launch(self, mock_proxy_cls):
         """No port locally -> offline, no proxy retained, no auto-launch attempted."""
         proxy = MagicMock()
@@ -705,7 +705,7 @@ class TestFPBCLILocalNoPortNoServer(unittest.TestCase):
 class TestMainTokenArg(unittest.TestCase):
     """Test the --token argument wiring in main()."""
 
-    @patch("cli.fpb_cli.FPBCLI")
+    @patch("fpbinject.cli.fpb_cli.FPBCLI")
     @patch(
         "sys.argv",
         [
@@ -728,7 +728,7 @@ class TestMainTokenArg(unittest.TestCase):
         self.assertIsNotNone(plan)
         self.assertEqual(plan.token, "abc123")
 
-    @patch("cli.fpb_cli.FPBCLI")
+    @patch("fpbinject.cli.fpb_cli.FPBCLI")
     @patch.dict(os.environ, {"FPB_TOKEN": "env-token"}, clear=False)
     @patch("sys.argv", ["fpb_cli.py", "--port", "/dev/ttyACM0", "info"])
     def test_token_from_env(self, mock_cli_cls):
