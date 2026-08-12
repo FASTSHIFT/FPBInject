@@ -2,6 +2,10 @@ config.json
 .coverage
 .cli_server_*.pid
 
+# Runtime serial log output
+log.txt
+*.log
+
 # Node.js
 node_modules/
 package-lock.json

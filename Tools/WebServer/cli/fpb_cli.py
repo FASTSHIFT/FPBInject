@@ -2076,8 +2076,9 @@ Notes:
     vserial_start_parser.add_argument(
         "--symlink",
         default=None,
-        help="Stable symlink path for the virtual serial device "
-        "(default: server config, /tmp/fpb-tty0). Empty string disables symlink.",
+        help="Stable symlink path for the virtual serial device. Omit to use "
+        "the server config (default 'auto': derived from the port name, "
+        "e.g. /dev/ttyACM0 -> /tmp/fpb-ttyACM0). Pass a path to override.",
     )
 
     # vserial-stop command — remove virtual serial passthrough

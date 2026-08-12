@@ -27,6 +27,30 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# Directory for the stable virtual-serial symlinks.
+_SYMLINK_DIR = "/tmp"
+
+
+def default_symlink_for_port(port):
+    """Derive a stable, per-device symlink path from the physical port.
+
+    Examples:
+        /dev/ttyACM0      -> /tmp/fpb-ttyACM0
+        /dev/ttyUSB1      -> /tmp/fpb-ttyUSB1
+        /dev/serial/by-id/usb-...-if00 -> /tmp/fpb-usb-...-if00
+        None / ""         -> /tmp/fpb-tty0   (fallback)
+
+    Using the physical device basename keeps the alias recognizable and
+    unique across multiple devices on one host, so several WebServer
+    instances don't fight over a single hard-coded path.
+    """
+    if not port:
+        return f"{_SYMLINK_DIR}/fpb-tty0"
+    base = os.path.basename(str(port).rstrip("/")) or "tty0"
+    # Sanitize to a safe filename (device names are usually clean already).
+    safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in base)
+    return f"{_SYMLINK_DIR}/fpb-{safe}"
+
 
 class VirtualSerialService:
     """PTY-backed virtual serial passthrough.
@@ -46,8 +70,15 @@ class VirtualSerialService:
     # ------------------------------------------------------------------
     # Lifecycle (may be called from request threads)
     # ------------------------------------------------------------------
-    def start(self, symlink="/tmp/fpb-tty0", mute_policy=None):
-        """Create the PTY and optional stable symlink.
+    def start(self, symlink=None, mute_policy=None):
+        """Create the PTY and a stable symlink.
+
+        ``symlink`` selects the stable device-file alias:
+          * a non-empty path  -> used as-is (user override);
+          * ``None`` / "auto" -> derived from the physical port name, e.g.
+            ``/dev/ttyACM0`` -> ``/tmp/fpb-ttyACM0`` (multi-device friendly,
+            no collisions between different physical ports);
+          * "" (empty string) -> no symlink (only /dev/pts/N is exposed).
 
         ``mute_policy`` is accepted for backward-compatible call sites but
         ignored: passthrough is now unconditional (full transparency).
@@ -83,16 +114,18 @@ class VirtualSerialService:
         self._slave_fd = slave_fd
         self._master_fd = master_fd
 
-        # Create stable symlink alias.
+        # Resolve the stable symlink path. Empty string disables the symlink;
+        # None/"auto" derives it from the physical port name so multiple
+        # devices on one host each get a distinct, recognizable alias.
+        if symlink in (None, "auto"):
+            port = getattr(self.device, "port", None)
+            symlink = default_symlink_for_port(port)
+
         self._symlink_path = None
         if symlink:
-            try:
-                if os.path.islink(symlink) or os.path.exists(symlink):
-                    os.unlink(symlink)
-                os.symlink(self._slave_name, symlink)
-                self._symlink_path = symlink
-            except OSError as e:
-                logger.warning(f"Could not create symlink {symlink}: {e}")
+            chosen = self._reserve_symlink(symlink)
+            if chosen:
+                self._symlink_path = chosen
 
         self._enabled = True
 
@@ -108,6 +141,45 @@ class VirtualSerialService:
             + (f" (-> {self._symlink_path})" if self._symlink_path else "")
         )
         return True, None
+
+    def _reserve_symlink(self, base_path):
+        """Point ``base_path`` at our slave, avoiding live-instance clashes.
+
+        Behavior:
+          * path free, or a dangling link (crashed instance) -> claim it;
+          * path links to a *live* pts (another running instance) -> try
+            ``base_path-1``, ``-2`` ... up to a small bound;
+          * on any OS error -> log and give up (PTY still usable by /dev/pts).
+
+        Returns the path actually created, or None on failure.
+        """
+
+        def _is_dangling_or_ours(p):
+            # True if p is absent, or a symlink whose target no longer exists
+            # (stale). A link to an existing pts is considered "in use".
+            if not os.path.islink(p) and not os.path.exists(p):
+                return True
+            if os.path.islink(p):
+                target = os.path.realpath(p)
+                return not os.path.exists(target)
+            return False
+
+        candidates = [base_path] + [f"{base_path}-{i}" for i in range(1, 10)]
+        for path in candidates:
+            try:
+                if _is_dangling_or_ours(path):
+                    if os.path.islink(path) or os.path.exists(path):
+                        os.unlink(path)
+                    os.symlink(self._slave_name, path)
+                    return path
+            except OSError as e:
+                logger.warning(f"Could not create symlink {path}: {e}")
+                continue
+        logger.warning(
+            f"All virtual-serial symlink candidates for {base_path} are in use; "
+            f"external tools can still open {self._slave_name} directly"
+        )
+        return None
 
     def stop(self):
         """Tear down the PTY and remove the symlink."""
