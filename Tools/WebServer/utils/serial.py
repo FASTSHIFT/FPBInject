@@ -12,6 +12,7 @@ Provides serial port operations with multi-device support.
 import glob
 import logging
 import os
+import sys
 import threading
 
 import serial
@@ -139,30 +140,42 @@ def scan_serial_ports():
     Returns a list of dicts with keys: device, description, accessible.
     ``accessible`` is True when the current process has read+write permission.
     """
-    ports = serial.tools.list_ports.comports()
-    # Filter out /dev/ttyS* devices (legacy serial ports, usually virtual or unused)
-    result = [
-        {
-            "device": port.device,
-            "description": port.description,
-            "accessible": os.access(port.device, os.R_OK | os.W_OK),
-        }
-        for port in ports
-        if not port.device.startswith("/dev/ttyS")
-    ]
+    is_linux = sys.platform.startswith("linux")
 
-    # Also scan for CH341 USB serial devices which may not be detected by pyserial
-    ch341_devices = glob.glob("/dev/ttyCH341USB*")
-    existing_devices = {item["device"] for item in result}
-    for dev in ch341_devices:
-        if dev not in existing_devices:
-            result.append(
-                {
-                    "device": dev,
-                    "description": "CH341 USB Serial",
-                    "accessible": os.access(dev, os.R_OK | os.W_OK),
-                }
-            )
+    def _accessible(device):
+        # os.access on device nodes is meaningful on POSIX. On Windows COM
+        # ports it isn't reliable, so assume accessible there.
+        if os.name == "posix":
+            return os.access(device, os.R_OK | os.W_OK)
+        return True
+
+    ports = serial.tools.list_ports.comports()
+    result = []
+    for port in ports:
+        # On Linux, filter out /dev/ttyS* (legacy/virtual, usually unused).
+        # Other platforms enumerate COM*/cu.* which we keep as-is.
+        if is_linux and port.device.startswith("/dev/ttyS"):
+            continue
+        result.append(
+            {
+                "device": port.device,
+                "description": port.description,
+                "accessible": _accessible(port.device),
+            }
+        )
+
+    # Linux-only: CH341 USB serial devices may not be detected by pyserial.
+    if is_linux:
+        existing_devices = {item["device"] for item in result}
+        for dev in glob.glob("/dev/ttyCH341USB*"):
+            if dev not in existing_devices:
+                result.append(
+                    {
+                        "device": dev,
+                        "description": "CH341 USB Serial",
+                        "accessible": _accessible(dev),
+                    }
+                )
 
     return result
 

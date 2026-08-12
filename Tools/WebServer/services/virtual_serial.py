@@ -24,11 +24,13 @@ invariant (ThreadCheckedSerial) is preserved.
 
 import logging
 import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
-# Directory for the stable virtual-serial symlinks.
-_SYMLINK_DIR = "/tmp"
+# Directory for the stable virtual-serial symlinks. PTY passthrough is
+# POSIX-only, but resolve the temp dir portably rather than hardcoding /tmp.
+_SYMLINK_DIR = tempfile.gettempdir()
 
 # Legacy hard-coded default from earlier versions. Existing config.json files
 # may still carry this value; treat it as "auto" so they derive per-device
