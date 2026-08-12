@@ -31,15 +31,36 @@ VERSION_JS_PATH = os.path.join(
 
 
 def parse_version(version_str: str) -> tuple:
-    """Parse version string like '1.2.1' into (major, minor, patch)"""
-    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", version_str)
+    """Parse a version string into (major, minor, patch, prerelease).
+
+    Accepts a plain release ``X.Y.Z`` or a PEP 440 pre-release
+    ``X.Y.Z<phase><n>`` where phase is ``a`` (alpha), ``b`` (beta) or
+    ``rc`` (release candidate), e.g. ``1.6.9a1`` or ``1.7.0rc2``.
+
+    The pre-release suffix only flows into the Python ``__version__``
+    (what PyPI publishes). The C firmware header and the frontend JS keep
+    the three integer fields untouched, so a pre-release tag never leaks
+    into the integer macros that the firmware compiles against.
+    """
+    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)(?:(a|b|rc)(\d+))?$", version_str)
     if not match:
-        raise ValueError(f"Invalid version format: {version_str}. Expected: X.Y.Z")
-    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+        raise ValueError(
+            f"Invalid version format: {version_str}. "
+            "Expected: X.Y.Z or X.Y.Z{a|b|rc}N (e.g. 1.6.9a1)"
+        )
+    major, minor, patch = (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)),
+    )
+    prerelease = ""
+    if match.group(4):
+        prerelease = f"{match.group(4)}{match.group(5)}"
+    return major, minor, patch, prerelease
 
 
 def get_current_version() -> tuple:
-    """Read current version from version.py"""
+    """Read current version from version.py as (major, minor, patch, prerelease)."""
     if not os.path.exists(VERSION_PY_PATH):
         return None
     with open(VERSION_PY_PATH, "r") as f:
@@ -47,14 +68,20 @@ def get_current_version() -> tuple:
     major = re.search(r"VERSION_MAJOR\s*=\s*(\d+)", content)
     minor = re.search(r"VERSION_MINOR\s*=\s*(\d+)", content)
     patch = re.search(r"VERSION_PATCH\s*=\s*(\d+)", content)
+    prerelease = re.search(r'VERSION_PRERELEASE\s*=\s*"([^"]*)"', content)
     if major and minor and patch:
-        return int(major.group(1)), int(minor.group(1)), int(patch.group(1))
+        return (
+            int(major.group(1)),
+            int(minor.group(1)),
+            int(patch.group(1)),
+            prerelease.group(1) if prerelease else "",
+        )
     return None
 
 
 def update_version_h(major: int, minor: int, patch: int) -> bool:
     """Update C header file"""
-    content = f'''/**
+    content = f"""/**
  * @file fpbinject_version.h
  * @brief FPBInject version definition - single source of truth
  *
@@ -74,15 +101,20 @@ def update_version_h(major: int, minor: int, patch: int) -> bool:
 #define FPBINJECT_VERSION_STRING "v{major}.{minor}.{patch}"
 
 #endif /* FPBINJECT_VERSION_H */
-'''
+"""
     os.makedirs(os.path.dirname(VERSION_H_PATH), exist_ok=True)
     with open(VERSION_H_PATH, "w") as f:
         f.write(content)
     return True
 
 
-def update_version_py(major: int, minor: int, patch: int) -> bool:
-    """Update Python version file"""
+def update_version_py(major: int, minor: int, patch: int, prerelease: str = "") -> bool:
+    """Update Python version file.
+
+    ``prerelease`` (e.g. ``a1``, ``rc2``) is appended only to
+    ``__version__`` so PyPI sees a PEP 440 pre-release, while the three
+    integer fields stay clean for anything parsing them numerically.
+    """
     content = f'''"""
 FPBInject WebServer version definition - single source of truth
 
@@ -92,10 +124,11 @@ DO NOT EDIT MANUALLY - Use Tools/update_version.py to update version.
 VERSION_MAJOR = {major}
 VERSION_MINOR = {minor}
 VERSION_PATCH = {patch}
+VERSION_PRERELEASE = "{prerelease}"
 
 VERSION_STRING = f"v{{VERSION_MAJOR}}.{{VERSION_MINOR}}.{{VERSION_PATCH}}"
 
-__version__ = f"{{VERSION_MAJOR}}.{{VERSION_MINOR}}.{{VERSION_PATCH}}"
+__version__ = f"{{VERSION_MAJOR}}.{{VERSION_MINOR}}.{{VERSION_PATCH}}{{VERSION_PRERELEASE}}"
 '''
     os.makedirs(os.path.dirname(VERSION_PY_PATH), exist_ok=True)
     with open(VERSION_PY_PATH, "w") as f:
@@ -105,7 +138,7 @@ __version__ = f"{{VERSION_MAJOR}}.{{VERSION_MINOR}}.{{VERSION_PATCH}}"
 
 def update_version_js(major: int, minor: int, patch: int) -> bool:
     """Update JavaScript version file"""
-    content = f'''/**
+    content = f"""/**
  * FPBInject WebServer version definition
  * DO NOT EDIT MANUALLY - Use Tools/update_version.py to update version.
  */
@@ -118,7 +151,7 @@ const FPBINJECT_VERSION = {{
 }};
 
 window.FPBINJECT_VERSION = FPBINJECT_VERSION;
-'''
+"""
     os.makedirs(os.path.dirname(VERSION_JS_PATH), exist_ok=True)
     with open(VERSION_JS_PATH, "w") as f:
         f.write(content)
@@ -134,7 +167,8 @@ def main():
     if args.show:
         current = get_current_version()
         if current:
-            print(f"Current version: v{current[0]}.{current[1]}.{current[2]}")
+            suffix = current[3] if len(current) > 3 else ""
+            print(f"Current version: v{current[0]}.{current[1]}.{current[2]}{suffix}")
         else:
             print("Version not found")
         return 0
@@ -144,21 +178,27 @@ def main():
         return 1
 
     try:
-        major, minor, patch = parse_version(args.version)
+        major, minor, patch, prerelease = parse_version(args.version)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    py_version = f"{major}.{minor}.{patch}{prerelease}"
     print(f"Updating version to v{major}.{minor}.{patch}...")
+    if prerelease:
+        print(
+            f"  (Python/PyPI pre-release: {py_version}; C/JS stay v{major}.{minor}.{patch})"
+        )
 
-    # Update all files
+    # Update all files. The C header and JS only ever carry the three
+    # integer fields; the pre-release suffix lives solely in version.py.
     files_updated = []
 
     if update_version_h(major, minor, patch):
         files_updated.append(VERSION_H_PATH)
         print(f"  ✓ {os.path.relpath(VERSION_H_PATH, PROJECT_ROOT)}")
 
-    if update_version_py(major, minor, patch):
+    if update_version_py(major, minor, patch, prerelease):
         files_updated.append(VERSION_PY_PATH)
         print(f"  ✓ {os.path.relpath(VERSION_PY_PATH, PROJECT_ROOT)}")
 
@@ -166,7 +206,9 @@ def main():
         files_updated.append(VERSION_JS_PATH)
         print(f"  ✓ {os.path.relpath(VERSION_JS_PATH, PROJECT_ROOT)}")
 
-    print(f"\nUpdated {len(files_updated)} files to v{major}.{minor}.{patch}")
+    print(
+        f"\nUpdated {len(files_updated)} files to v{major}.{minor}.{patch}{prerelease}"
+    )
     return 0
 
 
