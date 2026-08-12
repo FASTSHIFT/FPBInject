@@ -86,6 +86,13 @@ class TestResolveConfigPath(unittest.TestCase):
 class TestDiscoverExistingConfig(unittest.TestCase):
     """_discover_existing_config prefers new name, then legacy config.json."""
 
+    def _discover(self):
+        # conftest stubs _discover_existing_config for safety; use the
+        # preserved original to exercise the real implementation here.
+        return getattr(
+            main, "_discover_existing_config_orig", main._discover_existing_config
+        )()
+
     def test_prefers_dotfile_over_legacy(self):
         with tempfile.TemporaryDirectory() as d:
             dot = os.path.join(d, main._LOCAL_CONFIG_NAME)
@@ -93,7 +100,7 @@ class TestDiscoverExistingConfig(unittest.TestCase):
             open(dot, "w").close()
             open(legacy, "w").close()
             with patch("os.getcwd", return_value=d):
-                self.assertEqual(main._discover_existing_config(), dot)
+                self.assertEqual(self._discover(), dot)
 
     def test_finds_legacy_config_json(self):
         with tempfile.TemporaryDirectory() as d:
@@ -102,14 +109,14 @@ class TestDiscoverExistingConfig(unittest.TestCase):
             with patch("os.getcwd", return_value=d), patch.object(
                 main, "SCRIPT_DIR", d
             ):
-                self.assertEqual(main._discover_existing_config(), legacy)
+                self.assertEqual(self._discover(), legacy)
 
     def test_none_when_absent(self):
         with tempfile.TemporaryDirectory() as d:
             with patch("os.getcwd", return_value=d), patch.object(
                 main, "SCRIPT_DIR", d
             ):
-                self.assertIsNone(main._discover_existing_config())
+                self.assertIsNone(self._discover())
 
 
 class TestAppStateConfigPath(unittest.TestCase):

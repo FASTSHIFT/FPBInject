@@ -57,10 +57,20 @@ version = { attr = "fpbinject.__version__" }
 [tool.setuptools]
 # Keep the physical directory in place; map it to the import name "fpbinject".
 package-dir = { "fpbinject" = "Tools/WebServer" }
-
-[tool.setuptools.packages.find]
-where = ["Tools/WebServer"]
-namespaces = false
+# Enumerate packages explicitly under the fpbinject.* namespace. Using
+# packages.find with where=Tools/WebServer would (wrongly) expose the
+# subdirs (core, cli, app, ...) as top-level packages instead of
+# fpbinject.core etc.
+packages = [
+    "fpbinject",
+    "fpbinject.app",
+    "fpbinject.app.routes",
+    "fpbinject.app.utils",
+    "fpbinject.cli",
+    "fpbinject.core",
+    "fpbinject.services",
+    "fpbinject.utils",
+]
 
 [tool.setuptools.package-data]
 fpbinject = [

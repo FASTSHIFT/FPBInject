@@ -136,6 +136,28 @@ class TestScanSerialPorts(unittest.TestCase):
 
         self.assertEqual(result, [])
 
+    @patch("fpbinject.utils.serial.sys")
+    @patch("fpbinject.utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    def test_scan_ports_non_linux_keeps_comports(
+        self, mock_comports, mock_glob, mock_sys
+    ):
+        """On non-Linux, COM* ports are kept and no /dev/ttyS filter/glob runs."""
+        mock_sys.platform = "win32"
+
+        com = Mock()
+        com.device = "COM3"
+        com.description = "USB Serial"
+        mock_comports.return_value = [com]
+
+        with patch("fpbinject.utils.serial.os.name", "nt"):
+            result = serial_utils.scan_serial_ports()
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["device"], "COM3")
+        self.assertTrue(result[0]["accessible"])  # assumed True on Windows
+        mock_glob.assert_not_called()  # no CH341 glob on non-Linux
+
     @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
     @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_accessible_false(self, mock_glob, mock_comports):

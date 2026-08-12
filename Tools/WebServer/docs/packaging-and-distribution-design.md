@@ -345,8 +345,8 @@ FPBInject 纯 Python（依赖里 `tree_sitter` 等有 C 扩展，但由其自身
 |------|------|------|------|
 | S0 ✅ | 包化：`__init__/__main__`、导入迁移至 `fpbinject.` 前缀、资源用 `importlib.resources`、CI `pip install -e .` | — | **已完成**（2373 测试全绿） |
 | S1 ✅ | 配置改造：`--config`、`resolve_config_path`、交互创建 `./.fpbinject.json`、非交互/拒绝走内存模式；`AppState.configure()` 注入路径 | S0 | 中（已完成，10 新测试） |
-| S2 | 跨平台收敛：`/tmp`→`tempfile`、串口扫描按 `sys.platform` 分支 | S0 | 低 |
-| S3 | `pyproject.toml` + entry points + `__init__/__main__` | S0 | 低 |
+| S2 ✅ | 跨平台收敛：虚拟串口 `/tmp`→`tempfile.gettempdir()`、串口扫描按 `sys.platform` 分支（COM/cu 保留、Windows `os.access` 假定可访问） | S0 | 已完成 |
+| S3 ✅ | `pyproject.toml` + entry points + `__init__/__main__`；`pip install -e .` 实测通过，`fpbinject`/`fpbinject-server`/`python -m fpbinject` 均可用（修正 `packages` 显式枚举，避免子包被当顶层包） | S0 | 已完成 |
 | S4 | 本地干净环境验证 + `pipx install git+...` 过渡方案 | S3 | 低 |
 | S5 | TestPyPI 演练 → 正式 PyPI → tag 触发 Trusted Publishing | S4 | 低 |
 | S6 | Windows 虚拟串口 TCP 透传（可选，独立） | — | 中 |
