@@ -2,17 +2,18 @@
 """
 FPBInject CLI - Lightweight command-line interface for AI integration
 
-Usage:
-  fpb_cli.py analyze <elf_path> <func_name>
-  fpb_cli.py disasm <elf_path> <func_name>
-  fpb_cli.py decompile <elf_path> <func_name>
-  fpb_cli.py signature <elf_path> <func_name>
-  fpb_cli.py search <elf_path> <pattern>
-  fpb_cli.py compile <source_file> [--output <out>]
-  fpb_cli.py inject <elf_path> <comp_num> <source_file> [--verify]
-  fpb_cli.py unpatch <elf_path> <comp_num>
-  fpb_cli.py --version
-  fpb_cli.py --help
+Usage (installed console script shown as ``fpbinject``; when run from
+source the program name is ``fpb_cli.py``):
+  fpbinject analyze <elf_path> <func_name>
+  fpbinject disasm <elf_path> <func_name>
+  fpbinject decompile <elf_path> <func_name>
+  fpbinject signature <elf_path> <func_name>
+  fpbinject search <elf_path> <pattern>
+  fpbinject compile <source_file> [--output <out>]
+  fpbinject inject <elf_path> <comp_num> <source_file> [--verify]
+  fpbinject unpatch <elf_path> <comp_num>
+  fpbinject --version
+  fpbinject --help
 
 Output: JSON format for easy AI parsing
 """
@@ -620,9 +621,10 @@ class FPBCLI:
 
                 elf = elf_path or getattr(self._device_state, "elf_path", None)
                 if not elf:
+                    prog = os.path.basename(sys.argv[0]) or "fpbinject"
                     raise FPBCLIError(
                         "No device connected and no ELF path provided.\n"
-                        "Use: fpb_cli.py inject <target_func> <source.c> --elf <elf_path> --compile-commands <path>\n"
+                        f"Use: {prog} inject <target_func> <source.c> --elf <elf_path> --compile-commands <path>\n"
                         "Or connect to device first using the WebServer interface."
                     )
 
@@ -1423,9 +1425,10 @@ def _resolve_handle_to_url(value: str, *, source: str) -> str:
     servers = discover_sync_by_handle(value)
     matches = find_by_handle(servers, value)
     if not matches:
+        prog = os.path.basename(sys.argv[0]) or "fpbinject"
         raise FPBCLIError(
             f"No FPBInject server matches {source} '{value}'. "
-            "Run 'fpb_cli.py discover' to list visible servers."
+            f"Run '{prog} discover' to list visible servers."
         )
     if len(matches) > 1:
         msg = [f"{source} '{value}' is ambiguous; matches multiple servers:"]
@@ -1704,28 +1707,28 @@ def cmd_discover(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="FPBInject CLI - Lightweight interface for binary patching",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    # Program name as actually invoked: "fpbinject" for the installed console
+    # script, "fpb_cli.py" when run from source. Keep the examples in sync.
+    prog = os.path.basename(sys.argv[0]) or "fpbinject"
+    epilog = f"""
 Examples:
   # ELF analysis works offline — no device, no --port:
-  fpb_cli.py analyze firmware.elf digitalWrite
-  fpb_cli.py search firmware.elf gpio
-  fpb_cli.py compile patch.c --elf firmware.elf --compile-commands build/compile_commands.json
+  {prog} analyze firmware.elf digitalWrite
+  {prog} search firmware.elf gpio
+  {prog} compile patch.c --elf firmware.elf --compile-commands build/compile_commands.json
 
   # Local device commands — first time, --port triggers auto-launch:
-  fpb_cli.py --port /dev/ttyACM0 info
-  fpb_cli.py --port /dev/ttyACM0 inject digitalWrite patch.c --elf firmware.elf
+  {prog} --port /dev/ttyACM0 info
+  {prog} --port /dev/ttyACM0 inject digitalWrite patch.c --elf firmware.elf
 
   # Once a local server has the device connected, --port is no longer needed:
-  fpb_cli.py info
-  fpb_cli.py file-stat /etc/init.d/rcS
+  {prog} info
+  {prog} file-stat /etc/init.d/rcS
 
   # Remote control — the device lives on the server, so no --port needed:
-  fpb_cli.py --server-url http://192.168.1.20:5500 --token TOKEN info
+  {prog} --server-url http://192.168.1.20:5500 --token TOKEN info
   # Only pass --port to tell the remote server which port to open if it has none:
-  fpb_cli.py --server-url http://192.168.1.20:5500 --token TOKEN --port /dev/ttyACM0 connect
+  {prog} --server-url http://192.168.1.20:5500 --token TOKEN --port /dev/ttyACM0 connect
 
 Notes:
   The serial port belongs to the WebServer, not the CLI. In proxy mode (local
@@ -1734,8 +1737,13 @@ Notes:
   or for direct/auto-launch on a fresh local environment.
   --token (or FPB_TOKEN env) is required for remote servers.
   Output is JSON on stdout; pipe to jq for filtering.
-  Run 'fpb_cli.py <command> --help' for command-specific options.
-        """,
+  Run '{prog} <command> --help' for command-specific options.
+        """
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        description="FPBInject CLI - Lightweight interface for binary patching",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog,
     )
 
     # Global options
