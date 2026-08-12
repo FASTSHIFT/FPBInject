@@ -3,6 +3,8 @@
 **English** | [中文](README_zh.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI](https://img.shields.io/pypi/v/fpbinject.svg)](https://pypi.org/project/fpbinject/)
+[![GitHub Release](https://img.shields.io/github/v/release/FASTSHIFT/FPBInject)](https://github.com/FASTSHIFT/FPBInject/releases)
 [![Platform](https://img.shields.io/badge/Platform-STM32F103-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103.html)
 [![Platform](https://img.shields.io/badge/Platform-NuttX-blue.svg)](https://github.com/apache/nuttx)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FASTSHIFT/FPBInject)
@@ -80,6 +82,44 @@ Filesystem backends: POSIX (NuttX VFS, Linux), FatFS, standard C library (stdio)
 
 ![File Transfer](Docs/images/file-transfer.png)
 
+## Memory Access
+
+Read and write arbitrary memory addresses on the device over the same serial connection — handy for inspecting or poking a variable's live value without a debugger attached.
+
+```bash
+fpbinject --port /dev/ttyACM0 mem-read 0x20000000 64
+fpbinject --port /dev/ttyACM0 mem-write 0x20000000 DEADBEEF
+```
+
+## Unpatch
+
+Every patch can be removed at any time, instantly restoring the original Flash behavior — the safety net that makes live patching low-risk to experiment with.
+
+```bash
+fpbinject --port /dev/ttyACM0 unpatch --comp 0   # or --all
+```
+
+## Remote Control & Auto-Discovery
+
+The workbench advertises itself over mDNS, so the CLI and SDK can find it on the LAN without knowing its IP:
+
+```bash
+fpbinject discover                       # list visible WebServers
+fpbinject -s bench-pc:5500 info          # control one by host:port
+```
+
+This also means one workbench can be shared by multiple engineers, or one script can drive several devices across the network — each identified by its own handle.
+
+## Virtual Serial Passthrough
+
+The workbench can expose a PTY device file (e.g. `/tmp/fpb-ttyACM0`) that mirrors the full byte stream to/from the device, so external tools (minicom, pyserial, a legacy logging script) can attach without disconnecting the workbench.
+
+```bash
+fpbinject vserial-start     # start
+fpbinject vserial-status    # check the symlink path
+fpbinject vserial-stop      # stop
+```
+
 ## Quick Start
 
 ### 1. Build & Flash Firmware
@@ -154,6 +194,10 @@ client = Client.discover(token="...")
 client.serial_send("help\r\n")
 print(client.serial_read()["raw_data"])
 client.inject("digitalWrite", "patch.c", elf="firmware.elf")
+
+# Or skip the WebServer entirely — talk to the serial port directly
+with Client.direct("/dev/ttyACM0") as dev:
+    dev.inject("digitalWrite", "patch.c", elf="firmware.elf")
 
 # Or analyze an ELF offline — no device needed
 off = Client.offline()

@@ -3,6 +3,8 @@
 [English](README.md) | **中文**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI](https://img.shields.io/pypi/v/fpbinject.svg)](https://pypi.org/project/fpbinject/)
+[![GitHub Release](https://img.shields.io/github/v/release/FASTSHIFT/FPBInject)](https://github.com/FASTSHIFT/FPBInject/releases)
 [![Platform](https://img.shields.io/badge/Platform-STM32F103-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103.html)
 [![Platform](https://img.shields.io/badge/Platform-NuttX-blue.svg)](https://github.com/apache/nuttx)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FASTSHIFT/FPBInject)
@@ -80,6 +82,44 @@ FPBInject 还支持通过串口进行文件传输 — 浏览、上传、下载�
 
 ![文件传输](Docs/images/file-transfer.png)
 
+## 内存读写
+
+通过同一条串口连接，直接读写设备上任意内存地址——无需接调试器即可查看或修改变量的实时值。
+
+```bash
+fpbinject --port /dev/ttyACM0 mem-read 0x20000000 64
+fpbinject --port /dev/ttyACM0 mem-write 0x20000000 DEADBEEF
+```
+
+## 撤销补丁
+
+任何补丁都可以随时移除，立即恢复原始 Flash 行为——这是让热补丁能放心大胆尝试的安全网。
+
+```bash
+fpbinject --port /dev/ttyACM0 unpatch --comp 0   # 或 --all 移除全部
+```
+
+## 远程控制与自动发现
+
+工作台通过 mDNS 广播自己，CLI 和 SDK 无需知道 IP 就能在局域网内找到它：
+
+```bash
+fpbinject discover                       # 列出局域网内可见的 WebServer
+fpbinject -s bench-pc:5500 info          # 通过 host:port 控制指定设备
+```
+
+这也意味着一个工作台可以让多个工程师共用，或者一个脚本可以同时驱动网络上的多台设备——每台都用各自的 handle 区分。
+
+## 虚拟串口透传
+
+工作台可以暴露一个 PTY 设备文件（例如 `/tmp/fpb-ttyACM0`），将设备的全部收发字节镜像出来，让外部工具（minicom、pyserial，或既有的日志脚本）可以接入，而不必断开工作台。
+
+```bash
+fpbinject vserial-start     # 启动
+fpbinject vserial-status    # 查看符号链接路径
+fpbinject vserial-stop      # 停止
+```
+
 ## 快速开始
 
 ### 1. 编译与烧录固件
@@ -153,6 +193,10 @@ client = Client.discover(token="...")
 client.serial_send("help\r\n")
 print(client.serial_read()["raw_data"])
 client.inject("digitalWrite", "patch.c", elf="firmware.elf")
+
+# 或完全不用 WebServer——直接操作串口
+with Client.direct("/dev/ttyACM0") as dev:
+    dev.inject("digitalWrite", "patch.c", elf="firmware.elf")
 
 # 或离线分析 ELF——无需设备
 off = Client.offline()
