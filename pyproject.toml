@@ -1,0 +1,73 @@
+# NOTE: Packaging blueprint for the "fpbinject" distribution.
+# Building/installing requires the S0 packaging step from
+# Tools/WebServer/docs/packaging-and-distribution-design.md to be complete:
+#   - Tools/WebServer/__init__.py (exposing __version__) and __main__.py
+#   - imports migrated to the "fpbinject." prefix
+# Until S0 lands, this file documents the target metadata; `python -m build`
+# will not succeed yet.
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fpbinject"
+dynamic = ["version"]
+description = "Runtime code injection for ARM Cortex-M via the FPB (Flash Patch and Breakpoint) hardware unit"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "VIFEX", email = "vifextech@foxmail.com" }]
+keywords = ["arm", "cortex-m", "fpb", "firmware", "code-injection", "debugging"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Software Development :: Embedded Systems",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+]
+dependencies = [
+    "Flask",
+    "Flask-Cors",
+    "pyserial",
+    "pygdbmi",
+    "watchdog",
+    "tree_sitter",
+    "zeroconf>=0.131",
+    "platformdirs",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "coverage", "black", "flake8"]
+
+[project.urls]
+Homepage = "https://github.com/FASTSHIFT/FPBInject"
+Repository = "https://github.com/FASTSHIFT/FPBInject"
+
+[project.scripts]
+fpbinject = "fpbinject.cli.fpb_cli:main"
+fpbinject-server = "fpbinject.main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "fpbinject.__version__" }
+
+[tool.setuptools]
+# Keep the physical directory in place; map it to the import name "fpbinject".
+package-dir = { "fpbinject" = "Tools/WebServer" }
+
+[tool.setuptools.packages.find]
+where = ["Tools/WebServer"]
+namespaces = false
+
+[tool.setuptools.package-data]
+fpbinject = [
+    "templates/*.html",
+    "templates/**/*.html",
+    "static/css/*.css",
+    "static/js/**/*.js",
+    "static/js/**/*.json",
+    "static/js/**/*.css",
+]
