@@ -28,6 +28,7 @@ from typing import Any, Dict, Optional
 
 # Import from existing WebServer modules
 sys.path.insert(0, str(Path(__file__).parent))
+from fpbinject.version import __version__ as FPB_VERSION  # noqa: E402
 from fpbinject.fpb_inject import FPBInject  # noqa: E402
 from fpbinject.core.state import DeviceStateBase  # noqa: E402
 from fpbinject.utils.port_lock import PortLock  # noqa: E402
@@ -1750,7 +1751,9 @@ Notes:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output"
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 1.0")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {FPB_VERSION}"
+    )
     parser.add_argument(
         "--port",
         "-p",
