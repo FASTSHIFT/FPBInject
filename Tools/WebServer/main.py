@@ -29,19 +29,54 @@ import sys
 import webbrowser
 import threading
 
-from flask import Flask
-from flask_cors import CORS
 
-from fpbinject.routes import register_routes
-from fpbinject.core.state import state
-from fpbinject.fpb_inject import serial_open
-from fpbinject.services.device_worker import start_worker
-from fpbinject.services.file_watcher_manager import restore_file_watcher
-from fpbinject.utils.net import (
+def _bootstrap_fpbinject_package():
+    """Allow running ``./main.py`` directly without installing the package.
+
+    After packaging (S0) all imports use the ``fpbinject.`` prefix. When this
+    script is executed directly (``./main.py`` / ``python main.py``), the
+    ``fpbinject`` package may not be importable because the physical directory
+    is ``Tools/WebServer`` (not named ``fpbinject``) and its parent is not on
+    ``sys.path``. This registers the current directory as the ``fpbinject``
+    package so offline/no-install usage keeps working.
+    """
+    try:
+        import fpbinject  # noqa: F401
+
+        return
+    except ModuleNotFoundError:
+        pass
+
+    import types
+
+    pkg_dir = os.path.dirname(os.path.abspath(__file__))
+    pkg = types.ModuleType("fpbinject")
+    pkg.__path__ = [pkg_dir]
+    sys.modules["fpbinject"] = pkg
+    # Make submodule absolute imports (from fpbinject.core import ...) resolve.
+    if pkg_dir not in sys.path:
+        sys.path.insert(0, pkg_dir)
+
+
+_bootstrap_fpbinject_package()
+
+# Imports below intentionally follow the bootstrap so that direct execution
+# (./main.py) can register the fpbinject package first; hence the E402 noqa.
+from flask import Flask  # noqa: E402
+from flask_cors import CORS  # noqa: E402
+
+from fpbinject.routes import register_routes  # noqa: E402
+from fpbinject.core.state import state  # noqa: E402
+from fpbinject.fpb_inject import serial_open  # noqa: E402
+from fpbinject.services.device_worker import start_worker  # noqa: E402
+from fpbinject.services.file_watcher_manager import (  # noqa: E402
+    restore_file_watcher,
+)
+from fpbinject.utils.net import (  # noqa: E402
     is_port_available as check_port_available,
-)  # noqa: same API
-from fpbinject.utils.net import get_port_owner
-from fpbinject.utils.port_lock import PortLock
+)
+from fpbinject.utils.net import get_port_owner  # noqa: E402
+from fpbinject.utils.port_lock import PortLock  # noqa: E402
 
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -234,6 +269,28 @@ def parse_args():
 
 # Config filename created on interactive first run in the current directory.
 _LOCAL_CONFIG_NAME = ".fpbinject.json"
+# Legacy filename from before the packaging change; still honored if present.
+_LEGACY_CONFIG_NAME = "config.json"
+
+
+def _discover_existing_config():
+    """Return the path of an existing config to reuse, or None.
+
+    Search order (first hit wins):
+      1. ./.fpbinject.json          (new, current directory)
+      2. ./config.json              (legacy, current directory)
+      3. <package dir>/config.json  (legacy in-place install location)
+    This preserves pre-packaging setups so users don't lose their config.
+    """
+    candidates = [
+        os.path.join(os.getcwd(), _LOCAL_CONFIG_NAME),
+        os.path.join(os.getcwd(), _LEGACY_CONFIG_NAME),
+        os.path.join(SCRIPT_DIR, _LEGACY_CONFIG_NAME),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return os.path.abspath(path)
+    return None
 
 
 def resolve_config_path(cli_config):
@@ -242,13 +299,21 @@ def resolve_config_path(cli_config):
     Returns a filesystem path, or None for in-memory mode (no persistence).
 
     Rules (see docs/packaging-and-distribution-design.md 4.1):
-      1. --config given  -> use it verbatim (created on first save).
-      2. no --config, interactive TTY -> ask whether to create
+      1. --config given -> use it verbatim (created on first save).
+      2. no --config, an existing config is discovered -> reuse it
+         (incl. legacy ./config.json or the in-place package config.json).
+      3. no --config, non-interactive -> in-memory (never blocks input()).
+      4. no --config, interactive TTY -> ask whether to create
          ./.fpbinject.json here; yes -> that path, no -> in-memory.
-      3. no --config, non-interactive -> in-memory (never blocks on input()).
     """
     if cli_config:
         return os.path.abspath(os.path.expanduser(cli_config))
+
+    # Reuse an existing config (new or legacy) without prompting.
+    existing = _discover_existing_config()
+    if existing:
+        logger.info(f"Using existing config: {existing}")
+        return existing
 
     # Non-interactive (auto-launched by CLI, CI, headless): never prompt.
     if not sys.stdin.isatty():
@@ -256,13 +321,9 @@ def resolve_config_path(cli_config):
         return None
 
     local_path = os.path.abspath(os.path.join(os.getcwd(), _LOCAL_CONFIG_NAME))
-    if os.path.exists(local_path):
-        return local_path
 
     try:
-        answer = (
-            input(f"No config specified. Create {local_path}? [Y/n] ").strip().lower()
-        )
+        answer = input(f"No config found. Create {local_path}? [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         answer = "n"
 

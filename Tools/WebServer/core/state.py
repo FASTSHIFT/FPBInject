@@ -315,7 +315,10 @@ class AppState:
             return
 
         if not os.path.exists(path):
-            logger.info(f"Config file not found: {path}, using defaults")
+            logger.info(
+                f"First launch: no config at {path} yet; "
+                f"using defaults (will be created on first save)"
+            )
             self.first_launch = True
             return
 
