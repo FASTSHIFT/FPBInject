@@ -14,14 +14,15 @@ import sys
 
 from fpbinject.version import __version__
 
-# figlet "slant" font rendering of "FPBInject".
+# figlet "ansi_shadow" font rendering of "FPBInject". Uses box-drawing and
+# block glyphs, so the host terminal must support UTF-8 (all modern ones do).
 _LOGO = r"""
-   ______ ____  ____  ____        _           __
-  / ____// __ \/ __ )/ /___ ___  (_)__  _____/ /_
- / /_   / /_/ / __  / // __ `__ \/ / _ \/ ___/ __/
-/ __/  / ____/ /_/ / // / / / / / /  __/ /__/ /_
-/_/    /_/   /_____/_//_/ /_/ /_/ /\___/\___/\__/
-                                 /___/"""
+███████╗██████╗ ██████╗ ██╗███╗   ██╗     ██╗███████╗ ██████╗████████╗
+██╔════╝██╔══██╗██╔══██╗██║████╗  ██║     ██║██╔════╝██╔════╝╚══██╔══╝
+█████╗  ██████╔╝██████╔╝██║██╔██╗ ██║     ██║█████╗  ██║        ██║
+██╔══╝  ██╔═══╝ ██╔══██╗██║██║╚██╗██║██   ██║██╔══╝  ██║        ██║
+██║     ██║     ██████╔╝██║██║ ╚████║╚█████╔╝███████╗╚██████╗   ██║
+╚═╝     ╚═╝     ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚════╝ ╚══════╝ ╚═════╝   ╚═╝"""
 
 _TAGLINE = "Runtime C code injection for ARM Cortex-M"
 _DOCS_URL = "https://github.com/FASTSHIFT/FPBInject"
