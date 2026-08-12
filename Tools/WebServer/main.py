@@ -221,7 +221,59 @@ def parse_args():
         action="store_true",
         help="Disable mDNS service advertisement",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to the config file. If omitted: when interactive, offer to "
+        "create ./.fpbinject.json in the current directory; when "
+        "non-interactive (CI/auto-launched), run with in-memory defaults.",
+    )
     return parser.parse_args()
+
+
+# Config filename created on interactive first run in the current directory.
+_LOCAL_CONFIG_NAME = ".fpbinject.json"
+
+
+def resolve_config_path(cli_config):
+    """Decide which config path AppState should use.
+
+    Returns a filesystem path, or None for in-memory mode (no persistence).
+
+    Rules (see docs/packaging-and-distribution-design.md 4.1):
+      1. --config given  -> use it verbatim (created on first save).
+      2. no --config, interactive TTY -> ask whether to create
+         ./.fpbinject.json here; yes -> that path, no -> in-memory.
+      3. no --config, non-interactive -> in-memory (never blocks on input()).
+    """
+    if cli_config:
+        return os.path.abspath(os.path.expanduser(cli_config))
+
+    # Non-interactive (auto-launched by CLI, CI, headless): never prompt.
+    if not sys.stdin.isatty():
+        logger.info("No --config and non-interactive: using in-memory defaults")
+        return None
+
+    local_path = os.path.abspath(os.path.join(os.getcwd(), _LOCAL_CONFIG_NAME))
+    if os.path.exists(local_path):
+        return local_path
+
+    try:
+        answer = (
+            input(f"No config specified. Create {local_path}? [Y/n] ").strip().lower()
+        )
+    except (EOFError, KeyboardInterrupt):
+        answer = "n"
+
+    if answer in ("", "y", "yes"):
+        return local_path
+
+    print(
+        "Running with in-memory defaults (no config will be saved).",
+        file=sys.stderr,
+    )
+    return None
 
 
 def restore_state():
@@ -321,6 +373,9 @@ def main():
 
     # Reduce verbosity of Flask/Werkzeug request logs
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+    # Resolve and apply the config path (may prompt when interactive).
+    state.configure(resolve_config_path(args.config))
 
     # Check dependencies
     check_requirements()
