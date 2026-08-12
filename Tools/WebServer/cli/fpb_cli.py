@@ -2136,6 +2136,11 @@ Notes:
     args = parser.parse_args()
 
     if not args.command:
+        # Banner + help only on the no-command path so real command output
+        # (JSON on stdout) is never contaminated.
+        from fpbinject.banner import print_banner
+
+        print_banner("CLI")
         parser.print_help()
         sys.exit(1)
 

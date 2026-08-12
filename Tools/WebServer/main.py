@@ -429,59 +429,6 @@ def restore_state():
     logger.info(f"Auto-connected to {device.port}")
 
 
-def print_intro_banner():
-    """Print a professional startup banner describing the tool.
-
-    Shown once at launch, before the readiness banner. Styled after
-    established developer tooling: a logo, a one-line description of what
-    the tool does, the running version, and where to get help.
-    """
-    from fpbinject.version import __version__ as version
-
-    cyan = "\033[36m"
-    dim = "\033[2m"
-    bold = "\033[1m"
-    reset = "\033[0m"
-    # Disable ANSI when stdout is not a TTY (piped/CI/log files).
-    if not sys.stdout.isatty():
-        cyan = dim = bold = reset = ""
-
-    # Content rows (label, value); width is derived so the box always fits.
-    rows = [
-        ("Version", f"v{version}"),
-        ("What", "Runtime C code injection for ARM Cortex-M firmware"),
-        ("How", "Patches live code via the FPB hardware unit"),
-        ("", "no reflash, no reboot"),
-        ("Access", "Web UI  ·  REST API  ·  mDNS discovery"),
-        ("CLI", "fpbinject"),
-        ("SDK", "from fpbinject import Client"),
-        ("Docs", "https://github.com/FASTSHIFT/FPBInject"),
-    ]
-    label_w = max(len(k) for k, _ in rows if k)
-    inner_w = max(len(f"{k:<{label_w}}  {v}") for k, v in rows)
-    title = "FPBInject"
-    inner_w = max(inner_w, len(title))
-
-    out = []
-    out.append(f"{cyan}  ┌─{'─' * inner_w}─┐{reset}")
-    out.append(f"{cyan}  │ {bold}{title:<{inner_w}}{reset}{cyan} │{reset}")
-    out.append(f"{cyan}  ├─{'─' * inner_w}─┤{reset}")
-    for k, v in rows:
-        if k:
-            body = f"{k:<{label_w}}  {v}"
-        else:
-            body = f"{'':<{label_w}}  {v}"
-        # Pad to inner width on the raw text, colorize the label separately.
-        pad = " " * (inner_w - len(body))
-        if k:
-            colored = f"{dim}{k:<{label_w}}{reset}  {v}"
-        else:
-            colored = f"{'':<{label_w}}  {dim}{v}{reset}"
-        out.append(f"{cyan}  │ {reset}{colored}{pad}{cyan} │{reset}")
-    out.append(f"{cyan}  └─{'─' * inner_w}─┘{reset}")
-    print("\n".join(out) + "\n", flush=True)
-
-
 def main():
     """Main entry point."""
     args = parse_args()
@@ -495,7 +442,9 @@ def main():
     # Reduce verbosity of Flask/Werkzeug request logs
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
-    print_intro_banner()
+    from fpbinject.banner import print_banner
+
+    print_banner("Web Server")
 
     # Resolve and apply the config path (may prompt when interactive).
     state.configure(resolve_config_path(args.config))
