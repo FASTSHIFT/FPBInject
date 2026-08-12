@@ -69,7 +69,7 @@ def _start_vserial(device):
     if device.vserial is None:
         device.vserial = VirtualSerialService(device)
 
-    symlink = getattr(device, "vserial_symlink", "/tmp/fpb-tty0")
+    symlink = getattr(device, "vserial_symlink", "auto")
     success, error = device.vserial.start(symlink=symlink)
     if success:
         status = device.vserial.status()

@@ -11,7 +11,10 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.virtual_serial import VirtualSerialService  # noqa: E402
+from services.virtual_serial import (  # noqa: E402
+    VirtualSerialService,
+    default_symlink_for_port,
+)
 
 
 class _FakeSerial:
@@ -27,8 +30,32 @@ class _FakeSerial:
 
 
 class _FakeDevice:
-    def __init__(self, ser=None):
+    def __init__(self, ser=None, port=None):
         self.ser = ser
+        self.port = port
+
+
+class TestDefaultSymlinkForPort(unittest.TestCase):
+    """Derivation of the per-device default symlink from the port name."""
+
+    def test_ttyacm(self):
+        self.assertEqual(default_symlink_for_port("/dev/ttyACM0"), "/tmp/fpb-ttyACM0")
+
+    def test_ttyusb(self):
+        self.assertEqual(default_symlink_for_port("/dev/ttyUSB1"), "/tmp/fpb-ttyUSB1")
+
+    def test_by_id_path(self):
+        got = default_symlink_for_port("/dev/serial/by-id/usb-Foo_if00")
+        self.assertEqual(got, "/tmp/fpb-usb-Foo_if00")
+
+    def test_none_falls_back(self):
+        self.assertEqual(default_symlink_for_port(None), "/tmp/fpb-tty0")
+
+    def test_sanitizes_unsafe_chars(self):
+        got = default_symlink_for_port("/dev/tty:weird*name")
+        self.assertTrue(got.startswith("/tmp/fpb-"))
+        self.assertNotIn(":", got)
+        self.assertNotIn("*", got)
 
 
 @unittest.skipUnless(hasattr(os, "openpty"), "PTY not supported on this platform")
@@ -133,6 +160,48 @@ class TestVirtualSerialService(unittest.TestCase):
 
     def test_forward_rx_when_disabled_noop(self):
         self.svc.forward_rx(b"data")
+
+    def test_auto_symlink_derived_from_port(self):
+        """symlink=None/'auto' derives the alias from device.port."""
+        # Use a unique fake port so the derived path won't clash with reality.
+        port = f"/dev/ttyFAKE{os.getpid()}"
+        expected = default_symlink_for_port(port)
+        device = _FakeDevice(port=port)
+        svc = VirtualSerialService(device)
+        try:
+            ok, err = svc.start(symlink="auto")
+            self.assertTrue(ok, err)
+            self.assertEqual(svc.status()["symlink"], expected)
+            self.assertTrue(os.path.islink(expected))
+        finally:
+            svc.stop()
+        self.assertFalse(os.path.islink(expected))
+
+    def test_collision_falls_back_to_suffix(self):
+        """A second instance on the same base path gets a -N suffix."""
+        base = self._symlink
+        svc2 = VirtualSerialService(_FakeDevice())
+        try:
+            self.svc.start(symlink=base)
+            svc2.start(symlink=base)
+            self.assertEqual(self.svc.status()["symlink"], base)
+            # Second instance must not steal the first one's live link.
+            self.assertNotEqual(svc2.status()["symlink"], base)
+            self.assertEqual(svc2.status()["symlink"], f"{base}-1")
+        finally:
+            svc2.stop()
+
+    def test_reclaims_dangling_symlink(self):
+        """A stale (dangling) symlink at the base path is safely reclaimed."""
+        base = self._symlink
+        # Create a dangling link pointing at a non-existent pts.
+        try:
+            os.symlink("/dev/pts/999999", base)
+        except OSError:
+            self.skipTest("cannot create test symlink")
+        self.svc.start(symlink=base)
+        self.assertEqual(self.svc.status()["symlink"], base)
+        self.assertEqual(os.path.realpath(base), self.svc.status()["slave"])
 
 
 if __name__ == "__main__":

@@ -385,9 +385,11 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         label="Virtual Serial Symlink",
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.STRING,
-        default="/tmp/fpb-tty0",
-        tooltip="Stable symlink path to the virtual serial device "
-        "(empty to disable symlink).",
+        default="auto",
+        tooltip="Stable symlink path to the virtual serial device. "
+        "'auto' derives it from the physical port name "
+        "(e.g. /dev/ttyACM0 -> /tmp/fpb-ttyACM0); set a path to override, "
+        "or empty to disable the symlink.",
         show_in_sidebar=False,
         order=110,
     ),

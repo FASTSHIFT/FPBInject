@@ -28,7 +28,7 @@ CLI 和 MCP 已经通过**HTTP 代理**共存（见 `cli-gui-coexistence-plan.md
 
 ### 1.3 目标
 
-1. WebServer 连接物理串口后，额外暴露一个虚拟串口设备文件（Linux 上为 PTY slave，如 `/dev/pts/7`，并提供稳定符号链接 `/tmp/fpb-tty0`）。
+1. WebServer 连接物理串口后，额外暴露一个虚拟串口设备文件（Linux 上为 PTY slave，如 `/dev/pts/7`，并提供**按物理口名派生**的稳定符号链接，如 `/dev/ttyACM0` → `/tmp/fpb-ttyACM0`），多设备下天然不冲突。
 2. 外部程序打开该虚拟设备，收发的字节被**双向透传**到物理串口。
 3. 网页终端、SSE 日志、`fpb_cli` 与虚拟串口**同时工作**，互不独占。
 4. 与 FPB 二进制协议（注入/内存/文件传输）**安全仲裁**，避免相互踩踏串口。
@@ -92,7 +92,7 @@ flowchart TB
     subgraph WS[WebServer 进程]
         subgraph VSP[VirtualSerialService]
             PTY["PTY master_fd"]
-            SLAVE["/dev/pts/N + 符号链接 /tmp/fpb-tty0"]
+            SLAVE["/dev/pts/N + 符号链接 /tmp/fpb-&lt;portname&gt;"]
         end
 
         subgraph Worker[DeviceWorker 单属主线程]
@@ -140,11 +140,12 @@ class VirtualSerialService:
         self.device = device_state
         self._master_fd = None
         self._slave_name = None       # /dev/pts/N
-        self._symlink_path = None      # /tmp/fpb-tty0（稳定别名）
+        self._symlink_path = None      # /tmp/fpb-<portname>（派生的稳定别名）
         self._enabled = False
 
-    def start(self, symlink="/tmp/fpb-tty0") -> tuple[bool, str]:
-        """openpty() 建主从对，设为 raw + 非阻塞，建符号链接；
+    def start(self, symlink=None) -> tuple[bool, str]:
+        """openpty() 建主从对，设为 raw + 非阻塞；symlink=None 时按物理口名
+        派生（default_symlink_for_port），冲突则退避；建符号链接；
         并在 device.ser（ThreadCheckedSerial）上挂 rx tee = forward_rx。"""
 
     def stop(self):
@@ -163,7 +164,7 @@ class VirtualSerialService:
 
 - `os.openpty()` 后用 `tty.setraw(master/slave)` 关闭回显/换行转换，保证纯字节透传。
 - master_fd 设 `O_NONBLOCK`，读写都在 worker 循环里做，不新开线程（复用现有单线程模型，避免 `ThreadCheckedSerial` 违规）。
-- 符号链接 `/tmp/fpb-tty0` 提供稳定路径，因为 `/dev/pts/N` 的 N 每次不固定。
+- 符号链接提供稳定路径（`/dev/pts/N` 的 N 每次不固定），默认按物理口名派生，详见 §5.8。
 - **全量透传的关键**：`start()` 时把 `forward_rx` 注册为 `ThreadCheckedSerial` 的 rx tee。协议层（`FPBProtocol`/`FileTransfer`）在 worker `"call"` 里调用的 `ser.read()` 会同步触发 tee，因此**连注入/文件传输的二进制帧也会完整镜像到 PTY**——不再有"传输时虚拟串口空白"的问题。
 
 ### 5.2 接入 ThreadCheckedSerial（tee）与 DeviceWorker 循环
@@ -235,7 +236,7 @@ stateDiagram-v2
 | key | 类型 | 默认 | 说明 |
 |-----|------|------|------|
 | `vserial_enable` | BOOLEAN | `false` | 连接后是否创建虚拟串口 |
-| `vserial_symlink` | STRING | `/tmp/fpb-tty0` | 稳定符号链接路径（空则不建） |
+| `vserial_symlink` | STRING | `auto` | `auto`=按物理口名派生（`/dev/ttyACM0`→`/tmp/fpb-ttyACM0`）；填路径则覆盖；空串则不建 |
 | `vserial_tcp_enable` | BOOLEAN | `false` | 是否同时开 TCP 透传（见 §7，规划中） |
 | `vserial_tcp_port` | NUMBER | `0` | TCP 透传端口，0=自动分配（规划中） |
 
@@ -253,8 +254,25 @@ stateDiagram-v2
 
 ### 5.7 前端
 
-- 在连接/状态区显示"虚拟串口：`/dev/pts/7` (→ `/tmp/fpb-tty0`)"及一键复制。
+- 在连接/状态区显示"虚拟串口：`/dev/pts/7` (→ `/tmp/fpb-ttyACM0`)"及一键复制。
 - 设置面板由 `config_schema` 自动渲染新增的 `vserial_*` 开关，无需额外前端代码（遵循现有动态渲染约定）。
+
+### 5.8 符号链接命名与多设备
+
+默认符号链接**从物理串口名派生**（`default_symlink_for_port`），保证多设备下开箱即用、可读、不冲突：
+
+| 物理口 | 虚拟串口符号链接 |
+|--------|------------------|
+| `/dev/ttyACM0` | `/tmp/fpb-ttyACM0` |
+| `/dev/ttyUSB1` | `/tmp/fpb-ttyUSB1` |
+| `/dev/serial/by-id/usb-Foo_if00` | `/tmp/fpb-usb-Foo_if00` |
+| 未知/空 | `/tmp/fpb-tty0`（兜底） |
+
+**多设备模型**：当前 WebServer 是单设备架构（`AppState.device` 单例），"多设备"指**一台主机跑多个 WebServer 实例**（各自不同 `--port`，见 mDNS 文档），每个实例连一个物理口。派生命名让它们各得其所：`ttyACM0`↔`fpb-ttyACM0`、`ttyUSB0`↔`fpb-ttyUSB0`。
+
+**冲突避让**：若目标符号链接已指向一个**存活**的 pts（另一实例正用同名物理口的极端情况），`_reserve_symlink` 自动退避到 `-1`/`-2`… 后缀；若是**悬空**链接（实例崩溃残留），则安全回收复用。最终选定路径通过 `/api/vserial/status` 与 `/api/status` 的 `vserial.symlink` 字段返回。
+
+**覆盖**：用户可用 `vserial_symlink=<path>` 或 CLI `--symlink <path>` 显式指定，跳过派生。
 
 ## 6. 三方共存时序
 
@@ -308,11 +326,13 @@ Windows 无 PTY。为覆盖全平台，`VirtualSerialService` 可同时监听一
 子命令采用扁平连字符风格，与 CLI 现有的 `file-list`/`file-stat`/`server-stop` 等保持一致：
 
 ```bash
-fpb_cli.py vserial-start                       # 让服务器创建 PTY
-fpb_cli.py vserial-start --symlink /tmp/tty0   # 自定义符号链接
-fpb_cli.py vserial-status                      # 查询 slave 路径
+fpb_cli.py vserial-start                       # 创建 PTY，符号链接按物理口名派生
+fpb_cli.py vserial-start --symlink /tmp/mytty  # 自定义符号链接（覆盖派生）
+fpb_cli.py vserial-status                      # 查询 slave 路径与符号链接
 fpb_cli.py vserial-stop                        # 移除 PTY
 ```
+
+> 派生示例：透传 `/dev/ttyACM0` 时，`vserial-status` 返回的 `symlink` 为 `/tmp/fpb-ttyACM0`。
 
 对应实现：
 - `cli/server_proxy.py`：`vserial_status()` / `vserial_start()` / `vserial_stop()` 三个 HTTP 包装。
@@ -329,7 +349,7 @@ CLI 在直连（`--direct`）模式下没有常驻进程，`vserial` 会直接�
 虚拟串口对无头环境是**天然契合**的，因为 PTY 是纯内核 tty 机制，**不依赖任何图形界面**：
 
 - WebServer 的自动拉起用的就是 `--no-browser`（`server_proxy.launch_server`），无头友好；`main.py` 也支持 `--no-mdns` 等纯后台参数。
-- 典型用法：SSH 进无桌面主机/板子 → `fpb_cli.py --port /dev/ttyUSB0 info`（首次带 `--port` 会自动拉起 headless 服务器并连接）→ `fpb_cli.py vserial-start` → 本地 `minicom -D /tmp/fpb-tty0`。
+- 典型用法：SSH 进无桌面主机/板子 → `fpb_cli.py --port /dev/ttyUSB0 info`（首次带 `--port` 会自动拉起 headless 服务器并连接）→ `fpb_cli.py vserial-start`（符号链接派生为 `/tmp/fpb-ttyUSB0`）→ 本地 `minicom -D /tmp/fpb-ttyUSB0`。
 - 全程只有终端，无需浏览器、无需 X11/Wayland。
 
 ```mermaid
@@ -346,11 +366,11 @@ sequenceDiagram
 
     U->>CLI: fpb_cli.py vserial-start
     CLI->>WS: POST /api/vserial/start
-    WS->>WS: openpty() → /dev/pts/N + /tmp/fpb-tty0
+    WS->>WS: openpty() → /dev/pts/N + /tmp/fpb-ttyUSB0 (派生自端口名)
     WS-->>CLI: {slave, symlink}
     CLI-->>U: 打印设备路径
 
-    U->>EXT: minicom -D /tmp/fpb-tty0
+    U->>EXT: minicom -D /tmp/fpb-ttyUSB0
     EXT<<->>WS: 字节透传(PTY ↔ 物理串口)
 ```
 
