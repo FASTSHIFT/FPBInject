@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fpbinject import (  # noqa: E402
     Client,
     FPBError,
+    AuthError,
     ServerUnavailable,
     DiscoveredServer,
 )
@@ -216,6 +217,208 @@ class TestClientOffline(unittest.TestCase):
         c = self._client_with_mock_fpb(fpb)
         with self.assertRaises(FPBError):
             c.analyze("fw.elf", "nope")
+
+    def test_analyze_success_int_symbol(self):
+        fpb = MagicMock()
+        fpb.get_symbols.return_value = {"foo": 0x100}
+        fpb.get_signature.return_value = "void foo(void)"
+        fpb.disassemble_function.return_value = (True, "push {r0}\nbx lr")
+        c = self._client_with_mock_fpb(fpb)
+        out = c.analyze("fw.elf", "foo")
+        self.assertEqual(out["addr"], hex(0x100))
+        self.assertEqual(out["signature"], "void foo(void)")
+        self.assertEqual(out["asm_lines"], 2)
+
+    def test_analyze_success_dict_symbol(self):
+        fpb = MagicMock()
+        fpb.get_symbols.return_value = {"foo": {"addr": 0x200}}
+        fpb.get_signature.return_value = "int foo(int)"
+        fpb.disassemble_function.return_value = (True, "")
+        c = self._client_with_mock_fpb(fpb)
+        out = c.analyze("fw.elf", "foo")
+        self.assertEqual(out["addr"], hex(0x200))
+        self.assertEqual(out["asm_lines"], 0)
+
+    def test_disasm_failure_raises(self):
+        fpb = MagicMock()
+        fpb.disassemble_function.return_value = (False, "")
+        c = self._client_with_mock_fpb(fpb)
+        with self.assertRaises(FPBError):
+            c.disasm("fw.elf", "f")
+
+    def test_decompile_success(self):
+        fpb = MagicMock()
+        fpb.decompile_function.return_value = (True, "int f(){return 0;}")
+        c = self._client_with_mock_fpb(fpb)
+        out = c.decompile("fw.elf", "f")
+        self.assertTrue(out["success"])
+        self.assertIn("return 0", out["decompiled"])
+
+    def test_decompile_failure_raises(self):
+        fpb = MagicMock()
+        fpb.decompile_function.return_value = (False, "no debug info")
+        c = self._client_with_mock_fpb(fpb)
+        with self.assertRaises(FPBError):
+            c.decompile("fw.elf", "f")
+
+    def test_search_dict_symbols_and_limit(self):
+        fpb = MagicMock()
+        fpb.get_symbols.return_value = {f"gpio_{i}": {"addr": i} for i in range(5)}
+        c = self._client_with_mock_fpb(fpb)
+        out = c.search("fw.elf", "gpio", limit=2)
+        self.assertEqual(out["count"], 5)
+        self.assertEqual(len(out["symbols"]), 2)
+
+    def test_get_symbols_no_filter(self):
+        fpb = MagicMock()
+        fpb.get_symbols.return_value = {"b": 0x2, "a": 0x1}
+        c = self._client_with_mock_fpb(fpb)
+        out = c.get_symbols("fw.elf")
+        # Sorted by name, no limit.
+        self.assertEqual([s["name"] for s in out["symbols"]], ["a", "b"])
+
+    def test_compile_success(self):
+        import tempfile
+
+        fpb = MagicMock()
+        fpb.compile_inject.return_value = (b"\x00\x01\x02", {"foo": 0x20001000}, None)
+        c = self._client_with_mock_fpb(fpb)
+        with tempfile.NamedTemporaryFile("w", suffix=".c", delete=False) as tf:
+            tf.write("void foo(void){}")
+            src = tf.name
+        try:
+            out = c.compile(src)
+            self.assertTrue(out["success"])
+            self.assertEqual(out["binary_size"], 3)
+            self.assertEqual(out["symbols"]["foo"], hex(0x20001000))
+        finally:
+            os.unlink(src)
+
+    def test_compile_error_raises(self):
+        import tempfile
+
+        fpb = MagicMock()
+        fpb.compile_inject.return_value = (None, None, "syntax error")
+        c = self._client_with_mock_fpb(fpb)
+        with tempfile.NamedTemporaryFile("w", suffix=".c", delete=False) as tf:
+            tf.write("bad")
+            src = tf.name
+        try:
+            with self.assertRaises(FPBError):
+                c.compile(src)
+        finally:
+            os.unlink(src)
+
+    def test_get_fpb_lazily_builds_with_toolchain(self):
+        # Covers _get_fpb() construction path (toolchain propagation).
+        fake_fpb = MagicMock()
+        with patch("fpbinject.fpb_inject.FPBInject", return_value=fake_fpb) as ctor:
+            with patch("fpbinject.core.state.DeviceStateBase"):
+                c = Client.offline(toolchain_path="/opt/tc/bin")
+                built = c._get_fpb()
+        self.assertIs(built, fake_fpb)
+        ctor.assert_called_once()
+        fake_fpb.set_toolchain_path.assert_called_once_with("/opt/tc/bin")
+
+
+class TestClientErrorMapping(unittest.TestCase):
+    """_call maps transport errors to SDK exceptions; guards on offline."""
+
+    def test_auth_error_mapped(self):
+        from fpbinject.cli.server_proxy import ProxyAuthError
+
+        c = Client("http://127.0.0.1:1")
+        with patch.object(c._proxy, "info", side_effect=ProxyAuthError("401")):
+            with self.assertRaises(AuthError):
+                c.info()
+
+    def test_os_error_mapped_to_unavailable(self):
+        c = Client("http://127.0.0.1:1")
+        with patch.object(c._proxy, "get_status", side_effect=OSError("refused")):
+            with self.assertRaises(ServerUnavailable):
+                c.status()
+
+    def test_ensure_server_delegates(self):
+        c = Client("http://127.0.0.1:1")
+        with patch.object(c._proxy, "ensure_server", return_value=True) as m:
+            self.assertTrue(c.ensure_server())
+            m.assert_called_once()
+
+    def test_connected_swallows_errors(self):
+        c = Client("http://127.0.0.1:1")
+        with patch.object(c._proxy, "is_device_connected", side_effect=OSError):
+            self.assertFalse(c.connected)
+
+    def test_offline_get_fpb_guard_on_proxy_methods(self):
+        c = Client.offline()
+        for call in (
+            lambda: c.inject("f", "p.c"),
+            lambda: c.mem_read(0, 4),
+            lambda: c.mem_write(0, "00"),
+            lambda: c.connect("/dev/ttyACM0"),
+            lambda: c.disconnect(),
+            lambda: c.test_serial(),
+            lambda: c.status(),
+        ):
+            with self.assertRaises(FPBError):
+                call()
+
+    def test_context_manager(self):
+        with Client("http://127.0.0.1:1") as c:
+            self.assertIsInstance(c, Client)
+
+    def test_list_servers_empty_when_discovery_missing(self):
+        with patch.dict("sys.modules", {"fpbinject.cli.discover": None}):
+            # Import failure inside list_servers -> [].
+            self.assertEqual(Client.list_servers(timeout=0.01), [])
+
+
+class TestClientFileTransfer(unittest.TestCase):
+    """file_download decodes base64 and writes to disk; upload delegates."""
+
+    def test_file_download_writes_decoded_bytes(self):
+        import base64
+        import tempfile
+
+        payload = b"hello-bytes"
+        c = Client("http://127.0.0.1:1")
+        with patch.object(
+            c._proxy,
+            "file_download",
+            return_value={
+                "success": True,
+                "data": base64.b64encode(payload).decode(),
+            },
+        ):
+            with tempfile.TemporaryDirectory() as d:
+                dest = os.path.join(d, "nested", "out.bin")
+                res = c.file_download("/remote/x.bin", dest)
+                self.assertTrue(res["success"])
+                self.assertEqual(res["size"], len(payload))
+                with open(dest, "rb") as fh:
+                    self.assertEqual(fh.read(), payload)
+
+    def test_file_download_passthrough_on_failure(self):
+        c = Client("http://127.0.0.1:1")
+        with patch.object(
+            c._proxy,
+            "file_download",
+            return_value={"success": False, "error": "nope"},
+        ):
+            res = c.file_download("/remote/x.bin", "/tmp/should_not_write")
+            self.assertFalse(res["success"])
+
+    def test_file_upload_delegates(self):
+        c = Client("http://127.0.0.1:1")
+        with patch.object(c._proxy, "file_upload", return_value={"success": True}) as m:
+            self.assertTrue(c.file_upload("/local", "/remote")["success"])
+            m.assert_called_once_with("/local", "/remote")
+
+    def test_mem_dump_passthrough_on_read_failure(self):
+        c = Client("http://127.0.0.1:1")
+        with patch.object(c._proxy, "mem_read", return_value={"success": False}):
+            res = c.mem_dump(0x2000, 4, "/tmp/should_not_write_dump")
+            self.assertFalse(res["success"])
 
 
 class TestCapabilityParity(unittest.TestCase):
