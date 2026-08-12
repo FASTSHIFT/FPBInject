@@ -161,6 +161,19 @@ class TestVirtualSerialService(unittest.TestCase):
     def test_forward_rx_when_disabled_noop(self):
         self.svc.forward_rx(b"data")
 
+    def test_legacy_default_symlink_treated_as_auto(self):
+        """The legacy '/tmp/fpb-tty0' value derives per-device (back-compat)."""
+        port = f"/dev/ttyLEG{os.getpid()}"
+        expected = default_symlink_for_port(port)
+        device = _FakeDevice(port=port)
+        svc = VirtualSerialService(device)
+        try:
+            ok, err = svc.start(symlink="/tmp/fpb-tty0")
+            self.assertTrue(ok, err)
+            self.assertEqual(svc.status()["symlink"], expected)
+        finally:
+            svc.stop()
+
     def test_auto_symlink_derived_from_port(self):
         """symlink=None/'auto' derives the alias from device.port."""
         # Use a unique fake port so the derived path won't clash with reality.

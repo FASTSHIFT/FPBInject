@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 # Directory for the stable virtual-serial symlinks.
 _SYMLINK_DIR = "/tmp"
 
+# Legacy hard-coded default from earlier versions. Existing config.json files
+# may still carry this value; treat it as "auto" so they derive per-device
+# names instead of colliding on a single fixed path.
+_LEGACY_DEFAULT_SYMLINK = "/tmp/fpb-tty0"
+
 
 def default_symlink_for_port(port):
     """Derive a stable, per-device symlink path from the physical port.
@@ -75,9 +80,10 @@ class VirtualSerialService:
 
         ``symlink`` selects the stable device-file alias:
           * a non-empty path  -> used as-is (user override);
-          * ``None`` / "auto" -> derived from the physical port name, e.g.
-            ``/dev/ttyACM0`` -> ``/tmp/fpb-ttyACM0`` (multi-device friendly,
-            no collisions between different physical ports);
+          * ``None`` / "auto" / the legacy "/tmp/fpb-tty0" default
+            -> derived from the physical port name, e.g. ``/dev/ttyACM0``
+            -> ``/tmp/fpb-ttyACM0`` (multi-device friendly, no collisions
+            between different physical ports);
           * "" (empty string) -> no symlink (only /dev/pts/N is exposed).
 
         ``mute_policy`` is accepted for backward-compatible call sites but
@@ -117,7 +123,10 @@ class VirtualSerialService:
         # Resolve the stable symlink path. Empty string disables the symlink;
         # None/"auto" derives it from the physical port name so multiple
         # devices on one host each get a distinct, recognizable alias.
-        if symlink in (None, "auto"):
+        # The legacy hard-coded default "/tmp/fpb-tty0" is also treated as
+        # "auto" so pre-existing config.json values still derive per-device
+        # names without a manual edit.
+        if symlink in (None, "auto", _LEGACY_DEFAULT_SYMLINK):
             port = getattr(self.device, "port", None)
             symlink = default_symlink_for_port(port)
 
