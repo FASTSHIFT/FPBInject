@@ -454,12 +454,270 @@ class TestCapabilityParity(unittest.TestCase):
             "vserial-start": "vserial_start",
             "vserial-status": "vserial_status",
             "vserial-stop": "vserial_stop",
+            "server-stop": "stop_server",
         }
         for cli_cmd, method in mapping.items():
             self.assertTrue(
                 hasattr(Client, method),
                 f"Client missing method {method!r} for CLI '{cli_cmd}'",
             )
+
+
+class TestClientDirectMode(unittest.TestCase):
+    """Direct mode drives the core FPBInject/FileTransfer classes over a
+    locally opened serial port -- no WebServer. We stub the serial open and
+    the core objects so no real hardware is needed."""
+
+    def _direct_client(self):
+        """Build a direct-mode Client with the serial open + PortLock stubbed
+        out, then swap in mock core objects."""
+        fake_lock = MagicMock()
+        fake_lock.acquire.return_value = True
+        with patch("fpbinject.utils.port_lock.PortLock", return_value=fake_lock):
+            with patch("fpbinject.cli.fpb_cli.DeviceState") as StateCls:
+                state = MagicMock()
+                state.connected = True
+                state.upload_chunk_size = 128
+                state.download_chunk_size = 1024
+                state.transfer_max_retries = 10
+                StateCls.return_value = state
+                with patch("fpbinject.fpb_inject.FPBInject") as FpbCls:
+                    fpb = MagicMock()
+                    FpbCls.return_value = fpb
+                    c = Client.direct("/dev/ttyACM0")
+        return c, c._fpb, c._device_state
+
+    def test_direct_connected(self):
+        c, _, _ = self._direct_client()
+        self.assertTrue(c.connected)
+        self.assertIsNone(c._proxy)
+
+    def test_direct_lock_failure_raises(self):
+        fake_lock = MagicMock()
+        fake_lock.acquire.return_value = False
+        fake_lock.get_owner_pid.return_value = 4321
+        with patch("fpbinject.utils.port_lock.PortLock", return_value=fake_lock):
+            with self.assertRaises(FPBError):
+                Client.direct("/dev/ttyACM0")
+
+    def test_direct_serial_open_failure_releases_lock(self):
+        from fpbinject import DeviceNotConnected
+
+        fake_lock = MagicMock()
+        fake_lock.acquire.return_value = True
+        with patch("fpbinject.utils.port_lock.PortLock", return_value=fake_lock):
+            with patch("fpbinject.cli.fpb_cli.DeviceState") as StateCls:
+                state = MagicMock()
+                state.connect.side_effect = RuntimeError("port busy")
+                StateCls.return_value = state
+                with self.assertRaises(DeviceNotConnected):
+                    Client.direct("/dev/ttyACM0")
+        # Lock must be released when the port fails to open.
+        fake_lock.release.assert_called_once()
+
+    def test_direct_info(self):
+        c, fpb, _ = self._direct_client()
+        fpb.info.return_value = ({"num_comparators": 6}, None)
+        out = c.info()
+        self.assertTrue(out["success"])
+        self.assertEqual(out["info"]["num_comparators"], 6)
+
+    def test_direct_info_error_raises(self):
+        c, fpb, _ = self._direct_client()
+        fpb.info.return_value = (None, "no response")
+        with self.assertRaises(FPBError):
+            c.info()
+
+    def test_direct_unpatch(self):
+        c, fpb, _ = self._direct_client()
+        fpb.unpatch.return_value = (True, "removed")
+        out = c.unpatch(all=True)
+        self.assertTrue(out["success"])
+        self.assertEqual(out["comp"], "all")
+
+    def test_direct_mem_read_write(self):
+        c, fpb, _ = self._direct_client()
+        fpb.read_memory.return_value = (b"\xde\xad\xbe\xef", "ok")
+        out = c.mem_read(0x20000000, 4)
+        self.assertEqual(out["data"], "deadbeef")
+        fpb.write_memory.return_value = (True, "")
+        out = c.mem_write(0x20000000, "deadbeef")
+        self.assertTrue(out["success"])
+        # FL-mode must wrap raw memory access.
+        fpb.enter_fl_mode.assert_called()
+        fpb.exit_fl_mode.assert_called()
+
+    def test_direct_mem_write_invalid_hex(self):
+        c, _, _ = self._direct_client()
+        with self.assertRaises(FPBError):
+            c.mem_write(0x20000000, "nothex!")
+
+    def test_direct_mem_dump_writes_file(self):
+        import tempfile
+
+        c, fpb, _ = self._direct_client()
+        fpb.read_memory.return_value = (b"\x01\x02\x03\x04", "ok")
+        with tempfile.TemporaryDirectory() as d:
+            out_path = os.path.join(d, "sub", "dump.bin")
+            res = c.mem_dump(0x2000, 4, out_path)
+            self.assertTrue(res["success"])
+            with open(out_path, "rb") as fh:
+                self.assertEqual(fh.read(), b"\x01\x02\x03\x04")
+
+    def test_direct_inject(self):
+        import tempfile
+
+        c, fpb, state = self._direct_client()
+        fpb.inject.return_value = (True, "patched comp 0")
+        with tempfile.NamedTemporaryFile("w", suffix=".c", delete=False) as tf:
+            tf.write("void f(void){}")
+            src = tf.name
+        try:
+            out = c.inject("f", src, elf="fw.elf")
+            self.assertTrue(out["success"])
+            self.assertEqual(state.elf_path, "fw.elf")
+        finally:
+            os.unlink(src)
+
+    def test_direct_serial_send(self):
+        c, _, state = self._direct_client()
+        ser = MagicMock()
+        state.ser = ser
+        out = c.serial_send("help")
+        self.assertTrue(out["success"])
+        ser.write.assert_called_once()
+
+    def test_direct_file_ops(self):
+        c, _, _ = self._direct_client()
+        ft = MagicMock()
+        ft.flist.return_value = (True, [{"name": "a"}])
+        ft.fmkdir.return_value = (True, "ok")
+        ft.fremove.return_value = (True, "ok")
+        ft.frename.return_value = (True, "ok")
+        with patch.object(c, "_ft", return_value=ft):
+            self.assertTrue(c.file_list("/")["success"])
+            self.assertTrue(c.file_mkdir("/d")["success"])
+            self.assertTrue(c.file_remove("/a")["success"])
+            self.assertTrue(c.file_rename("/a", "/b")["success"])
+
+    def test_direct_serial_read(self):
+        c, _, state = self._direct_client()
+        ser = MagicMock()
+        # First poll returns data, then drains.
+        ser.in_waiting = 4
+        ser.read.return_value = b"pong"
+        state.ser = ser
+        out = c.serial_read(timeout=0.05)
+        self.assertTrue(out["success"])
+        self.assertIn("pong", out["raw_data"])
+
+    def test_direct_test_serial(self):
+        c, fpb, _ = self._direct_client()
+        fpb.test_serial_throughput.return_value = {"success": True, "chunk": 128}
+        out = c.test_serial()
+        self.assertTrue(out["success"])
+
+    def test_direct_file_stat_and_download_upload(self):
+        import tempfile
+
+        c, _, _ = self._direct_client()
+        ft = MagicMock()
+        ft.fstat.return_value = (True, {"size": 10})
+        ft.download.return_value = (True, b"payload", "ok")
+        ft.upload.return_value = (True, "ok")
+        with patch.object(c, "_ft", return_value=ft):
+            self.assertEqual(c.file_stat("/x")["stat"]["size"], 10)
+            with tempfile.TemporaryDirectory() as d:
+                dest = os.path.join(d, "n", "f.bin")
+                res = c.file_download("/r.bin", dest)
+                self.assertEqual(res["size"], len(b"payload"))
+                with open(dest, "rb") as fh:
+                    self.assertEqual(fh.read(), b"payload")
+                src = os.path.join(d, "up.bin")
+                with open(src, "wb") as fh:
+                    fh.write(b"abc")
+                self.assertTrue(c.file_upload(src, "/r.bin")["success"])
+
+    def test_direct_file_error_paths(self):
+        c, _, _ = self._direct_client()
+        ft = MagicMock()
+        ft.flist.return_value = (False, [])
+        ft.fstat.return_value = (False, {"error": "nope"})
+        ft.download.return_value = (False, b"", "bad")
+        with patch.object(c, "_ft", return_value=ft):
+            for call in (
+                lambda: c.file_list("/"),
+                lambda: c.file_stat("/x"),
+                lambda: c.file_download("/r", "/tmp/never_written_direct"),
+            ):
+                with self.assertRaises(FPBError):
+                    call()
+
+    def test_direct_inject_failure_result(self):
+        import tempfile
+
+        c, fpb, _ = self._direct_client()
+        fpb.inject.return_value = (False, "compile error")
+        with tempfile.NamedTemporaryFile("w", suffix=".c", delete=False) as tf:
+            tf.write("bad")
+            src = tf.name
+        try:
+            out = c.inject("f", src)
+            self.assertFalse(out["success"])
+        finally:
+            os.unlink(src)
+
+    def test_direct_not_connected_guard(self):
+        c, _, state = self._direct_client()
+        state.connected = False
+        with self.assertRaises(FPBError):
+            c.info()
+
+    def test_direct_vserial_unsupported(self):
+        c, _, _ = self._direct_client()
+        for call in (c.vserial_start, c.vserial_status, c.vserial_stop):
+            with self.assertRaises(FPBError):
+                call()
+
+    def test_direct_connect_disconnect_require_proxy(self):
+        c, _, _ = self._direct_client()
+        with self.assertRaises(FPBError):
+            c.connect("/dev/ttyACM0")
+        with self.assertRaises(FPBError):
+            c.disconnect()
+
+    def test_direct_offline_analysis_reuses_fpb(self):
+        # Offline ELF methods work in direct mode via the same FPBInject.
+        c, fpb, _ = self._direct_client()
+        fpb.get_signature.return_value = "void f(void)"
+        self.assertEqual(c.signature("fw.elf", "f"), "void f(void)")
+
+    def test_direct_close_releases_lock(self):
+        c, _, state = self._direct_client()
+        lock = c._port_lock
+        c.close()
+        state.disconnect.assert_called_once()
+        lock.release.assert_called_once()
+        self.assertIsNone(c._port_lock)
+
+    def test_direct_context_manager_closes(self):
+        c, _, state = self._direct_client()
+        with c:
+            pass
+        state.disconnect.assert_called_once()
+
+
+class TestClientStopServer(unittest.TestCase):
+    """stop_server delegates to stop_cli_server."""
+
+    def test_stop_server_delegates(self):
+        with patch(
+            "fpbinject.cli.server_proxy.stop_cli_server",
+            return_value={"success": True, "message": "stopped"},
+        ) as m:
+            out = Client.stop_server(5555)
+            self.assertTrue(out["success"])
+            m.assert_called_once_with(5555)
 
 
 if __name__ == "__main__":

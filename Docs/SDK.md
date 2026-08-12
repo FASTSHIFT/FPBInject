@@ -2,7 +2,8 @@
 
 The `fpbinject` package ships a stable Python SDK — a single `Client` facade
 that covers every capability the CLI exposes: ELF analysis, code injection,
-memory/serial/file operations, and the virtual serial passthrough.
+memory/serial/file operations, the virtual serial passthrough, and server
+administration.
 
 ```bash
 pip install fpbinject
@@ -23,6 +24,7 @@ print(client.serial_read()["raw_data"])
 ## Contents
 
 - [Connecting](#connecting)
+- [Modes at a glance](#modes-at-a-glance)
 - [Return values & errors](#return-values--errors)
 - [Offline: ELF analysis](#offline-elf-analysis)
 - [Device info & injection](#device-info--injection)
@@ -34,25 +36,38 @@ print(client.serial_read()["raw_data"])
 
 ## Connecting
 
-There are three ways to create a `Client`:
+There are four ways to create a `Client`:
 
 ```python
 from fpbinject import Client
 
-# 1. Direct — connect to a known WebServer
+# 1. Explicit URL — connect to a known WebServer (proxy mode)
 client = Client("http://127.0.0.1:5500", token="021c1509")
 
 # 2. Discover — find a WebServer via mDNS (like `fpbinject discover`)
 client = Client.discover(token="021c1509")               # unique server on LAN
 client = Client.discover(handle="bench-pc:5500")         # pick a specific one
 
-# 3. Offline — ELF analysis only, no server or device
+# 3. Direct — open the serial port yourself, no WebServer needed
+#    (SDK equivalent of `fpbinject --port ... --direct`)
+with Client.direct("/dev/ttyACM0", baudrate=115200) as dev:
+    print(dev.info())
+
+# 4. Offline — ELF analysis only, no server or device
 off = Client.offline(toolchain_path="/opt/toolchain/bin")
 ```
 
+**Direct mode** opens the serial port in-process and drives the device
+through the same core code the CLI's `--direct` path uses — handy for
+headless scripts and CI where you'd rather not run a separate server. It
+locks the port for the client's lifetime, so use it as a context manager (or
+call `close()`) to release the port. The one thing it cannot do is the
+virtual serial passthrough (see [below](#connection--virtual-serial)).
+
 **Token** resolution matches the CLI: explicit `token=` wins, otherwise the
 `FPB_TOKEN` environment variable is used. Tokens are never sent over mDNS;
-obtain one from the WebServer startup log.
+obtain one from the WebServer startup log. (Tokens apply to proxy mode only;
+direct mode talks straight to the device.)
 
 **List servers** without connecting:
 
@@ -68,12 +83,37 @@ client = Client()          # defaults to http://127.0.0.1:5500
 client.ensure_server()     # starts a headless server if needed
 ```
 
-**Context manager** for cleanup:
+**Context manager** for cleanup (required for direct mode to release the
+serial port; harmless for the others):
 
 ```python
 with Client.discover() as client:
     client.info()
+
+with Client.direct("/dev/ttyACM0") as dev:
+    dev.info()          # port is released automatically on exit
 ```
+
+## Modes at a glance
+
+| Capability | Proxy (`Client` / `discover`) | Direct (`Client.direct`) | Offline (`Client.offline`) |
+|------------|:---:|:---:|:---:|
+| ELF analysis (analyze/disasm/decompile/signature/search/get_symbols/compile) | ✓ | ✓ | ✓ |
+| Device info / test_serial | ✓ | ✓ | — |
+| inject / unpatch | ✓ | ✓ | — |
+| Memory (mem_read/write/dump) | ✓ | ✓ | — |
+| Serial (serial_send/read) | ✓ | ✓ | — |
+| Files (file_*) | ✓ | ✓ | — |
+| Virtual serial (vserial_*) | ✓ | — ¹ | — |
+| connect / disconnect | ✓ ² | — ³ | — |
+| ensure_server / status | ✓ | — | — |
+| stop_server (static) | ✓ | ✓ | ✓ |
+
+¹ A PTY must be hosted by a long-lived process; a transient direct client
+cannot keep the device node alive. Use proxy mode for virtual serial.
+² Proxy mode asks the server to open/close the physical port.
+³ Direct mode owns the port for its whole lifetime — pass the port to
+`Client.direct(...)` and release it with `close()` / the context manager.
 
 ## Return values & errors
 
@@ -186,53 +226,72 @@ client.file_rename("/data/a.bin", "/data/b.bin")
 ## Connection & virtual serial
 
 ```python
-# Ask the server to open a physical port (proxy mode)
+# Proxy mode: ask the server to open/close a physical port.
 client.connect("/dev/ttyACM0", baudrate=921600)
 client.disconnect()
 
-# Virtual serial passthrough (Linux/macOS): exposes a PTY device file that
-# external tools (minicom, pyserial) can open while the server keeps the port.
+# Direct mode owns the port for the client's whole lifetime instead —
+# pass the port to Client.direct() and release it with close()/`with`.
+
+# Virtual serial passthrough (Linux/macOS, proxy mode only): exposes a PTY
+# device file that external tools (minicom, pyserial) can open while the
+# server keeps the physical port. Direct mode cannot host this (see
+# "Modes at a glance").
 client.vserial_start()                 # symlink derived from the port name
 client.vserial_start(symlink="/tmp/mytty")
 client.vserial_status()                # {"slave": "/dev/pts/N", "symlink": ...}
 client.vserial_stop()
 ```
 
+## Server administration
+
+```python
+# Stop a WebServer that the CLI auto-launched in the background
+# (equivalent to `fpbinject server-stop`). Static — no client needed.
+Client.stop_server(5500)               # {"success": True, "message": "..."}
+```
+
 ## Full method reference
+
+"Mode" is the mode(s) each method works in: **proxy** (`Client`/`discover`),
+**direct** (`Client.direct`), **offline** (`Client.offline`).
 
 | Method | Mode | Purpose |
 |--------|------|---------|
-| `Client(base_url, token=None, timeout=30)` | — | Direct connect |
+| `Client(base_url, token=None, timeout=30)` | — | Explicit-URL proxy client |
 | `Client.discover(token=None, timeout=3.0, handle=None)` | — | mDNS auto-discovery |
-| `Client.offline(toolchain_path=None)` | — | Offline (no server) |
+| `Client.direct(port, baudrate=115200, toolchain_path=None)` | — | Open serial port directly |
+| `Client.offline(toolchain_path=None)` | — | Offline (no server/device) |
 | `Client.list_servers(timeout=3.0)` | — | List servers via mDNS |
+| `Client.stop_server(port=5500)` | static | Stop a CLI-launched server |
+| `close()` / `with` | all | Release resources (frees the port in direct mode) |
 | `ensure_server()` | proxy | Auto-launch local server |
-| `connected` (property) | proxy | Device connected? |
+| `connected` (property) | proxy, direct | Device connected? |
 | `status()` | proxy | Full server status |
-| `analyze(elf, func)` | offline | Address + signature + asm size |
-| `disasm(elf, func)` | offline | Disassembly |
-| `decompile(elf, func)` | offline | Ghidra decompile |
-| `signature(elf, func)` | offline | Function signature |
-| `search(elf, pattern, limit=20)` | offline | Symbols matching pattern |
-| `get_symbols(elf, filter=None, limit=0)` | offline | All symbols |
-| `compile(source, elf=None, base_addr=..., compile_commands=None)` | offline | Compile a patch |
-| `info()` | proxy | Device FPB info |
-| `test_serial(start_size=16, max_size=4096, timeout=2.0)` | proxy | Serial throughput |
-| `inject(target_func, source, elf=None, compile_commands=None, patch_mode="trampoline", comp=-1)` | proxy | Inject a patch |
-| `unpatch(comp=0, all=False)` | proxy | Remove patch(es) |
-| `mem_read(addr, length, fmt="hex")` | proxy | Read memory |
-| `mem_write(addr, hexdata)` | proxy | Write memory |
-| `mem_dump(addr, length, out_path)` | proxy | Dump region to file |
-| `serial_send(data)` | proxy | Send serial data |
-| `serial_read(since=0)` | proxy | Read serial log |
-| `wake()` | proxy | Wake a sleeping device |
-| `file_list(path="/")` | proxy | List directory |
-| `file_stat(path)` | proxy | File info |
-| `file_download(remote, local)` | proxy | Download file |
-| `file_upload(local, remote)` | proxy | Upload file |
-| `file_remove(path)` | proxy | Delete file |
-| `file_mkdir(path)` | proxy | Create directory |
-| `file_rename(old, new)` | proxy | Rename |
+| `analyze(elf, func)` | proxy·direct·offline | Address + signature + asm size |
+| `disasm(elf, func)` | proxy·direct·offline | Disassembly |
+| `decompile(elf, func)` | proxy·direct·offline | Ghidra decompile |
+| `signature(elf, func)` | proxy·direct·offline | Function signature |
+| `search(elf, pattern, limit=20)` | proxy·direct·offline | Symbols matching pattern |
+| `get_symbols(elf, filter=None, limit=0)` | proxy·direct·offline | All symbols |
+| `compile(source, elf=None, base_addr=..., compile_commands=None)` | proxy·direct·offline | Compile a patch |
+| `info()` | proxy, direct | Device FPB info |
+| `test_serial(start_size=16, max_size=4096, timeout=2.0)` | proxy, direct | Serial throughput |
+| `inject(target_func, source, elf=None, compile_commands=None, patch_mode="trampoline", comp=-1)` | proxy, direct | Inject a patch |
+| `unpatch(comp=0, all=False)` | proxy, direct | Remove patch(es) |
+| `mem_read(addr, length, fmt="hex")` | proxy, direct | Read memory |
+| `mem_write(addr, hexdata)` | proxy, direct | Write memory |
+| `mem_dump(addr, length, out_path)` | proxy, direct | Dump region to file |
+| `serial_send(data)` | proxy, direct | Send serial data |
+| `serial_read(since=0)` | proxy, direct | Read serial log |
+| `wake()` | proxy, direct | Wake a sleeping device |
+| `file_list(path="/")` | proxy, direct | List directory |
+| `file_stat(path)` | proxy, direct | File info |
+| `file_download(remote, local)` | proxy, direct | Download file |
+| `file_upload(local, remote)` | proxy, direct | Upload file |
+| `file_remove(path)` | proxy, direct | Delete file |
+| `file_mkdir(path)` | proxy, direct | Create directory |
+| `file_rename(old, new)` | proxy, direct | Rename |
 | `connect(port, baudrate=115200)` | proxy | Open a serial port |
 | `disconnect()` | proxy | Close the serial port |
 | `vserial_start(symlink=None)` | proxy | Start virtual serial |
