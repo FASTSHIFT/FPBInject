@@ -11,8 +11,8 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.routes.files import bp  # noqa: E402
-from core.state import state  # noqa: E402
+from fpbinject.app.routes.files import bp  # noqa: E402
+from fpbinject.core.state import state  # noqa: E402
 
 
 class FileRoutesBase(unittest.TestCase):

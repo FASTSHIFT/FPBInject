@@ -13,7 +13,7 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from core.state import state
+from fpbinject.core.state import state
 
 bp = Blueprint("files", __name__)
 

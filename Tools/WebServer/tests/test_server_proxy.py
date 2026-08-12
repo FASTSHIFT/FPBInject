@@ -16,7 +16,7 @@ from urllib.error import URLError
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from cli.server_proxy import ServerProxy, ProxyAuthError, DEFAULT_SERVER_URL
+from fpbinject.cli.server_proxy import ServerProxy, ProxyAuthError, DEFAULT_SERVER_URL
 from fixtures.mock_http import MockHTTPHandler as _MockHTTPHandler
 
 
@@ -383,7 +383,7 @@ class TestServerProxyLaunchServer(unittest.TestCase):
     def test_launch_server_timeout(self):
         """launch_server returns False when server doesn't respond in time."""
         from unittest.mock import patch, MagicMock
-        import cli.server_proxy as sp_mod
+        import fpbinject.cli.server_proxy as sp_mod
 
         proxy = ServerProxy(base_url="http://127.0.0.1:19876")
         mock_proc = MagicMock()
@@ -489,7 +489,7 @@ class TestPidFileFunctions(unittest.TestCase):
     """Test PID file management functions."""
 
     def setUp(self):
-        from cli.server_proxy import _WEBSERVER_DIR
+        from fpbinject.cli.server_proxy import _WEBSERVER_DIR
 
         self.webserver_dir = _WEBSERVER_DIR
         self.test_port = 19999
@@ -505,26 +505,26 @@ class TestPidFileFunctions(unittest.TestCase):
             os.remove(self.pid_path)
 
     def test_pid_file_path(self):
-        from cli.server_proxy import _pid_file_path
+        from fpbinject.cli.server_proxy import _pid_file_path
 
         path = _pid_file_path(5500)
         self.assertTrue(path.endswith(".cli_server_5500.pid"))
         self.assertIn(self.webserver_dir, path)
 
     def test_pid_file_path_custom_port(self):
-        from cli.server_proxy import _pid_file_path
+        from fpbinject.cli.server_proxy import _pid_file_path
 
         path = _pid_file_path(8080)
         self.assertTrue(path.endswith(".cli_server_8080.pid"))
 
     def test_get_cli_server_pid_no_file(self):
-        from cli.server_proxy import get_cli_server_pid
+        from fpbinject.cli.server_proxy import get_cli_server_pid
 
         self.assertIsNone(get_cli_server_pid(self.test_port))
 
     def test_get_cli_server_pid_stale(self):
         """PID file exists but process is dead — should clean up."""
-        from cli.server_proxy import get_cli_server_pid
+        from fpbinject.cli.server_proxy import get_cli_server_pid
 
         with open(self.pid_path, "w") as f:
             f.write("999999999")  # Very unlikely to be a real PID
@@ -533,21 +533,21 @@ class TestPidFileFunctions(unittest.TestCase):
 
     def test_get_cli_server_pid_alive(self):
         """PID file with our own PID — should return it."""
-        from cli.server_proxy import get_cli_server_pid
+        from fpbinject.cli.server_proxy import get_cli_server_pid
 
         with open(self.pid_path, "w") as f:
             f.write(str(os.getpid()))
         self.assertEqual(get_cli_server_pid(self.test_port), os.getpid())
 
     def test_get_cli_server_pid_invalid_content(self):
-        from cli.server_proxy import get_cli_server_pid
+        from fpbinject.cli.server_proxy import get_cli_server_pid
 
         with open(self.pid_path, "w") as f:
             f.write("not-a-number")
         self.assertIsNone(get_cli_server_pid(self.test_port))
 
     def test_remove_pid_file(self):
-        from cli.server_proxy import _remove_pid_file
+        from fpbinject.cli.server_proxy import _remove_pid_file
 
         with open(self.pid_path, "w") as f:
             f.write("12345")
@@ -555,20 +555,20 @@ class TestPidFileFunctions(unittest.TestCase):
         self.assertFalse(os.path.exists(self.pid_path))
 
     def test_remove_pid_file_nonexistent(self):
-        from cli.server_proxy import _remove_pid_file
+        from fpbinject.cli.server_proxy import _remove_pid_file
 
         # Should not raise
         _remove_pid_file(self.test_port)
 
     def test_stop_cli_server_no_server(self):
-        from cli.server_proxy import stop_cli_server
+        from fpbinject.cli.server_proxy import stop_cli_server
 
         result = stop_cli_server(self.test_port)
         self.assertFalse(result["success"])
         self.assertIn(str(self.test_port), result["error"])
 
     def test_stop_cli_server_stale_pid(self):
-        from cli.server_proxy import stop_cli_server
+        from fpbinject.cli.server_proxy import stop_cli_server
 
         with open(self.pid_path, "w") as f:
             f.write("999999999")
@@ -578,7 +578,7 @@ class TestPidFileFunctions(unittest.TestCase):
     def test_stop_cli_server_success(self):
         """Start a real subprocess and stop it."""
         import subprocess
-        from cli.server_proxy import stop_cli_server
+        from fpbinject.cli.server_proxy import stop_cli_server
 
         proc = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(60)"],
@@ -596,7 +596,7 @@ class TestPidFileFunctions(unittest.TestCase):
         proc.wait(timeout=5)
 
     def test_list_cli_servers_empty(self):
-        from cli.server_proxy import list_cli_servers
+        from fpbinject.cli.server_proxy import list_cli_servers
 
         # No PID files for our test port
         servers = list_cli_servers()
@@ -605,7 +605,7 @@ class TestPidFileFunctions(unittest.TestCase):
         self.assertEqual(len(test_servers), 0)
 
     def test_list_cli_servers_with_entry(self):
-        from cli.server_proxy import list_cli_servers
+        from fpbinject.cli.server_proxy import list_cli_servers
 
         # Write a PID file with our own PID (alive)
         with open(self.pid_path, "w") as f:
@@ -620,7 +620,7 @@ class TestGetPortOwner(unittest.TestCase):
     """Test get_port_owner function from main.py."""
 
     def test_port_not_in_use(self):
-        from main import get_port_owner
+        from fpbinject.main import get_port_owner
 
         result = get_port_owner(19876)  # Very unlikely to be in use
         self.assertIsNone(result)
@@ -628,7 +628,7 @@ class TestGetPortOwner(unittest.TestCase):
     def test_port_in_use(self):
         """Bind a port and check get_port_owner finds us."""
         import socket
-        from main import get_port_owner
+        from fpbinject.main import get_port_owner
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

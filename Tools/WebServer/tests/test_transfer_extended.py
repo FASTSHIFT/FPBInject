@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.routes.transfer import bp, _transfer_cancelled  # noqa: E402
+from fpbinject.app.routes.transfer import bp, _transfer_cancelled  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=10.0):
@@ -38,11 +38,11 @@ class TransferTestBase(unittest.TestCase):
         self.mock_device.download_chunk_size = 64
         self.mock_device.transfer_max_retries = 3
 
-        self.state_patcher = patch("app.routes.transfer.state")
+        self.state_patcher = patch("fpbinject.app.routes.transfer.state")
         self.mock_state = self.state_patcher.start()
         self.mock_state.device = self.mock_device
 
-        self.helpers_patcher = patch("app.routes.transfer._get_helpers")
+        self.helpers_patcher = patch("fpbinject.app.routes.transfer._get_helpers")
         self.mock_helpers = self.helpers_patcher.start()
         self.mock_helpers.return_value = (
             Mock(),  # log_info
@@ -53,7 +53,7 @@ class TransferTestBase(unittest.TestCase):
         )
 
         self.worker_patcher = patch(
-            "app.routes.transfer.run_in_device_worker",
+            "fpbinject.app.routes.transfer.run_in_device_worker",
             side_effect=mock_run_in_device_worker,
         )
         self.mock_worker = self.worker_patcher.start()
@@ -81,7 +81,7 @@ class TransferTestBase(unittest.TestCase):
 class TestUploadRoute(TransferTestBase):
     """Test /api/transfer/upload SSE endpoint."""
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_success(self, mock_get_ft):
         """Test successful file upload."""
         mock_ft = Mock()
@@ -116,7 +116,7 @@ class TestUploadRoute(TransferTestBase):
         self.assertTrue(len(results) > 0)
         self.assertTrue(results[-1]["success"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_fopen_failure(self, mock_get_ft):
         """Test upload when fopen fails."""
         mock_ft = Mock()
@@ -141,7 +141,7 @@ class TestUploadRoute(TransferTestBase):
         self.assertFalse(results[-1]["success"])
         self.assertIn("Failed to open", results[-1]["error"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_fwrite_failure(self, mock_get_ft):
         """Test upload when fwrite fails."""
         mock_ft = Mock()
@@ -169,7 +169,7 @@ class TestUploadRoute(TransferTestBase):
         self.assertFalse(results[-1]["success"])
         self.assertIn("Write failed", results[-1]["error"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_with_crc_success(self, mock_get_ft):
         """Test upload with CRC verification success."""
 
@@ -186,7 +186,7 @@ class TestUploadRoute(TransferTestBase):
         mock_get_ft.return_value = mock_ft
 
         file_content = b"hello world"
-        from utils.crc import crc16
+        from fpbinject.utils.crc import crc16
 
         expected_crc = crc16(file_content)
         mock_ft.fcrc.return_value = (True, len(file_content), expected_crc)
@@ -205,7 +205,7 @@ class TestUploadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertTrue(results[-1]["success"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_crc_mismatch(self, mock_get_ft):
         """Test upload with CRC mismatch."""
 
@@ -236,7 +236,7 @@ class TestUploadRoute(TransferTestBase):
         self.assertFalse(results[-1]["success"])
         self.assertIn("CRC mismatch", results[-1]["error"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_size_mismatch(self, mock_get_ft):
         """Test upload with size mismatch."""
 
@@ -267,7 +267,7 @@ class TestUploadRoute(TransferTestBase):
         self.assertFalse(results[-1]["success"])
         self.assertIn("Size mismatch", results[-1]["error"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_crc_check_failure(self, mock_get_ft):
         """Test upload when CRC check itself fails."""
 
@@ -298,7 +298,7 @@ class TestUploadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertTrue(results[-1]["success"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_cancel(self, mock_get_ft):
         """Test upload cancellation."""
         mock_ft = Mock()
@@ -335,7 +335,9 @@ class TestUploadRoute(TransferTestBase):
     def test_upload_worker_not_running(self):
         """Test upload when device worker is not running."""
         self.worker_patcher.stop()
-        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+        with patch(
+            "fpbinject.app.routes.transfer.run_in_device_worker", return_value=False
+        ):
             data = {
                 "file": (io.BytesIO(b"data"), "test.txt"),
                 "remote_path": "/data/test.txt",
@@ -355,7 +357,7 @@ class TestUploadRoute(TransferTestBase):
 class TestDownloadRoute(TransferTestBase):
     """Test /api/transfer/download SSE endpoint."""
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_success(self, mock_get_ft):
         """Test successful file download."""
         mock_ft = Mock()
@@ -394,7 +396,7 @@ class TestDownloadRoute(TransferTestBase):
         decoded = base64.b64decode(results[-1]["data"])
         self.assertEqual(decoded, b"hello world")
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_stat_failure(self, mock_get_ft):
         """Test download when fstat fails."""
         mock_ft = Mock()
@@ -412,7 +414,7 @@ class TestDownloadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertFalse(results[-1]["success"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_directory_error(self, mock_get_ft):
         """Test download on directory."""
         mock_ft = Mock()
@@ -431,7 +433,7 @@ class TestDownloadRoute(TransferTestBase):
         self.assertFalse(results[-1]["success"])
         self.assertIn("directory", results[-1]["error"].lower())
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_empty_file(self, mock_get_ft):
         """Test download of empty file."""
         mock_ft = Mock()
@@ -450,7 +452,7 @@ class TestDownloadRoute(TransferTestBase):
         self.assertFalse(results[-1]["success"])
         self.assertIn("empty", results[-1]["error"].lower())
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_fopen_failure(self, mock_get_ft):
         """Test download when fopen fails."""
         mock_ft = Mock()
@@ -470,7 +472,7 @@ class TestDownloadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertFalse(results[-1]["success"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_fread_failure(self, mock_get_ft):
         """Test download when fread fails."""
         mock_ft = Mock()
@@ -494,12 +496,12 @@ class TestDownloadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertFalse(results[-1]["success"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_with_crc_success(self, mock_get_ft):
         """Test download with CRC verification."""
 
         file_content = b"test data here"
-        from utils.crc import crc16
+        from fpbinject.utils.crc import crc16
 
         expected_crc = crc16(file_content)
 
@@ -529,7 +531,7 @@ class TestDownloadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertTrue(results[-1]["success"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_crc_mismatch(self, mock_get_ft):
         """Test download with CRC mismatch."""
 
@@ -560,7 +562,7 @@ class TestDownloadRoute(TransferTestBase):
         self.assertFalse(results[-1]["success"])
         self.assertIn("CRC mismatch", results[-1]["error"])
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_cancel(self, mock_get_ft):
         """Test download cancellation."""
         mock_ft = Mock()
@@ -594,7 +596,9 @@ class TestDownloadRoute(TransferTestBase):
     def test_download_worker_not_running(self):
         """Test download when device worker is not running."""
         self.worker_patcher.stop()
-        with patch("app.routes.transfer.run_in_device_worker", return_value=False):
+        with patch(
+            "fpbinject.app.routes.transfer.run_in_device_worker", return_value=False
+        ):
             response = self.client.post(
                 "/api/transfer/download",
                 json={"remote_path": "/data/test.txt"},
@@ -605,7 +609,7 @@ class TestDownloadRoute(TransferTestBase):
             self.assertFalse(results[-1]["success"])
         self.mock_worker = self.worker_patcher.start()
 
-    @patch("app.routes.transfer._get_file_transfer")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_crc_check_failure(self, mock_get_ft):
         """Test download when CRC check itself fails."""
 

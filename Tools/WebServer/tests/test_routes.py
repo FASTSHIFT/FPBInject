@@ -14,8 +14,8 @@ from unittest.mock import Mock, MagicMock, patch, mock_open
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-import routes  # noqa: E402
-from core.state import DeviceState, state  # noqa: E402
+import fpbinject.routes as routes  # noqa: E402
+from fpbinject.core.state import DeviceState, state  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=5.0):
@@ -48,7 +48,8 @@ class TestRoutesBase(unittest.TestCase):
 
         # Patch run_in_device_worker for FPB routes to execute synchronously
         self.worker_patcher = patch(
-            "app.routes.fpb.run_in_device_worker", side_effect=mock_run_in_device_worker
+            "fpbinject.app.routes.fpb.run_in_device_worker",
+            side_effect=mock_run_in_device_worker,
         )
         self.mock_worker = self.worker_patcher.start()
 
@@ -64,7 +65,7 @@ class TestRoutesBase(unittest.TestCase):
 class TestIndexRoute(TestRoutesBase):
     """Index route tests"""
 
-    @patch("routes.render_template")
+    @patch("fpbinject.routes.render_template")
     def test_index(self, mock_render):
         """Test index page"""
         mock_render.return_value = "<html>Test</html>"
@@ -78,7 +79,7 @@ class TestIndexRoute(TestRoutesBase):
 class TestPortsAPI(TestRoutesBase):
     """Ports API tests"""
 
-    @patch("fpb_inject.scan_serial_ports")
+    @patch("fpbinject.fpb_inject.scan_serial_ports")
     def test_get_ports(self, mock_scan):
         """Test getting ports list"""
         mock_scan.return_value = [
@@ -92,7 +93,7 @@ class TestPortsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(len(data["ports"]), 2)
 
-    @patch("fpb_inject.scan_serial_ports")
+    @patch("fpbinject.fpb_inject.scan_serial_ports")
     def test_get_ports_empty(self, mock_scan):
         """Test no available ports"""
         mock_scan.return_value = []
@@ -107,8 +108,8 @@ class TestPortsAPI(TestRoutesBase):
 class TestConnectAPI(TestRoutesBase):
     """Connect API tests"""
 
-    @patch("app.routes.connection.start_worker")
-    @patch("app.routes.connection.run_in_device_worker")
+    @patch("fpbinject.app.routes.connection.start_worker")
+    @patch("fpbinject.app.routes.connection.run_in_device_worker")
     def test_connect_no_port(self, mock_run, mock_start):
         """Test connect without specifying port"""
         response = self.client.post(
@@ -119,8 +120,8 @@ class TestConnectAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Port not specified", data["error"])
 
-    @patch("app.routes.connection.start_worker")
-    @patch("app.routes.connection.run_in_device_worker")
+    @patch("fpbinject.app.routes.connection.start_worker")
+    @patch("fpbinject.app.routes.connection.run_in_device_worker")
     def test_connect_timeout(self, mock_run, mock_start):
         """Test connection timeout"""
         mock_run.return_value = False
@@ -139,8 +140,8 @@ class TestConnectAPI(TestRoutesBase):
 class TestDisconnectAPI(TestRoutesBase):
     """Disconnect API tests"""
 
-    @patch("app.routes.connection.run_in_device_worker")
-    @patch("app.routes.connection.stop_worker")
+    @patch("fpbinject.app.routes.connection.run_in_device_worker")
+    @patch("fpbinject.app.routes.connection.stop_worker")
     def test_disconnect(self, mock_stop, mock_run):
         """Test disconnect"""
         mock_run.return_value = True
@@ -170,7 +171,7 @@ class TestStatusAPI(TestRoutesBase):
 class TestRoutesFPB(TestRoutesBase):
     """FPB related route tests"""
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_ping(self, mock_get_fpb):
         """Test Ping"""
         mock_fpb = Mock()
@@ -183,7 +184,7 @@ class TestRoutesFPB(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["message"], "pong")
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_info(self, mock_get_fpb):
         """Test Info"""
         mock_fpb = Mock()
@@ -196,7 +197,7 @@ class TestRoutesFPB(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["info"]["chip"], "ESP32")
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_inject(self, mock_get_fpb):
         """Test Inject"""
         mock_fpb = Mock()
@@ -214,7 +215,7 @@ class TestRoutesFPB(TestRoutesBase):
         mock_fpb.enter_fl_mode.assert_called()
         mock_fpb.exit_fl_mode.assert_called()
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_inject_missing_params(self, mock_get_fpb):
         """Test Inject missing parameters"""
         response = self.client.post("/api/fpb/inject", json={})
@@ -391,7 +392,7 @@ class TestConfigAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertTrue(state.device.auto_compile)
 
-    @patch("services.file_watcher_manager.restart_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.restart_file_watcher")
     def test_update_watch_dirs(self, mock_restart):
         """Test updating watch directories"""
         response = self.client.post(
@@ -417,7 +418,7 @@ class TestConfigAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(state.device.elf_path, "/nonexistent/file.elf")
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_update_toolchain_path(self, mock_get_fpb):
         """Test updating toolchain path"""
         mock_fpb = Mock()
@@ -500,7 +501,7 @@ class TestConfigAPI(TestRoutesBase):
 class TestFPBPingAPI(TestRoutesBase):
     """FPB Ping API tests"""
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_ping_success(self, mock_get_fpb):
         """Test ping success"""
         mock_fpb = Mock()
@@ -513,7 +514,7 @@ class TestFPBPingAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["message"], "Pong!")
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_ping_failure(self, mock_get_fpb):
         """Test ping failure"""
         mock_fpb = Mock()
@@ -529,7 +530,7 @@ class TestFPBPingAPI(TestRoutesBase):
 class TestFPBTestSerialAPI(TestRoutesBase):
     """FPB Test Serial API tests"""
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_serial_success(self, mock_get_fpb):
         """Test serial throughput test success"""
         mock_fpb = Mock()
@@ -576,7 +577,7 @@ class TestFPBTestSerialAPI(TestRoutesBase):
         self.assertIn("recommended_download_chunk_size", data)
         self.assertEqual(len(data["tests"]), 6)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_serial_all_pass(self, mock_get_fpb):
         """Test serial throughput when all sizes pass"""
         mock_fpb = Mock()
@@ -607,7 +608,7 @@ class TestFPBTestSerialAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["failed_size"], 0)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_serial_not_connected(self, mock_get_fpb):
         """Test serial throughput when not connected"""
         mock_fpb = Mock()
@@ -639,7 +640,7 @@ class TestFPBTestSerialAPI(TestRoutesBase):
 class TestFPBInfoAPI(TestRoutesBase):
     """FPB Info API tests"""
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_info_success(self, mock_get_fpb):
         """Test getting device info success"""
         mock_fpb = Mock()
@@ -652,7 +653,7 @@ class TestFPBInfoAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["info"]["fpb"], 4)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_info_error(self, mock_get_fpb):
         """Test getting device info failure"""
         mock_fpb = Mock()
@@ -669,7 +670,7 @@ class TestFPBInfoAPI(TestRoutesBase):
 class TestFPBUnpatchAPI(TestRoutesBase):
     """FPB Unpatch API tests"""
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_unpatch_success(self, mock_get_fpb):
         """Test unpatch success"""
         mock_fpb = Mock()
@@ -688,7 +689,7 @@ class TestFPBUnpatchAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertFalse(state.device.inject_active)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_unpatch_single_slot(self, mock_get_fpb):
         """Test unpatch single slot"""
         mock_fpb = Mock()
@@ -708,7 +709,7 @@ class TestFPBUnpatchAPI(TestRoutesBase):
         # Single slot unpatch should not clear inject_active
         self.assertTrue(state.device.inject_active)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_unpatch_failure(self, mock_get_fpb):
         """Test unpatch failure"""
         mock_fpb = Mock()
@@ -740,7 +741,7 @@ class TestDecompileAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("ELF", data["error"])
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_decompile_ghidra_not_configured(self, mock_get_fpb):
         """Test decompile when Ghidra is not configured"""
         mock_fpb = Mock()
@@ -761,7 +762,7 @@ class TestDecompileAPI(TestRoutesBase):
         finally:
             os.unlink(elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_decompile_success(self, mock_get_fpb):
         """Test successful decompilation"""
         mock_fpb = Mock()
@@ -786,7 +787,7 @@ class TestDecompileAPI(TestRoutesBase):
         finally:
             os.unlink(elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_decompile_function_not_found(self, mock_get_fpb):
         """Test decompile when function not found"""
         mock_fpb = Mock()
@@ -814,7 +815,7 @@ class TestDecompileAPI(TestRoutesBase):
 class TestFPBInjectAPI(TestRoutesBase):
     """FPB Inject API tests"""
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_inject_no_source(self, mock_get_fpb):
         """Test inject without source"""
         response = self.client.post(
@@ -827,7 +828,7 @@ class TestFPBInjectAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Source content", data["error"])
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_inject_no_target(self, mock_get_fpb):
         """Test inject without target function"""
         response = self.client.post(
@@ -840,7 +841,7 @@ class TestFPBInjectAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Target function", data["error"])
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_inject_success(self, mock_get_fpb):
         """Test inject success"""
         mock_fpb = Mock()
@@ -879,7 +880,7 @@ class TestGetFPBInject(unittest.TestCase):
         routes._fpb_inject = None
         state.device = self.original_device
 
-    @patch("routes.FPBInject")
+    @patch("fpbinject.routes.FPBInject")
     def test_get_fpb_inject_creates_instance(self, mock_class):
         """Test creating FPBInject instance"""
         mock_instance = Mock()
@@ -890,7 +891,7 @@ class TestGetFPBInject(unittest.TestCase):
         self.assertEqual(result, mock_instance)
         mock_class.assert_called_once()
 
-    @patch("routes.FPBInject")
+    @patch("fpbinject.routes.FPBInject")
     def test_get_fpb_inject_returns_existing(self, mock_class):
         """Test returning existing instance"""
         mock_instance = Mock()
@@ -902,7 +903,7 @@ class TestGetFPBInject(unittest.TestCase):
         self.assertEqual(result1, result2)
         mock_class.assert_called_once()
 
-    @patch("routes.FPBInject")
+    @patch("fpbinject.routes.FPBInject")
     def test_get_fpb_inject_with_toolchain(self, mock_class):
         """Test creating with toolchain path"""
         mock_instance = Mock()
@@ -1027,7 +1028,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not provided", data["error"])
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_info_error(self, mock_get_fpb):
         """Test getting device info failure"""
         mock_fpb = Mock()
@@ -1049,7 +1050,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertIn("watching", data)
         self.assertIn("watch_dirs", data)
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_file(self, mock_gen_class):
         """Test auto generating patch without file path"""
         response = self.client.post("/api/patch/auto_generate", json={})
@@ -1058,7 +1059,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not provided", data["error"])
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_file_not_found(self, mock_gen_class):
         """Test auto generating patch when file not found"""
         response = self.client.post(
@@ -1069,7 +1070,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_markers(self, mock_gen_class):
         """Test auto generating patch with no markers"""
         mock_gen = Mock()
@@ -1085,7 +1086,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["marked_functions"], [])
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_success(self, mock_gen_class):
         """Test auto generating patch success"""
         mock_gen = Mock()
@@ -1102,7 +1103,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertEqual(len(data["marked_functions"]), 2)
         self.assertIn("inject_func1", data["injected_functions"])
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_detect_markers_no_file(self, mock_gen_class):
         """Test detecting markers without file"""
         response = self.client.post("/api/patch/detect_markers", json={})
@@ -1111,7 +1112,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not provided", data["error"])
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     @patch(
         "builtins.open", mock_open(read_data="/* FPB_INJECT */\nvoid func1(void) {}")
     )
@@ -1154,9 +1155,9 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertFalse(data["connected"])
 
-    @patch("app.routes.connection.start_worker")
-    @patch("app.routes.connection.run_in_device_worker")
-    @patch("fpb_inject.serial_open")
+    @patch("fpbinject.app.routes.connection.start_worker")
+    @patch("fpbinject.app.routes.connection.run_in_device_worker")
+    @patch("fpbinject.fpb_inject.serial_open")
     def test_connect_success(self, mock_serial_open, mock_run, mock_start):
         """Test connect success"""
         mock_serial = Mock()
@@ -1176,7 +1177,7 @@ class TestRoutesExtended(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["port"], "/dev/ttyUSB0")
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_config_update_elf_path_exists(self, mock_get_fpb):
         """Test updating existing ELF path"""
         mock_fpb = Mock()
@@ -1213,7 +1214,7 @@ class TestRoutesExtended(TestRoutesBase):
 class TestBuildTimeVerification(TestRoutesBase):
     """Build time verification API tests"""
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_info_build_time_match(self, mock_get_fpb):
         """Test info with matching build times"""
         mock_fpb = Mock()
@@ -1244,7 +1245,7 @@ class TestBuildTimeVerification(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_info_build_time_mismatch(self, mock_get_fpb):
         """Test info with mismatched build times"""
         mock_fpb = Mock()
@@ -1275,7 +1276,7 @@ class TestBuildTimeVerification(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_info_no_device_build_time(self, mock_get_fpb):
         """Test info when device doesn't report build time (old firmware)"""
         mock_fpb = Mock()
@@ -1305,7 +1306,7 @@ class TestBuildTimeVerification(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_info_no_elf_build_time(self, mock_get_fpb):
         """Test info when ELF doesn't contain build time"""
         mock_fpb = Mock()
@@ -1336,7 +1337,7 @@ class TestBuildTimeVerification(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_fpb_info_no_elf_path(self, mock_get_fpb):
         """Test info when no ELF path is configured"""
         mock_fpb = Mock()
@@ -1738,7 +1739,7 @@ class TestSymbolsAPI(TestRoutesBase):
         state.symbols = {}
         state.symbols_loaded = False
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_get_symbols_empty(self, mock_get_fpb):
         """Test getting symbols when none loaded"""
         mock_fpb = Mock()
@@ -1767,7 +1768,7 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(len(data["symbols"]), 2)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_get_symbols_with_query(self, mock_get_fpb):
         """Test getting symbols with search query"""
         state.symbols = {
@@ -1820,7 +1821,7 @@ class TestSymbolsAPI(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_search_symbols_no_elf(self, mock_get_fpb):
         """Test searching symbols without ELF file"""
         state.symbols_loaded = False
@@ -1864,7 +1865,7 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not specified", data["error"].lower())
 
-    @patch("core.gdb_manager.is_gdb_available")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available")
     def test_get_signature_found(self, mock_gdb_avail):
         """Test getting signature via GDB"""
         mock_gdb_avail.return_value = True
@@ -1881,7 +1882,7 @@ class TestSymbolsAPI(TestRoutesBase):
         finally:
             state.gdb_session = None
 
-    @patch("core.gdb_manager.is_gdb_available")
+    @patch("fpbinject.core.gdb_manager.is_gdb_available")
     def test_get_signature_not_found(self, mock_gdb_avail):
         """Test getting signature when not found"""
         mock_gdb_avail.return_value = True
@@ -1915,7 +1916,7 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"].lower())
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_disasm_success(self, mock_get_fpb):
         """Test successful disassembly"""
         mock_fpb = Mock()
@@ -1934,7 +1935,7 @@ class TestSymbolsAPI(TestRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_disasm_failure(self, mock_get_fpb):
         """Test disassembly failure"""
         mock_fpb = Mock()
@@ -1970,7 +1971,7 @@ class TestSymbolsAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"].lower())
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_decompile_success(self, mock_get_fpb):
         """Test successful decompilation"""
         mock_fpb = Mock()
@@ -2117,7 +2118,7 @@ class TestPatchAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"].lower())
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_markers(self, mock_gen_class):
         """Test auto generate patch with no markers"""
         mock_gen = Mock()
@@ -2141,7 +2142,7 @@ class TestPatchAPI(TestRoutesBase):
         finally:
             os.unlink(temp_path)
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_success(self, mock_gen_class):
         """Test successful auto generate patch"""
         mock_gen = Mock()
@@ -2191,7 +2192,7 @@ class TestPatchAPI(TestRoutesBase):
 
         self.assertFalse(data["success"])
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_detect_markers_success(self, mock_gen_class):
         """Test successful detect markers"""
         mock_gen = Mock()
@@ -2260,7 +2261,7 @@ class TestWatchAPI(TestRoutesBase):
         self.assertIn("watch_dirs", data)
         self.assertTrue(data["auto_compile"])
 
-    @patch("services.file_watcher_manager.start_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.start_file_watcher")
     def test_watch_start_success(self, mock_start):
         """Test starting file watcher"""
         mock_start.return_value = True
@@ -2275,7 +2276,7 @@ class TestWatchAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         mock_start.assert_called_once()
 
-    @patch("services.file_watcher_manager.start_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.start_file_watcher")
     def test_watch_start_no_dirs(self, mock_start):
         """Test starting file watcher without directories"""
         state.device.watch_dirs = []
@@ -2290,7 +2291,7 @@ class TestWatchAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("No directories", data["error"])
 
-    @patch("services.file_watcher_manager.stop_file_watcher")
+    @patch("fpbinject.services.file_watcher_manager.stop_file_watcher")
     def test_watch_stop(self, mock_stop):
         """Test stopping file watcher"""
         response = self.client.post("/api/watch/stop")
@@ -2352,7 +2353,7 @@ class TestWatchAPI(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    @patch("services.file_watcher_manager._trigger_auto_inject")
+    @patch("fpbinject.services.file_watcher_manager._trigger_auto_inject")
     def test_autoinject_trigger_success(self, mock_trigger):
         """Test autoinject trigger success"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
@@ -2411,7 +2412,7 @@ class TestPatchRoutesExtended(TestRoutesBase):
             os.unlink(state.device.patch_source_path)
             state.device.patch_source_path = ""
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_success(self, mock_gen_class):
         """Test auto generating patch successfully"""
         mock_gen = Mock()
@@ -2437,7 +2438,7 @@ class TestPatchRoutesExtended(TestRoutesBase):
         finally:
             os.unlink(file_path)
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_auto_generate_patch_no_markers(self, mock_gen_class):
         """Test auto generating patch with no markers"""
         mock_gen = Mock()
@@ -2459,7 +2460,7 @@ class TestPatchRoutesExtended(TestRoutesBase):
         finally:
             os.unlink(file_path)
 
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_detect_markers_success(self, mock_gen_class):
         """Test detecting markers successfully"""
         mock_gen = Mock()
@@ -2501,7 +2502,7 @@ class TestPatchRoutesExtended(TestRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not found", data["error"])
 
-    @patch("routes.get_fpb_inject")
+    @patch("fpbinject.routes.get_fpb_inject")
     def test_patch_preview_success(self, mock_get_fpb):
         """Test patch preview success"""
         mock_fpb = Mock()

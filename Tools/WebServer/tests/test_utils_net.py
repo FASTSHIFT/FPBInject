@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.net import (  # noqa: E402
+from fpbinject.utils.net import (  # noqa: E402
     check_and_free_port,
     get_port_owner,
     is_port_available,
@@ -98,8 +98,8 @@ class TestKillPortOwner(unittest.TestCase):
         finally:
             s.close()
 
-    @patch("utils.net.get_port_owner")
-    @patch("utils.net.os.kill")
+    @patch("fpbinject.utils.net.get_port_owner")
+    @patch("fpbinject.utils.net.os.kill")
     def test_kill_stale_process(self, mock_kill, mock_owner):
         """Should kill a stale process and return True."""
         mock_owner.return_value = {
@@ -114,8 +114,8 @@ class TestKillPortOwner(unittest.TestCase):
         self.assertTrue(result)
         mock_kill.assert_any_call(99999, signal.SIGTERM)
 
-    @patch("utils.net.get_port_owner")
-    @patch("utils.net.os.kill")
+    @patch("fpbinject.utils.net.get_port_owner")
+    @patch("fpbinject.utils.net.os.kill")
     def test_kill_fails(self, mock_kill, mock_owner):
         """Should return False when kill raises OSError."""
         mock_owner.return_value = {"pid": 99999, "name": "x", "cmdline": "x"}
@@ -132,15 +132,15 @@ class TestCheckAndFreePort(unittest.TestCase):
         """Should return True immediately for a free port."""
         self.assertTrue(check_and_free_port("127.0.0.1", 59126))
 
-    @patch("utils.net.kill_port_owner", return_value=True)
-    @patch("utils.net.is_port_available", return_value=False)
+    @patch("fpbinject.utils.net.kill_port_owner", return_value=True)
+    @patch("fpbinject.utils.net.is_port_available", return_value=False)
     def test_occupied_then_freed(self, mock_avail, mock_kill):
         """Should try to kill and return True on success."""
         self.assertTrue(check_and_free_port("127.0.0.1", 12345))
         mock_kill.assert_called_once_with(12345)
 
-    @patch("utils.net.kill_port_owner", return_value=False)
-    @patch("utils.net.is_port_available", return_value=False)
+    @patch("fpbinject.utils.net.kill_port_owner", return_value=False)
+    @patch("fpbinject.utils.net.is_port_available", return_value=False)
     def test_occupied_kill_fails(self, mock_avail, mock_kill):
         """Should return False when kill fails."""
         self.assertFalse(check_and_free_port("127.0.0.1", 12345))
@@ -149,21 +149,21 @@ class TestCheckAndFreePort(unittest.TestCase):
 class TestGDBPortConflict(unittest.TestCase):
     """Integration test: GDB server port conflict detection."""
 
-    @patch("utils.net.get_port_owner")
+    @patch("fpbinject.utils.net.get_port_owner")
     def test_gdb_manager_checks_port(self, mock_owner):
         """start_external_gdb_server should check port availability."""
         mock_owner.return_value = None
 
         with patch(
-            "core.gdb_manager.is_port_available", return_value=True
+            "fpbinject.core.gdb_manager.is_port_available", return_value=True
         ) as mock_check:
-            with patch("core.gdb_manager.GDBRSPBridge") as mock_bridge_cls:
+            with patch("fpbinject.core.gdb_manager.GDBRSPBridge") as mock_bridge_cls:
                 mock_bridge = MagicMock()
                 mock_bridge.start.return_value = 3333
                 mock_bridge.is_running = False
                 mock_bridge_cls.return_value = mock_bridge
 
-                from core.gdb_manager import start_external_gdb_server
+                from fpbinject.core.gdb_manager import start_external_gdb_server
 
                 state = MagicMock()
                 state.device.external_gdb_port = 3333
@@ -177,17 +177,19 @@ class TestGDBPortConflict(unittest.TestCase):
 
     def test_gdb_manager_rejects_occupied_port(self):
         """start_external_gdb_server should fail with detailed info if port can't be freed."""
-        with patch("core.gdb_manager.is_port_available", return_value=False):
+        with patch("fpbinject.core.gdb_manager.is_port_available", return_value=False):
             with patch(
-                "core.gdb_manager.get_port_owner",
+                "fpbinject.core.gdb_manager.get_port_owner",
                 return_value={
                     "pid": 999,
                     "name": "python",
                     "cmdline": "python main.py",
                 },
             ):
-                with patch("core.gdb_manager.kill_port_owner", return_value=False):
-                    from core.gdb_manager import start_external_gdb_server
+                with patch(
+                    "fpbinject.core.gdb_manager.kill_port_owner", return_value=False
+                ):
+                    from fpbinject.core.gdb_manager import start_external_gdb_server
 
                     state = MagicMock()
                     state.device.external_gdb_port = 3333
@@ -198,19 +200,23 @@ class TestGDBPortConflict(unittest.TestCase):
 
     def test_gdb_manager_kills_stale_and_starts(self):
         """start_external_gdb_server should kill stale process and succeed."""
-        with patch("core.gdb_manager.is_port_available", return_value=False):
+        with patch("fpbinject.core.gdb_manager.is_port_available", return_value=False):
             with patch(
-                "core.gdb_manager.get_port_owner",
+                "fpbinject.core.gdb_manager.get_port_owner",
                 return_value={"pid": 888, "name": "python", "cmdline": "old"},
             ):
-                with patch("core.gdb_manager.kill_port_owner", return_value=True):
-                    with patch("core.gdb_manager.GDBRSPBridge") as mock_bridge_cls:
+                with patch(
+                    "fpbinject.core.gdb_manager.kill_port_owner", return_value=True
+                ):
+                    with patch(
+                        "fpbinject.core.gdb_manager.GDBRSPBridge"
+                    ) as mock_bridge_cls:
                         mock_bridge = MagicMock()
                         mock_bridge.start.return_value = 3333
                         mock_bridge.is_running = False
                         mock_bridge_cls.return_value = mock_bridge
 
-                        from core.gdb_manager import start_external_gdb_server
+                        from fpbinject.core.gdb_manager import start_external_gdb_server
 
                         state = MagicMock()
                         state.device.external_gdb_port = 3333

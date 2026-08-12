@@ -40,7 +40,7 @@ _fake_gdb.write = MagicMock()
 sys.modules["gdb"] = _fake_gdb
 
 # Now safe to import
-from core.gdb_json_print import _val_to_json, JsonPrintCommand  # noqa: E402
+from fpbinject.core.gdb_json_print import _val_to_json, JsonPrintCommand  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers to build mock gdb.Value / gdb.Type objects

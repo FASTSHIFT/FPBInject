@@ -14,14 +14,14 @@ import serial
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils import serial as serial_utils  # noqa: E402
+from fpbinject.utils import serial as serial_utils  # noqa: E402
 
 
 class TestScanSerialPorts(unittest.TestCase):
     """scan_serial_ports test"""
 
-    @patch("utils.serial.serial.tools.list_ports.comports")
-    @patch("utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_basic(self, mock_glob, mock_comports):
         """Test scanning basic ports"""
         mock_port = Mock()
@@ -30,7 +30,7 @@ class TestScanSerialPorts(unittest.TestCase):
         mock_comports.return_value = [mock_port]
         mock_glob.return_value = []
 
-        with patch("utils.serial.os.access", return_value=True):
+        with patch("fpbinject.utils.serial.os.access", return_value=True):
             result = serial_utils.scan_serial_ports()
 
         self.assertEqual(len(result), 1)
@@ -38,21 +38,21 @@ class TestScanSerialPorts(unittest.TestCase):
         self.assertEqual(result[0]["description"], "USB Serial")
         self.assertTrue(result[0]["accessible"])
 
-    @patch("utils.serial.serial.tools.list_ports.comports")
-    @patch("utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_with_ch341(self, mock_glob, mock_comports):
         """Test scanning ports containing CH341"""
         mock_comports.return_value = []
         mock_glob.return_value = ["/dev/ttyCH341USB0", "/dev/ttyCH341USB1"]
 
-        with patch("utils.serial.os.access", return_value=True):
+        with patch("fpbinject.utils.serial.os.access", return_value=True):
             result = serial_utils.scan_serial_ports()
 
         self.assertEqual(len(result), 2)
         self.assertTrue(all("CH341" in r["description"] for r in result))
 
-    @patch("utils.serial.serial.tools.list_ports.comports")
-    @patch("utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_no_duplicates(self, mock_glob, mock_comports):
         """Test no duplicate ports added"""
         mock_port = Mock()
@@ -61,14 +61,14 @@ class TestScanSerialPorts(unittest.TestCase):
         mock_comports.return_value = [mock_port]
         mock_glob.return_value = ["/dev/ttyCH341USB0"]  # Same device
 
-        with patch("utils.serial.os.access", return_value=True):
+        with patch("fpbinject.utils.serial.os.access", return_value=True):
             result = serial_utils.scan_serial_ports()
 
         # Should have only one
         self.assertEqual(len(result), 1)
 
-    @patch("utils.serial.serial.tools.list_ports.comports")
-    @patch("utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_empty(self, mock_glob, mock_comports):
         """Test no available ports"""
         mock_comports.return_value = []
@@ -78,8 +78,8 @@ class TestScanSerialPorts(unittest.TestCase):
 
         self.assertEqual(result, [])
 
-    @patch("utils.serial.serial.tools.list_ports.comports")
-    @patch("utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_filters_ttyS_devices(self, mock_glob, mock_comports):
         """Test that /dev/ttyS* devices are filtered out"""
         mock_port_usb = Mock()
@@ -106,7 +106,7 @@ class TestScanSerialPorts(unittest.TestCase):
         ]
         mock_glob.return_value = []
 
-        with patch("utils.serial.os.access", return_value=True):
+        with patch("fpbinject.utils.serial.os.access", return_value=True):
             result = serial_utils.scan_serial_ports()
 
         # Should only have USB and ACM devices, not ttyS*
@@ -117,8 +117,8 @@ class TestScanSerialPorts(unittest.TestCase):
         self.assertNotIn("/dev/ttyS0", devices)
         self.assertNotIn("/dev/ttyS1", devices)
 
-    @patch("utils.serial.serial.tools.list_ports.comports")
-    @patch("utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_only_ttyS_returns_empty(self, mock_glob, mock_comports):
         """Test that when only /dev/ttyS* devices exist, result is empty"""
         mock_port_ttyS0 = Mock()
@@ -136,8 +136,8 @@ class TestScanSerialPorts(unittest.TestCase):
 
         self.assertEqual(result, [])
 
-    @patch("utils.serial.serial.tools.list_ports.comports")
-    @patch("utils.serial.glob.glob")
+    @patch("fpbinject.utils.serial.serial.tools.list_ports.comports")
+    @patch("fpbinject.utils.serial.glob.glob")
     def test_scan_ports_accessible_false(self, mock_glob, mock_comports):
         """Test that inaccessible ports have accessible=False"""
         mock_port = Mock()
@@ -146,7 +146,7 @@ class TestScanSerialPorts(unittest.TestCase):
         mock_comports.return_value = [mock_port]
         mock_glob.return_value = []
 
-        with patch("utils.serial.os.access", return_value=False):
+        with patch("fpbinject.utils.serial.os.access", return_value=False):
             result = serial_utils.scan_serial_ports()
 
         self.assertEqual(len(result), 1)
@@ -180,7 +180,7 @@ class TestClassifySerialError(unittest.TestCase):
 class TestSerialOpen(unittest.TestCase):
     """serial_open test"""
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_success(self, mock_serial_cls):
         """Test successfully opening port"""
         mock_ser = Mock()
@@ -198,7 +198,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertEqual(mock_ser.bytesize, 8)
         mock_ser.open.assert_called_once()
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_not_opened(self, mock_serial_cls):
         """Test port failed to open"""
         mock_ser = Mock()
@@ -210,7 +210,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIn("Error opening", error)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_serial_exception(self, mock_serial_cls):
         """Test serial exception includes error code prefix"""
         mock_ser = Mock()
@@ -223,7 +223,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIn("[serial_error]", error)
         self.assertIn("Port busy", error)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_permission_denied(self, mock_serial_cls):
         """Test permission denied error code"""
         mock_ser = Mock()
@@ -238,7 +238,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIn("[permission_denied]", error)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_device_not_found(self, mock_serial_cls):
         """Test device not found error code"""
         mock_ser = Mock()
@@ -253,7 +253,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIn("[device_not_found]", error)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_device_busy(self, mock_serial_cls):
         """Test device busy error code"""
         mock_ser = Mock()
@@ -267,7 +267,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(ser)
         self.assertIn("[device_busy]", error)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_generic_exception(self, mock_serial_cls):
         """Test generic exception includes error code prefix"""
         mock_ser = Mock()
@@ -280,7 +280,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIn("[unknown_error]", error)
         self.assertIn("Unknown error", error)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_with_custom_serial_params(self, mock_serial_cls):
         """Test opening port with custom data_bits, parity, stop_bits, flow_control"""
         mock_ser = Mock()
@@ -308,7 +308,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertFalse(mock_ser.xonxoff)
         mock_ser.open.assert_called_once()
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_with_xonxoff_flow(self, mock_serial_cls):
         """Test opening port with XON/XOFF flow control"""
         mock_ser = Mock()
@@ -321,7 +321,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(error)
         self.assertTrue(mock_ser.xonxoff)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_with_odd_parity(self, mock_serial_cls):
         """Test opening port with odd parity"""
         mock_ser = Mock()
@@ -333,7 +333,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(mock_ser.parity, serial.PARITY_ODD)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_with_unknown_parity_defaults_to_none(self, mock_serial_cls):
         """Test opening port with unknown parity falls back to PARITY_NONE"""
         mock_ser = Mock()
@@ -345,7 +345,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(mock_ser.parity, serial.PARITY_NONE)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_default_dtr_rts_off(self, mock_serial_cls):
         """Test that DTR and RTS default to False (inactive) on connect"""
         mock_ser = Mock()
@@ -358,7 +358,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertFalse(mock_ser.dtr)
         self.assertFalse(mock_ser.rts)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_with_dtr_on(self, mock_serial_cls):
         """Test opening port with DTR asserted"""
         mock_ser = Mock()
@@ -371,7 +371,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertTrue(mock_ser.dtr)
         self.assertFalse(mock_ser.rts)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_with_rts_on(self, mock_serial_cls):
         """Test opening port with RTS asserted"""
         mock_ser = Mock()
@@ -384,7 +384,7 @@ class TestSerialOpen(unittest.TestCase):
         self.assertFalse(mock_ser.dtr)
         self.assertTrue(mock_ser.rts)
 
-    @patch("utils.serial.serial.Serial")
+    @patch("fpbinject.utils.serial.serial.Serial")
     def test_open_with_both_dtr_rts_on(self, mock_serial_cls):
         """Test opening port with both DTR and RTS asserted"""
         mock_ser = Mock()
@@ -529,7 +529,7 @@ class TestSerialWriteDirect(unittest.TestCase):
 class TestDeviceWorkerFunctions(unittest.TestCase):
     """Device Worker related functions test"""
 
-    @patch("utils.serial.start_worker")
+    @patch("fpbinject.utils.serial.start_worker")
     def test_start_device_worker(self, mock_start):
         """Test starting device worker"""
         device = Mock()
@@ -540,7 +540,7 @@ class TestDeviceWorkerFunctions(unittest.TestCase):
         mock_start.assert_called_with(device)
         self.assertTrue(result)
 
-    @patch("utils.serial.stop_worker")
+    @patch("fpbinject.utils.serial.stop_worker")
     def test_stop_device_worker(self, mock_stop):
         """Test stopping device worker"""
         device = Mock()

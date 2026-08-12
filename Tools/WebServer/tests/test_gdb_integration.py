@@ -61,7 +61,7 @@ def _get_shared_session():
     import sys
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from core.gdb_session import GDBSession
+    from fpbinject.core.gdb_session import GDBSession
     from pygdbmi.IoManager import IoManager
 
     session = GDBSession(_TEST_ELF)

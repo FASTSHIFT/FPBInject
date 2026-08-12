@@ -11,7 +11,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.port_lock import PortLock, PortLockError, _lock_path_for_port, _LOCK_DIR
+from fpbinject.utils.port_lock import (
+    PortLock,
+    PortLockError,
+    _lock_path_for_port,
+    _LOCK_DIR,
+)
 
 
 class TestLockPathForPort(unittest.TestCase):
@@ -168,7 +173,10 @@ class TestPortLockEdgeCases(unittest.TestCase):
         self.assertTrue(os.path.isdir(_LOCK_DIR))
         lock.release()
 
-    @patch("utils.port_lock.os.makedirs", side_effect=OSError("permission denied"))
+    @patch(
+        "fpbinject.utils.port_lock.os.makedirs",
+        side_effect=OSError("permission denied"),
+    )
     def test_acquire_fails_open_on_dir_error(self, mock_makedirs):
         """If lock dir creation fails, acquire fails open (returns True)."""
         lock = PortLock("/dev/test-port-fail-open")

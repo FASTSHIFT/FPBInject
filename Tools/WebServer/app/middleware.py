@@ -23,7 +23,7 @@ import logging
 
 from flask import request, after_this_request, jsonify, Response
 
-from app.auto_ban import AutoBanEngine
+from fpbinject.app.auto_ban import AutoBanEngine
 
 logger = logging.getLogger(__name__)
 

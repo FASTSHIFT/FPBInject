@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.config_schema import (  # noqa: E402
+from fpbinject.core.config_schema import (  # noqa: E402
     CONFIG_SCHEMA,
     ConfigItem,
     ConfigType,

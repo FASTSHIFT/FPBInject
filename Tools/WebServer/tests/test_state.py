@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.state import DeviceState, AppState  # noqa: E402
-from core.config_schema import PERSISTENT_KEYS  # noqa: E402
+from fpbinject.core.state import DeviceState, AppState  # noqa: E402
+from fpbinject.core.config_schema import PERSISTENT_KEYS  # noqa: E402
 
 
 class TestDeviceState(unittest.TestCase):
@@ -85,7 +85,7 @@ class TestAppState(unittest.TestCase):
 
     def test_init(self):
         """Test initialization"""
-        with patch("core.state.AppState.load_config"):
+        with patch("fpbinject.core.state.AppState.load_config"):
             app_state = AppState()
 
         self.assertIsNotNone(app_state.device)
@@ -94,7 +94,7 @@ class TestAppState(unittest.TestCase):
 
     def test_get_default_patch_template(self):
         """Test default patch template"""
-        with patch("core.state.AppState.load_config"):
+        with patch("fpbinject.core.state.AppState.load_config"):
             app_state = AppState()
 
         template = app_state._get_default_patch_template()
@@ -105,7 +105,7 @@ class TestAppState(unittest.TestCase):
 
     def test_add_pending_change(self):
         """Test adding pending change"""
-        with patch("core.state.AppState.load_config"):
+        with patch("fpbinject.core.state.AppState.load_config"):
             app_state = AppState()
 
         app_state.add_pending_change("/tmp/test.c", "modified")
@@ -117,7 +117,7 @@ class TestAppState(unittest.TestCase):
 
     def test_add_pending_change_limit(self):
         """Test pending changes limit"""
-        with patch("core.state.AppState.load_config"):
+        with patch("fpbinject.core.state.AppState.load_config"):
             app_state = AppState()
 
         for i in range(150):
@@ -128,7 +128,7 @@ class TestAppState(unittest.TestCase):
 
     def test_clear_pending_changes(self):
         """Test clearing pending changes"""
-        with patch("core.state.AppState.load_config"):
+        with patch("fpbinject.core.state.AppState.load_config"):
             app_state = AppState()
 
         app_state.add_pending_change("/tmp/test.c", "modified")
@@ -138,7 +138,7 @@ class TestAppState(unittest.TestCase):
 
     def test_save_config(self):
         """Test saving config"""
-        with patch("core.state.AppState.load_config"):
+        with patch("fpbinject.core.state.AppState.load_config"):
             app_state = AppState()
 
         app_state.device.port = "/dev/ttyUSB0"
@@ -148,7 +148,7 @@ class TestAppState(unittest.TestCase):
             config_path = f.name
 
         try:
-            with patch("core.state.CONFIG_FILE", config_path):
+            with patch("fpbinject.core.state.CONFIG_FILE", config_path):
                 app_state.save_config()
 
             with open(config_path, "r") as f:
@@ -162,7 +162,7 @@ class TestAppState(unittest.TestCase):
 
     def test_load_config_not_found(self):
         """Test loading config when file not found"""
-        with patch("core.state.CONFIG_FILE", "/nonexistent/config.json"):
+        with patch("fpbinject.core.state.CONFIG_FILE", "/nonexistent/config.json"):
             app_state = AppState()
 
         # Should use defaults
@@ -175,7 +175,7 @@ class TestAppState(unittest.TestCase):
             config_path = f.name
 
         try:
-            with patch("core.state.CONFIG_FILE", config_path):
+            with patch("fpbinject.core.state.CONFIG_FILE", config_path):
                 app_state = AppState()
 
             self.assertEqual(app_state.device.port, "/dev/ttyACM0")
@@ -190,7 +190,7 @@ class TestAppState(unittest.TestCase):
             config_path = f.name
 
         try:
-            with patch("core.state.CONFIG_FILE", config_path):
+            with patch("fpbinject.core.state.CONFIG_FILE", config_path):
                 app_state = AppState()
 
             # Should use defaults on error
@@ -266,7 +266,7 @@ class TestToolLogHandler(unittest.TestCase):
 
     def test_emit_info(self):
         """Test emit with INFO level"""
-        from core.state import ToolLogHandler
+        from fpbinject.core.state import ToolLogHandler
         import logging
 
         device = DeviceState()
@@ -290,7 +290,7 @@ class TestToolLogHandler(unittest.TestCase):
 
     def test_emit_warning(self):
         """Test emit with WARNING level"""
-        from core.state import ToolLogHandler
+        from fpbinject.core.state import ToolLogHandler
         import logging
 
         device = DeviceState()
@@ -312,7 +312,7 @@ class TestToolLogHandler(unittest.TestCase):
 
     def test_emit_no_prefix(self):
         """Test emit without prefix"""
-        from core.state import ToolLogHandler
+        from fpbinject.core.state import ToolLogHandler
         import logging
 
         device = DeviceState()
@@ -341,7 +341,7 @@ class TestToolLogFunction(unittest.TestCase):
 
     def test_tool_log_formats_message(self):
         """Test tool_log formats with caller name"""
-        from core.state import tool_log
+        from fpbinject.core.state import tool_log
 
         device = DeviceState()
         tool_log(device, "INFO", "test message")
@@ -355,14 +355,14 @@ class TestToolLogFunction(unittest.TestCase):
 
     def test_get_caller_name(self):
         """Test _get_caller_name returns correct function name"""
-        from core.state import _get_caller_name
+        from fpbinject.core.state import _get_caller_name
 
         name = _get_caller_name(depth=1)
         self.assertEqual(name, "test_get_caller_name")
 
     def test_get_caller_name_deep(self):
         """Test _get_caller_name with deeper depth"""
-        from core.state import _get_caller_name
+        from fpbinject.core.state import _get_caller_name
 
         def inner():
             return _get_caller_name(depth=2)

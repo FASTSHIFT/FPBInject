@@ -12,8 +12,8 @@ from unittest.mock import Mock, PropertyMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import services.device_worker as device_worker  # noqa: E402
-from services.device_worker import (  # noqa: E402
+import fpbinject.services.device_worker as device_worker  # noqa: E402
+from fpbinject.services.device_worker import (  # noqa: E402
     DeviceWorker,
     get_worker,
     start_worker,

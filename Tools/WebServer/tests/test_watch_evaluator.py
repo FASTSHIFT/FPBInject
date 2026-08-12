@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.watch_evaluator import WatchEvaluator  # noqa: E402
+from fpbinject.core.watch_evaluator import WatchEvaluator  # noqa: E402
 
 
 class TestWatchEvaluator(unittest.TestCase):

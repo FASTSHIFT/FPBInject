@@ -11,8 +11,8 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import main  # noqa: E402
-from core.state import state, DeviceState  # noqa: E402
+import fpbinject.main as main  # noqa: E402
+from fpbinject.core.state import state, DeviceState  # noqa: E402
 
 
 class TestCreateApp(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestCreateApp(unittest.TestCase):
         """Test that create_app returns a Flask app"""
         app = main.create_app()
         self.assertIsNotNone(app)
-        self.assertEqual(app.name, "main")
+        self.assertEqual(app.name, "fpbinject")
 
     def test_create_app_has_cors(self):
         """Test that CORS is enabled"""
@@ -41,7 +41,7 @@ class TestCreateApp(unittest.TestCase):
 class TestCheckPortAvailable(unittest.TestCase):
     """check_port_available function tests"""
 
-    @patch("main.socket.socket")
+    @patch("fpbinject.main.socket.socket")
     def test_port_available(self, mock_socket_class):
         """Test port is available"""
         mock_sock = Mock()
@@ -53,7 +53,7 @@ class TestCheckPortAvailable(unittest.TestCase):
         self.assertTrue(result)
         mock_sock.close.assert_called_once()
 
-    @patch("main.socket.socket")
+    @patch("fpbinject.main.socket.socket")
     def test_port_in_use(self, mock_socket_class):
         """Test port is in use"""
         mock_sock = Mock()
@@ -65,7 +65,7 @@ class TestCheckPortAvailable(unittest.TestCase):
         self.assertFalse(result)
         mock_sock.close.assert_called_once()
 
-    @patch("main.socket.socket")
+    @patch("fpbinject.main.socket.socket")
     def test_port_check_exception(self, mock_socket_class):
         """Test port check with exception"""
         mock_sock = Mock()
@@ -136,13 +136,13 @@ class TestParseArgs(unittest.TestCase):
 class TestCheckToolchain(unittest.TestCase):
     """check_toolchain function tests"""
 
-    @patch("main.shutil.which", return_value="/usr/bin/gdb-multiarch")
+    @patch("fpbinject.main.shutil.which", return_value="/usr/bin/gdb-multiarch")
     def test_gdb_found(self, mock_which):
         """Returns True when gdb-multiarch is found."""
         result = main.check_toolchain()
         self.assertTrue(result)
 
-    @patch("main.shutil.which", return_value=None)
+    @patch("fpbinject.main.shutil.which", return_value=None)
     @patch("sys.stdin")
     def test_gdb_not_found_non_interactive(self, mock_stdin, mock_which):
         """Non-interactive mode continues without gdb."""
@@ -150,7 +150,7 @@ class TestCheckToolchain(unittest.TestCase):
         result = main.check_toolchain()
         self.assertTrue(result)
 
-    @patch("main.shutil.which", return_value=None)
+    @patch("fpbinject.main.shutil.which", return_value=None)
     @patch("sys.stdin")
     @patch("builtins.input", return_value="")
     def test_gdb_not_found_user_continues(self, mock_input, mock_stdin, mock_which):
@@ -159,7 +159,7 @@ class TestCheckToolchain(unittest.TestCase):
         result = main.check_toolchain()
         self.assertTrue(result)
 
-    @patch("main.shutil.which", return_value=None)
+    @patch("fpbinject.main.shutil.which", return_value=None)
     @patch("sys.stdin")
     @patch("builtins.input", return_value="n")
     def test_gdb_not_found_user_says_no(self, mock_input, mock_stdin, mock_which):
@@ -168,7 +168,7 @@ class TestCheckToolchain(unittest.TestCase):
         result = main.check_toolchain()
         self.assertTrue(result)
 
-    @patch("main.shutil.which", return_value=None)
+    @patch("fpbinject.main.shutil.which", return_value=None)
     @patch("sys.stdin")
     @patch("builtins.input", return_value="q")
     def test_gdb_not_found_user_quits(self, mock_input, mock_stdin, mock_which):
@@ -178,7 +178,7 @@ class TestCheckToolchain(unittest.TestCase):
             main.check_toolchain()
         self.assertEqual(cm.exception.code, 0)
 
-    @patch("main.shutil.which", return_value=None)
+    @patch("fpbinject.main.shutil.which", return_value=None)
     @patch("sys.stdin")
     @patch("builtins.input", side_effect=EOFError)
     def test_gdb_not_found_eof(self, mock_input, mock_stdin, mock_which):
@@ -187,7 +187,7 @@ class TestCheckToolchain(unittest.TestCase):
         result = main.check_toolchain()
         self.assertTrue(result)
 
-    @patch("main.shutil.which", return_value=None)
+    @patch("fpbinject.main.shutil.which", return_value=None)
     @patch("sys.stdin")
     @patch("builtins.input", side_effect=KeyboardInterrupt)
     def test_gdb_not_found_keyboard_interrupt(self, mock_input, mock_stdin, mock_which):
@@ -228,7 +228,7 @@ class TestRestoreState(unittest.TestCase):
 
         self.assertIsNone(state.device.ser)
 
-    @patch("main.restore_file_watcher")
+    @patch("fpbinject.main.restore_file_watcher")
     def test_restore_state_with_file_watcher(self, mock_restore):
         """Test restore_state restores file watcher"""
         state.device.auto_compile = True
@@ -239,8 +239,8 @@ class TestRestoreState(unittest.TestCase):
 
         mock_restore.assert_called_once()
 
-    @patch("main.start_worker")
-    @patch("main.serial_open")
+    @patch("fpbinject.main.start_worker")
+    @patch("fpbinject.main.serial_open")
     def test_restore_state_auto_connect_success(self, mock_serial, mock_worker):
         """Test restore_state with successful auto-connect"""
         state.device.auto_connect = True
@@ -257,8 +257,8 @@ class TestRestoreState(unittest.TestCase):
         mock_serial.assert_called_once()
         self.assertEqual(state.device.ser, mock_ser)
 
-    @patch("main.start_worker")
-    @patch("main.serial_open")
+    @patch("fpbinject.main.start_worker")
+    @patch("fpbinject.main.serial_open")
     def test_restore_state_auto_connect_failure(self, mock_serial, mock_worker):
         """Test restore_state with failed auto-connect"""
         state.device.auto_connect = True
@@ -271,7 +271,9 @@ class TestRestoreState(unittest.TestCase):
         mock_worker.assert_called_once()
         self.assertIsNone(state.device.ser)
 
-    @patch("services.file_watcher_manager.start_elf_watcher", return_value=True)
+    @patch(
+        "fpbinject.services.file_watcher_manager.start_elf_watcher", return_value=True
+    )
     def test_restore_state_elf_watcher_success(self, mock_elf_watcher):
         """Test restore_state restores ELF watcher successfully"""
         state.device.auto_connect = False
@@ -281,7 +283,9 @@ class TestRestoreState(unittest.TestCase):
 
         mock_elf_watcher.assert_called_once_with("/tmp/test.elf")
 
-    @patch("services.file_watcher_manager.start_elf_watcher", return_value=False)
+    @patch(
+        "fpbinject.services.file_watcher_manager.start_elf_watcher", return_value=False
+    )
     def test_restore_state_elf_watcher_failure(self, mock_elf_watcher):
         """Test restore_state handles ELF watcher failure"""
         state.device.auto_connect = False
@@ -291,7 +295,7 @@ class TestRestoreState(unittest.TestCase):
 
         mock_elf_watcher.assert_called_once_with("/tmp/test.elf")
 
-    @patch("services.log_recorder.log_recorder")
+    @patch("fpbinject.services.log_recorder.log_recorder")
     def test_restore_state_log_recorder_success(self, mock_recorder):
         """Test restore_state restores log recorder"""
         state.device.auto_connect = False
@@ -307,7 +311,7 @@ class TestRestoreState(unittest.TestCase):
             timestamp=state.device.log_file_timestamp,
         )
 
-    @patch("services.log_recorder.log_recorder")
+    @patch("fpbinject.services.log_recorder.log_recorder")
     def test_restore_state_log_recorder_failure(self, mock_recorder):
         """Test restore_state handles log recorder failure"""
         state.device.auto_connect = False
@@ -320,8 +324,8 @@ class TestRestoreState(unittest.TestCase):
         mock_recorder.start.assert_called_once()
         self.assertFalse(state.device.log_file_enabled)
 
-    @patch("main.os.path.exists", return_value=True)
-    @patch("core.gdb_manager.start_gdb_async")
+    @patch("fpbinject.main.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_manager.start_gdb_async")
     def test_restore_state_gdb_auto_start(self, mock_gdb, mock_exists):
         """Test restore_state auto-starts GDB when ELF exists"""
         state.device.auto_connect = False
@@ -335,10 +339,10 @@ class TestRestoreState(unittest.TestCase):
 class TestMain(unittest.TestCase):
     """main function tests"""
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available")
-    @patch("main.parse_args")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available")
+    @patch("fpbinject.main.parse_args")
     def test_main_port_in_use(self, mock_args, mock_check, mock_restore, mock_create):
         """Test main exits when port is in use"""
         mock_args.return_value = Mock(
@@ -356,11 +360,11 @@ class TestMain(unittest.TestCase):
         self.assertEqual(cm.exception.code, 1)
         mock_create.assert_not_called()
 
-    @patch("main.threading.Timer")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available")
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available")
+    @patch("fpbinject.main.parse_args")
     def test_main_starts_server(
         self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
     ):
@@ -385,11 +389,11 @@ class TestMain(unittest.TestCase):
             host="0.0.0.0", port=5500, debug=False, threaded=True
         )
 
-    @patch("main.threading.Timer")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available")
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available")
+    @patch("fpbinject.main.parse_args")
     def test_main_skip_port_check(
         self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
     ):
@@ -418,12 +422,12 @@ class TestMain(unittest.TestCase):
 class TestAutoOpenBrowser(unittest.TestCase):
     """Tests for auto-open browser and startup banner"""
 
-    @patch("main.threading.Timer")
-    @patch("main.webbrowser.open")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.webbrowser.open")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     def test_browser_opens_by_default(
         self,
         mock_args,
@@ -452,12 +456,12 @@ class TestAutoOpenBrowser(unittest.TestCase):
         )
         mock_timer.start.assert_called_once()
 
-    @patch("main.threading.Timer")
-    @patch("main.webbrowser.open")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.webbrowser.open")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     def test_no_browser_skips_open(
         self,
         mock_args,
@@ -481,12 +485,12 @@ class TestAutoOpenBrowser(unittest.TestCase):
 
         mock_timer_cls.assert_not_called()
 
-    @patch("main.threading.Timer")
-    @patch("main.webbrowser.open")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.webbrowser.open")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     def test_browser_url_uses_custom_port(
         self,
         mock_args,
@@ -514,11 +518,11 @@ class TestAutoOpenBrowser(unittest.TestCase):
             1.0, mock_wb_open, args=["http://127.0.0.1:9090"]
         )
 
-    @patch("main.threading.Timer")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     @patch("logging.basicConfig")
     def test_startup_banner_logged(
         self,
@@ -546,11 +550,11 @@ class TestAutoOpenBrowser(unittest.TestCase):
         self.assertIn("FPBInject Web Server Started", printed)
         self.assertIn("http://127.0.0.1:5500", printed)
 
-    @patch("main.threading.Timer")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     @patch("logging.basicConfig")
     def test_startup_banner_with_custom_port(
         self,
@@ -577,11 +581,11 @@ class TestAutoOpenBrowser(unittest.TestCase):
         printed = "\n".join(str(c) for c in mock_print.call_args_list)
         self.assertIn("http://127.0.0.1:8080", printed)
 
-    @patch("main.threading.Timer")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     def test_startup_banner_shows_lan_ip(
         self,
         mock_args,
@@ -604,7 +608,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_sock.getsockname.return_value = ("192.168.1.100", 0)
 
         with patch("builtins.print") as mock_print, patch(
-            "main.socket.socket", return_value=mock_sock
+            "fpbinject.main.socket.socket", return_value=mock_sock
         ):
             main.main()
 
@@ -612,11 +616,11 @@ class TestAutoOpenBrowser(unittest.TestCase):
         self.assertIn("http://192.168.1.100:5500", printed)
         self.assertIn("Network", printed)
 
-    @patch("main.threading.Timer")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     def test_startup_banner_lan_ip_unavailable(
         self,
         mock_args,
@@ -639,18 +643,18 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_sock.connect.side_effect = OSError("Network unreachable")
 
         with patch("builtins.print") as mock_print, patch(
-            "main.socket.socket", return_value=mock_sock
+            "fpbinject.main.socket.socket", return_value=mock_sock
         ):
             main.main()
 
         printed = "\n".join(str(c) for c in mock_print.call_args_list)
         self.assertIn("unavailable", printed)
 
-    @patch("main.threading.Timer")
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=True)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
     def test_startup_lan_ip_socket_closed(
         self,
         mock_args,
@@ -672,7 +676,7 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_sock = Mock()
         mock_sock.getsockname.return_value = ("10.0.0.5", 0)
 
-        with patch("main.socket.socket", return_value=mock_sock):
+        with patch("fpbinject.main.socket.socket", return_value=mock_sock):
             main.main()
 
         mock_sock.connect.assert_called_once_with(("8.8.8.8", 80))
@@ -697,35 +701,37 @@ class TestCheckRequirements(unittest.TestCase):
 
     def test_no_requirements_file(self):
         """Returns True when requirements.txt doesn't exist."""
-        with patch("main.SCRIPT_DIR", "/nonexistent/path"):
+        with patch("fpbinject.main.SCRIPT_DIR", "/nonexistent/path"):
             result = main.check_requirements()
         self.assertTrue(result)
 
     def test_all_installed(self):
         """Returns True when all packages are installed."""
         subdir = self._make_req_file("Flask\ncoverage\n")
-        with patch("main.SCRIPT_DIR", subdir):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir):
             result = main.check_requirements()
         self.assertTrue(result)
 
     def test_comments_and_blanks_skipped(self):
         """Comments and blank lines are ignored."""
         subdir = self._make_req_file("# comment\n\n  \nFlask\n")
-        with patch("main.SCRIPT_DIR", subdir):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir):
             result = main.check_requirements()
         self.assertTrue(result)
 
     def test_version_specifiers_stripped(self):
         """Version specifiers like >=, ==, < are stripped."""
         subdir = self._make_req_file("Flask>=2.0\ncoverage==7.0\n")
-        with patch("main.SCRIPT_DIR", subdir):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir):
             result = main.check_requirements()
         self.assertTrue(result)
 
     def test_missing_package_non_interactive(self):
         """Missing packages in non-interactive mode: returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin:
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin:
             mock_stdin.isatty.return_value = False
             result = main.check_requirements()
         self.assertTrue(result)
@@ -733,9 +739,9 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_skips(self):
         """User chooses 'n' to skip install."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin, patch(
-            "builtins.input", return_value="n"
-        ):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin, patch("builtins.input", return_value="n"):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -743,9 +749,9 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_quits(self):
         """User chooses 'q' to quit."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin, patch(
-            "builtins.input", return_value="q"
-        ):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin, patch("builtins.input", return_value="q"):
             mock_stdin.isatty.return_value = True
             with self.assertRaises(SystemExit):
                 main.check_requirements()
@@ -753,9 +759,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_installs(self):
         """User chooses 'y' to install."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin, patch(
-            "builtins.input", return_value="y"
-        ), patch("subprocess.call", return_value=0) as mock_call:
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin, patch("builtins.input", return_value="y"), patch(
+            "subprocess.call", return_value=0
+        ) as mock_call:
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -766,9 +774,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_default_enter(self):
         """User presses Enter (default = install)."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin, patch(
-            "builtins.input", return_value=""
-        ), patch("subprocess.call", return_value=0) as mock_call:
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin, patch("builtins.input", return_value=""), patch(
+            "subprocess.call", return_value=0
+        ) as mock_call:
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -777,9 +787,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_install_failure_continues(self):
         """pip install failure still returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin, patch(
-            "builtins.input", return_value="y"
-        ), patch("subprocess.call", return_value=1):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin, patch("builtins.input", return_value="y"), patch(
+            "subprocess.call", return_value=1
+        ):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -787,9 +799,9 @@ class TestCheckRequirements(unittest.TestCase):
     def test_eof_on_input(self):
         """EOFError on input returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin, patch(
-            "builtins.input", side_effect=EOFError
-        ):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin, patch("builtins.input", side_effect=EOFError):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -797,9 +809,9 @@ class TestCheckRequirements(unittest.TestCase):
     def test_keyboard_interrupt_on_input(self):
         """KeyboardInterrupt on input returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("main.SCRIPT_DIR", subdir), patch("sys.stdin") as mock_stdin, patch(
-            "builtins.input", side_effect=KeyboardInterrupt
-        ):
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
+            "sys.stdin"
+        ) as mock_stdin, patch("builtins.input", side_effect=KeyboardInterrupt):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -807,7 +819,7 @@ class TestCheckRequirements(unittest.TestCase):
     def test_pyserial_detected_via_metadata(self):
         """pyserial (pip name != import name) detected via importlib.metadata."""
         subdir = self._make_req_file("pyserial\n")
-        with patch("main.SCRIPT_DIR", subdir), patch(
+        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
             "importlib.metadata.distribution"
         ) as mock_dist:
             mock_dist.return_value = Mock()
@@ -831,37 +843,37 @@ class TestMainPortConflict(unittest.TestCase):
         defaults.update(overrides)
         return Mock(**defaults)
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=False)
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=False)
     @patch(
-        "main.get_port_owner",
+        "fpbinject.main.get_port_owner",
         return_value={"pid": 100, "name": "python", "cmdline": "python main.py"},
     )
-    @patch("main.parse_args")
+    @patch("fpbinject.main.parse_args")
     def test_port_conflict_non_cli_process(
         self, mock_args, mock_owner, mock_check, mock_restore, mock_create
     ):
         """Port occupied by non-CLI process → exit with options."""
         mock_args.return_value = self._mock_args()
-        with patch("cli.server_proxy.get_cli_server_pid", return_value=None):
+        with patch("fpbinject.cli.server_proxy.get_cli_server_pid", return_value=None):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 1)
         mock_create.assert_not_called()
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=False)
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=False)
     @patch(
-        "main.get_port_owner",
+        "fpbinject.main.get_port_owner",
         return_value={
             "pid": 200,
             "name": "python",
             "cmdline": "python main.py --no-browser",
         },
     )
-    @patch("main.parse_args")
+    @patch("fpbinject.main.parse_args")
     def test_port_conflict_cli_server_user_accepts(
         self, mock_args, mock_owner, mock_check, mock_restore, mock_create
     ):
@@ -869,119 +881,129 @@ class TestMainPortConflict(unittest.TestCase):
         mock_args.return_value = self._mock_args()
         mock_app = Mock()
         mock_create.return_value = mock_app
-        with patch("cli.server_proxy.get_cli_server_pid", return_value=200), patch(
-            "cli.server_proxy.stop_cli_server",
+        with patch(
+            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
+        ), patch(
+            "fpbinject.cli.server_proxy.stop_cli_server",
             return_value={"success": True, "message": "done"},
-        ), patch("builtins.input", return_value="Y"), patch("time.sleep"), patch(
-            "main.threading.Timer"
+        ), patch(
+            "builtins.input", return_value="Y"
+        ), patch(
+            "time.sleep"
+        ), patch(
+            "fpbinject.main.threading.Timer"
         ):
             # Should NOT exit — continues to start server
             main.main()
         mock_create.assert_called_once()
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=False)
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=False)
     @patch(
-        "main.get_port_owner",
+        "fpbinject.main.get_port_owner",
         return_value={
             "pid": 200,
             "name": "python",
             "cmdline": "python main.py --no-browser",
         },
     )
-    @patch("main.parse_args")
+    @patch("fpbinject.main.parse_args")
     def test_port_conflict_cli_server_user_declines(
         self, mock_args, mock_owner, mock_check, mock_restore, mock_create
     ):
         """Port occupied by CLI server, user answers n → abort."""
         mock_args.return_value = self._mock_args()
-        with patch("cli.server_proxy.get_cli_server_pid", return_value=200), patch(
-            "builtins.input", return_value="n"
-        ):
+        with patch(
+            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
+        ), patch("builtins.input", return_value="n"):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 0)
         mock_create.assert_not_called()
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=False)
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=False)
     @patch(
-        "main.get_port_owner",
+        "fpbinject.main.get_port_owner",
         return_value={
             "pid": 200,
             "name": "python",
             "cmdline": "python main.py --no-browser",
         },
     )
-    @patch("main.parse_args")
+    @patch("fpbinject.main.parse_args")
     def test_port_conflict_cli_server_stop_fails(
         self, mock_args, mock_owner, mock_check, mock_restore, mock_create
     ):
         """Port occupied by CLI server, user answers Y but stop fails → exit 1."""
         mock_args.return_value = self._mock_args()
-        with patch("cli.server_proxy.get_cli_server_pid", return_value=200), patch(
-            "cli.server_proxy.stop_cli_server",
+        with patch(
+            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
+        ), patch(
+            "fpbinject.cli.server_proxy.stop_cli_server",
             return_value={"success": False, "error": "fail"},
-        ), patch("builtins.input", return_value="Y"):
+        ), patch(
+            "builtins.input", return_value="Y"
+        ):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 1)
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=False)
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=False)
     @patch(
-        "main.get_port_owner",
+        "fpbinject.main.get_port_owner",
         return_value={
             "pid": 200,
             "name": "python",
             "cmdline": "python main.py --no-browser",
         },
     )
-    @patch("main.parse_args")
+    @patch("fpbinject.main.parse_args")
     def test_port_conflict_cli_server_eof_on_input(
         self, mock_args, mock_owner, mock_check, mock_restore, mock_create
     ):
         """Port occupied by CLI server, EOFError on input → abort."""
         mock_args.return_value = self._mock_args()
-        with patch("cli.server_proxy.get_cli_server_pid", return_value=200), patch(
-            "builtins.input", side_effect=EOFError
-        ):
+        with patch(
+            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
+        ), patch("builtins.input", side_effect=EOFError):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 0)
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=False)
-    @patch("main.get_port_owner", return_value=None)
-    @patch("main.parse_args")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=False)
+    @patch("fpbinject.main.get_port_owner", return_value=None)
+    @patch("fpbinject.main.parse_args")
     def test_port_conflict_unknown_owner(
         self, mock_args, mock_owner, mock_check, mock_restore, mock_create
     ):
         """Port occupied but owner unknown → exit with generic message."""
         mock_args.return_value = self._mock_args()
-        with patch("cli.server_proxy.get_cli_server_pid", return_value=None):
+        with patch("fpbinject.cli.server_proxy.get_cli_server_pid", return_value=None):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 1)
 
-    @patch("main.create_app")
-    @patch("main.restore_state")
-    @patch("main.check_port_available", return_value=False)
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=False)
     @patch(
-        "main.get_port_owner",
+        "fpbinject.main.get_port_owner",
         return_value={"pid": 100, "name": "node", "cmdline": "node server.js"},
     )
-    @patch("main.parse_args")
+    @patch("fpbinject.main.parse_args")
     def test_port_conflict_non_cli_with_stale_cli_pid(
         self, mock_args, mock_owner, mock_check, mock_restore, mock_create
     ):
         """Port occupied by non-CLI process but stale CLI PID exists → show both options."""
         mock_args.return_value = self._mock_args()
-        with patch("cli.server_proxy.get_cli_server_pid", return_value=999):
+        with patch("fpbinject.cli.server_proxy.get_cli_server_pid", return_value=999):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 1)

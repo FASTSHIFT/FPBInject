@@ -12,9 +12,9 @@ import os
 import tempfile
 import unittest
 
-from app import create_app
-from core.state import state
-from services.log_recorder import log_recorder
+from fpbinject.app import create_app
+from fpbinject.core.state import state
+from fpbinject.services.log_recorder import log_recorder
 
 
 class TestLogFileRoutes(unittest.TestCase):
@@ -138,7 +138,7 @@ class TestLogFileRoutes(unittest.TestCase):
         )
 
         # Simulate serial data (this is what gets recorded)
-        from services.log_recorder import log_recorder
+        from fpbinject.services.log_recorder import log_recorder
 
         log_recorder.write("Serial data line 1")
         log_recorder.write("Serial data line 2")

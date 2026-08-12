@@ -15,11 +15,11 @@ import os
 import threading
 import time
 
-from core.elf_utils import get_memory_regions
-from core.gdb_bridge import GDBRSPBridge
-from core.gdb_session import GDBSession
-from core.state import ToolLogHandler
-from utils.net import get_port_owner, is_port_available, kill_port_owner
+from fpbinject.core.elf_utils import get_memory_regions
+from fpbinject.core.gdb_bridge import GDBRSPBridge
+from fpbinject.core.gdb_session import GDBSession
+from fpbinject.core.state import ToolLogHandler
+from fpbinject.utils.net import get_port_owner, is_port_available, kill_port_owner
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +249,7 @@ def _create_serial_memory_callbacks(state):
     Returns:
         (read_memory_fn, write_memory_fn) tuple
     """
-    from services.device_worker import run_in_device_worker
+    from fpbinject.services.device_worker import run_in_device_worker
 
     def read_memory_fn(addr, length):
         """Read device memory via serial, routed through DeviceWorker."""
@@ -265,7 +265,7 @@ def _create_serial_memory_callbacks(state):
 
         def do_read():
             try:
-                from routes import get_fpb_inject
+                from fpbinject.routes import get_fpb_inject
 
                 fpb = get_fpb_inject()
                 result["data"], result["msg"] = fpb.read_memory(addr, length)
@@ -302,7 +302,7 @@ def _create_serial_memory_callbacks(state):
 
         def do_write():
             try:
-                from routes import get_fpb_inject
+                from fpbinject.routes import get_fpb_inject
 
                 fpb = get_fpb_inject()
                 result["ok"], result["msg"] = fpb.write_memory(addr, data)

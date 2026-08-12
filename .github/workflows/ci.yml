@@ -135,6 +135,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r Tools/requirements.txt
           pip install -r Tools/WebServer/tests/requirements.txt
+          # Editable install so the `fpbinject` package resolves for tests and
+          # to validate pyproject.toml builds/installs correctly.
+          pip install -e .
           # Install additional tools for formatting and linting
           pip install black flake8
 

@@ -17,7 +17,7 @@ import threading
 import serial
 import serial.tools.list_ports
 
-from services.device_worker import start_worker, stop_worker
+from fpbinject.services.device_worker import start_worker, stop_worker
 
 logger = logging.getLogger(__name__)
 

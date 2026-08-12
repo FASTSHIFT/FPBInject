@@ -10,7 +10,7 @@ import unittest
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.patch_generator import find_function_signature
+from fpbinject.core.patch_generator import find_function_signature
 
 
 class TestFindFunctionSignature(unittest.TestCase):

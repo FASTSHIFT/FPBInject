@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import compiler  # noqa: E402
+from fpbinject.core import compiler  # noqa: E402
 
 
 class TestResolveMangledNames(unittest.TestCase):
@@ -291,7 +291,7 @@ class TestCompileInjectMarkerLines(unittest.TestCase):
             "raw_command": None,
         }
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_marker_lines_resolved(self, mock_run, mock_parse):
         """inject_marker_lines triggers nm -l resolution."""
@@ -336,7 +336,9 @@ class TestCompileInjectMarkerLines(unittest.TestCase):
             return original_open(path, *args, **kw)
 
         try:
-            with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+            with patch(
+                "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+            ):
                 with patch("builtins.open", side_effect=patched_open):
                     data, symbols, error = compiler.compile_inject(
                         source_content=None,
@@ -351,7 +353,7 @@ class TestCompileInjectMarkerLines(unittest.TestCase):
         finally:
             os.unlink(src_path)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_marker_lines_resolution_fails(self, mock_run, mock_parse):
         """inject_marker_lines resolution failure returns error."""
@@ -395,7 +397,7 @@ class TestCompileInjectCppSwitch(unittest.TestCase):
             "raw_command": None,
         }
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_gcc_to_gpp_via_source_file(self, mock_run, mock_parse):
         """source_file .cpp triggers gcc -> g++ switch."""
@@ -419,7 +421,7 @@ class TestCompileInjectCppSwitch(unittest.TestCase):
         finally:
             os.unlink(src_path)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_gcc_to_gpp_via_original_source_file(self, mock_run, mock_parse):
         """original_source_file .cc triggers gcc -> g++ switch."""
@@ -450,7 +452,7 @@ class TestCompileInjectFpbSymsMatching(unittest.TestCase):
             "raw_command": None,
         }
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_suffix_matching_merges_short_name(self, mock_run, mock_parse):
         """Suffix matching: symbols has 'ns::Class::method', inject has 'Class::method'."""
@@ -482,7 +484,9 @@ class TestCompileInjectFpbSymsMatching(unittest.TestCase):
             src_path = src.name
 
         try:
-            with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+            with patch(
+                "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+            ):
                 with patch("builtins.open", side_effect=patched_open):
                     data, symbols, error = compiler.compile_inject(
                         source_content=None,
@@ -497,7 +501,7 @@ class TestCompileInjectFpbSymsMatching(unittest.TestCase):
         finally:
             os.unlink(src_path)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_fpb_funcs_not_found_warning(self, mock_run, mock_parse):
         """inject_functions provided but not found in symbols triggers warning."""
@@ -529,7 +533,9 @@ class TestCompileInjectFpbSymsMatching(unittest.TestCase):
             src_path = src.name
 
         try:
-            with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+            with patch(
+                "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+            ):
                 with patch("builtins.open", side_effect=patched_open):
                     data, symbols, error = compiler.compile_inject(
                         source_content=None,

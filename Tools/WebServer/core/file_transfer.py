@@ -16,7 +16,7 @@ import re
 import struct
 from typing import Callable, Optional, Tuple, List, Dict, Any
 
-from utils.crc import crc16, crc16_update
+from fpbinject.utils.crc import crc16, crc16_update
 
 logger = logging.getLogger(__name__)
 

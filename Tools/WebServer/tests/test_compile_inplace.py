@@ -16,8 +16,8 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import compiler  # noqa: E402
-from core.patch_generator import PatchGenerator  # noqa: E402
+from fpbinject.core import compiler  # noqa: E402
+from fpbinject.core.patch_generator import PatchGenerator  # noqa: E402
 
 # =============================================================================
 # Test: compile_inject in-place mode
@@ -46,7 +46,7 @@ class TestCompileInjectInplace(unittest.TestCase):
         inject_functions,
         nm_stdout="",
         config=None,
-        **kwargs
+        **kwargs,
     ):
         """Helper to run compile_inject in in-place mode."""
         mock_parse.return_value = config or self._make_config()
@@ -73,7 +73,9 @@ class TestCompileInjectInplace(unittest.TestCase):
             return original_open(path, *args, **kw)
 
         try:
-            with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+            with patch(
+                "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+            ):
                 with patch("builtins.open", side_effect=patched_open):
                     return compiler.compile_inject(
                         base_addr=kwargs.get("base_addr", 0x20001000),
@@ -85,7 +87,7 @@ class TestCompileInjectInplace(unittest.TestCase):
         finally:
             os.unlink(source_path)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_inplace_basic(self, mock_run, mock_parse):
         """In-place mode compiles the original file directly."""
@@ -110,7 +112,7 @@ class TestCompileInjectInplace(unittest.TestCase):
         # Should NOT be "inject.c" in tmpdir
         self.assertNotIn("inject", os.path.basename(source_args[0]))
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_inplace_linker_script_keep(self, mock_run, mock_parse):
         """In-place mode generates KEEP(.text.func) in linker script."""
@@ -130,7 +132,7 @@ class TestCompileInjectInplace(unittest.TestCase):
         ld_args = [a for a in link_cmd if a.endswith(".ld") or ".ld" in a]
         self.assertTrue(len(ld_args) > 0, "Linker script should be in link command")
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_inplace_uses_u_flags(self, mock_run, mock_parse):
         """In-place mode adds -Wl,-u,func for each inject function."""
@@ -147,7 +149,7 @@ class TestCompileInjectInplace(unittest.TestCase):
         link_cmd = mock_run.call_args_list[3][0][0]
         self.assertIn("-Wl,-u,target_func", link_cmd)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_inplace_multi_functions(self, mock_run, mock_parse):
         """In-place mode with multiple inject functions."""
@@ -167,7 +169,7 @@ class TestCompileInjectInplace(unittest.TestCase):
         self.assertIn("-Wl,-u,fa", link_cmd)
         self.assertIn("-Wl,-u,fb", link_cmd)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_inplace_auto_detect_ext(self, mock_run, mock_parse):
         """In-place mode auto-detects source extension from file path."""
@@ -194,7 +196,9 @@ class TestCompileInjectInplace(unittest.TestCase):
             return original_open(path, *args, **kw)
 
         try:
-            with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+            with patch(
+                "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+            ):
                 with patch("builtins.open", side_effect=patched_open):
                     data, symbols, error = compiler.compile_inject(
                         base_addr=0x20001000,
@@ -206,7 +210,7 @@ class TestCompileInjectInplace(unittest.TestCase):
         finally:
             os.unlink(cpp_path)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_inplace_compile_error(self, mock_run, mock_parse):
         """In-place mode returns compile error properly."""
@@ -270,7 +274,7 @@ class TestCompileInjectContentModeCompat(unittest.TestCase):
             "raw_command": None,
         }
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_content_mode_still_works(self, mock_run, mock_parse):
         """Legacy content mode with source_content still works."""
@@ -291,7 +295,9 @@ class TestCompileInjectContentModeCompat(unittest.TestCase):
                 return io.BytesIO(bin_data)
             return original_open(path, *args, **kw)
 
-        with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+        with patch(
+            "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+        ):
             with patch("builtins.open", side_effect=patched_open):
                 data, symbols, error = compiler.compile_inject(
                     source_content="/* FPB_INJECT */\nvoid test_func(void) {}",
@@ -307,7 +313,7 @@ class TestCompileInjectContentModeCompat(unittest.TestCase):
         self.assertEqual(len(source_args), 1)
         self.assertIn("inject", os.path.basename(source_args[0]))
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_content_mode_uses_fpb_text_section(self, mock_run, mock_parse):
         """Content mode linker script uses .fpb.text section (legacy)."""
@@ -329,7 +335,9 @@ class TestCompileInjectContentModeCompat(unittest.TestCase):
                 return io.BytesIO(bin_data)
             return real_open(path, *args, **kw)
 
-        with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+        with patch(
+            "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+        ):
             with patch("builtins.open", side_effect=patched_open):
                 data, symbols, error = compiler.compile_inject(
                     source_content="/* FPB_INJECT */\nvoid f(void) {}",
@@ -435,7 +443,7 @@ class TestAutoInjectInplace(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        from core.state import state
+        from fpbinject.core.state import state
 
         self.state = state
         self.state.device.auto_compile = True
@@ -447,11 +455,11 @@ class TestAutoInjectInplace(unittest.TestCase):
         self.state.device.auto_inject_modified_funcs = []
         self.state.device.patch_source_content = None
 
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_inplace_flow_no_markers(self, mock_gen_class, mock_get_fpb):
         """Auto inject with no markers sets idle status."""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         mock_gen = Mock()
         mock_gen_class.return_value = mock_gen
@@ -471,11 +479,11 @@ class TestAutoInjectInplace(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_inplace_flow_device_not_connected(self, mock_gen_class, mock_get_fpb):
         """Auto inject fails gracefully when device not connected."""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         mock_gen = Mock()
         mock_gen_class.return_value = mock_gen
@@ -502,12 +510,12 @@ class TestAutoInjectInplace(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_inplace_flow_success(self, mock_gen_class, mock_get_fpb, mock_run_worker):
         """Auto inject success path uses in-place mode."""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         mock_gen = Mock()
         mock_gen_class.return_value = mock_gen
@@ -576,14 +584,14 @@ class TestAutoInjectInplace(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    @patch("services.device_worker.run_in_device_worker")
-    @patch("routes.get_fpb_inject")
-    @patch("core.patch_generator.PatchGenerator")
+    @patch("fpbinject.services.device_worker.run_in_device_worker")
+    @patch("fpbinject.routes.get_fpb_inject")
+    @patch("fpbinject.core.patch_generator.PatchGenerator")
     def test_inplace_flow_auto_unpatch(
         self, mock_gen_class, mock_get_fpb, mock_run_worker
     ):
         """Auto unpatch when markers are removed."""
-        from services.file_watcher_manager import _trigger_auto_inject
+        from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
         mock_gen = Mock()
         mock_gen_class.return_value = mock_gen
@@ -627,7 +635,7 @@ class TestAutoInjectInplace(unittest.TestCase):
 class TestLinkerScriptGeneration(unittest.TestCase):
     """Test linker script KEEP rules for in-place mode."""
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_inplace_ld_has_keep_text_func(self, mock_run, mock_parse):
         """Linker script in in-place mode has KEEP(*(.text.func)) rules."""
@@ -657,7 +665,9 @@ class TestLinkerScriptGeneration(unittest.TestCase):
             source_path = f.name
 
         try:
-            with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+            with patch(
+                "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+            ):
                 # Use a custom open to capture ld file content
                 written_files = {}
                 real_open = open

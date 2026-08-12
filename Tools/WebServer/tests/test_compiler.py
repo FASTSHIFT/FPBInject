@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import compiler  # noqa: E402
+from fpbinject.core import compiler  # noqa: E402
 
 
 class TestGetToolPath(unittest.TestCase):
@@ -227,7 +227,7 @@ class TestCompileInject(unittest.TestCase):
         self.assertIsNone(symbols)
         self.assertIn("No compile configuration", error)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_compile_error(self, mock_parse):
         """Test compilation error"""
         mock_parse.return_value = {
@@ -252,7 +252,7 @@ class TestCompileInject(unittest.TestCase):
             self.assertIsNone(data)
             self.assertIn("Compile error", error)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_link_error(self, mock_parse):
         """Test link error"""
         mock_parse.return_value = {
@@ -283,7 +283,7 @@ class TestCompileInject(unittest.TestCase):
             self.assertIsNone(data)
             self.assertIn("Link error", error)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_objcopy_error(self, mock_parse):
         """Test objcopy error"""
         mock_parse.return_value = {
@@ -675,7 +675,7 @@ class TestParseDepFileExtended(unittest.TestCase):
 class TestCompileInjectCompId(unittest.TestCase):
     """Tests for comp_id parameter in compile_inject"""
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_comp_id_adds_define(self, mock_parse):
         """comp_id >= 0 should add -DFPB_PATCH_COMP_ID=N to compile command"""
         mock_parse.return_value = {
@@ -704,7 +704,7 @@ class TestCompileInjectCompId(unittest.TestCase):
             idx = compile_cmd.index("-D")
             self.assertEqual(compile_cmd[idx + 1], "FPB_PATCH_COMP_ID=3")
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_comp_id_negative_no_define(self, mock_parse):
         """comp_id < 0 should NOT add FPB_PATCH_COMP_ID define"""
         mock_parse.return_value = {
@@ -735,7 +735,7 @@ class TestCompileInjectCompId(unittest.TestCase):
 class TestCompileInjectExtended(unittest.TestCase):
     """Extended compile_inject tests"""
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_compile_with_raw_command(self, mock_parse):
         """Test compile using raw command from .d file"""
         mock_parse.return_value = {
@@ -760,7 +760,7 @@ class TestCompileInjectExtended(unittest.TestCase):
             self.assertIsNone(data)
             self.assertIn("Compile error", error)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_compile_with_cpp_extension(self, mock_parse):
         """Test compile with .cpp extension"""
         mock_parse.return_value = {
@@ -1108,7 +1108,7 @@ int test_func(void) {
 class TestToolchainPathPriority(unittest.TestCase):
     """Test that user-configured toolchain_path overrides compile_commands.json absolute paths"""
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_toolchain_overrides_absolute_compiler(self, mock_parse):
         """toolchain_path should override absolute compiler path from compile_commands"""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1144,7 +1144,7 @@ class TestToolchainPathPriority(unittest.TestCase):
                 called_cmd = mock_run.call_args[0][0]
                 self.assertEqual(called_cmd[0], fake_gcc)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_no_toolchain_keeps_absolute_compiler(self, mock_parse):
         """Without toolchain_path, absolute compiler path from compile_commands is kept"""
         mock_parse.return_value = {
@@ -1170,7 +1170,7 @@ class TestToolchainPathPriority(unittest.TestCase):
             called_cmd = mock_run.call_args[0][0]
             self.assertEqual(called_cmd[0], "/opt/toolchain/bin/arm-none-eabi-gcc")
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_toolchain_fallback_when_tool_not_found(self, mock_parse):
         """If toolchain_path doesn't contain the tool, keep original path"""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1205,7 +1205,7 @@ class TestCppSupport(unittest.TestCase):
 
     def test_is_cpp_source(self):
         """Test _is_cpp_source helper detects C++ extensions."""
-        from core.compile_commands import _is_cpp_source
+        from fpbinject.core.compile_commands import _is_cpp_source
 
         self.assertTrue(_is_cpp_source("main.cpp"))
         self.assertTrue(_is_cpp_source("/path/to/file.cc"))
@@ -1312,7 +1312,7 @@ class TestCppSupport(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_auto_switch_gcc_to_gpp_for_cpp(self, mock_parse):
         """Compiler should auto-switch from gcc to g++ for .cpp files."""
         mock_parse.return_value = {
@@ -1339,7 +1339,7 @@ class TestCppSupport(unittest.TestCase):
             self.assertIn("g++", called_cmd[0])
             self.assertNotIn("gcc", called_cmd[0])
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_no_switch_for_c_source(self, mock_parse):
         """Compiler should stay gcc for .c files."""
         mock_parse.return_value = {
@@ -1365,7 +1365,7 @@ class TestCppSupport(unittest.TestCase):
             called_cmd = mock_run.call_args[0][0]
             self.assertIn("gcc", called_cmd[0])
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_no_switch_when_already_gpp(self, mock_parse):
         """Compiler should not double-switch if already g++."""
         mock_parse.return_value = {
@@ -1391,7 +1391,7 @@ class TestCppSupport(unittest.TestCase):
             called_cmd = mock_run.call_args[0][0]
             self.assertEqual(called_cmd[0], "arm-none-eabi-g++")
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_auto_switch_inplace_mode(self, mock_parse):
         """In-place mode should also auto-switch gcc→g++ based on file extension."""
         mock_parse.return_value = {

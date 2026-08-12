@@ -17,7 +17,13 @@ from unittest.mock import MagicMock, patch
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.fpb_cli import FPBCLI, FPBCLIError, DeviceState, HAS_SERIAL, main  # noqa: E402
+from fpbinject.cli.fpb_cli import (
+    FPBCLI,
+    FPBCLIError,
+    DeviceState,
+    HAS_SERIAL,
+    main,
+)  # noqa: E402
 
 
 class TestDeviceState(unittest.TestCase):
@@ -40,7 +46,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.serial_tx_fragment_delay, 0.002)
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
-    @patch("cli.fpb_cli.serial.Serial")
+    @patch("fpbinject.cli.fpb_cli.serial.Serial")
     def test_connect_success(self, mock_serial):
         """Test successful connection"""
         state = DeviceState()
@@ -52,7 +58,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertIsNotNone(state.ser)
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
-    @patch("cli.fpb_cli.serial.Serial")
+    @patch("fpbinject.cli.fpb_cli.serial.Serial")
     def test_connect_failure(self, mock_serial):
         """Test connection failure"""
         state = DeviceState()
@@ -130,8 +136,8 @@ class TestFPBCLI(unittest.TestCase):
         cli.cleanup()
 
     @unittest.skipIf(not HAS_SERIAL, "pyserial not installed")
-    @patch("cli.fpb_cli.PortLock")
-    @patch("cli.fpb_cli.serial.Serial")
+    @patch("fpbinject.cli.fpb_cli.PortLock")
+    @patch("fpbinject.cli.fpb_cli.serial.Serial")
     def test_init_with_port(self, mock_serial, mock_port_lock):
         """Test initialization with serial port (direct mode)"""
         mock_serial.return_value = MagicMock()
@@ -146,7 +152,7 @@ class TestFPBCLI(unittest.TestCase):
         This guarantees offline ELF/compile commands stay self-contained
         and unit tests do not depend on ambient network state.
         """
-        with patch("cli.fpb_cli.ServerProxy") as mock_proxy_cls:
+        with patch("fpbinject.cli.fpb_cli.ServerProxy") as mock_proxy_cls:
             cli = FPBCLI()
             try:
                 mock_proxy_cls.assert_not_called()
@@ -760,7 +766,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertFalse(output["success"])
         self.assertIn("No device connected", output["error"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_list_success(self, mock_ft_cls):
         """Test file_list success"""
         self.cli._device_state.connected = True
@@ -776,7 +782,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertEqual(output["path"], "/data")
         self.assertEqual(len(output["entries"]), 1)
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_list_failure(self, mock_ft_cls):
         """Test file_list when flist returns failure"""
         self.cli._device_state.connected = True
@@ -790,7 +796,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         output = json.loads(f.getvalue())
         self.assertFalse(output["success"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_list_exception(self, mock_ft_cls):
         """Test file_list with exception"""
         self.cli._device_state.connected = True
@@ -813,7 +819,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertFalse(output["success"])
         self.assertIn("No device connected", output["error"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_stat_success(self, mock_ft_cls):
         """Test file_stat success"""
         self.cli._device_state.connected = True
@@ -828,7 +834,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertTrue(output["success"])
         self.assertEqual(output["stat"]["size"], 1024)
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_stat_failure(self, mock_ft_cls):
         """Test file_stat when fstat returns failure"""
         self.cli._device_state.connected = True
@@ -853,7 +859,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertFalse(output["success"])
         self.assertIn("No device connected", output["error"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_download_success(self, mock_ft_cls):
         """Test file_download success"""
         self.cli._device_state.connected = True
@@ -873,7 +879,7 @@ class TestFPBCLIInfo(unittest.TestCase):
             with open(local_path, "rb") as lf:
                 self.assertEqual(lf.read(), b"file content")
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_download_failure(self, mock_ft_cls):
         """Test file_download when download fails"""
         self.cli._device_state.connected = True
@@ -887,7 +893,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         output = json.loads(f.getvalue())
         self.assertFalse(output["success"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_download_creates_directory(self, mock_ft_cls):
         """Test file_download creates local directory if needed"""
         self.cli._device_state.connected = True
@@ -1032,7 +1038,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertFalse(output["success"])
         self.assertIn("No device connected", output["error"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_upload_success(self, mock_ft_cls):
         """Test file_upload success"""
         self.cli._device_state.connected = True
@@ -1057,7 +1063,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         finally:
             os.unlink(local_path)
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_upload_failure(self, mock_ft_cls):
         """Test file_upload when upload fails"""
         self.cli._device_state.connected = True
@@ -1088,7 +1094,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         output = json.loads(f.getvalue())
         self.assertFalse(output["success"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_upload_exception(self, mock_ft_cls):
         """Test file_upload with exception"""
         self.cli._device_state.connected = True
@@ -1119,7 +1125,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertFalse(output["success"])
         self.assertIn("No device connected", output["error"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_remove_success(self, mock_ft_cls):
         """Test file_remove success"""
         self.cli._device_state.connected = True
@@ -1134,7 +1140,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertTrue(output["success"])
         self.assertEqual(output["path"], "/data/old.bin")
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_remove_failure(self, mock_ft_cls):
         """Test file_remove when fremove fails"""
         self.cli._device_state.connected = True
@@ -1148,7 +1154,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         output = json.loads(f.getvalue())
         self.assertFalse(output["success"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_remove_exception(self, mock_ft_cls):
         """Test file_remove with exception"""
         self.cli._device_state.connected = True
@@ -1171,7 +1177,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertFalse(output["success"])
         self.assertIn("No device connected", output["error"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_mkdir_success(self, mock_ft_cls):
         """Test file_mkdir success"""
         self.cli._device_state.connected = True
@@ -1186,7 +1192,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertTrue(output["success"])
         self.assertEqual(output["path"], "/data/newdir")
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_mkdir_failure(self, mock_ft_cls):
         """Test file_mkdir when fmkdir fails"""
         self.cli._device_state.connected = True
@@ -1200,7 +1206,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         output = json.loads(f.getvalue())
         self.assertFalse(output["success"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_mkdir_exception(self, mock_ft_cls):
         """Test file_mkdir with exception"""
         self.cli._device_state.connected = True
@@ -1223,7 +1229,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertFalse(output["success"])
         self.assertIn("No device connected", output["error"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_rename_success(self, mock_ft_cls):
         """Test file_rename success"""
         self.cli._device_state.connected = True
@@ -1239,7 +1245,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         self.assertEqual(output["old_path"], "/data/old.bin")
         self.assertEqual(output["new_path"], "/data/new.bin")
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_rename_failure(self, mock_ft_cls):
         """Test file_rename when frename fails"""
         self.cli._device_state.connected = True
@@ -1253,7 +1259,7 @@ class TestFPBCLIInfo(unittest.TestCase):
         output = json.loads(f.getvalue())
         self.assertFalse(output["success"])
 
-    @patch("core.file_transfer.FileTransfer")
+    @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_rename_exception(self, mock_ft_cls):
         """Test file_rename with exception"""
         self.cli._device_state.connected = True
@@ -1809,7 +1815,7 @@ class TestMain(unittest.TestCase):
     def test_main_keyboard_interrupt(self):
         """Test main handles keyboard interrupt"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "test"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli.search.side_effect = KeyboardInterrupt()
                 mock_cli_class.return_value = mock_cli
@@ -1820,7 +1826,7 @@ class TestMain(unittest.TestCase):
     def test_main_cli_error(self):
         """Test main handles FPBCLIError"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "test"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli.search.side_effect = FPBCLIError("Test error")
                 mock_cli_class.return_value = mock_cli
@@ -1831,7 +1837,7 @@ class TestMain(unittest.TestCase):
     def test_main_unexpected_error(self):
         """Test main handles unexpected errors"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "test"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli.search.side_effect = RuntimeError("Unexpected")
                 mock_cli_class.return_value = mock_cli
@@ -1859,7 +1865,7 @@ class TestDeviceStateAdvanced(unittest.TestCase):
 
     def test_connect_without_serial(self):
         """Test connect raises without pyserial"""
-        with patch("cli.fpb_cli.HAS_SERIAL", False):
+        with patch("fpbinject.cli.fpb_cli.HAS_SERIAL", False):
             # Reload DeviceState method would be complex, test error message
             pass
 
@@ -1884,7 +1890,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_analyze_command(self):
         """Test main with analyze command"""
         with patch("sys.argv", ["fpb_cli.py", "analyze", "/fake.elf", "main"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1893,7 +1899,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_disasm_command(self):
         """Test main with disasm command"""
         with patch("sys.argv", ["fpb_cli.py", "disasm", "/fake.elf", "main"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1902,7 +1908,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_decompile_command(self):
         """Test main with decompile command"""
         with patch("sys.argv", ["fpb_cli.py", "decompile", "/fake.elf", "main"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1911,7 +1917,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_signature_command(self):
         """Test main with signature command"""
         with patch("sys.argv", ["fpb_cli.py", "signature", "/fake.elf", "main"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1920,7 +1926,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_search_command(self):
         """Test main with search command"""
         with patch("sys.argv", ["fpb_cli.py", "search", "/fake.elf", "gpio"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1929,7 +1935,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_compile_command(self):
         """Test main with compile command"""
         with patch("sys.argv", ["fpb_cli.py", "compile", "/fake.c"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1938,7 +1944,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_info_command(self):
         """Test main with info command"""
         with patch("sys.argv", ["fpb_cli.py", "info"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1947,7 +1953,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_inject_command(self):
         """Test main with inject command"""
         with patch("sys.argv", ["fpb_cli.py", "inject", "target", "patch.c"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1956,7 +1962,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_unpatch_command(self):
         """Test main with unpatch command"""
         with patch("sys.argv", ["fpb_cli.py", "unpatch", "--comp", "0"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1965,7 +1971,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_with_global_elf(self):
         """Test main with global --elf option"""
         with patch("sys.argv", ["fpb_cli.py", "--elf", "/path/to/elf", "info"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1979,7 +1985,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "--port", "/dev/ttyACM0", "--baudrate", "9600", "info"],
         ):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -1991,7 +1997,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_file_list_command(self):
         """Test main with file-list command"""
         with patch("sys.argv", ["fpb_cli.py", "file-list", "/data"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2000,7 +2006,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_file_list_default_path(self):
         """Test main with file-list command using default path"""
         with patch("sys.argv", ["fpb_cli.py", "file-list"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2009,7 +2015,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_file_stat_command(self):
         """Test main with file-stat command"""
         with patch("sys.argv", ["fpb_cli.py", "file-stat", "/data/test.bin"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2021,7 +2027,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "file-download", "/remote.bin", "/tmp/local.bin"],
         ):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2035,7 +2041,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "file-upload", "/tmp/local.bin", "/remote.bin"],
         ):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2046,7 +2052,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_file_remove_command(self):
         """Test main with file-remove command"""
         with patch("sys.argv", ["fpb_cli.py", "file-remove", "/data/old.bin"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2055,7 +2061,7 @@ class TestMainArgumentParsing(unittest.TestCase):
     def test_main_file_mkdir_command(self):
         """Test main with file-mkdir command"""
         with patch("sys.argv", ["fpb_cli.py", "file-mkdir", "/data/newdir"]):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2067,7 +2073,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "file-rename", "/data/old.bin", "/data/new.bin"],
         ):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2081,7 +2087,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "mem-read", "0x20000000", "64", "--fmt", "raw"],
         ):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2093,7 +2099,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "mem-write", "0x20000000", "DEADBEEF"],
         ):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2105,7 +2111,7 @@ class TestMainArgumentParsing(unittest.TestCase):
             "sys.argv",
             ["fpb_cli.py", "mem-dump", "0x20000000", "256", "/tmp/dump.bin"],
         ):
-            with patch("cli.fpb_cli.FPBCLI") as mock_cli_class:
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
                 mock_cli = MagicMock()
                 mock_cli_class.return_value = mock_cli
                 main()
@@ -2360,26 +2366,25 @@ class TestCppMemberFunctionHijacking(unittest.TestCase):
 class TestFpbCliEntryPoint(unittest.TestCase):
     """Test the fpb_cli.py entry point wrapper"""
 
-    def test_import_fpb_cli_module(self):
-        """Test that fpb_cli.py can be imported"""
-        import fpb_cli
+    def test_import_cli_main(self):
+        """Test that the CLI entry point is importable"""
+        from fpbinject.cli import fpb_cli
 
         self.assertTrue(hasattr(fpb_cli, "main"))
 
-    def test_fpb_cli_main_is_cli_main(self):
-        """Test that fpb_cli.main is cli.fpb_cli.main"""
-        import fpb_cli
-        from cli.fpb_cli import main as cli_main
+    def test_console_script_target_resolves(self):
+        """The fpbinject console script target (fpbinject.cli.fpb_cli:main)."""
+        from fpbinject.cli.fpb_cli import main as cli_main
 
-        self.assertEqual(fpb_cli.main, cli_main)
+        self.assertTrue(callable(cli_main))
 
-    def test_fpb_cli_can_be_called(self):
-        """Test that fpb_cli.main can be called"""
-        import fpb_cli
+    def test_cli_main_can_be_called(self):
+        """Test that cli main can be called"""
+        from fpbinject.cli.fpb_cli import main as cli_main
 
-        with patch("sys.argv", ["fpb_cli.py"]):
+        with patch("sys.argv", ["fpbinject"]):
             with patch("sys.exit"):
-                fpb_cli.main()
+                cli_main()
 
 
 class TestCorePackage(unittest.TestCase):
@@ -2387,16 +2392,16 @@ class TestCorePackage(unittest.TestCase):
 
     def test_import_core_package(self):
         """Test that core package can be imported"""
-        import core
+        import fpbinject.core as core
 
         self.assertIsNotNone(core)
 
     def test_import_core_submodules(self):
         """Test that core submodules can be imported"""
-        from core import elf_utils
-        from core import compiler
-        from core import state
-        from core import patch_generator
+        from fpbinject.core import elf_utils
+        from fpbinject.core import compiler
+        from fpbinject.core import state
+        from fpbinject.core import patch_generator
 
         self.assertIsNotNone(elf_utils)
         self.assertIsNotNone(compiler)
@@ -2528,7 +2533,7 @@ class TestDeviceStateCLI(unittest.TestCase):
 
     def test_init(self):
         """Test initialization"""
-        from cli.fpb_cli import DeviceState
+        from fpbinject.cli.fpb_cli import DeviceState
 
         device = DeviceState()
         self.assertIsNone(device.ser)
@@ -2537,7 +2542,7 @@ class TestDeviceStateCLI(unittest.TestCase):
 
     def test_disconnect(self):
         """Test disconnect"""
-        from cli.fpb_cli import DeviceState
+        from fpbinject.cli.fpb_cli import DeviceState
 
         device = DeviceState()
         device.ser = MagicMock()
@@ -2550,11 +2555,11 @@ class TestDeviceStateCLI(unittest.TestCase):
 
     def test_connect_no_serial(self):
         """Test connect when pyserial not installed"""
-        from cli.fpb_cli import DeviceState
+        from fpbinject.cli.fpb_cli import DeviceState
 
         device = DeviceState()
 
-        with patch("cli.fpb_cli.HAS_SERIAL", False):
+        with patch("fpbinject.cli.fpb_cli.HAS_SERIAL", False):
             with self.assertRaises(RuntimeError) as cm:
                 device.connect("/dev/ttyUSB0")
 
@@ -2568,7 +2573,7 @@ class TestFPBCLIMain(unittest.TestCase):
     @patch("sys.exit")
     def test_main_no_command(self, mock_exit):
         """Test main with no command shows help"""
-        from cli.fpb_cli import main
+        from fpbinject.cli.fpb_cli import main
 
         main()
         mock_exit.assert_called_with(1)
@@ -2578,7 +2583,7 @@ class TestFPBCLIMain(unittest.TestCase):
     @patch.object(FPBCLI, "cleanup")
     def test_main_search_command(self, mock_cleanup, mock_search):
         """Test main with search command"""
-        from cli.fpb_cli import main
+        from fpbinject.cli.fpb_cli import main
 
         main()
         mock_search.assert_called_once()
@@ -2589,7 +2594,7 @@ class TestFPBCLIMain(unittest.TestCase):
     @patch.object(FPBCLI, "cleanup")
     def test_main_server_stop_command(self, mock_cleanup, mock_stop):
         """Test main dispatches server-stop command."""
-        from cli.fpb_cli import main
+        from fpbinject.cli.fpb_cli import main
 
         main()
         mock_stop.assert_called_once()
@@ -2600,7 +2605,7 @@ class TestFPBCLIMain(unittest.TestCase):
     @patch.object(FPBCLI, "cleanup")
     def test_main_server_stop_with_port(self, mock_cleanup, mock_stop):
         """Test main dispatches server-stop with custom port."""
-        from cli.fpb_cli import main
+        from fpbinject.cli.fpb_cli import main
 
         main()
         mock_stop.assert_called_once_with(8080)
@@ -2616,13 +2621,13 @@ class TestFPBCLIServerStop(unittest.TestCase):
         self.cli.cleanup()
 
     @patch(
-        "cli.server_proxy.stop_cli_server",
+        "fpbinject.cli.server_proxy.stop_cli_server",
         return_value={
             "success": False,
             "error": "No CLI-launched server is running on port 5500",
         },
     )
-    @patch("cli.server_proxy.list_cli_servers", return_value=[])
+    @patch("fpbinject.cli.server_proxy.list_cli_servers", return_value=[])
     def test_server_stop_no_server(self, mock_list, mock_stop):
         """server_stop with no running server."""
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
@@ -2631,14 +2636,15 @@ class TestFPBCLIServerStop(unittest.TestCase):
             self.assertFalse(data["success"])
 
     @patch(
-        "cli.server_proxy.stop_cli_server",
+        "fpbinject.cli.server_proxy.stop_cli_server",
         return_value={
             "success": True,
             "message": "Server on port 6000 (PID 123) terminated",
         },
     )
     @patch(
-        "cli.server_proxy.list_cli_servers", return_value=[{"port": 6000, "pid": 123}]
+        "fpbinject.cli.server_proxy.list_cli_servers",
+        return_value=[{"port": 6000, "pid": 123}],
     )
     def test_server_stop_auto_detect_single(self, mock_list, mock_stop):
         """server_stop auto-detects single running server."""
@@ -2649,7 +2655,7 @@ class TestFPBCLIServerStop(unittest.TestCase):
             mock_stop.assert_called_once_with(6000)
 
     @patch(
-        "cli.server_proxy.list_cli_servers",
+        "fpbinject.cli.server_proxy.list_cli_servers",
         return_value=[{"port": 5500, "pid": 100}, {"port": 6000, "pid": 200}],
     )
     def test_server_stop_multiple_servers(self, mock_list):
@@ -2662,7 +2668,7 @@ class TestFPBCLIServerStop(unittest.TestCase):
             self.assertEqual(len(data["servers"]), 2)
 
     @patch(
-        "cli.server_proxy.stop_cli_server",
+        "fpbinject.cli.server_proxy.stop_cli_server",
         return_value={
             "success": True,
             "message": "Server on port 8080 (PID 456) terminated",

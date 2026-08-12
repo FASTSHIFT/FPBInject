@@ -24,7 +24,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.elf_utils import get_symbols, _NM_TYPE_MAP
+from fpbinject.core.elf_utils import get_symbols, _NM_TYPE_MAP
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 TEST_ELF = FIXTURES_DIR / "test_symbols.elf"
@@ -86,9 +86,9 @@ def _make_gdb_session():
     if _cached_gdb_session is not None and _cached_gdb_session._alive:
         return _cached_gdb_session
 
-    from core.gdb_session import GDBSession
+    from fpbinject.core.gdb_session import GDBSession
     from pygdbmi.IoManager import IoManager
-    from utils.toolchain import get_subprocess_env
+    from fpbinject.utils.toolchain import get_subprocess_env
 
     gdb = GDBSession(str(TEST_ELF))
     gdb_path, is_multiarch = gdb._find_gdb()
@@ -576,9 +576,9 @@ def _make_cpp_gdb_session():
     if _cached_cpp_gdb_session is not None and _cached_cpp_gdb_session._alive:
         return _cached_cpp_gdb_session
 
-    from core.gdb_session import GDBSession
+    from fpbinject.core.gdb_session import GDBSession
     from pygdbmi.IoManager import IoManager
-    from utils.toolchain import get_subprocess_env
+    from fpbinject.utils.toolchain import get_subprocess_env
 
     gdb = GDBSession(str(TEST_CPP_ELF))
     gdb_path, is_multiarch = gdb._find_gdb()

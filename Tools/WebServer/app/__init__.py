@@ -14,22 +14,27 @@ import os
 from flask import Flask
 from flask_cors import CORS
 
-# Get the directory where WebServer is located
-WEBSERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Locate the package root (holds templates/ and static/) via importlib.resources
+# so it resolves correctly whether run from source or an installed wheel.
+try:
+    from importlib.resources import files as _res_files
+
+    WEBSERVER_DIR = str(_res_files("fpbinject"))
+except Exception:  # pragma: no cover - fallback for odd layouts
+    WEBSERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def create_app():
     """Create and configure the Flask application."""
     app = Flask(
-        __name__,
+        "fpbinject",
         template_folder=os.path.join(WEBSERVER_DIR, "templates"),
         static_folder=os.path.join(WEBSERVER_DIR, "static"),
     )
     CORS(app)
 
     # Import and register routes
-    # For now, use the legacy routes module during migration
-    from routes import register_routes
+    from fpbinject.routes import register_routes
 
     register_routes(app)
 

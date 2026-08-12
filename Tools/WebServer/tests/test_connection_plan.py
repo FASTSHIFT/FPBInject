@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.connection_plan import (  # noqa: E402
+from fpbinject.cli.connection_plan import (  # noqa: E402
     CommandPolicy,
     ConnectionMode,
     ConnectionPlan,

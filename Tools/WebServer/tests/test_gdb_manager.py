@@ -5,7 +5,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.gdb_manager import (
+from fpbinject.core.gdb_manager import (
     start_gdb,
     stop_gdb,
     is_gdb_available,
@@ -97,16 +97,16 @@ class TestStartGDB(unittest.TestCase):
         result = start_gdb(state)
         self.assertFalse(result)
 
-    @patch("core.gdb_manager.os.path.exists", return_value=False)
+    @patch("fpbinject.core.gdb_manager.os.path.exists", return_value=False)
     def test_elf_not_found(self, mock_exists):
         state = self._make_state()
         result = start_gdb(state)
         self.assertFalse(result)
 
-    @patch("core.gdb_manager.start_external_gdb_server")
-    @patch("core.gdb_manager.GDBSession")
-    @patch("core.gdb_manager.GDBRSPBridge")
-    @patch("core.gdb_manager.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_manager.start_external_gdb_server")
+    @patch("fpbinject.core.gdb_manager.GDBSession")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.os.path.exists", return_value=True)
     def test_start_success(self, mock_exists, MockBridge, MockSession, mock_ext):
         mock_bridge = MockBridge.return_value
         mock_bridge.start.return_value = 12345
@@ -124,9 +124,9 @@ class TestStartGDB(unittest.TestCase):
         self.assertEqual(state.gdb_session, mock_session)
         mock_ext.assert_called_once()
 
-    @patch("core.gdb_manager.GDBSession")
-    @patch("core.gdb_manager.GDBRSPBridge")
-    @patch("core.gdb_manager.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_manager.GDBSession")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.os.path.exists", return_value=True)
     def test_start_session_fails(self, mock_exists, MockBridge, MockSession):
         mock_bridge = MockBridge.return_value
         mock_bridge.start.return_value = 12345
@@ -142,8 +142,8 @@ class TestStartGDB(unittest.TestCase):
         mock_bridge.stop.assert_called()
         self.assertIsNone(state.gdb_bridge)
 
-    @patch("core.gdb_manager.GDBRSPBridge")
-    @patch("core.gdb_manager.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.os.path.exists", return_value=True)
     def test_start_bridge_exception(self, mock_exists, MockBridge):
         MockBridge.return_value.start.side_effect = Exception("port in use")
 
@@ -152,10 +152,10 @@ class TestStartGDB(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("core.gdb_manager.start_external_gdb_server")
-    @patch("core.gdb_manager.GDBSession")
-    @patch("core.gdb_manager.GDBRSPBridge")
-    @patch("core.gdb_manager.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_manager.start_external_gdb_server")
+    @patch("fpbinject.core.gdb_manager.GDBSession")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.os.path.exists", return_value=True)
     def test_start_uses_offline_stubs(
         self, mock_exists, MockBridge, MockSession, mock_ext
     ):
@@ -179,9 +179,9 @@ class TestStartGDB(unittest.TestCase):
         ok, msg = write_fn(0x1000, b"\x01\x02")
         self.assertTrue(ok)
 
-    @patch("core.gdb_manager.GDBSession")
-    @patch("core.gdb_manager.GDBRSPBridge")
-    @patch("core.gdb_manager.os.path.exists", return_value=True)
+    @patch("fpbinject.core.gdb_manager.GDBSession")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.os.path.exists", return_value=True)
     def test_start_stops_existing(self, mock_exists, MockBridge, MockSession):
         """Starting GDB should stop any existing session first."""
         mock_bridge = MockBridge.return_value
@@ -212,7 +212,7 @@ class TestExternalGDBServer(unittest.TestCase):
         state.external_gdb_bridge = None
         return state
 
-    @patch("core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
     def test_start_external_success(self, MockBridge):
         mock_bridge = MockBridge.return_value
         mock_bridge.start.return_value = 3333
@@ -232,7 +232,7 @@ class TestExternalGDBServer(unittest.TestCase):
         self.assertFalse(result)
         self.assertIsNone(state.external_gdb_bridge)
 
-    @patch("core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
     def test_start_external_already_running(self, MockBridge):
         """Should return True if already running."""
         state = self._make_state()
@@ -245,7 +245,7 @@ class TestExternalGDBServer(unittest.TestCase):
         self.assertTrue(result)
         MockBridge.assert_not_called()  # Should not create new bridge
 
-    @patch("core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
     def test_start_external_exception(self, MockBridge):
         MockBridge.return_value.start.side_effect = Exception("port in use")
 
@@ -298,7 +298,7 @@ class TestExternalGDBServer(unittest.TestCase):
 
         self.assertEqual(get_external_gdb_port(state), 0)
 
-    @patch("core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
     def test_start_external_creates_serial_callbacks(self, MockBridge):
         """When no callbacks provided, serial callbacks should be created."""
         mock_bridge = MockBridge.return_value
@@ -314,7 +314,7 @@ class TestExternalGDBServer(unittest.TestCase):
         self.assertTrue(callable(read_fn))
         self.assertTrue(callable(write_fn))
 
-    @patch("core.gdb_manager.GDBRSPBridge")
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
     def test_start_external_uses_provided_callbacks(self, MockBridge):
         """When callbacks are provided, they should be used directly."""
         mock_bridge = MockBridge.return_value
@@ -356,7 +356,7 @@ class TestSerialMemoryCallbacks(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Not connected", msg)
 
-    @patch("services.device_worker.run_in_device_worker", return_value=False)
+    @patch("fpbinject.services.device_worker.run_in_device_worker", return_value=False)
     def test_read_worker_timeout(self, mock_worker):
         state = self._make_state(connected=True)
         read_fn, _ = _create_serial_memory_callbacks(state)
@@ -365,7 +365,7 @@ class TestSerialMemoryCallbacks(unittest.TestCase):
         self.assertIsNone(data)
         self.assertIn("timeout", msg.lower())
 
-    @patch("services.device_worker.run_in_device_worker", return_value=False)
+    @patch("fpbinject.services.device_worker.run_in_device_worker", return_value=False)
     def test_write_worker_timeout(self, mock_worker):
         state = self._make_state(connected=True)
         _, write_fn = _create_serial_memory_callbacks(state)
@@ -379,7 +379,8 @@ class TestApplyElfMemoryRegions(unittest.TestCase):
     """Test _apply_elf_memory_regions helper."""
 
     @patch(
-        "core.gdb_manager.get_memory_regions", return_value=[(0x08000000, 0x08100000)]
+        "fpbinject.core.gdb_manager.get_memory_regions",
+        return_value=[(0x08000000, 0x08100000)],
     )
     def test_applies_elf_regions(self, mock_get):
         bridge = MagicMock()
@@ -387,7 +388,7 @@ class TestApplyElfMemoryRegions(unittest.TestCase):
         mock_get.assert_called_once_with("/path/to/firmware.elf")
         bridge.set_memory_regions.assert_called_once_with([(0x08000000, 0x08100000)])
 
-    @patch("core.gdb_manager.get_memory_regions", return_value=[])
+    @patch("fpbinject.core.gdb_manager.get_memory_regions", return_value=[])
     def test_empty_regions_keeps_default(self, mock_get):
         bridge = MagicMock()
         _apply_elf_memory_regions(bridge, "/path/to/firmware.elf")

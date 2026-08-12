@@ -14,8 +14,8 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-from core.state import state
-from core.watch_evaluator import WatchEvaluator
+from fpbinject.core.state import state
+from fpbinject.core.watch_evaluator import WatchEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ _watch_next_id = 1
 
 def _get_evaluator():
     """Create a WatchEvaluator if GDB is available."""
-    from core.gdb_manager import is_gdb_available
+    from fpbinject.core.gdb_manager import is_gdb_available
 
     if not is_gdb_available(state) or state.gdb_session is None:
         return None
@@ -37,7 +37,11 @@ def _get_evaluator():
 
 def _read_device_memory(addr, size):
     """Read memory from device via serial. Returns hex string or None."""
-    from app.routes.symbols import _dynamic_timeout, _get_fpb_inject, _run_serial_op
+    from fpbinject.app.routes.symbols import (
+        _dynamic_timeout,
+        _get_fpb_inject,
+        _run_serial_op,
+    )
 
     fpb = _get_fpb_inject()
     timeout = _dynamic_timeout(size)
@@ -113,7 +117,7 @@ def api_watch_deref():
     type_name = data.get("type_name", "")
     max_size = min(data.get("max_size", 256), 65536)
 
-    from app.routes.symbols import _parse_addr
+    from fpbinject.app.routes.symbols import _parse_addr
 
     addr = _parse_addr(addr_str)
     if addr is None:

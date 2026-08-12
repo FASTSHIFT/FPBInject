@@ -7,7 +7,7 @@ import time
 import unittest
 from unittest.mock import MagicMock
 
-from core.gdb_bridge import (
+from fpbinject.core.gdb_bridge import (
     GDBRSPBridge,
     _checksum,
     _encode_packet,

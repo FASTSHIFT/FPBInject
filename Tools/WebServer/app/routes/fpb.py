@@ -18,9 +18,9 @@ import time as _time
 
 from flask import Blueprint, jsonify, request
 
-from app.utils.sse import sse_response
-from core.state import state
-from services.device_worker import run_in_device_worker
+from fpbinject.app.utils.sse import sse_response
+from fpbinject.core.state import state
+from fpbinject.services.device_worker import run_in_device_worker
 
 bp = Blueprint("fpb", __name__)
 logger = logging.getLogger(__name__)
@@ -31,9 +31,9 @@ _inject_cancelled = threading.Event()
 
 def _get_helpers():
     """Lazy import to avoid circular dependency."""
-    from routes import get_fpb_inject
-    from utils.helpers import build_slot_response
-    from core.state import state, tool_log
+    from fpbinject.routes import get_fpb_inject
+    from fpbinject.utils.helpers import build_slot_response
+    from fpbinject.core.state import state, tool_log
 
     def log_info(msg):
         tool_log(state.device, "INFO", msg)
@@ -231,7 +231,7 @@ def api_fpb_info():
     if info and info.get("version_string"):
         import re as _re
 
-        from version import VERSION_MAJOR, VERSION_MINOR
+        from fpbinject.version import VERSION_MAJOR, VERSION_MINOR
 
         match = _re.search(r"v(\d+)\.(\d+)", info["version_string"])
         if match:

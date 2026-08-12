@@ -14,8 +14,8 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-from app.routes import fpb  # noqa: E402
-from core.state import DeviceState, state  # noqa: E402
+from fpbinject.app.routes import fpb  # noqa: E402
+from fpbinject.core.state import DeviceState, state  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=5.0):
@@ -58,7 +58,8 @@ class TestFPBRoutesBase(unittest.TestCase):
 
         # Patch run_in_device_worker to execute synchronously
         self.worker_patcher = patch(
-            "app.routes.fpb.run_in_device_worker", side_effect=mock_run_in_device_worker
+            "fpbinject.app.routes.fpb.run_in_device_worker",
+            side_effect=mock_run_in_device_worker,
         )
         self.mock_worker = self.worker_patcher.start()
 
@@ -71,7 +72,7 @@ class TestFPBRoutesBase(unittest.TestCase):
 class TestFPBPingRoute(TestFPBRoutesBase):
     """FPB ping route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_ping_success(self, mock_helpers):
         """Test ping success"""
         mock_fpb = Mock()
@@ -84,7 +85,7 @@ class TestFPBPingRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["message"], "Pong!")
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_ping_failure(self, mock_helpers):
         """Test ping failure"""
         mock_fpb = Mock()
@@ -100,7 +101,7 @@ class TestFPBPingRoute(TestFPBRoutesBase):
 class TestFPBTestSerialRoute(TestFPBRoutesBase):
     """FPB test-serial route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_serial_test_success(self, mock_helpers):
         """Test serial throughput test success"""
         mock_fpb = Mock()
@@ -124,7 +125,7 @@ class TestFPBTestSerialRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["max_working_size"], 256)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_serial_test_failure(self, mock_helpers):
         """Test serial throughput test failure"""
         mock_fpb = Mock()
@@ -143,7 +144,7 @@ class TestFPBTestSerialRoute(TestFPBRoutesBase):
 class TestFPBInfoRoute(TestFPBRoutesBase):
     """FPB info route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_info_success(self, mock_helpers):
         """Test info success"""
         mock_fpb = Mock()
@@ -165,7 +166,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         self.assertIn("info", data)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_info_error(self, mock_helpers):
         """Test info error"""
         mock_fpb = Mock()
@@ -179,7 +180,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not responding", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_info_no_device_info_available(self, mock_helpers):
         """Test info when device returns empty response (no FLOK marker)"""
         mock_fpb = Mock()
@@ -197,7 +198,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("not responding", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_info_build_time_mismatch(self, mock_helpers):
         """Test info with build time mismatch"""
         mock_fpb = Mock()
@@ -223,7 +224,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         finally:
             os.unlink(state.device.elf_path)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_info_version_mismatch(self, mock_helpers):
         """Test info detects major.minor version mismatch"""
         mock_fpb = Mock()
@@ -244,10 +245,10 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         self.assertTrue(data["version_mismatch"])
         self.assertEqual(data["device_version"], "1.5")
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_info_version_match_same_minor(self, mock_helpers):
         """Test info: same major.minor with different patch is NOT a mismatch"""
-        from version import VERSION_MAJOR, VERSION_MINOR
+        from fpbinject.version import VERSION_MAJOR, VERSION_MINOR
 
         mock_fpb = Mock()
         # Use current host major.minor but different patch
@@ -270,7 +271,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         self.assertFalse(data["version_mismatch"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_info_version_no_version_string(self, mock_helpers):
         """Test info: no version_string in device response means no mismatch"""
         mock_fpb = Mock()
@@ -294,7 +295,7 @@ class TestFPBInfoRoute(TestFPBRoutesBase):
 class TestFPBUnpatchRoute(TestFPBRoutesBase):
     """FPB unpatch route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_unpatch_single_slot(self, mock_helpers):
         """Test unpatch single slot"""
         mock_fpb = Mock()
@@ -310,7 +311,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
         # Single slot unpatch should not clear inject_active
         self.assertTrue(state.device.inject_active)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_unpatch_all(self, mock_helpers):
         """Test unpatch all slots"""
         mock_fpb = Mock()
@@ -327,7 +328,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
         self.assertFalse(state.device.inject_active)
         self.assertIsNone(state.device.last_inject_target)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_unpatch_failure(self, mock_helpers):
         """Test unpatch failure"""
         mock_fpb = Mock()
@@ -339,7 +340,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
 
         self.assertFalse(data["success"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_unpatch_exception(self, mock_helpers):
         """Test unpatch with exception"""
         mock_fpb = Mock()
@@ -356,7 +357,7 @@ class TestFPBUnpatchRoute(TestFPBRoutesBase):
 class TestFPBEnableRoute(TestFPBRoutesBase):
     """FPB enable route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_enable_single_slot(self, mock_helpers):
         """Test enable single slot"""
         mock_fpb = Mock()
@@ -369,7 +370,7 @@ class TestFPBEnableRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         mock_fpb.enable_patch.assert_called_once_with(comp=0, enable=True, all=False)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_disable_single_slot(self, mock_helpers):
         """Test disable single slot"""
         mock_fpb = Mock()
@@ -384,7 +385,7 @@ class TestFPBEnableRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         mock_fpb.enable_patch.assert_called_once_with(comp=0, enable=False, all=False)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_enable_all_slots(self, mock_helpers):
         """Test enable all slots"""
         mock_fpb = Mock()
@@ -399,7 +400,7 @@ class TestFPBEnableRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         mock_fpb.enable_patch.assert_called_once_with(comp=0, enable=True, all=True)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_disable_all_slots(self, mock_helpers):
         """Test disable all slots"""
         mock_fpb = Mock()
@@ -414,7 +415,7 @@ class TestFPBEnableRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         mock_fpb.enable_patch.assert_called_once_with(comp=0, enable=False, all=True)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_enable_failure(self, mock_helpers):
         """Test enable failure"""
         mock_fpb = Mock()
@@ -428,7 +429,7 @@ class TestFPBEnableRoute(TestFPBRoutesBase):
 
         self.assertFalse(data["success"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_enable_exception(self, mock_helpers):
         """Test enable with exception"""
         mock_fpb = Mock()
@@ -441,7 +442,7 @@ class TestFPBEnableRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Unexpected error", data["message"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_enable_default_values(self, mock_helpers):
         """Test enable with default values"""
         mock_fpb = Mock()
@@ -459,7 +460,7 @@ class TestFPBEnableRoute(TestFPBRoutesBase):
 class TestFPBInjectRoute(TestFPBRoutesBase):
     """FPB inject route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_no_source(self, mock_helpers):
         """Test inject without source content"""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -470,7 +471,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Source content", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_no_target(self, mock_helpers):
         """Test inject without target function"""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -483,7 +484,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Target function", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_success(self, mock_helpers):
         """Test inject success"""
         mock_fpb = Mock()
@@ -505,7 +506,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
         mock_fpb.enter_fl_mode.assert_called_once()
         mock_fpb.exit_fl_mode.assert_called_once()
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_failure(self, mock_helpers):
         """Test inject failure"""
         mock_fpb = Mock()
@@ -529,7 +530,7 @@ class TestFPBInjectRoute(TestFPBRoutesBase):
 class TestFPBInjectMultiRoute(TestFPBRoutesBase):
     """FPB inject/multi route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_multi_no_source(self, mock_helpers):
         """Test inject_multi without source content"""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -540,7 +541,7 @@ class TestFPBInjectMultiRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Source content", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_multi_success(self, mock_helpers):
         """Test inject_multi success"""
         mock_fpb = Mock()
@@ -563,7 +564,7 @@ class TestFPBInjectMultiRoute(TestFPBRoutesBase):
         self.assertTrue(data["success"])
         self.assertEqual(data["successful_count"], 2)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_multi_failure(self, mock_helpers):
         """Test inject_multi failure"""
         mock_fpb = Mock()
@@ -584,7 +585,7 @@ class TestFPBInjectMultiRoute(TestFPBRoutesBase):
 class TestFPBInjectStreamRoute(TestFPBRoutesBase):
     """FPB inject/stream route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_stream_no_source(self, mock_helpers):
         """Test inject_stream without source content"""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -597,7 +598,7 @@ class TestFPBInjectStreamRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Source content", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_stream_no_target(self, mock_helpers):
         """Test inject_stream without target function"""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -610,7 +611,7 @@ class TestFPBInjectStreamRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Target function", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_stream_success_emits_sse(self, mock_helpers):
         """Test inject_stream returns SSE events on success."""
         mock_fpb = Mock()
@@ -650,7 +651,7 @@ class TestFPBInjectStreamRoute(TestFPBRoutesBase):
 class TestFPBInjectMultiStreamRoute(TestFPBRoutesBase):
     """FPB inject/multi/stream route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_multi_stream_no_source(self, mock_helpers):
         """Test inject/multi/stream without source content."""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -661,7 +662,7 @@ class TestFPBInjectMultiStreamRoute(TestFPBRoutesBase):
         self.assertFalse(data["success"])
         self.assertIn("Source content", data["error"])
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_multi_stream_success_emits_sse(self, mock_helpers):
         """Test inject/multi/stream returns SSE events with progress."""
         mock_fpb = Mock()
@@ -714,7 +715,7 @@ class TestFPBInjectMultiStreamRoute(TestFPBRoutesBase):
         self.assertTrue(result_evt["success"])
         self.assertEqual(result_evt["successful_count"], 2)
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_multi_stream_worker_timeout(self, mock_helpers):
         """Test inject/multi/stream handles device worker timeout."""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -722,7 +723,7 @@ class TestFPBInjectMultiStreamRoute(TestFPBRoutesBase):
         # Make run_in_device_worker return False (timeout)
         self.worker_patcher.stop()
         timeout_patcher = patch(
-            "app.routes.fpb.run_in_device_worker", return_value=False
+            "fpbinject.app.routes.fpb.run_in_device_worker", return_value=False
         )
         timeout_patcher.start()
 
@@ -760,7 +761,7 @@ def _parse_sse_events(body):
 class TestFPBInjectCancelRoute(TestFPBRoutesBase):
     """FPB inject/cancel route tests"""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_cancel_sets_flag(self, mock_helpers):
         """Test cancel endpoint sets the _inject_cancelled event."""
         mock_helpers.return_value = make_mock_helpers(Mock())
@@ -828,7 +829,7 @@ class TestMakeInjectProgressCallback(unittest.TestCase):
 class TestInjectStreamCancel(TestFPBRoutesBase):
     """Test inject/stream cancellation."""
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_stream_cancelled(self, mock_helpers):
         """Test inject_stream returns cancelled result when cancelled."""
         mock_fpb = Mock()
@@ -864,7 +865,7 @@ class TestInjectStreamCancel(TestFPBRoutesBase):
         # Clean up
         fpb._inject_cancelled.clear()
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_multi_stream_cancelled(self, mock_helpers):
         """Test inject/multi/stream returns cancelled result when cancelled."""
         mock_fpb = Mock()
@@ -896,7 +897,7 @@ class TestInjectStreamCancel(TestFPBRoutesBase):
         # Clean up
         fpb._inject_cancelled.clear()
 
-    @patch("app.routes.fpb._get_helpers")
+    @patch("fpbinject.app.routes.fpb._get_helpers")
     def test_inject_stream_progress_has_speed_fields(self, mock_helpers):
         """Test inject_stream SSE progress events include speed/eta/elapsed."""
         mock_fpb = Mock()

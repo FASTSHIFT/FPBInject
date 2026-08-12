@@ -27,8 +27,8 @@ import logging
 
 from flask import render_template
 
-from core.state import state
-from fpb_inject import FPBInject
+from fpbinject.core.state import state
+from fpbinject.fpb_inject import FPBInject
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def get_fpb_inject():
 
 def register_routes(app):
     """Register all routes with the Flask app."""
-    from app.routes import register_blueprints
+    from fpbinject.app.routes import register_blueprints
 
     register_blueprints(app)
 

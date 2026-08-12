@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.discover import (  # noqa: E402
+from fpbinject.cli.discover import (  # noqa: E402
     FPBServer,
     discover,
     discover_sync_by_handle,
@@ -118,8 +118,8 @@ class TestEarlyReturnByHandle(unittest.TestCase):
                 }
             }
         )
-        with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
-            "cli.discover.AsyncServiceInfo", Info
+        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
+            "fpbinject.cli.discover.AsyncServiceInfo", Info
         ):
             t0 = time.monotonic()
             servers = discover_sync_by_handle("bench:5500", timeout=3.0)
@@ -147,8 +147,8 @@ class TestEarlyReturnByHandle(unittest.TestCase):
                 }
             }
         )
-        with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
-            "cli.discover.AsyncServiceInfo", Info
+        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
+            "fpbinject.cli.discover.AsyncServiceInfo", Info
         ):
             t0 = time.monotonic()
             servers = discover_sync_by_handle("nope:9999", timeout=0.3)
@@ -177,8 +177,8 @@ class TestEarlyMatchPredicate(unittest.TestCase):
         def is_first(s):
             return s.handle == "srv0:5500"
 
-        with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
-            "cli.discover.AsyncServiceInfo", Info
+        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
+            "fpbinject.cli.discover.AsyncServiceInfo", Info
         ):
             t0 = time.monotonic()
             servers = asyncio.run(discover(timeout=3.0, early_match=is_first))

@@ -3,7 +3,7 @@
 FPB CLI entry point - forwards to cli/fpb_cli.py
 """
 
-from cli.fpb_cli import main
+from fpbinject.cli.fpb_cli import main
 
 if __name__ == "__main__":
     main()

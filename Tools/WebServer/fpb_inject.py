@@ -14,10 +14,10 @@ import os
 import time
 from typing import Dict, Optional, Tuple
 
-from core import elf_utils
-from core import compiler as compiler_utils
-from core.serial_protocol import FPBProtocol, FPBProtocolError, Platform
-from utils.serial import scan_serial_ports, serial_open
+from fpbinject.core import elf_utils
+from fpbinject.core import compiler as compiler_utils
+from fpbinject.core.serial_protocol import FPBProtocol, FPBProtocolError, Platform
+from fpbinject.utils.serial import scan_serial_ports, serial_open
 
 logger = logging.getLogger(__name__)
 
@@ -263,8 +263,8 @@ class FPBInject:
                 return addr
 
         # Slow path: fall back to GDB session
-        from core.state import state
-        from core.gdb_manager import is_gdb_available
+        from fpbinject.core.state import state
+        from fpbinject.core.gdb_manager import is_gdb_available
 
         if not is_gdb_available(state):
             logger.warning(

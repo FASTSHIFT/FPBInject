@@ -12,9 +12,9 @@ from unittest.mock import Mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
-import routes  # noqa: E402
-from core.state import DeviceState, state  # noqa: E402
-from services.device_worker import DeviceWorker  # noqa: E402
+import fpbinject.routes as routes  # noqa: E402
+from fpbinject.core.state import DeviceState, state  # noqa: E402
+from fpbinject.services.device_worker import DeviceWorker  # noqa: E402
 
 
 class TestLogsSSE(unittest.TestCase):

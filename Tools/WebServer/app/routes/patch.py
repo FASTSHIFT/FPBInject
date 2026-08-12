@@ -14,7 +14,7 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from core.state import state
+from fpbinject.core.state import state
 
 bp = Blueprint("patch", __name__)
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def _get_fpb_inject():
     """Lazy import to avoid circular dependency."""
-    from routes import get_fpb_inject
+    from fpbinject.routes import get_fpb_inject
 
     return get_fpb_inject()
 
@@ -89,7 +89,7 @@ def api_auto_generate_patch():
     Finds functions marked with /* FPB_INJECT */ comment,
     copies entire file with marked functions renamed to inject_xxx.
     """
-    from core.patch_generator import PatchGenerator
+    from fpbinject.core.patch_generator import PatchGenerator
 
     data = request.json or {}
     file_path = data.get("file_path")
@@ -138,7 +138,7 @@ def api_detect_markers():
 
     Returns list of marked function names without generating patch.
     """
-    from core.patch_generator import PatchGenerator
+    from fpbinject.core.patch_generator import PatchGenerator
 
     data = request.json or {}
     file_path = data.get("file_path")

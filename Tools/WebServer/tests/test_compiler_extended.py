@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import compiler  # noqa: E402
+from fpbinject.core import compiler  # noqa: E402
 
 
 class TestCompileInjectSuccessPath(unittest.TestCase):
@@ -49,7 +49,9 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
                 return io.BytesIO(bin_data)
             return original_open(path, *args, **kw)
 
-        with patch("core.compiler.fix_veneer_thumb_bits", return_value=bin_data):
+        with patch(
+            "fpbinject.core.compiler.fix_veneer_thumb_bits", return_value=bin_data
+        ):
             with patch("builtins.open", side_effect=patched_open):
                 return compiler.compile_inject(
                     source,
@@ -58,7 +60,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
                     **{k: v for k, v in kwargs.items() if k != "base_addr"},
                 )
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_full_success(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -72,7 +74,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertIn("test_func", symbols)
         self.assertEqual(symbols["test_func"], 0x20001000)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_raw_command(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -88,7 +90,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertNotIn("-MD", first_cmd)
         self.assertNotIn("-MF", first_cmd)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_cpp_extension(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -103,7 +105,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         cpp_args = [a for a in first_cmd if a.endswith(".cpp")]
         self.assertEqual(len(cpp_args), 1)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_demangled_names(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -116,7 +118,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertIn("foo", symbols)
         self.assertIn("bar", symbols)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_malformed_nm_lines(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -128,7 +130,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertEqual(error, "")
         self.assertIn("valid_func", symbols)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_no_fpb_markers(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -139,7 +141,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         )
         self.assertEqual(error, "")
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_symbols_filtered_by_base_addr(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -152,7 +154,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertIn("inject_func", symbols)
         self.assertNotIn("firmware_func", symbols)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_verbose_mode(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -164,7 +166,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         )
         self.assertEqual(error, "")
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_with_elf_path(self, mock_run, mock_parse):
         with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as f:
@@ -185,7 +187,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         finally:
             os.unlink(elf_path)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_non_text_symbols_excluded(self, mock_run, mock_parse):
         data, symbols, error = self._run_compile(
@@ -199,7 +201,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertNotIn("data_var", symbols)
         self.assertNotIn("bss_var", symbols)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_compile_error(self, mock_run, mock_parse):
         mock_parse.return_value = self._make_config()
@@ -212,7 +214,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertIsNone(data)
         self.assertIn("Compile error", error)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_link_error(self, mock_run, mock_parse):
         mock_parse.return_value = self._make_config()
@@ -230,7 +232,7 @@ class TestCompileInjectSuccessPath(unittest.TestCase):
         self.assertIsNone(data)
         self.assertIn("Link error", error)
 
-    @patch("core.compiler.parse_compile_commands")
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     @patch("subprocess.run")
     def test_objcopy_error(self, mock_run, mock_parse):
         mock_parse.return_value = self._make_config()

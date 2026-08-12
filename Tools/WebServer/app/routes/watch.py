@@ -11,7 +11,7 @@ Provides endpoints for file watcher status and auto-inject monitoring.
 
 from flask import Blueprint, jsonify, request
 
-from core.state import state
+from fpbinject.core.state import state
 
 bp = Blueprint("watch", __name__)
 
@@ -19,7 +19,10 @@ bp = Blueprint("watch", __name__)
 # Import file watcher helpers
 def _get_file_watcher_helpers():
     """Lazy import to avoid circular dependency."""
-    from services.file_watcher_manager import start_file_watcher, stop_file_watcher
+    from fpbinject.services.file_watcher_manager import (
+        start_file_watcher,
+        stop_file_watcher,
+    )
 
     return start_file_watcher, stop_file_watcher
 
@@ -129,7 +132,7 @@ def api_autoinject_trigger():
         return jsonify({"success": False, "error": f"File not found: {file_path}"})
 
     # Import and call the internal trigger function
-    from services.file_watcher_manager import _trigger_auto_inject
+    from fpbinject.services.file_watcher_manager import _trigger_auto_inject
 
     try:
         _trigger_auto_inject(file_path)
@@ -147,7 +150,7 @@ def api_autoinject_trigger():
 
 def _get_elf_watcher_helpers():
     """Lazy import to avoid circular dependency."""
-    from services.file_watcher_manager import (
+    from fpbinject.services.file_watcher_manager import (
         check_elf_file_changed,
         acknowledge_elf_change,
     )

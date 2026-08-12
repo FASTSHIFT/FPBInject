@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.discover import (  # noqa: E402
+from fpbinject.cli.discover import (  # noqa: E402
     _address_sort_key,
     _is_loopback,
     _is_same_host,
@@ -128,8 +128,8 @@ class TestDiscoverLocalhostNormalization(unittest.TestCase):
                 }
             }
         )
-        with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
-            "cli.discover.AsyncServiceInfo", Info
+        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
+            "fpbinject.cli.discover.AsyncServiceInfo", Info
         ):
             servers = asyncio.run(discover(timeout=0.05))
         self.assertEqual(len(servers), 1)
@@ -149,10 +149,10 @@ class TestDiscoverLocalhostNormalization(unittest.TestCase):
                 }
             }
         )
-        with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
-            "cli.discover.AsyncServiceInfo", Info
+        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
+            "fpbinject.cli.discover.AsyncServiceInfo", Info
         ), patch(
-            "cli.discover._local_interface_ips",
+            "fpbinject.cli.discover._local_interface_ips",
             return_value=frozenset({"127.0.0.1", "10.0.0.5"}),
         ):
             servers = asyncio.run(discover(timeout=0.05))
@@ -171,10 +171,10 @@ class TestDiscoverLocalhostNormalization(unittest.TestCase):
                 }
             }
         )
-        with patch("cli.discover.AsyncServiceBrowser", Browser), patch(
-            "cli.discover.AsyncServiceInfo", Info
+        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
+            "fpbinject.cli.discover.AsyncServiceInfo", Info
         ), patch(
-            "cli.discover._local_interface_ips",
+            "fpbinject.cli.discover._local_interface_ips",
             return_value=frozenset({"127.0.0.1", "10.0.0.5"}),
         ):
             servers = asyncio.run(discover(timeout=0.05))

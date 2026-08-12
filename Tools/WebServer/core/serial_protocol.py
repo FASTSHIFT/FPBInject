@@ -17,8 +17,8 @@ import time
 from enum import Enum
 from typing import Dict, Optional, Tuple
 
-from utils.crc import crc16, crc16_update
-from core.state import tool_log
+from fpbinject.utils.crc import crc16, crc16_update
+from fpbinject.core.state import tool_log
 
 logger = logging.getLogger(__name__)
 

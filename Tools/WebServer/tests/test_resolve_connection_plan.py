@@ -14,14 +14,14 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cli.connection_plan import (  # noqa: E402
+from fpbinject.cli.connection_plan import (  # noqa: E402
     CommandPolicy,
     ConnectionMode,
 )
 
 
 def _import_resolver():
-    from cli.fpb_cli import resolve_connection_plan  # noqa: E402
+    from fpbinject.cli.fpb_cli import resolve_connection_plan  # noqa: E402
 
     return resolve_connection_plan
 
@@ -52,7 +52,7 @@ def _ns(**kwargs):
 
 
 def _fake_server(host="192.168.1.20", port=5500, version="1.6.6", auth="token"):
-    from cli.discover import FPBServer
+    from fpbinject.cli.discover import FPBServer
 
     return FPBServer(
         name=f"fake-{host}-{port}",
@@ -102,7 +102,7 @@ class TestInvalidFlagCombos(unittest.TestCase):
     """Rejected at resolve time so the user sees one clear error, not a silent no-op."""
 
     def test_direct_with_server_url_rejected(self):
-        from cli.fpb_cli import FPBCLIError
+        from fpbinject.cli.fpb_cli import FPBCLIError
 
         resolve = _import_resolver()
         with self.assertRaises(FPBCLIError) as cm:
@@ -113,7 +113,7 @@ class TestInvalidFlagCombos(unittest.TestCase):
         self.assertIn("--server-url", str(cm.exception))
 
     def test_direct_without_port_for_device_command_rejected(self):
-        from cli.fpb_cli import FPBCLIError
+        from fpbinject.cli.fpb_cli import FPBCLIError
 
         resolve = _import_resolver()
         with self.assertRaises(FPBCLIError) as cm:
@@ -150,7 +150,7 @@ class TestExplicitServerUrl(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_explicit_url_does_not_call_discovery(self):
         resolve = _import_resolver()
-        with patch("cli.fpb_cli.discover_sync") as mock_disc:
+        with patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
             resolve(_ns(server_url="http://1.2.3.4:5500"))
         mock_disc.assert_not_called()
 
@@ -162,9 +162,9 @@ class TestImplicitLocalShortCircuit(unittest.TestCase):
     def test_single_pid_server_short_circuits_discovery(self):
         resolve = _import_resolver()
         with patch(
-            "cli.fpb_cli.list_cli_servers",
+            "fpbinject.cli.fpb_cli.list_cli_servers",
             return_value=[{"port": 5599, "pid": 1234}],
-        ), patch("cli.fpb_cli.discover_sync") as mock_disc:
+        ), patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
             plan = resolve(_ns())
         self.assertEqual(plan.mode, ConnectionMode.LOCAL_PROXY)
         self.assertEqual(plan.server_url, "http://127.0.0.1:5599")
@@ -174,9 +174,9 @@ class TestImplicitLocalShortCircuit(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_localhost_default_probe_short_circuits_discovery(self):
         resolve = _import_resolver()
-        with patch("cli.fpb_cli.list_cli_servers", return_value=[]), patch(
-            "cli.fpb_cli._localhost_status_ok", return_value=True
-        ), patch("cli.fpb_cli.discover_sync") as mock_disc:
+        with patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]), patch(
+            "fpbinject.cli.fpb_cli._localhost_status_ok", return_value=True
+        ), patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
             plan = resolve(_ns())
         self.assertEqual(plan.mode, ConnectionMode.LOCAL_PROXY)
         self.assertEqual(plan.server_url, "http://127.0.0.1:5500")
@@ -188,9 +188,9 @@ class TestNoDiscoveryFlag(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_no_discovery_falls_back_to_default_localhost(self):
         resolve = _import_resolver()
-        with patch("cli.fpb_cli.list_cli_servers", return_value=[]), patch(
-            "cli.fpb_cli._localhost_status_ok", return_value=False
-        ), patch("cli.fpb_cli.discover_sync") as mock_disc:
+        with patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]), patch(
+            "fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False
+        ), patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
             plan = resolve(_ns(no_discovery=True))
         self.assertEqual(plan.mode, ConnectionMode.LOCAL_PROXY)
         self.assertEqual(plan.server_url, "http://127.0.0.1:5500")
@@ -203,9 +203,9 @@ class TestMdnsBranches(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_zero_results_falls_back_to_localhost_default(self):
         resolve = _import_resolver()
-        with patch("cli.fpb_cli.list_cli_servers", return_value=[]), patch(
-            "cli.fpb_cli._localhost_status_ok", return_value=False
-        ), patch("cli.fpb_cli.discover_sync", return_value=[]):
+        with patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]), patch(
+            "fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False
+        ), patch("fpbinject.cli.fpb_cli.discover_sync", return_value=[]):
             plan = resolve(_ns())
         self.assertEqual(plan.mode, ConnectionMode.LOCAL_PROXY)
         self.assertEqual(plan.server_url, "http://127.0.0.1:5500")
@@ -213,10 +213,10 @@ class TestMdnsBranches(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_one_local_result_returns_local_proxy(self):
         resolve = _import_resolver()
-        with patch("cli.fpb_cli.list_cli_servers", return_value=[]), patch(
-            "cli.fpb_cli._localhost_status_ok", return_value=False
+        with patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]), patch(
+            "fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False
         ), patch(
-            "cli.fpb_cli.discover_sync",
+            "fpbinject.cli.fpb_cli.discover_sync",
             return_value=[_fake_server(host="127.0.0.1", port=5500)],
         ):
             plan = resolve(_ns())
@@ -227,10 +227,10 @@ class TestMdnsBranches(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_one_remote_result_returns_remote_proxy(self):
         resolve = _import_resolver()
-        with patch("cli.fpb_cli.list_cli_servers", return_value=[]), patch(
-            "cli.fpb_cli._localhost_status_ok", return_value=False
+        with patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]), patch(
+            "fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False
         ), patch(
-            "cli.fpb_cli.discover_sync",
+            "fpbinject.cli.fpb_cli.discover_sync",
             return_value=[_fake_server(host="192.168.1.20", port=5500)],
         ):
             plan = resolve(_ns())
@@ -239,16 +239,16 @@ class TestMdnsBranches(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_two_results_raises_ambiguous_server_error(self):
-        from cli.fpb_cli import AmbiguousServerError
+        from fpbinject.cli.fpb_cli import AmbiguousServerError
 
         resolve = _import_resolver()
         servers = [
             _fake_server(host="10.0.0.10", port=5500),
             _fake_server(host="10.0.0.11", port=5500),
         ]
-        with patch("cli.fpb_cli.list_cli_servers", return_value=[]), patch(
-            "cli.fpb_cli._localhost_status_ok", return_value=False
-        ), patch("cli.fpb_cli.discover_sync", return_value=servers):
+        with patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]), patch(
+            "fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False
+        ), patch("fpbinject.cli.fpb_cli.discover_sync", return_value=servers):
             with self.assertRaises(AmbiguousServerError) as cm:
                 resolve(_ns())
         self.assertEqual(cm.exception.exit_code, 2)

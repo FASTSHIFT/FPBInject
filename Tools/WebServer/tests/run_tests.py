@@ -71,7 +71,7 @@ def run_tests(
         bool: Whether all tests passed
     """
     # Use temporary config file for tests to avoid modifying the real config
-    import core.state as state_module
+    import fpbinject.core.state as state_module
 
     temp_dir = tempfile.mkdtemp()
     test_config_file = os.path.join(temp_dir, "test_config.json")
