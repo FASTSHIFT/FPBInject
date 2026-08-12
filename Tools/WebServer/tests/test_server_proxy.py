@@ -580,11 +580,23 @@ class TestPidFileFunctions(unittest.TestCase):
         import subprocess
         from fpbinject.cli.server_proxy import stop_cli_server
 
+        # start_new_session detaches the child into its own process group,
+        # mirroring how a CLI-launched WebServer runs. Without it the child
+        # becomes a zombie after SIGTERM (not reaped until proc.wait), and
+        # os.kill(pid, 0) keeps succeeding, forcing stop_cli_server to spin
+        # its full ~5s timeout. Reaping promptly lets it return in ms.
         proc = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(60)"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
+
+        # Reap the child in the background the instant it dies, so the
+        # PID stops resolving as alive without blocking stop_cli_server.
+        reaper = threading.Thread(target=proc.wait, daemon=True)
+        reaper.start()
+
         with open(self.pid_path, "w") as f:
             f.write(str(proc.pid))
 
@@ -592,7 +604,7 @@ class TestPidFileFunctions(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertIn(str(proc.pid), result["message"])
         self.assertFalse(os.path.exists(self.pid_path))
-        # Ensure process is dead
+        # Ensure process is fully gone.
         proc.wait(timeout=5)
 
     def test_list_cli_servers_empty(self):

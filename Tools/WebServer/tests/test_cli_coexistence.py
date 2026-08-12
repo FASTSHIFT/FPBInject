@@ -703,7 +703,22 @@ class TestFPBCLILocalNoPortNoServer(unittest.TestCase):
 
 
 class TestMainTokenArg(unittest.TestCase):
-    """Test the --token argument wiring in main()."""
+    """Test the --token argument wiring in main().
+
+    These assert only that the token reaches the ConnectionPlan. Stub
+    discovery so the env-token case (no -s/--server-url) resolves via the
+    localhost fallback instantly instead of a ~3s mDNS browse.
+    """
+
+    def setUp(self):
+        patchers = [
+            patch("fpbinject.cli.fpb_cli.discover_sync", return_value=[]),
+            patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]),
+            patch("fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False),
+        ]
+        for p in patchers:
+            p.start()
+            self.addCleanup(p.stop)
 
     @patch("fpbinject.cli.fpb_cli.FPBCLI")
     @patch(

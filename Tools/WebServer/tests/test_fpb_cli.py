@@ -1885,7 +1885,26 @@ class TestDeviceStateAdvanced(unittest.TestCase):
 
 
 class TestMainArgumentParsing(unittest.TestCase):
-    """Test main function argument parsing"""
+    """Test main function argument parsing.
+
+    These tests only verify that ``main()`` dispatches to the right FPBCLI
+    method for each subcommand; they must not perform real connection
+    resolution. Device subcommands would otherwise fall through to a 3s
+    mDNS browse (``discover_sync``) with no server present, adding ~1min
+    across the class. setUp stubs discovery so resolution resolves to the
+    localhost fallback instantly while keeping ``resolve_connection_plan``
+    itself real (so --port/--baudrate assertions still hold).
+    """
+
+    def setUp(self):
+        patchers = [
+            patch("fpbinject.cli.fpb_cli.discover_sync", return_value=[]),
+            patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]),
+            patch("fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False),
+        ]
+        for p in patchers:
+            p.start()
+            self.addCleanup(p.stop)
 
     def test_main_analyze_command(self):
         """Test main with analyze command"""
@@ -2379,12 +2398,19 @@ class TestFpbCliEntryPoint(unittest.TestCase):
         self.assertTrue(callable(cli_main))
 
     def test_cli_main_can_be_called(self):
-        """Test that cli main can be called"""
+        """Test that cli main can be called.
+
+        With no subcommand, main() prints help and calls sys.exit(1). The
+        stub must raise SystemExit (real behavior) so main() stops there;
+        otherwise execution falls through to connection resolution and
+        blocks ~3s on an mDNS browse.
+        """
         from fpbinject.cli.fpb_cli import main as cli_main
 
         with patch("sys.argv", ["fpbinject"]):
-            with patch("sys.exit"):
-                cli_main()
+            with patch("sys.exit", side_effect=SystemExit):
+                with self.assertRaises(SystemExit):
+                    cli_main()
 
 
 class TestCorePackage(unittest.TestCase):
@@ -2570,12 +2596,17 @@ class TestFPBCLIMain(unittest.TestCase):
     """Test main function"""
 
     @patch("sys.argv", ["fpb_cli.py"])
-    @patch("sys.exit")
+    @patch("sys.exit", side_effect=SystemExit)
     def test_main_no_command(self, mock_exit):
-        """Test main with no command shows help"""
+        """Test main with no command shows help.
+
+        sys.exit is stubbed to raise (real behavior) so main() stops after
+        printing help instead of falling through to a ~3s mDNS browse.
+        """
         from fpbinject.cli.fpb_cli import main
 
-        main()
+        with self.assertRaises(SystemExit):
+            main()
         mock_exit.assert_called_with(1)
 
     @patch("sys.argv", ["fpb_cli.py", "search", "/path/to/elf", "test"])

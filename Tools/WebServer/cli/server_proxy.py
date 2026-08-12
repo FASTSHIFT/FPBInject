@@ -122,13 +122,18 @@ def stop_cli_server(port: int = DEFAULT_PORT) -> dict:
 
     try:
         os.kill(pid, signal.SIGTERM)
-        # Wait briefly for it to exit
-        for _ in range(20):
-            time.sleep(0.25)
+        # Poll for exit, checking before each sleep so a fast-exiting
+        # process is detected immediately. Same ~5s total budget as before
+        # but with a finer interval, so the common case returns in ms.
+        deadline = time.monotonic() + 5.0
+        while True:
             try:
                 os.kill(pid, 0)
             except OSError:
                 break  # Process exited
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.02)
         _remove_pid_file(port)
         return {
             "success": True,
