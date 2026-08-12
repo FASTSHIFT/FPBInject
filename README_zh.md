@@ -94,34 +94,72 @@ cmake --build build
 st-flash write build/FPBInject.bin 0x08000000
 ```
 
-### 2. 启动工作台
+### 2. 安装主机工具
+
+从 PyPI 安装——提供 `fpbinject-server`（工作台）和 `fpbinject`（CLI）两个命令，以及 Python SDK：
+
+```bash
+pip install fpbinject
+```
+
+<details>
+<summary>或从源码运行（无需安装）</summary>
 
 ```bash
 cd Tools/WebServer
 pip install -r ../requirements.txt
-python main.py
+python main.py            # 工作台
+python fpb_cli.py --help  # CLI
+```
+
+</details>
+
+### 3. 启动工作台
+
+```bash
+fpbinject-server
 ```
 
 浏览器打开 `http://127.0.0.1:5500`，连接串口，加载 ELF 文件，即可开始注入。
 
-### 3. 或使用 CLI
+### 4. 或使用 CLI
 
 所有命令输出 JSON，适合脚本和 AI 代理集成。
 
 ```bash
 # 搜索函数
-python fpb_cli.py search firmware.elf "gpio"
+fpbinject search firmware.elf "gpio"
 
 # 查看反汇编
-python fpb_cli.py disasm firmware.elf digitalWrite
+fpbinject disasm firmware.elf digitalWrite
 
 # 注入补丁
-python fpb_cli.py --port /dev/ttyACM0 --elf firmware.elf \
+fpbinject --port /dev/ttyACM0 --elf firmware.elf \
     --compile-commands build/compile_commands.json \
     inject digitalWrite patch.c
 ```
 
 完整命令参考见 [CLI 文档](Docs/CLI.md)。
+
+### 5. 或使用 Python SDK
+
+用 Python 调用 CLI 的全部能力：
+
+```python
+from fpbinject import Client
+
+# mDNS 自动发现局域网内的 WebServer
+client = Client.discover(token="...")
+client.serial_send("help\r\n")
+print(client.serial_read()["raw_data"])
+client.inject("digitalWrite", "patch.c", elf="firmware.elf")
+
+# 或离线分析 ELF——无需设备
+off = Client.offline()
+print(off.signature("firmware.elf", "digitalWrite"))
+```
+
+完整 API 见 [SDK 文档](Docs/SDK.md)。
 
 ## 编写补丁
 
@@ -207,6 +245,7 @@ FPBInject/
 |------|------|
 | [架构](Docs/Architecture.md) | FPB 内部原理、补丁模式、内存布局、协议 |
 | [CLI 参考](Docs/CLI.md) | 所有 CLI 命令及示例、JSON 输出格式 |
+| [SDK 指南](Docs/SDK.md) | `pip install fpbinject` — Python `Client` API 参考 |
 | [WebServer 指南](Docs/WebServer.md) | 工作台安装与使用 |
 
 ## 许可证

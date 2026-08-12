@@ -94,34 +94,73 @@ cmake --build build
 st-flash write build/FPBInject.bin 0x08000000
 ```
 
-### 2. Start the Workbench
+### 2. Install the Host Tools
+
+Install from PyPI — this provides the `fpbinject-server` (workbench) and
+`fpbinject` (CLI) commands, plus the Python SDK:
+
+```bash
+pip install fpbinject
+```
+
+<details>
+<summary>Or run from source (no install)</summary>
 
 ```bash
 cd Tools/WebServer
 pip install -r ../requirements.txt
-python main.py
+python main.py           # workbench
+python fpb_cli.py --help # CLI
+```
+
+</details>
+
+### 3. Start the Workbench
+
+```bash
+fpbinject-server
 ```
 
 Open `http://127.0.0.1:5500` in your browser, connect to the serial port, load your ELF file, and start patching.
 
-### 3. Or Use the CLI
+### 4. Or Use the CLI
 
 All commands output JSON, designed for scripting and AI agent integration.
 
 ```bash
 # Search for functions
-python fpb_cli.py search firmware.elf "gpio"
+fpbinject search firmware.elf "gpio"
 
 # View disassembly
-python fpb_cli.py disasm firmware.elf digitalWrite
+fpbinject disasm firmware.elf digitalWrite
 
 # Inject a patch
-python fpb_cli.py --port /dev/ttyACM0 --elf firmware.elf \
+fpbinject --port /dev/ttyACM0 --elf firmware.elf \
     --compile-commands build/compile_commands.json \
     inject digitalWrite patch.c
 ```
 
 See the [CLI Guide](Docs/CLI.md) for the full command reference.
+
+### 5. Or Use the Python SDK
+
+Drive everything the CLI can do from Python:
+
+```python
+from fpbinject import Client
+
+# Auto-discover a running WebServer on the LAN (mDNS)
+client = Client.discover(token="...")
+client.serial_send("help\r\n")
+print(client.serial_read()["raw_data"])
+client.inject("digitalWrite", "patch.c", elf="firmware.elf")
+
+# Or analyze an ELF offline — no device needed
+off = Client.offline()
+print(off.signature("firmware.elf", "digitalWrite"))
+```
+
+See the [SDK Guide](Docs/SDK.md) for the full API.
 
 ## Writing Patches
 
@@ -207,6 +246,7 @@ FPBInject/
 |----------|-------------|
 | [Architecture](Docs/Architecture.md) | FPB internals, patch modes, memory layout, protocol |
 | [CLI Reference](Docs/CLI.md) | All CLI commands with examples and JSON output format |
+| [SDK Guide](Docs/SDK.md) | `pip install fpbinject` — Python `Client` API reference |
 | [WebServer Guide](Docs/WebServer.md) | Workbench setup and usage |
 
 ## License
