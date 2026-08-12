@@ -365,6 +365,22 @@ python tests/run_tests.py --coverage --target 85
 
 CI 已在依赖安装阶段加入 `pip install -e .`，顺带验证打包配置本身可安装。未做可编辑安装时，测试会因 `import fpbinject` 失败——这是预期行为。
 
+### 8.2 离线 / 免安装直跑（兼容旧用法）
+
+入口脚本 `main.py` 与 `fpb_cli.py` 顶部有一段 **bootstrap**：若 `fpbinject` 不可导入（未 `pip install`），就把脚本所在目录注册为 `fpbinject` 包（`sys.modules` + `__path__`），使 `from fpbinject.xxx import ...` 正常解析。因此在无网/无安装环境下，仍可像以前一样：
+
+```bash
+cd Tools/WebServer
+./main.py --no-browser        # 直接跑，无需 pip install
+./fpb_cli.py analyze fw.elf foo
+```
+
+装了包则走正常 import，bootstrap 直接短路返回。
+
+### 8.3 旧 config.json 兼容
+
+`resolve_config_path` 在无 `--config` 时会先**发现并复用已有配置**，顺序：`./.fpbinject.json` → `./config.json`（旧名，当前目录）→ `<包目录>/config.json`（旧的就地安装位置）。发现即静默复用，不提示、不新建，**升级不丢配置**。三者皆无且交互式时，才询问是否创建 `./.fpbinject.json`。
+
 ## 9. 决策待确认
 
 1. ~~包最终落点~~ **已定**：物理目录保持 `Tools/WebServer/` 不动，用 `package-dir` 映射为 `fpbinject` 包（见 §3.0）。
