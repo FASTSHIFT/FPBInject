@@ -1,10 +1,7 @@
-# NOTE: Packaging blueprint for the "fpbinject" distribution.
-# Building/installing requires the S0 packaging step from
-# Tools/WebServer/docs/packaging-and-distribution-design.md to be complete:
-#   - Tools/WebServer/__init__.py (exposing __version__) and __main__.py
-#   - imports migrated to the "fpbinject." prefix
-# Until S0 lands, this file documents the target metadata; `python -m build`
-# will not succeed yet.
+# Packaging config for the "fpbinject" distribution.
+# The S0 packaging step (see Tools/WebServer/docs/packaging-and-distribution-design.md)
+# is complete: Tools/WebServer/{__init__,__main__}.py exist and all imports use
+# the "fpbinject." prefix, so `python -m build` produces working wheels/sdists.
 
 [build-system]
 requires = ["setuptools>=64", "wheel"]
