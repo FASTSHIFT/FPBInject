@@ -27,6 +27,28 @@ on:
 
 jobs:
   # ============================================================
+  # Commit Lint (guard against Gerrit Change-Id trailers)
+  # ============================================================
+  commit-lint:
+    name: Commit Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history so the PR/push commit range can be resolved.
+          fetch-depth: 0
+
+      - name: Check for Change-Id trailers
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          chmod +x Tools/check_change_id.sh
+          Tools/check_change_id.sh
+
+  # ============================================================
   # Lower Machine Tests (Embedded Firmware)
   # ============================================================
   lower-machine:
@@ -196,7 +218,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lower-machine, upper-machine]
+    needs: [commit-lint, lower-machine, upper-machine]
     if: always()
 
     steps:
@@ -206,6 +228,12 @@ jobs:
           echo "        FPBInject CI Summary"
           echo "========================================="
           echo ""
+
+          if [ "${{ needs.commit-lint.result }}" == "success" ]; then
+            echo "✅ Commit Lint: PASSED"
+          else
+            echo "❌ Commit Lint: FAILED"
+          fi
 
           if [ "${{ needs.lower-machine.result }}" == "success" ]; then
             echo "✅ Lower Machine Tests: PASSED"
@@ -221,7 +249,7 @@ jobs:
 
           echo ""
 
-          if [ "${{ needs.lower-machine.result }}" == "success" ] && [ "${{ needs.upper-machine.result }}" == "success" ]; then
+          if [ "${{ needs.commit-lint.result }}" == "success" ] && [ "${{ needs.lower-machine.result }}" == "success" ] && [ "${{ needs.upper-machine.result }}" == "success" ]; then
             echo "🎉 All CI checks passed!"
             exit 0
           else
