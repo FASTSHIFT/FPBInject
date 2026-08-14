@@ -82,6 +82,35 @@ class TestResolveConfigPath(unittest.TestCase):
         ):
             self.assertIsNone(main.resolve_config_path(None))
 
+    def test_skip_prompt_returns_none_without_input(self):
+        """skip_prompt=True: connection flags given -> in-memory, no prompt."""
+        with patch(
+            "fpbinject.main._discover_existing_config", return_value=None
+        ), patch("sys.stdin.isatty", return_value=True), patch(
+            "builtins.input", side_effect=AssertionError("input must not be called")
+        ):
+            self.assertIsNone(main.resolve_config_path(None, skip_prompt=True))
+
+    def test_skip_prompt_still_honors_explicit_config(self):
+        """--config wins even when skip_prompt is set."""
+        got = main.resolve_config_path("~/cfg.json", skip_prompt=True)
+        self.assertEqual(got, os.path.abspath(os.path.expanduser("~/cfg.json")))
+
+    def test_skip_prompt_still_reuses_existing_config(self):
+        """An existing config is still reused (never blocks) with skip_prompt."""
+        with tempfile.TemporaryDirectory() as d:
+            existing = os.path.join(d, "config.json")
+            with open(existing, "w") as f:
+                f.write("{}")
+            with patch(
+                "fpbinject.main._discover_existing_config", return_value=existing
+            ), patch("sys.stdin.isatty", return_value=True), patch(
+                "builtins.input", side_effect=AssertionError("no prompt expected")
+            ):
+                self.assertEqual(
+                    main.resolve_config_path(None, skip_prompt=True), existing
+                )
+
 
 class TestDiscoverExistingConfig(unittest.TestCase):
     """_discover_existing_config prefers new name, then legacy config.json."""

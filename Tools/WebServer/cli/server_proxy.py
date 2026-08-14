@@ -291,7 +291,7 @@ class ServerProxy:
             sys.executable,
             main_py,
             "--no-browser",
-            "--port",
+            "--http-port",
             str(port),
         ]
 

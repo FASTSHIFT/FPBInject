@@ -30,7 +30,18 @@ pip install -r requirements.txt
 ```bash
 python3 main.py
 # Default: http://127.0.0.1:5500
+
+# Change the HTTP listen port with --http-port:
+python3 main.py --http-port 5501
+
+# Connect a serial device on startup with --port (auto-connects):
+python3 main.py --port /dev/ttyACM0 --baudrate 115200
 ```
+
+Serial/connection flags (`--port`, `--baudrate`, `--data-bits`, `--parity`,
+`--serial-tx-fragment-size`, ...) are generated from the shared config schema,
+so the server and the `fpbinject` CLI expose the same options. Note `--port`
+selects the **serial device**; use `--http-port` for the web server's TCP port.
 
 ## Configuration
 

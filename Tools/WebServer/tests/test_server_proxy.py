@@ -421,6 +421,26 @@ class TestServerProxyLaunchServer(unittest.TestCase):
         ), patch.object(proxy, "is_server_running", side_effect=fake_is_running):
             self.assertTrue(proxy.launch_server())
 
+    def test_launch_server_uses_http_port_flag(self):
+        """launch_server passes the HTTP port via --http-port (not --port,
+        which now selects the serial device)."""
+        from unittest.mock import patch, MagicMock
+
+        proxy = ServerProxy(base_url="http://127.0.0.1:19876")
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+
+        with patch("os.path.exists", return_value=True), patch(
+            "subprocess.Popen", return_value=mock_proc
+        ) as mock_popen, patch.object(proxy, "is_server_running", return_value=True):
+            proxy.launch_server()
+
+        cmd = mock_popen.call_args[0][0]
+        self.assertIn("--http-port", cmd)
+        self.assertNotIn("--port", cmd)
+        # The HTTP port value follows the flag.
+        self.assertEqual(cmd[cmd.index("--http-port") + 1], "19876")
+
     def test_ensure_server_already_running(self):
         """ensure_server returns True immediately if server is running."""
         from unittest.mock import patch

@@ -77,6 +77,10 @@ class ConfigItem:
     ui_multiplier: float = 1.0  # Multiply by this when displaying in UI
     # External link for label (e.g., project homepage)
     link: str = ""  # URL to link the label to
+    # CLI / server command-line exposure (see core/arg_schema.py)
+    cli_expose: bool = False  # Generate an argparse flag for this item
+    cli_short: str = ""  # Short option, e.g. "-p" / "-b"
+    cli_aliases: Tuple[str, ...] = ()  # Deprecated flag names kept for compat
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -99,8 +103,11 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.STRING,
         default=None,
+        tooltip="Serial port device (e.g., /dev/ttyACM0, COM3)",
         show_in_sidebar=False,
         order=10,
+        cli_expose=True,
+        cli_short="-p",
     ),
     ConfigItem(
         key="baudrate",
@@ -108,8 +115,11 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.NUMBER,
         default=115200,
+        tooltip="Serial baud rate",
         show_in_sidebar=False,
         order=20,
+        cli_expose=True,
+        cli_short="-b",
     ),
     ConfigItem(
         key="auto_connect",
@@ -117,8 +127,10 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.BOOLEAN,
         default=False,
+        tooltip="Automatically connect to the serial port on startup",
         show_in_sidebar=False,
         order=30,
+        cli_expose=True,
     ),
     ConfigItem(
         key="data_bits",
@@ -126,17 +138,28 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.NUMBER,
         default=8,
+        tooltip="Data bits: 5/6/7/8",
         show_in_sidebar=False,
         order=40,
+        cli_expose=True,
     ),
     ConfigItem(
         key="parity",
         label="Parity",
         group=ConfigGroup.CONNECTION,
-        config_type=ConfigType.STRING,
+        config_type=ConfigType.SELECT,
         default="none",
+        options=[
+            ("none", "None"),
+            ("even", "Even"),
+            ("odd", "Odd"),
+            ("mark", "Mark"),
+            ("space", "Space"),
+        ],
+        tooltip="Parity: none/even/odd/mark/space",
         show_in_sidebar=False,
         order=50,
+        cli_expose=True,
     ),
     ConfigItem(
         key="stop_bits",
@@ -144,17 +167,27 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.NUMBER,
         default=1,
+        tooltip="Stop bits: 1/1.5/2",
         show_in_sidebar=False,
         order=60,
+        cli_expose=True,
     ),
     ConfigItem(
         key="flow_control",
         label="Flow Control",
         group=ConfigGroup.CONNECTION,
-        config_type=ConfigType.STRING,
+        config_type=ConfigType.SELECT,
         default="none",
+        options=[
+            ("none", "None"),
+            ("rtscts", "RTS/CTS"),
+            ("dsrdtr", "DSR/DTR"),
+            ("xonxoff", "XON/XOFF"),
+        ],
+        tooltip="Flow control: none/rtscts/dsrdtr/xonxoff",
         show_in_sidebar=False,
         order=70,
+        cli_expose=True,
     ),
     ConfigItem(
         key="dtr_on_connect",
@@ -162,8 +195,10 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.BOOLEAN,
         default=False,
+        tooltip="Initial DTR (Data Terminal Ready) state on connect",
         show_in_sidebar=False,
         order=80,
+        cli_expose=True,
     ),
     ConfigItem(
         key="rts_on_connect",
@@ -171,8 +206,10 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.BOOLEAN,
         default=False,
+        tooltip="Initial RTS (Request To Send) state on connect",
         show_in_sidebar=False,
         order=90,
+        cli_expose=True,
     ),
     # === Project Paths ===
     ConfigItem(
@@ -254,6 +291,7 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         step=16,
         unit="Bytes",
         order=10,
+        cli_expose=True,
     ),
     ConfigItem(
         key="download_chunk_size",
@@ -268,6 +306,7 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         step=128,
         unit="Bytes",
         order=15,
+        cli_expose=True,
     ),
     ConfigItem(
         key="serial_tx_fragment_size",
@@ -282,6 +321,8 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         step=8,
         unit="Bytes",
         order=20,
+        cli_expose=True,
+        cli_aliases=("--tx-chunk-size",),
     ),
     ConfigItem(
         key="serial_tx_fragment_delay",
@@ -296,6 +337,8 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         unit="ms",
         ui_multiplier=1000,  # Display as milliseconds
         order=25,
+        cli_expose=True,
+        cli_aliases=("--tx-chunk-delay",),
     ),
     ConfigItem(
         key="transfer_max_retries",
@@ -309,6 +352,8 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         step=1,
         unit="times",
         order=40,
+        cli_expose=True,
+        cli_aliases=("--max-retries",),
     ),
     ConfigItem(
         key="wakeup_shell_cnt",

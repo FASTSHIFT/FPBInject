@@ -15,6 +15,35 @@ import fpbinject.main as main  # noqa: E402
 from fpbinject.core.state import state, DeviceState  # noqa: E402
 
 
+def _make_server_args(**overrides):
+    """Build a realistic server args Namespace for main() tests.
+
+    Constructs the namespace directly (rather than calling parse_args, which
+    the caller often patches) with concrete server defaults plus every
+    schema-driven connection flag set to None. This avoids brittle Mock()
+    objects whose attributes read back as truthy Mocks and would pollute
+    connection_overrides()."""
+    import argparse
+
+    from fpbinject.core.arg_schema import iter_cli_items
+
+    defaults = dict(
+        host="0.0.0.0",
+        http_port=5500,
+        debug=False,
+        skip_port_check=False,
+        no_browser=True,
+        no_auth=False,
+        no_mdns=True,
+        config=None,
+    )
+    # Every CLI-exposed connection/transfer flag defaults to None (unset).
+    for item in iter_cli_items():
+        defaults.setdefault(item.key, None)
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
 class TestCreateApp(unittest.TestCase):
     """create_app function tests"""
 
@@ -86,15 +115,16 @@ class TestParseArgs(unittest.TestCase):
             args = main.parse_args()
 
         self.assertEqual(args.host, "0.0.0.0")
-        self.assertEqual(args.port, 5500)
+        self.assertEqual(args.http_port, 5500)
+        self.assertIsNone(args.port)
         self.assertFalse(args.debug)
 
     def test_custom_port(self):
-        """Test custom port argument"""
-        with patch("sys.argv", ["main.py", "--port", "8080"]):
+        """Test custom HTTP port argument"""
+        with patch("sys.argv", ["main.py", "--http-port", "8080"]):
             args = main.parse_args()
 
-        self.assertEqual(args.port, 8080)
+        self.assertEqual(args.http_port, 8080)
 
     def test_custom_host(self):
         """Test custom host argument"""
@@ -126,11 +156,106 @@ class TestParseArgs(unittest.TestCase):
 
     def test_no_browser_with_other_args(self):
         """Test --no-browser can combine with other args"""
-        with patch("sys.argv", ["main.py", "--port", "9090", "--no-browser"]):
+        with patch("sys.argv", ["main.py", "--http-port", "9090", "--no-browser"]):
             args = main.parse_args()
 
-        self.assertEqual(args.port, 9090)
+        self.assertEqual(args.http_port, 9090)
         self.assertTrue(args.no_browser)
+
+    def test_http_port_default(self):
+        """--http-port defaults to 5500"""
+        with patch("sys.argv", ["main.py"]):
+            args = main.parse_args()
+
+        self.assertEqual(args.http_port, 5500)
+
+    def test_http_port_custom(self):
+        """--http-port sets the HTTP listen port"""
+        with patch("sys.argv", ["main.py", "--http-port", "8080"]):
+            args = main.parse_args()
+
+        self.assertEqual(args.http_port, 8080)
+
+    def test_serial_port_flag(self):
+        """--port now selects the serial device (schema-driven)"""
+        with patch("sys.argv", ["main.py", "--port", "/dev/ttyACM0"]):
+            args = main.parse_args()
+
+        self.assertEqual(args.port, "/dev/ttyACM0")
+        # HTTP port stays at its default, independent of the serial port.
+        self.assertEqual(args.http_port, 5500)
+
+    def test_serial_connection_flags_default_none(self):
+        """Unset connection flags default to None (override sentinel)"""
+        with patch("sys.argv", ["main.py"]):
+            args = main.parse_args()
+
+        self.assertIsNone(args.port)
+        self.assertIsNone(args.baudrate)
+        self.assertIsNone(args.auto_connect)
+
+    def test_serial_flags_full_set(self):
+        """Server exposes the full connection/transfer flag set"""
+        argv = [
+            "main.py",
+            "--port",
+            "/dev/ttyUSB0",
+            "--baudrate",
+            "9600",
+            "--parity",
+            "even",
+            "--data-bits",
+            "7",
+            "--serial-tx-fragment-size",
+            "64",
+        ]
+        with patch("sys.argv", argv):
+            args = main.parse_args()
+
+        self.assertEqual(args.port, "/dev/ttyUSB0")
+        self.assertEqual(args.baudrate, 9600)
+        self.assertEqual(args.parity, "even")
+        self.assertEqual(args.data_bits, 7)
+        self.assertEqual(args.serial_tx_fragment_size, 64)
+
+
+class TestInvocationCommands(unittest.TestCase):
+    """invocation_commands function tests"""
+
+    def test_source_run_main_py(self):
+        """Running from source (./main.py) yields source-style hints."""
+        with patch("sys.argv", ["main.py"]):
+            server_cmd, cli_cmd = main.invocation_commands()
+        self.assertEqual(server_cmd, "./main.py")
+        self.assertEqual(cli_cmd, "fpb_cli.py")
+
+    def test_source_run_with_full_path(self):
+        """Only the basename of argv[0] is used, not the full path."""
+        with patch("sys.argv", ["/home/user/Tools/WebServer/main.py"]):
+            server_cmd, cli_cmd = main.invocation_commands()
+        self.assertEqual(server_cmd, "./main.py")
+        self.assertEqual(cli_cmd, "fpb_cli.py")
+
+    def test_installed_console_script(self):
+        """Installed console script yields packaged command names."""
+        with patch("sys.argv", ["fpbinject-server"]):
+            server_cmd, cli_cmd = main.invocation_commands()
+        self.assertEqual(server_cmd, "fpbinject-server")
+        self.assertEqual(cli_cmd, "fpbinject")
+
+    def test_installed_console_script_full_path(self):
+        """Installed script resolved via full path keeps its basename."""
+        with patch("sys.argv", ["/usr/local/bin/fpbinject-server"]):
+            server_cmd, cli_cmd = main.invocation_commands()
+        self.assertEqual(server_cmd, "fpbinject-server")
+        self.assertEqual(cli_cmd, "fpbinject")
+
+    def test_empty_argv_falls_back_to_default(self):
+        """Empty argv[0] falls back to the packaged server command name."""
+        with patch("sys.argv", [""]):
+            server_cmd, cli_cmd = main.invocation_commands()
+        self.assertEqual(server_cmd, "fpbinject-server")
+        self.assertEqual(cli_cmd, "fpbinject")
 
 
 class TestCheckToolchain(unittest.TestCase):
@@ -345,11 +470,9 @@ class TestMain(unittest.TestCase):
     @patch("fpbinject.main.parse_args")
     def test_main_port_in_use(self, mock_args, mock_check, mock_restore, mock_create):
         """Test main exits when port is in use"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=False,
             no_browser=True,
         )
@@ -370,11 +493,9 @@ class TestMain(unittest.TestCase):
         self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
     ):
         """Test main starts server successfully"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=False,
             no_browser=True,
         )
@@ -400,11 +521,9 @@ class TestMain(unittest.TestCase):
         self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
     ):
         """Test main skips port check when skip_port_check is True"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=True,
             no_browser=True,
         )
@@ -420,6 +539,107 @@ class TestMain(unittest.TestCase):
         mock_create.assert_called_once()
         mock_restore.assert_called_once()
         mock_app.run.assert_called_once()
+
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
+    def test_main_applies_serial_port_override(
+        self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
+    ):
+        """A --port serial flag overrides config and enables auto-connect."""
+        self.original_device = state.device
+        state.device = DeviceState()
+        try:
+            mock_args.return_value = _make_server_args(
+                http_port=5500,
+                skip_port_check=True,
+                no_browser=True,
+                port="/dev/ttyACM0",
+                baudrate=57600,
+            )
+            mock_create.return_value = Mock()
+
+            main.main()
+
+            self.assertEqual(state.device.port, "/dev/ttyACM0")
+            self.assertEqual(state.device.baudrate, 57600)
+            # Passing --port implies connect-on-start.
+            self.assertTrue(state.device.auto_connect)
+        finally:
+            state.device = self.original_device
+
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main._discover_existing_config", return_value=None)
+    @patch("fpbinject.main.parse_args")
+    def test_main_serial_flags_skip_config_prompt(
+        self,
+        mock_args,
+        mock_discover,
+        mock_check,
+        mock_restore,
+        mock_create,
+        mock_timer_cls,
+    ):
+        """Serial flags present -> no interactive config prompt (in-memory)."""
+        self.original_device = state.device
+        state.device = DeviceState()
+        try:
+            mock_args.return_value = _make_server_args(
+                http_port=5500,
+                skip_port_check=True,
+                no_browser=True,
+                port="/dev/ttyACM1",
+                baudrate=921600,
+            )
+            mock_create.return_value = Mock()
+
+            # Interactive TTY, but input() must never be called because the
+            # user opted out of JSON config by passing connection flags.
+            with patch("sys.stdin.isatty", return_value=True), patch(
+                "builtins.input",
+                side_effect=AssertionError("config prompt must be skipped"),
+            ):
+                main.main()
+
+            # Ran with in-memory defaults (no config persisted) + overrides.
+            self.assertIsNone(state.config_path)
+            self.assertEqual(state.device.port, "/dev/ttyACM1")
+            self.assertEqual(state.device.baudrate, 921600)
+        finally:
+            state.device = self.original_device
+
+    @patch("fpbinject.main.threading.Timer")
+    @patch("fpbinject.main.create_app")
+    @patch("fpbinject.main.restore_state")
+    @patch("fpbinject.main.check_port_available", return_value=True)
+    @patch("fpbinject.main.parse_args")
+    def test_main_no_serial_flags_leaves_config(
+        self, mock_args, mock_check, mock_restore, mock_create, mock_timer_cls
+    ):
+        """Without serial flags, device config is left untouched."""
+        self.original_device = state.device
+        state.device = DeviceState()
+        state.device.port = "/dev/preset"
+        try:
+            mock_args.return_value = _make_server_args(
+                http_port=5500,
+                skip_port_check=True,
+                no_browser=True,
+            )
+            mock_create.return_value = Mock()
+
+            main.main()
+
+            # No --port flag -> config value preserved, no forced auto-connect.
+            self.assertEqual(state.device.port, "/dev/preset")
+            self.assertFalse(state.device.auto_connect)
+        finally:
+            state.device = self.original_device
 
 
 class TestAutoOpenBrowser(unittest.TestCase):
@@ -441,11 +661,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """Browser should auto-open when --no-browser is not set"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=True,
             no_browser=False,
         )
@@ -476,11 +694,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """Browser should NOT open when --no-browser is set"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=True,
             no_browser=True,
         )
@@ -506,11 +722,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """Browser URL should use the custom port"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=9090,
-            debug=False,
+            http_port=9090,
             skip_port_check=True,
             no_browser=False,
         )
@@ -540,11 +754,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """Startup banner should contain server URL"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=True,
             no_browser=True,
         )
@@ -573,11 +785,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """Startup banner should show custom port"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=8080,
-            debug=False,
+            http_port=8080,
             skip_port_check=True,
             no_browser=True,
         )
@@ -603,11 +813,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """Startup banner should show LAN network URL"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=True,
             no_browser=True,
         )
@@ -639,11 +847,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """Startup banner shows 'unavailable' when LAN IP detection fails"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=True,
             no_browser=True,
         )
@@ -674,11 +880,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_timer_cls,
     ):
         """LAN IP detection should close the socket after use"""
-        mock_args.return_value = Mock(
-            config=None,
+        mock_args.return_value = _make_server_args(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=True,
             no_browser=True,
         )
@@ -845,15 +1049,13 @@ class TestMainPortConflict(unittest.TestCase):
     def _mock_args(self, **overrides):
         defaults = dict(
             host="0.0.0.0",
-            port=5500,
-            debug=False,
+            http_port=5500,
             skip_port_check=False,
             no_browser=True,
             no_auth=True,
-            config=None,
         )
         defaults.update(overrides)
-        return Mock(**defaults)
+        return _make_server_args(**defaults)
 
     @patch("fpbinject.main.create_app")
     @patch("fpbinject.main.restore_state")

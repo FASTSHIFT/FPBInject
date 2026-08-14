@@ -233,10 +233,10 @@ def parse_args():
         help="Host to bind the server (default: 0.0.0.0)",
     )
     parser.add_argument(
-        "--port",
+        "--http-port",
         type=int,
         default=5500,
-        help="Port to run the server (default: 5500)",
+        help="HTTP port for the web server to listen on (default: 5500)",
     )
     parser.add_argument(
         "--debug",
@@ -271,7 +271,27 @@ def parse_args():
         "create ./.fpbinject.json in the current directory; when "
         "non-interactive (CI/auto-launched), run with in-memory defaults.",
     )
+
+    # Serial/connection parameters (--port, --baudrate, ...) are generated from
+    # the shared config schema so server and CLI stay in sync.
+    from fpbinject.core.arg_schema import add_connection_args
+
+    add_connection_args(parser)
     return parser.parse_args()
+
+
+def invocation_commands():
+    """Return (server_cmd, cli_cmd) matching how the tool was invoked.
+
+    After packaging the tool ships as the console scripts ``fpbinject-server``
+    and ``fpbinject``. When run from source the entry points are ``./main.py``
+    and ``fpb_cli.py``. Hints printed to users must match the actual invocation,
+    so derive the names from ``sys.argv[0]`` rather than hardcoding them.
+    """
+    server_prog = os.path.basename(sys.argv[0]) or "fpbinject-server"
+    if server_prog.endswith(".py"):
+        return f"./{server_prog}", "fpb_cli.py"
+    return server_prog, "fpbinject"
 
 
 # Config filename created on interactive first run in the current directory.
@@ -300,7 +320,7 @@ def _discover_existing_config():
     return None
 
 
-def resolve_config_path(cli_config):
+def resolve_config_path(cli_config, skip_prompt=False):
     """Decide which config path AppState should use.
 
     Returns a filesystem path, or None for in-memory mode (no persistence).
@@ -312,6 +332,12 @@ def resolve_config_path(cli_config):
       3. no --config, non-interactive -> in-memory (never blocks input()).
       4. no --config, interactive TTY -> ask whether to create
          ./.fpbinject.json here; yes -> that path, no -> in-memory.
+
+    ``skip_prompt=True`` short-circuits rule 4: when the user supplied
+    connection parameters on the command line they clearly do not want to rely
+    on a JSON config, so run with in-memory defaults instead of prompting.
+    Rules 1 and 2 still apply (an explicit --config or an existing config is
+    honored, since those never block on input).
     """
     if cli_config:
         return os.path.abspath(os.path.expanduser(cli_config))
@@ -325,6 +351,11 @@ def resolve_config_path(cli_config):
     # Non-interactive (auto-launched by CLI, CI, headless): never prompt.
     if not sys.stdin.isatty():
         logger.info("No --config and non-interactive: using in-memory defaults")
+        return None
+
+    # Connection flags supplied: user opted out of JSON config; don't prompt.
+    if skip_prompt:
+        logger.info("No --config but connection flags given: using in-memory defaults")
         return None
 
     local_path = os.path.abspath(os.path.join(os.getcwd(), _LOCAL_CONFIG_NAME))
@@ -446,8 +477,24 @@ def main():
 
     print_banner("Web Server")
 
-    # Resolve and apply the config path (may prompt when interactive).
-    state.configure(resolve_config_path(args.config))
+    # Collect command-line connection/transfer flags first: if any were given,
+    # the user opted out of JSON config, so skip the interactive create prompt.
+    from fpbinject.core.arg_schema import apply_overrides, connection_overrides
+
+    overrides = connection_overrides(args)
+
+    # Resolve and apply the config path (may prompt when interactive, unless
+    # connection flags were supplied).
+    state.configure(resolve_config_path(args.config, skip_prompt=bool(overrides)))
+
+    # Overlay the flags on top of the loaded config (flag > config.json >
+    # schema default). These affect this run only and are not persisted back.
+    if overrides:
+        apply_overrides(state.device, overrides)
+        # Passing a serial port on the command line implies "connect on start"
+        # unless the user explicitly set --no-auto-connect.
+        if "port" in overrides and args.auto_connect is None:
+            state.device.auto_connect = True
 
     # Check dependencies
     check_requirements()
@@ -457,20 +504,19 @@ def main():
 
     # Check if port is already in use, unless skipped
     if not args.skip_port_check:
-        if not check_port_available(args.host, args.port):
-            owner = get_port_owner(args.port)
+        if not check_port_available(args.host, args.http_port):
+            owner = get_port_owner(args.http_port)
 
             # Check if it's a CLI-launched server
             from fpbinject.cli.server_proxy import get_cli_server_pid, stop_cli_server
 
-            cli_pid = get_cli_server_pid(args.port)
+            cli_pid = get_cli_server_pid(args.http_port)
 
             # Show who is occupying the port
-            logger.error(f"❌ Port {args.port} is already in use!")
+            logger.error(f"❌ Port {args.http_port} is already in use!")
             if owner:
                 logger.error(f"   Process: {owner['name']} (PID {owner['pid']})")
                 logger.error(f"   Command: {owner['cmdline']}")
-                logger.error(f"   Kill it: kill {owner['pid']}")
             else:
                 logger.error("   Could not identify the occupying process.")
 
@@ -496,16 +542,27 @@ def main():
                     logger.info("   Aborted.")
                     sys.exit(0)
             else:
+                server_cmd, cli_cmd = invocation_commands()
                 logger.error("")
                 logger.error("   Options:")
-                if owner:
-                    logger.error(f"     kill {owner['pid']}")
                 if cli_pid:
                     logger.error(
-                        f"     fpb_cli.py server-stop  (CLI server PID {cli_pid})"
+                        f"     {cli_cmd} server-stop"
+                        f"  - stop the CLI-launched server (PID {cli_pid})"
                     )
-                logger.error(f"     ./main.py --port {args.port + 1}")
-                logger.error("     ./main.py --skip-port-check  (not recommended)")
+                if owner:
+                    logger.error(
+                        f"     kill {owner['pid']}"
+                        "  - terminate the process holding the port"
+                    )
+                logger.error(
+                    f"     {server_cmd} --http-port {args.http_port + 1}"
+                    "  - start on a different port instead"
+                )
+                logger.error(
+                    f"     {server_cmd} --skip-port-check"
+                    "  - bypass the check and start anyway (not recommended)"
+                )
                 sys.exit(1)
 
     # Generate auth token
@@ -516,7 +573,7 @@ def main():
     # Restore previous state (auto-connect)
     restore_state()
 
-    local_url = f"http://127.0.0.1:{args.port}"
+    local_url = f"http://127.0.0.1:{args.http_port}"
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -524,7 +581,7 @@ def main():
         s.close()
     except Exception:
         lan_ip = "unavailable"
-    lan_url = f"http://{lan_ip}:{args.port}"
+    lan_url = f"http://{lan_ip}:{args.http_port}"
     network_url = f"{lan_url}?token={token}" if token else lan_url
 
     # Build banner with dynamic width
@@ -564,7 +621,7 @@ def main():
             from fpbinject.version import __version__ as _server_version
 
             advertiser = MdnsAdvertiser(
-                port=args.port,
+                port=args.http_port,
                 version=_server_version,
                 auth_mode="none" if args.no_auth else "token",
             )
@@ -574,7 +631,7 @@ def main():
             advertiser = None
 
     try:
-        app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
+        app.run(host=args.host, port=args.http_port, debug=args.debug, threaded=True)
     finally:
         if advertiser is not None:
             advertiser.unregister()

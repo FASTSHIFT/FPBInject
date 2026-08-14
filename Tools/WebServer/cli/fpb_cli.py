@@ -1754,41 +1754,14 @@ Notes:
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {FPB_VERSION}"
     )
-    parser.add_argument(
-        "--port",
-        "-p",
-        help="Serial port (e.g., /dev/ttyACM0, COM3). Optional in proxy mode: "
-        "the server owns the port. Only needed to open a port the server "
-        "hasn't connected yet, or for local auto-launch/direct mode. "
-        "Not used by offline ELF analysis (analyze/disasm/search/compile).",
-    )
-    parser.add_argument(
-        "--baudrate",
-        "-b",
-        type=int,
-        default=115200,
-        help="Serial baudrate (default: 115200)",
-    )
+    # Serial/connection and transfer flags (--port, --baudrate, --data-bits,
+    # --serial-tx-fragment-size, ...) are generated from the shared config
+    # schema so the CLI and the server expose the same options and names.
+    from fpbinject.core.arg_schema import add_connection_args
+
+    add_connection_args(parser)
     parser.add_argument("--elf", help="Path to ELF file")
     parser.add_argument("--compile-commands", help="Path to compile_commands.json")
-    parser.add_argument(
-        "--tx-chunk-size",
-        type=int,
-        default=0,
-        help="TX chunk size for serial commands (0=disabled). Workaround for slow serial drivers.",
-    )
-    parser.add_argument(
-        "--tx-chunk-delay",
-        type=float,
-        default=0.005,
-        help="Delay between TX chunks in seconds (default: 0.005). Only used when --tx-chunk-size > 0.",
-    )
-    parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=10,
-        help="Maximum retry attempts for file transfer operations (default: 10).",
-    )
     parser.add_argument(
         "--direct",
         action="store_true",
@@ -2151,6 +2124,11 @@ Notes:
     if hasattr(args, "elf_path") and args.elf_path:
         elf_path = args.elf_path
 
+    # CLI has no config layer: turn unset schema flags into concrete defaults.
+    from fpbinject.core.arg_schema import fill_missing_defaults
+
+    fill_missing_defaults(args)
+
     try:
         plan = resolve_connection_plan(args)
         cli = FPBCLI(
@@ -2159,9 +2137,9 @@ Notes:
             baudrate=args.baudrate,
             elf_path=elf_path,
             compile_commands=args.compile_commands,
-            tx_chunk_size=args.tx_chunk_size,
-            tx_chunk_delay=args.tx_chunk_delay,
-            max_retries=args.max_retries,
+            tx_chunk_size=args.serial_tx_fragment_size,
+            tx_chunk_delay=args.serial_tx_fragment_delay,
+            max_retries=args.transfer_max_retries,
             direct=args.direct,
             server_url=plan.server_url,
             token=args.token,

@@ -2013,6 +2013,63 @@ class TestMainArgumentParsing(unittest.TestCase):
                 self.assertEqual(plan.serial_port, "/dev/ttyACM0")
                 self.assertEqual(plan.baudrate, 9600)
 
+    def test_main_transfer_flags_new_names(self):
+        """New schema flag names map into the FPBCLI kwargs."""
+        with patch(
+            "sys.argv",
+            [
+                "fpb_cli.py",
+                "--serial-tx-fragment-size",
+                "64",
+                "--serial-tx-fragment-delay",
+                "0.01",
+                "--transfer-max-retries",
+                "3",
+                "info",
+            ],
+        ):
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
+                mock_cli_class.return_value = MagicMock()
+                main()
+                kwargs = mock_cli_class.call_args.kwargs
+                self.assertEqual(kwargs.get("tx_chunk_size"), 64)
+                self.assertEqual(kwargs.get("tx_chunk_delay"), 0.01)
+                self.assertEqual(kwargs.get("max_retries"), 3)
+
+    def test_main_transfer_flags_legacy_aliases(self):
+        """Legacy --tx-chunk-* / --max-retries aliases still work."""
+        with patch(
+            "sys.argv",
+            [
+                "fpb_cli.py",
+                "--tx-chunk-size",
+                "32",
+                "--tx-chunk-delay",
+                "0.02",
+                "--max-retries",
+                "7",
+                "info",
+            ],
+        ):
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
+                mock_cli_class.return_value = MagicMock()
+                main()
+                kwargs = mock_cli_class.call_args.kwargs
+                self.assertEqual(kwargs.get("tx_chunk_size"), 32)
+                self.assertEqual(kwargs.get("tx_chunk_delay"), 0.02)
+                self.assertEqual(kwargs.get("max_retries"), 7)
+
+    def test_main_transfer_flags_defaults(self):
+        """Unset transfer flags fall back to schema defaults for the CLI."""
+        with patch("sys.argv", ["fpb_cli.py", "info"]):
+            with patch("fpbinject.cli.fpb_cli.FPBCLI") as mock_cli_class:
+                mock_cli_class.return_value = MagicMock()
+                main()
+                kwargs = mock_cli_class.call_args.kwargs
+                self.assertEqual(kwargs.get("tx_chunk_size"), 0)
+                self.assertEqual(kwargs.get("tx_chunk_delay"), 0.002)
+                self.assertEqual(kwargs.get("max_retries"), 10)
+
     def test_main_file_list_command(self):
         """Test main with file-list command"""
         with patch("sys.argv", ["fpb_cli.py", "file-list", "/data"]):

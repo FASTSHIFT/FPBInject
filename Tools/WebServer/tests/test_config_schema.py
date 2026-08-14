@@ -360,7 +360,7 @@ class TestKnownConfigItems(unittest.TestCase):
         item = get_schema_by_key("parity")
         self.assertIsNotNone(item)
         self.assertEqual(item.group, ConfigGroup.CONNECTION)
-        self.assertEqual(item.config_type, ConfigType.STRING)
+        self.assertEqual(item.config_type, ConfigType.SELECT)
         self.assertEqual(item.default, "none")
         self.assertFalse(item.show_in_sidebar)
 
@@ -378,7 +378,7 @@ class TestKnownConfigItems(unittest.TestCase):
         item = get_schema_by_key("flow_control")
         self.assertIsNotNone(item)
         self.assertEqual(item.group, ConfigGroup.CONNECTION)
-        self.assertEqual(item.config_type, ConfigType.STRING)
+        self.assertEqual(item.config_type, ConfigType.SELECT)
         self.assertEqual(item.default, "none")
         self.assertFalse(item.show_in_sidebar)
 

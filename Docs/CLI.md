@@ -123,7 +123,7 @@ The resolver runs through this list and stops at the first match:
 
 ```bash
 # On the machine with the device (B): start WebServer
-./main.py --host 0.0.0.0 --port 5500
+./main.py --host 0.0.0.0 --http-port 5500
 #   🔑 Token: dd88d5df
 
 # On the controlling machine (A) — pick the server by hostname or handle:
