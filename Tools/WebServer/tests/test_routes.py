@@ -2550,5 +2550,135 @@ class TestPatchRoutesExtended(TestRoutesBase):
         self.assertIn("ELF", data["error"])
 
 
+class TestVSerialStartRoute(TestRoutesBase):
+    """/api/vserial/start passes an explicit --symlink through to the service."""
+
+    def _mark_connected(self):
+        ser = Mock()
+        ser.isOpen.return_value = True
+        state.device.ser = ser
+
+    def test_requires_connection(self):
+        """No open serial port -> error, service not started."""
+        state.device.ser = None
+        response = self.client.post("/api/vserial/start", json={})
+        data = json.loads(response.data)
+        self.assertFalse(data["success"])
+        self.assertIn("Connect to a serial port first", data["error"])
+
+    @patch("fpbinject.services.virtual_serial.VirtualSerialService")
+    def test_explicit_symlink_forwarded(self, mock_vs_cls):
+        """A payload symlink reaches VirtualSerialService.start and is saved."""
+        self._mark_connected()
+        vs = mock_vs_cls.return_value
+        vs.start.return_value = (True, None)
+        vs.status.return_value = {
+            "enabled": True,
+            "slave": "/dev/pts/2",
+            "symlink": "/tmp/fpb-custom01",
+        }
+
+        with patch.object(state, "save_config"):
+            response = self.client.post(
+                "/api/vserial/start", json={"symlink": "/tmp/fpb-custom01"}
+            )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        # The override must be forwarded verbatim (this was the bug: the route
+        # ignored the payload and always used device.vserial_symlink).
+        vs.start.assert_called_once_with(symlink="/tmp/fpb-custom01")
+        self.assertEqual(data["symlink"], "/tmp/fpb-custom01")
+        # And it should be persisted so restore/auto-connect reuses it.
+        self.assertEqual(state.device.vserial_symlink, "/tmp/fpb-custom01")
+
+    @patch("fpbinject.services.virtual_serial.VirtualSerialService")
+    def test_no_symlink_falls_back_to_config(self, mock_vs_cls):
+        """Without a payload symlink, the persisted config value is used."""
+        self._mark_connected()
+        state.device.vserial_symlink = "auto"
+        vs = mock_vs_cls.return_value
+        vs.start.return_value = (True, None)
+        vs.status.return_value = {"enabled": True, "slave": "/dev/pts/2"}
+
+        with patch.object(state, "save_config"):
+            response = self.client.post("/api/vserial/start", json={})
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        vs.start.assert_called_once_with(symlink="auto")
+        # Config untouched when no override supplied.
+        self.assertEqual(state.device.vserial_symlink, "auto")
+
+    @patch("fpbinject.services.virtual_serial.VirtualSerialService")
+    def test_start_failure_reported(self, mock_vs_cls):
+        """When the service fails to start, the route returns the error and
+        does not flip vserial_enable on."""
+        self._mark_connected()
+        state.device.vserial_enable = False
+        vs = mock_vs_cls.return_value
+        vs.start.return_value = (False, "openpty failed")
+
+        with patch.object(state, "save_config") as mock_save:
+            response = self.client.post(
+                "/api/vserial/start", json={"symlink": "/tmp/x"}
+            )
+        data = json.loads(response.data)
+
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error"], "openpty failed")
+        self.assertFalse(state.device.vserial_enable)
+        mock_save.assert_not_called()
+
+
+class TestVSerialStatusStopRoutes(TestRoutesBase):
+    """/api/vserial/status and /api/vserial/stop."""
+
+    def test_status_when_never_started(self):
+        """No service yet -> disabled status."""
+        state.device.vserial = None
+        response = self.client.get("/api/vserial/status")
+        data = json.loads(response.data)
+        self.assertTrue(data["success"])
+        self.assertFalse(data["enabled"])
+        self.assertIsNone(data["slave"])
+
+    def test_status_reports_service_state(self):
+        """An existing service's status is surfaced."""
+        vs = Mock()
+        vs.status.return_value = {
+            "enabled": True,
+            "slave": "/dev/pts/3",
+            "symlink": "/tmp/fpb-ttyACM1",
+        }
+        state.device.vserial = vs
+        response = self.client.get("/api/vserial/status")
+        data = json.loads(response.data)
+        self.assertTrue(data["success"])
+        self.assertTrue(data["enabled"])
+        self.assertEqual(data["symlink"], "/tmp/fpb-ttyACM1")
+
+    def test_stop_disables_and_saves(self):
+        """Stop tears down the service, clears the flag, persists config."""
+        vs = Mock()
+        state.device.vserial = vs
+        state.device.vserial_enable = True
+        with patch.object(state, "save_config") as mock_save:
+            response = self.client.post("/api/vserial/stop", json={})
+        data = json.loads(response.data)
+        self.assertTrue(data["success"])
+        vs.stop.assert_called_once()
+        self.assertFalse(state.device.vserial_enable)
+        mock_save.assert_called_once()
+
+    def test_stop_when_not_running_is_safe(self):
+        """Stopping with no service present does not error."""
+        state.device.vserial = None
+        with patch.object(state, "save_config"):
+            response = self.client.post("/api/vserial/stop", json={})
+        data = json.loads(response.data)
+        self.assertTrue(data["success"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

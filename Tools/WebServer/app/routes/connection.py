@@ -66,14 +66,20 @@ def _start_elf_watcher(elf_path):
     start_elf_watcher(elf_path)
 
 
-def _start_vserial(device):
-    """Create and start the virtual serial passthrough service."""
+def _start_vserial(device, symlink=None):
+    """Create and start the virtual serial passthrough service.
+
+    ``symlink`` overrides the target alias for this run when provided; when
+    None (e.g. auto-connect restore) it falls back to the persisted
+    ``device.vserial_symlink`` config.
+    """
     from fpbinject.services.virtual_serial import VirtualSerialService
 
     if device.vserial is None:
         device.vserial = VirtualSerialService(device)
 
-    symlink = getattr(device, "vserial_symlink", "auto")
+    if symlink is None:
+        symlink = getattr(device, "vserial_symlink", "auto")
     success, error = device.vserial.start(symlink=symlink)
     if success:
         status = device.vserial.status()
@@ -303,9 +309,17 @@ def api_vserial_start():
     if not connected:
         return jsonify({"success": False, "error": "Connect to a serial port first"})
 
-    success, error = _start_vserial(device)
+    # Optional per-request symlink override (CLI --symlink / API payload).
+    # Absent -> fall back to the persisted vserial_symlink config.
+    data = request.json or {}
+    symlink = data.get("symlink")
+
+    success, error = _start_vserial(device, symlink=symlink)
     if success:
         device.vserial_enable = True
+        # Remember an explicit override so restore/auto-connect reuses it.
+        if symlink is not None:
+            device.vserial_symlink = symlink
         state.save_config()
         status = device.vserial.status()
         status["success"] = True

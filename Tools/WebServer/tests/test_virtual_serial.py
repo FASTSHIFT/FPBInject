@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import unittest
+import unittest.mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -215,6 +216,111 @@ class TestVirtualSerialService(unittest.TestCase):
         self.svc.start(symlink=base)
         self.assertEqual(self.svc.status()["symlink"], base)
         self.assertEqual(os.path.realpath(base), self.svc.status()["slave"])
+
+    def test_empty_symlink_disables_alias(self):
+        """symlink='' creates the PTY but no stable alias."""
+        ok, err = self.svc.start(symlink="")
+        self.assertTrue(ok, err)
+        status = self.svc.status()
+        self.assertTrue(status["enabled"])
+        self.assertTrue(status["slave"])
+        self.assertIsNone(status["symlink"])
+
+    def test_all_candidates_in_use_starts_without_symlink(self):
+        """When base + all -N suffixes are live, start still succeeds but the
+        symlink is None (external tools use /dev/pts/N directly)."""
+        base = self._symlink
+        # Force _reserve_symlink to exhaust every candidate by claiming that
+        # each one links to a "live" pts.
+        with unittest.mock.patch.object(
+            self.svc, "_reserve_symlink", return_value=None
+        ):
+            ok, err = self.svc.start(symlink=base)
+        self.assertTrue(ok, err)
+        self.assertIsNone(self.svc.status()["symlink"])
+        self.assertTrue(self.svc.status()["enabled"])
+
+    def test_reserve_symlink_oserror_is_non_fatal(self):
+        """os.symlink raising (e.g. read-only dir) must not crash start()."""
+        with unittest.mock.patch(
+            "fpbinject.services.virtual_serial.os.symlink",
+            side_effect=OSError("read-only fs"),
+        ):
+            ok, err = self.svc.start(symlink=self._symlink)
+        # PTY still up; alias just couldn't be created.
+        self.assertTrue(ok, err)
+        self.assertIsNone(self.svc.status()["symlink"])
+
+    def test_openpty_failure_returns_error(self):
+        """openpty failing yields (False, error), not an exception."""
+        svc = VirtualSerialService(_FakeDevice())
+        with unittest.mock.patch(
+            "fpbinject.services.virtual_serial.os.openpty",
+            side_effect=OSError("no ptys"),
+        ):
+            ok, err = svc.start(symlink=self._symlink)
+        self.assertFalse(ok)
+        self.assertIn("openpty failed", err)
+
+    def test_stop_when_not_started_is_noop(self):
+        """Calling stop() before start() does nothing and does not raise."""
+        self.svc.stop()  # should be a no-op
+        self.assertFalse(self.svc.status()["enabled"])
+
+    def test_forward_rx_write_oserror_swallowed(self):
+        """A write OSError on the master fd is logged, not raised."""
+        self._start()
+        with unittest.mock.patch(
+            "fpbinject.services.virtual_serial.os.write",
+            side_effect=OSError("broken pipe"),
+        ):
+            # Should not raise.
+            self.svc.forward_rx(b"payload")
+
+    def test_poll_tx_oserror_returns_none(self):
+        """A read OSError on the master fd yields None rather than raising."""
+        self._start()
+        with unittest.mock.patch(
+            "fpbinject.services.virtual_serial.os.read",
+            side_effect=OSError("io error"),
+        ):
+            self.assertIsNone(self.svc.poll_tx())
+
+
+@unittest.skipUnless(hasattr(os, "openpty"), "PTY not supported on this platform")
+class TestVirtualSerialEnvSensitivity(unittest.TestCase):
+    """Behaviors that depend on the runtime environment (temp dir, platform)."""
+
+    def test_symlink_dir_uses_tempdir_not_hardcoded_tmp(self):
+        """default_symlink_for_port derives from tempfile.gettempdir(), so a
+        non-/tmp TMPDIR is honored (portability / sandboxed environments)."""
+        import importlib
+        import fpbinject.services.virtual_serial as vs
+
+        with unittest.mock.patch("tempfile.gettempdir", return_value="/custom/tmp"):
+            importlib.reload(vs)
+            try:
+                self.assertEqual(
+                    vs.default_symlink_for_port("/dev/ttyACM0"),
+                    "/custom/tmp/fpb-ttyACM0",
+                )
+            finally:
+                importlib.reload(vs)  # restore real tempdir binding
+
+    def test_platform_without_openpty_reports_error(self):
+        """On a platform lacking os.openpty (e.g. Windows) start() fails
+        gracefully with a clear message instead of raising."""
+        svc = VirtualSerialService(_FakeDevice())
+        real_openpty = getattr(os, "openpty", None)
+        try:
+            if hasattr(os, "openpty"):
+                del os.openpty
+            ok, err = svc.start(symlink="/tmp/whatever")
+            self.assertFalse(ok)
+            self.assertIn("not supported", err)
+        finally:
+            if real_openpty is not None:
+                os.openpty = real_openpty
 
 
 if __name__ == "__main__":
