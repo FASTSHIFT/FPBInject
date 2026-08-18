@@ -1,4 +1,5 @@
 config.json
+.fpbinject.json
 .coverage
 .cli_server_*.pid
 
