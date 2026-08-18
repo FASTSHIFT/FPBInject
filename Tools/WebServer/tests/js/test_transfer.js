@@ -2062,6 +2062,26 @@ module.exports = function (w) {
     it('transferContextAction is a function', () =>
       assertTrue(typeof w.transferContextAction === 'function'));
 
+    it('openDeviceEntry is a function', () =>
+      assertTrue(typeof w.openDeviceEntry === 'function'));
+
+    it('openDeviceEntry on dir navigates devicePath and refreshes', () => {
+      const pathInput = browserGlobals.document.getElementById('devicePath');
+      pathInput.value = '/';
+      // Directory open: sets the path input to the dir and triggers a refresh
+      // (refreshDeviceFiles reads devicePath). We assert the path was updated.
+      w.openDeviceEntry('/data', 'data', 'dir');
+      assertEqual(pathInput.value, '/data');
+    });
+
+    it('transferContextAction open on single dir navigates', () => {
+      const pathInput = browserGlobals.document.getElementById('devicePath');
+      pathInput.value = '/';
+      w.transferSelectedFiles = [{ path: '/etc', type: 'dir' }];
+      w.transferContextAction('open');
+      assertEqual(pathInput.value, '/etc');
+    });
+
     it('showTransferContextMenu shows menu at cursor', () => {
       const menu = browserGlobals.document.getElementById(
         'transferContextMenu',

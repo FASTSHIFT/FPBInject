@@ -1,6 +1,11 @@
 <!-- File Transfer Section -->
 <!-- Device File Context Menu -->
 <div class="qc-context-menu" id="transferContextMenu" style="display: none">
+  <div class="qc-context-item" onclick="transferContextAction('open')">
+    <i class="codicon codicon-go-to-file"></i>
+    <span data-i18n="transfer.open_item">Open</span>
+  </div>
+  <div class="qc-context-separator"></div>
   <div class="qc-context-item" onclick="transferContextAction('upload')">
     <i class="codicon codicon-cloud-upload"></i>
     <span data-i18n="transfer.upload_file">Upload File</span>

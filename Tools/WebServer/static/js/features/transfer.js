@@ -491,16 +491,7 @@ async function refreshDeviceFiles() {
 
     item.onclick = (e) => selectDeviceFile(item, e);
     item.ondblclick = () => {
-      if (entry.type === 'dir') {
-        pathInput.value = item.dataset.path;
-        refreshDeviceFiles();
-      } else if (_isImageFile(entry.name)) {
-        previewDeviceImage(item.dataset.path, entry.name);
-      } else if (_isLvglBinFile(entry.name)) {
-        previewDeviceImage(item.dataset.path, entry.name, true);
-      } else if (_isTextFile(entry.name)) {
-        openDeviceTextFile(item.dataset.path, entry.name);
-      }
+      openDeviceEntry(item.dataset.path, entry.name, entry.type);
     };
     item.oncontextmenu = (e) => {
       // Select item on right-click if not already selected
@@ -629,6 +620,31 @@ function handleDeviceFileKeydown(event) {
  * Show the device file context menu at the cursor position.
  * @param {MouseEvent} event
  */
+/**
+ * Open a device entry, mirroring the double-click behavior: navigate into a
+ * directory, or open a file according to its type (image / LVGL bin / text).
+ * Files with no matching viewer fall back to opening as text.
+ * @param {string} entryPath - Absolute device path.
+ * @param {string} name - Entry basename.
+ * @param {string} type - 'dir' or 'file'.
+ */
+function openDeviceEntry(entryPath, name, type) {
+  if (type === 'dir') {
+    const pathInput = document.getElementById('devicePath');
+    if (pathInput) pathInput.value = entryPath;
+    refreshDeviceFiles();
+  } else if (_isImageFile(name)) {
+    previewDeviceImage(entryPath, name);
+  } else if (_isLvglBinFile(name)) {
+    previewDeviceImage(entryPath, name, true);
+  } else {
+    // Text files and any other type: open in the text editor. force=false
+    // preserves the large-file guard (prompts to download huge files) and
+    // matches the previous double-click behavior for text files.
+    openDeviceTextFile(entryPath, name, false);
+  }
+}
+
 function showTransferContextMenu(event) {
   event.preventDefault();
   event.stopPropagation();
@@ -644,6 +660,12 @@ function showTransferContextMenu(event) {
   menu.querySelectorAll('.qc-context-item').forEach((item) => {
     item.classList.remove('disabled');
   });
+
+  // Open: only a single selection (dir -> navigate, file -> view)
+  const openItem = menu.querySelector('[onclick*="\'open\'"]');
+  if (openItem && !hasSingleSelection) {
+    openItem.classList.add('disabled');
+  }
 
   // Download: only when files selected (not dirs)
   const downloadItem = menu.querySelector('[onclick*="download"]');
@@ -722,6 +744,12 @@ function transferContextAction(action) {
   hideTransferContextMenu();
 
   switch (action) {
+    case 'open':
+      if (transferSelectedFiles.length === 1) {
+        const of = transferSelectedFiles[0];
+        openDeviceEntry(of.path, of.path.split('/').pop(), of.type);
+      }
+      break;
     case 'upload':
       uploadToDevice();
       break;
@@ -2416,6 +2444,7 @@ window.renameOnDevice = renameOnDevice;
 window.showTransferContextMenu = showTransferContextMenu;
 window.hideTransferContextMenu = hideTransferContextMenu;
 window.transferContextAction = transferContextAction;
+window.openDeviceEntry = openDeviceEntry;
 window.previewDeviceImage = previewDeviceImage;
 window._isImageFile = _isImageFile;
 window._isLvglBinFile = _isLvglBinFile;

@@ -391,6 +391,7 @@ window.i18nResources['zh-TW'] = {
       downloading: '正在下載 {{name}}...',
       enter_dir_name: '請輸入目錄名稱：',
       enter_new_name: '請輸入新名稱：',
+      open_item: '開啟',
       upload_file: '上傳檔案',
       upload_folder: '上傳資料夾',
       download_file: '下載',

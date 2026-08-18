@@ -390,6 +390,7 @@ window.i18nResources['zh-CN'] = {
       downloading: '正在下载 {{name}}...',
       enter_dir_name: '请输入目录名称：',
       enter_new_name: '请输入新名称：',
+      open_item: '打开',
       upload_file: '上传文件',
       upload_folder: '上传文件夹',
       download_file: '下载',

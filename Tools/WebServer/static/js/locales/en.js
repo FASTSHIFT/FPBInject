@@ -399,6 +399,7 @@ window.i18nResources['en'] = {
       downloading: 'Downloading {{name}}...',
       enter_dir_name: 'Enter directory name:',
       enter_new_name: 'Enter new name:',
+      open_item: 'Open',
       upload_file: 'Upload File',
       upload_folder: 'Upload Folder',
       download_file: 'Download',
