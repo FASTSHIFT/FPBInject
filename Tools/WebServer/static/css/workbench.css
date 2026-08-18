@@ -1949,6 +1949,9 @@ input[type="checkbox"] {
     border-color 0.2s,
     background 0.2s;
   position: relative;
+  /* Prevent double-tap-to-zoom over the whole list (incl. the '..' row and
+     empty padding); scrolling and pinch-zoom still work. */
+  touch-action: manipulation;
 }
 
 .device-file-list .loading-overlay {
@@ -2021,6 +2024,11 @@ input[type="checkbox"] {
   cursor: pointer;
   gap: 6px;
   transition: background 0.1s;
+  /* Disable the browser's double-tap-to-zoom on touch devices so a
+     double-tap reliably triggers "open directory" instead of zooming.
+     'manipulation' still allows single tap, panning/scrolling and
+     two-finger pinch zoom. */
+  touch-action: manipulation;
 }
 
 .device-file-item:hover {
