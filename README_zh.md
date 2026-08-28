@@ -300,7 +300,8 @@ Tools/hooks/install.sh
   C/C++ `clang-format`、`shfmt`、`cmake-format`、Kconfig lint、Python
   `black` + `flake8`，以及 JS/HTML/CSS 的 `prettier`。缺失对应工具的检查会
   提示并跳过，绝不阻断。
-- **`commit-msg`** —— 清除任何残留的 `Change-Id:` 尾注。
+- **`commit-msg`** —— 清除任何残留的 `Change-Id:` 尾注，并强制校验
+  Conventional Commits 主题格式（`Tools/check_commit_msg.sh`，CI 也会跑）。
 
 重量级检查（多配置编译、单元测试、覆盖率）仍只在 CI 运行。
 
@@ -313,14 +314,15 @@ Tools/hooks/install.sh --uninstall
 
 - **代码零中文**（标识符、注释、日志）。文档可用中文；面向用户的 UI 文案放在
   `Tools/WebServer/static/js/locales/*.js`（禁止硬编码）。测试会强制校验。
-- **提交信息**遵循 `type(scope): summary`（如 `fix(transfer): ...`），
-  不要带 Gerrit `Change-Id:` 尾注。
+- **提交信息**遵循 `type(scope): summary`（如 `fix(transfer): ...`），由
+  `commit-msg` 钩子和 CI 强制校验；不要带 Gerrit `Change-Id:` 尾注。
+  合法 type：`feat|fix|test|refactor|chore|docs|style|perf|build|ci|revert`。
 - **格式强制统一**，提交前先跑格式化：
   - 固件 / C / CMake / shell：`Tools/code_format.sh`
   - WebServer（Python/JS/HTML/CSS）：`Tools/WebServer/format.sh --lint`
-- **测试须通过且达覆盖率**，后端 85%、固件 80%：
-  - WebServer：`python Tools/WebServer/tests/run_tests.py --coverage --target 85`
-  - 固件：`cd App/tests && ./run_tests.sh coverage --threshold 80`
+- **测试须通过且达覆盖率门槛**（阈值以 CI 和测试运行器为准）：
+  - WebServer：`python Tools/WebServer/tests/run_tests.py --coverage`
+  - 固件：`cd App/tests && ./run_tests.sh coverage`
 - **版本号变更**统一走 `Tools/update_version.py X.Y.Z[aN]`（固件头、Python、
   JS 的唯一来源）。
 

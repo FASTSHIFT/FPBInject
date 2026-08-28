@@ -48,6 +48,25 @@ jobs:
           chmod +x Tools/check_change_id.sh
           Tools/check_change_id.sh
 
+      - name: Check commit message format (Conventional Commits)
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          chmod +x Tools/check_commit_msg.sh
+          # Resolve the same range check_change_id.sh uses.
+          if [ -n "${GITHUB_BASE_REF:-}" ] \
+            && git rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null; then
+            RANGE="origin/${GITHUB_BASE_REF}..HEAD"
+          elif [ -n "${GITHUB_EVENT_BEFORE:-}" ] \
+            && [ "${GITHUB_EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ] \
+            && git rev-parse --verify --quiet "${GITHUB_EVENT_BEFORE}" >/dev/null; then
+            RANGE="${GITHUB_EVENT_BEFORE}..HEAD"
+          else
+            RANGE="HEAD~1..HEAD"
+          fi
+          Tools/check_commit_msg.sh --range "$RANGE"
+
   # ============================================================
   # Lower Machine Tests (Embedded Firmware)
   # ============================================================

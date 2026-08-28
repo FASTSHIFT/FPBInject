@@ -26,4 +26,12 @@ if grep -Eq '^Change-Id:' "$MSG_FILE"; then
     echo "commit-msg: stripped Change-Id trailer(s)"
 fi
 
+# Enforce the Conventional Commits subject format. The shared validator is the
+# single source of truth (also used by CI). Bypass with `git commit --no-verify`.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+VALIDATOR="$REPO_ROOT/Tools/check_commit_msg.sh"
+if [ -x "$VALIDATOR" ]; then
+    "$VALIDATOR" "$MSG_FILE" || exit 1
+fi
+
 exit 0
