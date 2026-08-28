@@ -473,15 +473,28 @@ class TestTransferRoutes(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertIn("Cancel requested", data["message"])
 
-    def test_transfer_cancel_sets_flag(self):
-        """Test that cancel sets the _transfer_cancelled flag."""
-        from fpbinject.app.routes.transfer import _transfer_cancelled
+    def test_transfer_cancel_signals_active_transaction(self):
+        """Cancel must signal the active transaction's cancel event."""
+        import threading
 
-        _transfer_cancelled.clear()
-        self.assertFalse(_transfer_cancelled.is_set())
+        # The route reads the (patched) module-level state.device; simulate an
+        # active transaction with a real cancel event on that mock device.
+        cancel_event = threading.Event()
+        self.mock_device.file_txn_active = {
+            "op": "upload",
+            "path": "/test.bin",
+            "cancel_event": cancel_event,
+        }
+        self.assertFalse(cancel_event.is_set())
         response = self.client.post("/api/transfer/cancel")
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(_transfer_cancelled.is_set())
+        self.assertTrue(cancel_event.is_set())
+
+    def test_transfer_cancel_no_active_transaction(self):
+        """Cancel with no active transfer still returns success."""
+        response = self.client.post("/api/transfer/cancel")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["success"])
 
 
 class TestTransferHelpers(unittest.TestCase):

@@ -10,8 +10,11 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import threading  # noqa: E402
+
 from flask import Flask  # noqa: E402
-from fpbinject.app.routes.transfer import bp, _transfer_cancelled  # noqa: E402
+from fpbinject.app.routes.transfer import bp  # noqa: E402
+from fpbinject.core import file_txn  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=10.0):
@@ -37,6 +40,9 @@ class TransferTestBase(unittest.TestCase):
         self.mock_device.upload_chunk_size = 64
         self.mock_device.download_chunk_size = 64
         self.mock_device.transfer_max_retries = 3
+        # Real transaction guard primitives so file_txn works as in production.
+        self.mock_device.file_txn_lock = threading.Lock()
+        self.mock_device.file_txn_active = None
 
         self.state_patcher = patch("fpbinject.app.routes.transfer.state")
         self.mock_state = self.state_patcher.start()
@@ -57,8 +63,6 @@ class TransferTestBase(unittest.TestCase):
             side_effect=mock_run_in_device_worker,
         )
         self.mock_worker = self.worker_patcher.start()
-
-        _transfer_cancelled.clear()
 
     def tearDown(self):
         self.state_patcher.stop()
@@ -306,7 +310,9 @@ class TestUploadRoute(TransferTestBase):
         mock_ft.download_chunk_size = 64
 
         def fopen_sets_cancel(*args, **kwargs):
-            _transfer_cancelled.set()
+            # Simulate a cancel arriving mid-transfer by signalling the
+            # active transaction's cancel event.
+            file_txn.request_cancel(self.mock_device)
             return (True, "OK")
 
         mock_ft.fopen.side_effect = fopen_sets_cancel
@@ -571,7 +577,7 @@ class TestDownloadRoute(TransferTestBase):
         mock_ft.fstat.return_value = (True, {"size": 1000, "type": "file"})
 
         def fopen_sets_cancel(*args, **kwargs):
-            _transfer_cancelled.set()
+            file_txn.request_cancel(self.mock_device)
             return (True, "OK")
 
         mock_ft.fopen.side_effect = fopen_sets_cancel

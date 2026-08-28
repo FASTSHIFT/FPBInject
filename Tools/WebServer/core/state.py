@@ -134,6 +134,12 @@ class DeviceState(DeviceStateBase):
         # Worker thread reference
         self.worker = None
 
+        # File transaction guard: serializes stateful file command sequences
+        # (upload/download hold an open handle) against any other file write,
+        # so concurrent operations cannot interleave and corrupt a transfer.
+        self.file_txn_lock = threading.Lock()
+        self.file_txn_active = None  # None or dict(op, path, since, id)
+
         # Virtual serial passthrough service (created on connect if enabled)
         self.vserial = None
 

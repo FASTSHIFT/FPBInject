@@ -18,14 +18,18 @@ from flask import Blueprint, jsonify, request
 from fpbinject.app.utils.sse import sse_response
 from fpbinject.core.file_transfer import FileTransfer
 from fpbinject.core.state import state
+from fpbinject.core.file_txn import (
+    TransferBusy,
+    file_transaction,
+    begin_transaction,
+    end_transaction,
+    request_cancel,
+)
 from fpbinject.utils.crc import crc16
 from fpbinject.services.device_worker import run_in_device_worker
 
 bp = Blueprint("transfer", __name__)
 logger = logging.getLogger(__name__)
-
-# Global transfer cancel flag
-_transfer_cancelled = threading.Event()
 
 
 def _get_helpers():
@@ -98,8 +102,8 @@ def api_transfer_cancel():
         JSON with success status
     """
     log_info, _, _, _, _ = _get_helpers()
-    _transfer_cancelled.set()
-    log_info("Cancel requested")
+    signalled = request_cancel(state.device)
+    log_info("Cancel requested" if signalled else "Cancel requested (no active transfer)")
     return jsonify({"success": True, "message": "Cancel requested"})
 
 
@@ -127,7 +131,11 @@ def api_transfer_list():
         finally:
             ft.fpb.exit_fl_mode()
 
-    result = _run_serial_op(do_list, timeout=10.0)
+    try:
+        with file_transaction(state.device, "list", path):
+            result = _run_serial_op(do_list, timeout=10.0)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -161,7 +169,11 @@ def api_transfer_stat():
         finally:
             ft.fpb.exit_fl_mode()
 
-    result = _run_serial_op(do_stat, timeout=5.0)
+    try:
+        with file_transaction(state.device, "stat", path):
+            result = _run_serial_op(do_stat, timeout=5.0)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -197,7 +209,11 @@ def api_transfer_mkdir():
         finally:
             ft.fpb.exit_fl_mode()
 
-    result = _run_serial_op(do_mkdir, timeout=5.0)
+    try:
+        with file_transaction(state.device, "mkdir", path):
+            result = _run_serial_op(do_mkdir, timeout=5.0)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -236,7 +252,11 @@ def api_transfer_delete():
         finally:
             ft.fpb.exit_fl_mode()
 
-    result = _run_serial_op(do_delete, timeout=5.0)
+    try:
+        with file_transaction(state.device, "delete", path):
+            result = _run_serial_op(do_delete, timeout=5.0)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -279,7 +299,11 @@ def api_transfer_rename():
         finally:
             ft.fpb.exit_fl_mode()
 
-    result = _run_serial_op(do_rename, timeout=5.0)
+    try:
+        with file_transaction(state.device, "rename", old_path):
+            result = _run_serial_op(do_rename, timeout=5.0)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -322,8 +346,14 @@ def api_transfer_upload():
 
     log_info(f"Starting upload: {file.filename} -> {remote_path} ({total_size} bytes)")
 
-    # Clear cancel flag at start
-    _transfer_cancelled.clear()
+    # Acquire the file transaction guard up front so a conflicting operation
+    # (or a second transfer) fails fast with 409 instead of interleaving on
+    # the wire. Ownership is handed to the background thread, which releases
+    # it in its finally block.
+    try:
+        cancel_event = begin_transaction(state.device, "upload", remote_path)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     progress_queue = queue.Queue()
     # Track last activity time for timeout
@@ -349,7 +379,7 @@ def api_transfer_upload():
             last_activity["time"] = time.time()
 
             # Check for cancel
-            if _transfer_cancelled.is_set():
+            if cancel_event.is_set():
                 cancelled = True
                 return  # Don't raise, just set flag
 
@@ -404,7 +434,7 @@ def api_transfer_upload():
                 ft.reset_stats()  # Reset stats before transfer
                 while uploaded < total_size:
                     # Check cancel before each chunk
-                    if _transfer_cancelled.is_set():
+                    if cancel_event.is_set():
                         cancelled = True
                         ft.fclose()
                         log_info("Upload cancelled by user")
@@ -502,15 +532,19 @@ def api_transfer_upload():
                 progress_queue.put(None)
 
         # Use very long timeout - actual timeout is managed by activity tracking
-        if not run_in_device_worker(state.device, do_upload, timeout=86400.0):
-            progress_queue.put(
-                {
-                    "type": "result",
-                    "success": False,
-                    "error": "Device worker not running",
-                }
-            )
-            progress_queue.put(None)
+        try:
+            if not run_in_device_worker(state.device, do_upload, timeout=86400.0):
+                progress_queue.put(
+                    {
+                        "type": "result",
+                        "success": False,
+                        "error": "Device worker not running",
+                    }
+                )
+                progress_queue.put(None)
+        finally:
+            # Release the file transaction guard acquired in the HTTP handler.
+            end_transaction(state.device)
 
     thread = threading.Thread(target=upload_task, daemon=True)
     thread.start()
@@ -571,7 +605,11 @@ def api_transfer_download_sync():
         finally:
             ft.fpb.exit_fl_mode()
 
-    result = _run_serial_op(do_download, timeout=120.0)
+    try:
+        with file_transaction(state.device, "download", remote_path):
+            result = _run_serial_op(do_download, timeout=120.0)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -602,8 +640,12 @@ def api_transfer_download():
 
     log_info(f"Starting download: {remote_path}")
 
-    # Clear cancel flag at start
-    _transfer_cancelled.clear()
+    # Acquire the file transaction guard up front (fail fast with 409 on
+    # conflict); the background thread releases it in its finally block.
+    try:
+        cancel_event = begin_transaction(state.device, "download", remote_path)
+    except TransferBusy as e:
+        return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
     progress_queue = queue.Queue()
     # Track last activity time for timeout
@@ -629,7 +671,7 @@ def api_transfer_download():
             last_activity["time"] = time.time()
 
             # Check for cancel
-            if _transfer_cancelled.is_set():
+            if cancel_event.is_set():
                 cancelled = True
                 return  # Don't raise, just set flag
 
@@ -717,7 +759,7 @@ def api_transfer_download():
                 ft.reset_stats()  # Reset stats before transfer
                 while True:
                     # Check cancel before each chunk
-                    if _transfer_cancelled.is_set():
+                    if cancel_event.is_set():
                         cancelled = True
                         ft.fclose()
                         log_info("Download cancelled by user")
@@ -814,15 +856,19 @@ def api_transfer_download():
                 progress_queue.put(None)
 
         # Use very long timeout - actual timeout is managed by activity tracking
-        if not run_in_device_worker(state.device, do_download, timeout=86400.0):
-            progress_queue.put(
-                {
-                    "type": "result",
-                    "success": False,
-                    "error": "Device worker not running",
-                }
-            )
-            progress_queue.put(None)
+        try:
+            if not run_in_device_worker(state.device, do_download, timeout=86400.0):
+                progress_queue.put(
+                    {
+                        "type": "result",
+                        "success": False,
+                        "error": "Device worker not running",
+                    }
+                )
+                progress_queue.put(None)
+        finally:
+            # Release the file transaction guard acquired in the HTTP handler.
+            end_transaction(state.device)
 
     thread = threading.Thread(target=download_task, daemon=True)
     thread.start()
