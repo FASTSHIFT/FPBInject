@@ -2038,27 +2038,17 @@ async function uploadFolderFiles(files, targetPath, folderName) {
  */
 function formatTransferStats(stats) {
   if (!stats) return '';
+  // Fixed English labels: this is appended to English-only completion log
+  // lines ("Upload/Download complete: ..."), so keep it locale-independent.
   const parts = [];
   if (stats.packet_loss_rate !== undefined && stats.packet_loss_rate > 0) {
-    parts.push(
-      t('transfer.stat_loss', 'loss: {{rate}}%', {
-        rate: stats.packet_loss_rate,
-      }),
-    );
+    parts.push(`loss: ${stats.packet_loss_rate}%`);
   }
   if (stats.retry_count > 0) {
-    parts.push(
-      t('transfer.stat_retries', 'retries: {{count}}', {
-        count: stats.retry_count,
-      }),
-    );
+    parts.push(`retries: ${stats.retry_count}`);
   }
   if (stats.crc_errors > 0) {
-    parts.push(
-      t('transfer.stat_crc_errors', 'CRC errors: {{count}}', {
-        count: stats.crc_errors,
-      }),
-    );
+    parts.push(`CRC errors: ${stats.crc_errors}`);
   }
   return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
 }
