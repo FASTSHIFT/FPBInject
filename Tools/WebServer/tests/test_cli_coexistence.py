@@ -82,6 +82,16 @@ class TestFPBCLIProxyMode(unittest.TestCase):
             "/api/disconnect": {"success": True},
             "/api/serial/send": {"success": True, "sent": "test"},
             "/api/logs": {"raw_data": "output line\n", "raw_next": 1},
+            "/api/serial/read": {
+                "success": True,
+                "data": "output line\n",
+                "next": 1,
+                "returned_bytes": 12,
+                "pending_bytes": 0,
+                "pending_entries": 0,
+                "truncated": False,
+                "buffer_overflowed": False,
+            },
             "/api/fpb/test-serial": {
                 "success": True,
                 "recommended_upload_chunk_size": 128,
@@ -202,14 +212,15 @@ class TestFPBCLIProxyMode(unittest.TestCase):
         cli.cleanup()
 
     def test_proxy_serial_read(self):
-        """serial_read() works through proxy."""
+        """serial_read() works through proxy (context-safe windowed output)."""
         cli = self._make_cli()
         buf = io.StringIO()
         with redirect_stdout(buf):
             cli.serial_read()
         result = json.loads(buf.getvalue())
         self.assertTrue(result["success"])
-        self.assertIn("log", result)
+        self.assertIn("data", result)
+        self.assertIn("next", result)
         cli.cleanup()
 
     def test_proxy_test_serial(self):
@@ -436,6 +447,30 @@ class _CursorMockHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(body)
+        elif path == "/api/serial/read":
+            from fpbinject.core.serial_read import compute_read
+
+            since = int(qs.get("since", [0])[0])
+            max_bytes = int(qs.get("max_bytes", [4096])[0])
+            tail = int(qs.get("tail", [0])[0])
+            drop = (qs.get("drop", [""])[0] or "").lower() in ("1", "true", "yes")
+            next_id = (
+                max(e["id"] for e in self.log_entries) + 1 if self.log_entries else 0
+            )
+            result = compute_read(
+                list(self.log_entries),
+                next_id,
+                since=since,
+                max_bytes=max_bytes,
+                tail=tail,
+                drop=drop,
+            )
+            result["success"] = True
+            body = json.dumps(result).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self.send_response(404)
             self.end_headers()
@@ -473,80 +508,92 @@ class TestSerialReadSinceCursor(unittest.TestCase):
     def _make_cli(self):
         return FPBCLI(port="/dev/ttyACM0", server_url=self.server_url)
 
-    def test_serial_read_since_zero_returns_all(self):
-        """serial_read(since=0) returns all log entries."""
+    def test_serial_read_default_tail_returns_recent(self):
+        """serial_read() default is a bounded tail read (small backlog fits)."""
         cli = self._make_cli()
         buf = io.StringIO()
         with redirect_stdout(buf):
-            cli.serial_read(since=0)
+            cli.serial_read()
         result = json.loads(buf.getvalue())
         self.assertTrue(result["success"])
-        self.assertIn("line0", result["raw_data"])
-        self.assertIn("line1", result["raw_data"])
-        self.assertIn("line2", result["raw_data"])
-        self.assertEqual(result["raw_next"], 3)
+        # Small backlog fits within max_bytes -> all three lines returned.
+        self.assertIn("line0", result["data"])
+        self.assertIn("line2", result["data"])
+        self.assertEqual(result["next"], 3)
         cli.cleanup()
 
     def test_serial_read_since_skips_old(self):
-        """serial_read(since=2) returns only entries with id >= 2."""
+        """serial_read(since=2) pages only entries with id >= 2."""
         cli = self._make_cli()
         buf = io.StringIO()
         with redirect_stdout(buf):
             cli.serial_read(since=2)
         result = json.loads(buf.getvalue())
         self.assertTrue(result["success"])
-        self.assertNotIn("line0", result["raw_data"])
-        self.assertNotIn("line1", result["raw_data"])
-        self.assertIn("line2", result["raw_data"])
-        self.assertEqual(result["raw_next"], 3)
+        self.assertNotIn("line0", result["data"])
+        self.assertNotIn("line1", result["data"])
+        self.assertIn("line2", result["data"])
+        self.assertEqual(result["next"], 3)
         cli.cleanup()
 
     def test_serial_read_since_beyond_returns_empty(self):
-        """serial_read(since=raw_next) returns empty raw_data."""
+        """serial_read(since=next) returns empty data."""
         cli = self._make_cli()
         buf = io.StringIO()
         with redirect_stdout(buf):
             cli.serial_read(since=3)
         result = json.loads(buf.getvalue())
         self.assertTrue(result["success"])
-        self.assertEqual(result["raw_data"], "")
-        self.assertEqual(result["raw_next"], 3)
+        self.assertEqual(result["data"], "")
+        self.assertEqual(result["next"], 3)
         cli.cleanup()
 
-    def test_serial_read_raw_next_in_output(self):
-        """serial_read output always contains raw_next field."""
+    def test_serial_read_next_in_output(self):
+        """serial_read output always contains the 'next' cursor."""
         cli = self._make_cli()
         buf = io.StringIO()
         with redirect_stdout(buf):
             cli.serial_read()
         result = json.loads(buf.getvalue())
-        self.assertIn("raw_next", result)
-        self.assertIsInstance(result["raw_next"], int)
+        self.assertIn("next", result)
+        self.assertIsInstance(result["next"], int)
+        cli.cleanup()
+
+    def test_serial_read_drop_skips_backlog(self):
+        """serial_read(drop=True) returns no data and advances the cursor."""
+        cli = self._make_cli()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read(drop=True)
+        result = json.loads(buf.getvalue())
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"], "")
+        self.assertEqual(result["next"], 3)
         cli.cleanup()
 
     def test_serial_read_incremental_workflow(self):
-        """Simulate incremental read: first read all, then only new."""
+        """Simulate incremental read: first tail, then page only new data."""
         cli = self._make_cli()
 
-        # First read: get everything
+        # First read: default tail gets everything (small backlog).
         buf = io.StringIO()
         with redirect_stdout(buf):
-            cli.serial_read(since=0)
+            cli.serial_read()
         r1 = json.loads(buf.getvalue())
-        cursor = r1["raw_next"]
+        cursor = r1["next"]
         self.assertEqual(cursor, 3)
 
         # Add new entry
         _CursorMockHandler.log_entries.append({"id": 3, "data": "line3\n"})
 
-        # Second read: only new data
+        # Second read: only new data via since cursor
         buf = io.StringIO()
         with redirect_stdout(buf):
             cli.serial_read(since=cursor)
         r2 = json.loads(buf.getvalue())
-        self.assertIn("line3", r2["raw_data"])
-        self.assertNotIn("line0", r2["raw_data"])
-        self.assertEqual(r2["raw_next"], 4)
+        self.assertIn("line3", r2["data"])
+        self.assertNotIn("line0", r2["data"])
+        self.assertEqual(r2["next"], 4)
 
         # Restore
         _CursorMockHandler.log_entries.pop()

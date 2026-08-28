@@ -375,12 +375,33 @@ class ServerProxy:
         return self._post("/api/serial/send", {"data": data})
 
     def serial_read(self, raw_since: int = 0) -> dict:
-        """Read raw serial output via WebServer.
+        """Read raw serial output via WebServer (legacy full-window read).
 
         Uses the /api/logs endpoint to fetch raw_serial_log entries.
         Returns dict with 'raw_data' and 'raw_next' for incremental reads.
+
+        Prefer :meth:`serial_read_window` for context-safe bounded reads.
         """
         return self._get(f"/api/logs?raw_since={raw_since}&tool_since=999999999")
+
+    def serial_read_window(
+        self,
+        since: int = 0,
+        max_bytes: int = 4096,
+        tail: int = 0,
+        drop: bool = False,
+    ) -> dict:
+        """Context-safe windowed serial read via /api/serial/read.
+
+        Returns dict with data / next / pending_bytes / pending_entries /
+        buffer_overflowed. Never returns more than ``max_bytes`` of data.
+        """
+        q = f"/api/serial/read?since={since}&max_bytes={max_bytes}"
+        if tail and tail > 0:
+            q += f"&tail={tail}"
+        if drop:
+            q += "&drop=1"
+        return self._get(q)
 
     # ------------------------------------------------------------------
     # Virtual serial passthrough (proxied to WebServer connection routes)

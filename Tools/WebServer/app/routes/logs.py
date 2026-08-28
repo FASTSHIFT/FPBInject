@@ -114,6 +114,43 @@ def api_raw_log():
     return jsonify({"success": True, "logs": logs, "next_index": next_id})
 
 
+@bp.route("/serial/read", methods=["GET"])
+def api_serial_read():
+    """Context-safe windowed read of the raw serial ring buffer.
+
+    Query params (all optional):
+      since      cursor from a previous ``next`` (forward paging); default 0
+      max_bytes  hard cap on returned data bytes; default 4096
+      tail       return only the newest N bytes (ignores ``since``)
+      drop       "1"/"true" to skip the backlog and just advance the cursor
+
+    Returns data + next cursor + pending_bytes/entries + buffer_overflowed so a
+    reader can page the whole backlog without ever over-reading its context.
+    """
+    from fpbinject.core.serial_read import compute_read, DEFAULT_MAX_BYTES
+
+    since = request.args.get("since", 0, type=int)
+    max_bytes = request.args.get("max_bytes", DEFAULT_MAX_BYTES, type=int)
+    tail = request.args.get("tail", 0, type=int)
+    drop_raw = (request.args.get("drop", "") or "").lower()
+    drop = drop_raw in ("1", "true", "yes")
+
+    device = state.device
+    snapshot = list(device.raw_serial_log)
+    next_id = device.raw_log_next_id
+
+    result = compute_read(
+        snapshot,
+        next_id,
+        since=since,
+        max_bytes=max_bytes,
+        tail=tail,
+        drop=drop,
+    )
+    result["success"] = True
+    return jsonify(result)
+
+
 @bp.route("/raw_log/clear", methods=["POST"])
 def api_raw_log_clear():
     """Clear raw serial communication log."""

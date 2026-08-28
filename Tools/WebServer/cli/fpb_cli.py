@@ -1146,24 +1146,34 @@ class FPBCLI:
             self.output_error(f"Serial send failed: {str(e)}", e)
 
     def serial_read(
-        self, timeout: float = 1.0, lines: int = 50, since: int = 0
+        self,
+        timeout: float = 1.0,
+        lines: int = 50,
+        since: int = 0,
+        max_bytes: int = 4096,
+        tail: int = 0,
+        drop: bool = False,
     ) -> None:
-        """Read recent serial output from device."""
+        """Read serial output, context-safe (adb-logcat style).
+
+        Bounded by ``max_bytes`` so a large backlog never blows up the
+        consumer's context. Defaults to a tail read; page the rest with
+        ``--since <next>`` or skip it with ``--drop``.
+        """
         try:
             if self._proxy:
-                log_resp = self._proxy.serial_read(raw_since=since)
-                raw = log_resp.get("raw_data", "")
-                raw_next = log_resp.get("raw_next", 0)
-                log_lines = [ln for ln in raw.split("\n") if ln.strip()][-lines:]
-                self.output_json(
-                    {
-                        "success": True,
-                        "log": log_lines,
-                        "log_count": len(log_lines),
-                        "raw_data": raw,
-                        "raw_next": raw_next,
-                    }
+                # Default (no since, no explicit tail) -> tail read so we never
+                # dump the whole backlog on first call.
+                effective_tail = tail
+                if since == 0 and tail == 0 and not drop:
+                    effective_tail = max_bytes
+                win = self._proxy.serial_read_window(
+                    since=since,
+                    max_bytes=max_bytes,
+                    tail=effective_tail,
+                    drop=drop,
                 )
+                self._emit_serial_window(win)
                 return
 
             self._require_device()
@@ -1183,17 +1193,65 @@ class FPBCLI:
                         break
                     _time.sleep(0.1)
 
+            # Apply the same byte budget in direct mode: keep the newest
+            # max_bytes so a burst of output cannot blow up the context.
+            data_bytes = new_data.encode("utf-8")
+            truncated = False
+            if max_bytes > 0 and len(data_bytes) > max_bytes:
+                data_bytes = data_bytes[-max_bytes:]
+                new_data = data_bytes.decode("utf-8", errors="replace")
+                truncated = True
+
             log_lines = [ln for ln in new_data.split("\n") if ln.strip()][-lines:]
-            self.output_json(
-                {
-                    "success": True,
-                    "new_data": new_data,
-                    "log": log_lines,
-                    "log_count": len(log_lines),
-                }
-            )
+            out = {
+                "success": True,
+                "new_data": new_data,
+                "log": log_lines,
+                "log_count": len(log_lines),
+                "returned_bytes": len(data_bytes),
+                "truncated": truncated,
+            }
+            if truncated:
+                out["hint"] = (
+                    "output exceeded --max-bytes and was tail-trimmed; "
+                    "increase --max-bytes if you need more"
+                )
+            self.output_json(out)
         except Exception as e:
             self.output_error(f"Serial read failed: {str(e)}", e)
+
+    def _emit_serial_window(self, win: dict) -> None:
+        """Emit a context-safe windowed read result (proxy mode).
+
+        Builds a bounded JSON payload and attaches an actionable ``hint`` so
+        the caller knows how to page or skip the remaining backlog.
+        """
+        data = win.get("data", "")
+        pending = win.get("pending_bytes", 0)
+        out = {
+            "success": True,
+            "data": data,
+            "next": win.get("next", 0),
+            "returned_bytes": win.get("returned_bytes", len(data.encode("utf-8"))),
+            "pending_bytes": pending,
+            "pending_entries": win.get("pending_entries", 0),
+            "truncated": win.get("truncated", False),
+            "buffer_overflowed": win.get("buffer_overflowed", False),
+        }
+        hints = []
+        if pending and pending > 0:
+            hints.append(
+                f"{pending} bytes still buffered; read more with "
+                f"--since {out['next']}, or skip with --drop"
+            )
+        if out["buffer_overflowed"]:
+            hints.append(
+                "buffer overflowed: some earlier data was evicted before this "
+                "cursor and is lost"
+            )
+        if hints:
+            out["hint"] = "; ".join(hints)
+        self.output_json(out)
 
     def connect(self, port: str, baudrate: int = 115200) -> None:
         """Connect to device (via proxy or direct)."""
@@ -2010,7 +2068,28 @@ Notes:
         "--since",
         type=int,
         default=0,
-        help="Cursor from previous raw_next for incremental reads (default: 0)",
+        help="Cursor from a previous 'next' for incremental paging (default: 0). "
+        "Walks the backlog without loss.",
+    )
+    serial_read_parser.add_argument(
+        "--max-bytes",
+        dest="max_bytes",
+        type=int,
+        default=4096,
+        help="Hard cap on returned data bytes (default: 4096). Keeps a large "
+        "backlog from blowing up your context.",
+    )
+    serial_read_parser.add_argument(
+        "--tail",
+        type=int,
+        default=0,
+        help="Return only the newest N bytes (adb logcat -t style); ignores --since.",
+    )
+    serial_read_parser.add_argument(
+        "--drop",
+        action="store_true",
+        help="Skip the buffered backlog and just advance the cursor "
+        "(adb logcat -c style); returns the new 'next'.",
     )
 
     # file-list command (requires device)
@@ -2222,7 +2301,14 @@ Notes:
         elif args.command == "serial-send":
             cli.serial_send(args.data, not args.no_read, args.timeout)
         elif args.command == "serial-read":
-            cli.serial_read(args.timeout, args.lines, args.since)
+            cli.serial_read(
+                args.timeout,
+                args.lines,
+                args.since,
+                args.max_bytes,
+                args.tail,
+                args.drop,
+            )
         elif args.command == "file-list":
             cli.file_list(args.path)
         elif args.command == "file-stat":

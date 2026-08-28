@@ -1597,6 +1597,56 @@ class TestLogsAPI(TestRoutesBase):
         self.assertIn("tool_logs", data)
         self.assertIn("raw_data", data)
 
+    def test_serial_read_window_default_bounded(self):
+        """/api/serial/read must cap output at max_bytes, never dump backlog."""
+        # 10 KB backlog across 100 entries.
+        state.device.raw_serial_log = [{"id": i, "data": "x" * 100} for i in range(100)]
+        state.device.raw_log_next_id = 100
+
+        response = self.client.get("/api/serial/read?tail=4096&max_bytes=4096")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertLessEqual(data["returned_bytes"], 4096)
+        self.assertTrue(data["truncated"])  # older data exists
+        self.assertEqual(data["next"], 100)
+
+    def test_serial_read_window_paging_reports_pending(self):
+        """since-based paging returns a bounded page and reports pending."""
+        state.device.raw_serial_log = [{"id": i, "data": "y" * 100} for i in range(10)]
+        state.device.raw_log_next_id = 10
+
+        response = self.client.get("/api/serial/read?since=0&max_bytes=250")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertLessEqual(data["returned_bytes"], 250)
+        self.assertGreater(data["pending_bytes"], 0)
+        self.assertGreater(data["next"], 0)
+
+    def test_serial_read_window_drop(self):
+        """drop returns no data and advances the cursor to the end."""
+        state.device.raw_serial_log = [{"id": i, "data": "z" * 50} for i in range(5)]
+        state.device.raw_log_next_id = 5
+
+        response = self.client.get("/api/serial/read?drop=1")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["data"], "")
+        self.assertEqual(data["next"], 5)
+
+    def test_serial_read_window_overflow_flag(self):
+        """A since older than the oldest retained id flags buffer_overflowed."""
+        state.device.raw_serial_log = [{"id": i, "data": "d"} for i in range(100, 110)]
+        state.device.raw_log_next_id = 110
+
+        response = self.client.get("/api/serial/read?since=5&max_bytes=1000")
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertTrue(data["buffer_overflowed"])
+
     def test_serial_send_no_data(self):
         """Test serial send without data"""
         response = self.client.post(
