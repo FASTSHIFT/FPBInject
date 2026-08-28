@@ -103,7 +103,9 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.STRING,
         default=None,
-        tooltip="Serial port device (e.g., /dev/ttyACM0, COM3)",
+        tooltip="Serial port device (e.g., /dev/ttyACM0, COM3). OPTIONAL: only "
+        "needed to open a port when no device is connected yet. ELF analysis "
+        "and an already-connected server do not need it.",
         show_in_sidebar=False,
         order=10,
         cli_expose=True,
@@ -115,7 +117,7 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.CONNECTION,
         config_type=ConfigType.NUMBER,
         default=115200,
-        tooltip="Serial baud rate",
+        tooltip="Serial baud rate (default: 115200; rarely needs changing).",
         show_in_sidebar=False,
         order=20,
         cli_expose=True,

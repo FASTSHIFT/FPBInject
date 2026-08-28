@@ -367,12 +367,40 @@ class FPBCLI:
         """Output result as JSON to stdout"""
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
-    def output_error(self, message: str, error: Optional[Exception] = None) -> None:
+    def output_error(
+        self,
+        message: str,
+        error: Optional[Exception] = None,
+        hint: Optional[str] = None,
+    ) -> None:
         """Output error as JSON"""
         error_data = {"success": False, "error": message}
+        if hint:
+            error_data["hint"] = hint
         if error and self.verbose:
             error_data["exception"] = str(error)
         self.output_json(error_data)
+
+    # Hint appended to serial-loss-flavored failures, pointing at `doctor`.
+    _SERIAL_LOSS_HINT = (
+        "serial loss/timeout? run `fpbinject doctor` for copy-paste tuning "
+        "flags, or raise --transfer-max-retries"
+    )
+
+    @staticmethod
+    def _looks_like_serial_loss(message: str) -> bool:
+        msg = (message or "").lower()
+        return any(
+            k in msg
+            for k in (
+                "crc",
+                "timeout",
+                "mismatch",
+                "retries",
+                "read failed",
+                "write failed",
+            )
+        )
 
     def _require_device(self) -> None:
         """Raise if no device connection (proxy or direct) is available."""
@@ -783,6 +811,101 @@ class FPBCLI:
         except Exception as e:
             self.output_error(f"Serial test failed: {str(e)}", e)
 
+    @staticmethod
+    def _doctor_suggestions(result: dict) -> list:
+        """Turn a test-serial result into copy-paste tuning suggestions.
+
+        Returns a list of {reason, command, params} dicts. Pure/static so it
+        can be unit tested without a device.
+        """
+        suggestions = []
+        if not result or not result.get("success"):
+            return suggestions
+
+        # PC->device fragmentation needed (slow/lossy serial driver).
+        if result.get("fragment_needed"):
+            fsize = result.get("recommended_fragment_size", 64)
+            fdelay = result.get("recommended_fragment_delay", 0.005)
+            suggestions.append(
+                {
+                    "reason": "PC->device serial loss detected; fragment TX writes",
+                    "params": {
+                        "serial-tx-fragment-size": fsize,
+                        "serial-tx-fragment-delay": fdelay,
+                    },
+                    "command": (
+                        f"--serial-tx-fragment-size {fsize} "
+                        f"--serial-tx-fragment-delay {fdelay}"
+                    ),
+                }
+            )
+
+        # Recommended chunk sizes from the probe.
+        up = result.get("recommended_upload_chunk_size")
+        if up:
+            suggestions.append(
+                {
+                    "reason": "use the probed max reliable upload chunk size",
+                    "params": {"upload-chunk-size": up},
+                    "command": f"--upload-chunk-size {up}",
+                }
+            )
+        down = result.get("recommended_download_chunk_size")
+        if down:
+            suggestions.append(
+                {
+                    "reason": "use the probed max reliable download chunk size",
+                    "params": {"download-chunk-size": down},
+                    "command": f"--download-chunk-size {down}",
+                }
+            )
+        return suggestions
+
+    def doctor(
+        self,
+        start_size: int = 16,
+        max_size: int = 512,
+        timeout: float = 2.0,
+        trials: int = 8,
+    ) -> None:
+        """Diagnose serial reliability and print copy-paste tuning commands.
+
+        Runs the throughput probe, then translates its recommendations into
+        ready-to-use flags so a serial-loss situation has an obvious next step.
+        """
+        try:
+            if self._proxy:
+                result = self._proxy.test_serial(
+                    start_size, max_size, timeout, trials, 1.0
+                )
+            else:
+                self._require_device()
+                result = self._fpb.test_serial_throughput(
+                    start_size=start_size,
+                    max_size=max_size,
+                    timeout=timeout,
+                    trials=trials,
+                    min_success_rate=1.0,
+                )
+
+            suggestions = self._doctor_suggestions(result)
+            combined = " ".join(s["command"] for s in suggestions).strip()
+            self.output_json(
+                {
+                    "success": bool(result.get("success")),
+                    "probe": result,
+                    "suggestions": suggestions,
+                    "apply_command": combined,
+                    "hint": (
+                        "re-run your transfer with: " + combined
+                        if combined
+                        else "serial looks healthy; no tuning needed"
+                    ),
+                }
+            )
+        except Exception as e:
+            self.output_error(f"doctor failed: {str(e)}", e)
+
     def file_list(self, path: str = "/") -> None:
         """List directory contents on device"""
         try:
@@ -892,7 +1015,10 @@ class FPBCLI:
                 }
             )
         except Exception as e:
-            self.output_error(f"file_download failed: {str(e)}", e)
+            hint = (
+                self._SERIAL_LOSS_HINT if self._looks_like_serial_loss(str(e)) else None
+            )
+            self.output_error(f"file_download failed: {str(e)}", e, hint=hint)
 
     def file_upload(self, local_path: str, remote_path: str) -> None:
         """Upload a local file to device"""
@@ -941,7 +1067,10 @@ class FPBCLI:
                 }
             )
         except Exception as e:
-            self.output_error(f"file_upload failed: {str(e)}", e)
+            hint = (
+                self._SERIAL_LOSS_HINT if self._looks_like_serial_loss(str(e)) else None
+            )
+            self.output_error(f"file_upload failed: {str(e)}", e, hint=hint)
 
     def file_remove(self, path: str) -> None:
         """Remove a file on device"""
@@ -1912,9 +2041,22 @@ Notes:
   Output is JSON on stdout; pipe to jq for filtering.
   Run '{prog} <command> --help' for command-specific options.
         """
+    description = (
+        "FPBInject CLI - Lightweight interface for binary patching.\n"
+        "\n"
+        "Before you start (mental model):\n"
+        "  1. Analysis (analyze/search/disasm) is OFFLINE - no device, no --port.\n"
+        "  2. The serial port belongs to the WebServer; once a device is\n"
+        "     connected, device commands need NO --port (--baudrate defaults to\n"
+        "     115200, rarely changed).\n"
+        "  3. Serial transfers/reads are slow & windowed: progress on stderr,\n"
+        "     small tail by default - a long-but-progressing op is NOT a hang.\n"
+        "  4. Stuck on serial loss? run `%(prog)s doctor`.\n"
+        "  5. Multi-step automation? use the Python SDK (see Docs/SDK.md).\n"
+    ) % {"prog": prog}
     parser = argparse.ArgumentParser(
         prog=prog,
-        description="FPBInject CLI - Lightweight interface for binary patching",
+        description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=epilog,
     )
@@ -2067,6 +2209,31 @@ Notes:
         type=float,
         default=1.0,
         help="Success fraction required to accept a size (default: 1.0)",
+    )
+
+    # doctor command (requires device) — diagnose serial loss + suggest tuning
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Diagnose serial reliability and print copy-paste tuning flags "
+        "(requires device)",
+    )
+    doctor_parser.add_argument(
+        "--start-size", type=int, default=16, help="Starting probe size (default: 16)"
+    )
+    doctor_parser.add_argument(
+        "--max-size", type=int, default=512, help="Maximum probe size (default: 512)"
+    )
+    doctor_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=2.0,
+        help="Timeout per probe in seconds (default: 2.0)",
+    )
+    doctor_parser.add_argument(
+        "--trials",
+        type=int,
+        default=8,
+        help="Round-trips sampled per size (default: 8)",
     )
 
     # inject command (requires device)
@@ -2416,6 +2583,8 @@ Notes:
                 args.tail,
                 args.drop,
             )
+        elif args.command == "doctor":
+            cli.doctor(args.start_size, args.max_size, args.timeout, args.trials)
         elif args.command == "file-list":
             cli.file_list(args.path)
         elif args.command == "file-stat":

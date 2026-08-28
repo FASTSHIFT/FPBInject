@@ -755,6 +755,74 @@ class TestFPBCLIInfo(unittest.TestCase):
             self.assertFalse(output["success"])
             self.assertIn("Serial error", output["error"])
 
+    # ===== doctor tests =====
+
+    def test_doctor_suggestions_fragment_and_chunks(self):
+        """_doctor_suggestions turns a probe result into tuning flags."""
+        result = {
+            "success": True,
+            "fragment_needed": True,
+            "recommended_fragment_size": 64,
+            "recommended_fragment_delay": 0.005,
+            "recommended_upload_chunk_size": 96,
+            "recommended_download_chunk_size": 2048,
+        }
+        suggestions = FPBCLI._doctor_suggestions(result)
+        cmds = " ".join(s["command"] for s in suggestions)
+        self.assertIn("--serial-tx-fragment-size 64", cmds)
+        self.assertIn("--serial-tx-fragment-delay 0.005", cmds)
+        self.assertIn("--upload-chunk-size 96", cmds)
+        self.assertIn("--download-chunk-size 2048", cmds)
+
+    def test_doctor_suggestions_healthy_no_fragment(self):
+        """No fragmentation needed -> no TX-fragment suggestion."""
+        result = {
+            "success": True,
+            "fragment_needed": False,
+            "recommended_upload_chunk_size": 512,
+            "recommended_download_chunk_size": 4096,
+        }
+        suggestions = FPBCLI._doctor_suggestions(result)
+        cmds = " ".join(s["command"] for s in suggestions)
+        self.assertNotIn("fragment", cmds)
+        self.assertIn("--upload-chunk-size 512", cmds)
+
+    def test_doctor_suggestions_empty_on_failure(self):
+        self.assertEqual(FPBCLI._doctor_suggestions({"success": False}), [])
+        self.assertEqual(FPBCLI._doctor_suggestions(None), [])
+
+    def test_doctor_outputs_apply_command(self):
+        """doctor emits an apply_command and a hint from the probe result."""
+        self.cli._device_state.connected = True
+        with patch.object(self.cli._fpb, "test_serial_throughput") as mock_test:
+            mock_test.return_value = {
+                "success": True,
+                "fragment_needed": True,
+                "recommended_fragment_size": 32,
+                "recommended_fragment_delay": 0.01,
+                "recommended_upload_chunk_size": 48,
+                "recommended_download_chunk_size": 1024,
+            }
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.doctor()
+            out = json.loads(f.getvalue())
+            self.assertTrue(out["success"])
+            self.assertIn("--serial-tx-fragment-size 32", out["apply_command"])
+            self.assertIn("re-run your transfer with", out["hint"])
+
+    def test_doctor_healthy_hint(self):
+        """doctor with no suggestions reports a healthy hint."""
+        self.cli._device_state.connected = True
+        with patch.object(self.cli._fpb, "test_serial_throughput") as mock_test:
+            mock_test.return_value = {"success": True, "fragment_needed": False}
+            f = io.StringIO()
+            with redirect_stdout(f):
+                self.cli.doctor()
+            out = json.loads(f.getvalue())
+            self.assertEqual(out["apply_command"], "")
+            self.assertIn("healthy", out["hint"])
+
     # ===== file_list tests =====
 
     def test_file_list_not_connected(self):
@@ -892,6 +960,9 @@ class TestFPBCLIInfo(unittest.TestCase):
             self.cli.file_download("/remote.bin", "/tmp/out.bin")
         output = json.loads(f.getvalue())
         self.assertFalse(output["success"])
+        # CRC-flavored failure should carry a doctor hint.
+        self.assertIn("hint", output)
+        self.assertIn("doctor", output["hint"])
 
     @patch("fpbinject.core.file_transfer.FileTransfer")
     def test_file_download_creates_directory(self, mock_ft_cls):
