@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#
+# commit-msg hook for FPBInject (local development)
+#
+# This repo is mirrored to public GitHub; Gerrit "Change-Id:" trailers are
+# noise here and CI (Tools/check_change_id.sh) rejects them. The upstream
+# repo tooling installs a Gerrit commit-msg hook that *adds* Change-Id lines,
+# so instead of relying on it we ship our own hook that strips any Change-Id
+# trailer that sneaks in (e.g. from a global template or a rebase).
+#
+# Installed by Tools/hooks/install.sh (which points core.hooksPath here).
+
+set -eu
+
+MSG_FILE="$1"
+
+if [ -z "${MSG_FILE:-}" ] || [ ! -f "$MSG_FILE" ]; then
+    exit 0
+fi
+
+# Remove any line that is a Change-Id trailer. Keep everything else intact.
+if grep -Eq '^Change-Id:' "$MSG_FILE"; then
+    tmp="${MSG_FILE}.nochangeid"
+    grep -Ev '^Change-Id:' "$MSG_FILE" >"$tmp"
+    mv "$tmp" "$MSG_FILE"
+    echo "commit-msg: stripped Change-Id trailer(s)"
+fi
+
+exit 0

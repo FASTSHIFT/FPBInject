@@ -283,6 +283,47 @@ FPBInject/
 
 </details>
 
+## 开发规范
+
+### Git 钩子（推荐）
+
+每个 clone 执行一次，安装本地 git 钩子：在问题进入 CI 之前就地拦截格式/lint
+错误，并阻止 Gerrit `Change-Id:` 尾注混入提交（本公开镜像的 CI 会拒绝它们）：
+
+```bash
+Tools/hooks/install.sh
+```
+
+它会把 `core.hooksPath` 指向仓库内跟踪的 `Tools/hooks/` 目录：
+
+- **`pre-commit`** —— 只对**已暂存文件**跑 CI 的快速子集：
+  C/C++ `clang-format`、`shfmt`、`cmake-format`、Kconfig lint、Python
+  `black` + `flake8`，以及 JS/HTML/CSS 的 `prettier`。缺失对应工具的检查会
+  提示并跳过，绝不阻断。
+- **`commit-msg`** —— 清除任何残留的 `Change-Id:` 尾注。
+
+重量级检查（多配置编译、单元测试、覆盖率）仍只在 CI 运行。
+
+```bash
+git commit --no-verify         # 单次提交跳过钩子
+Tools/hooks/install.sh --uninstall
+```
+
+### 编码规范
+
+- **代码零中文**（标识符、注释、日志）。文档可用中文；面向用户的 UI 文案放在
+  `Tools/WebServer/static/js/locales/*.js`（禁止硬编码）。测试会强制校验。
+- **提交信息**遵循 `type(scope): summary`（如 `fix(transfer): ...`），
+  不要带 Gerrit `Change-Id:` 尾注。
+- **格式强制统一**，提交前先跑格式化：
+  - 固件 / C / CMake / shell：`Tools/code_format.sh`
+  - WebServer（Python/JS/HTML/CSS）：`Tools/WebServer/format.sh --lint`
+- **测试须通过且达覆盖率**，后端 85%、固件 80%：
+  - WebServer：`python Tools/WebServer/tests/run_tests.py --coverage --target 85`
+  - 固件：`cd App/tests && ./run_tests.sh coverage --threshold 80`
+- **版本号变更**统一走 `Tools/update_version.py X.Y.Z[aN]`（固件头、Python、
+  JS 的唯一来源）。
+
 ## 文档
 
 | 文档 | 说明 |

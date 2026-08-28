@@ -284,6 +284,49 @@ FPBInject/
 
 </details>
 
+## Development
+
+### Git Hooks (recommended)
+
+Install the local git hooks once per clone to catch formatting/lint issues
+before they reach CI, and to keep Gerrit `Change-Id:` trailers out of commits
+(this public mirror's CI rejects them):
+
+```bash
+Tools/hooks/install.sh
+```
+
+This points `core.hooksPath` at the tracked `Tools/hooks/` directory, which:
+
+- **`pre-commit`** — runs the fast subset of CI on *staged files only*:
+  C/C++ `clang-format`, `shfmt`, `cmake-format`, Kconfig lint, Python
+  `black` + `flake8`, and `prettier` for JS/HTML/CSS. Any check whose tool is
+  not installed is skipped with a notice (never blocks).
+- **`commit-msg`** — strips any stray `Change-Id:` trailer.
+
+Heavy checks (multi-config builds, unit tests, coverage) stay in CI only.
+
+```bash
+git commit --no-verify         # bypass hooks for one commit
+Tools/hooks/install.sh --uninstall
+```
+
+### Coding Standards
+
+- **No Chinese in code** (identifiers, comments, logs). Docs may be Chinese;
+  user-facing UI strings live in `Tools/WebServer/static/js/locales/*.js`
+  (never hard-code them). The test suite enforces this.
+- **Commit messages** follow `type(scope): summary` (e.g. `fix(transfer): ...`).
+  Do not include Gerrit `Change-Id:` trailers.
+- **Formatting is enforced.** Run the formatters before committing:
+  - Firmware / C / CMake / shell: `Tools/code_format.sh`
+  - WebServer (Python/JS/HTML/CSS): `Tools/WebServer/format.sh --lint`
+- **Tests must pass with coverage.** Backend target is 85%, firmware 80%:
+  - WebServer: `python Tools/WebServer/tests/run_tests.py --coverage --target 85`
+  - Firmware: `cd App/tests && ./run_tests.sh coverage --threshold 80`
+- **Version bumps** go through `Tools/update_version.py X.Y.Z[aN]` (single
+  source of truth for firmware header, Python, and JS).
+
 ## Documentation
 
 | Document | Description |
