@@ -103,7 +103,9 @@ def api_transfer_cancel():
     """
     log_info, _, _, _, _ = _get_helpers()
     signalled = request_cancel(state.device)
-    log_info("Cancel requested" if signalled else "Cancel requested (no active transfer)")
+    log_info(
+        "Cancel requested" if signalled else "Cancel requested (no active transfer)"
+    )
     return jsonify({"success": True, "message": "Cancel requested"})
 
 

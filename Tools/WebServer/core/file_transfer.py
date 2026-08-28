@@ -322,9 +322,7 @@ class FileTransfer:
     # offset= is echoed back by firmware so the host can detect a corrupted
     # request (the fcrc request args -a/-l/-r are NOT CRC-protected on the wire,
     # because -r is repurposed as the chained-CRC init value).
-    _FCRC_RE = re.compile(
-        r"FCRC\s+offset=(\d+)\s+size=(\d+)\s+crc=0x([0-9A-Fa-f]+)"
-    )
+    _FCRC_RE = re.compile(r"FCRC\s+offset=(\d+)\s+size=(\d+)\s+crc=0x([0-9A-Fa-f]+)")
 
     def _fcrc_call(
         self, offset: int, length: int, init_crc: Optional[int]

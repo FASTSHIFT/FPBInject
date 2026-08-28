@@ -19,7 +19,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask  # noqa: E402
 
 from fpbinject.app.routes.transfer import bp  # noqa: E402
-from fpbinject.core import file_txn  # noqa: E402
 from fpbinject.core.file_txn import (  # noqa: E402
     TransferBusy,
     begin_transaction,
