@@ -858,8 +858,90 @@ class TestCLITransferProgress(unittest.TestCase):
             cb(500, 1000)  # partial
             cb(1000, 1000)  # completion -> newline
         self.assertEqual(out.getvalue(), "")
-        self.assertIn("bytes", err.getvalue())
+        # New format: "[transfer] pct  done/total B  speed  ETA/done"
+        self.assertIn("[transfer]", err.getvalue())
         self.assertIn("100.0%", err.getvalue())
+        self.assertIn("1000/1000 B", err.getvalue())
+        # Completed run reports "done" instead of an ETA value.
+        self.assertIn("done", err.getvalue())
+
+    def test_notice_does_not_hardcode_kbps(self):
+        """Regression: the pre-transfer notice must NOT claim a fixed KB/s.
+
+        Real throughput depends on the baudrate and link quality, so any
+        hard-coded ``~NN KB/s`` figure in the notice is misleading. The
+        live progress line reports the measured speed instead.
+        """
+        import io as _io
+        import re
+        from contextlib import redirect_stderr
+
+        cli = self._cli()
+        err = _io.StringIO()
+        with redirect_stderr(err):
+            cli._transfer_notice("downloading", "/dev/f.bin", 100000)
+        text = err.getvalue()
+        # Neither the specific old figure nor any bare KB/s claim survives.
+        self.assertNotIn("55 KB/s", text)
+        self.assertNotIn("~55 KB/s", text)
+        self.assertIsNone(re.search(r"~\d+\s*KB/s", text))
+
+    def test_progress_reports_measured_speed_and_eta_tty(self):
+        """Live progress on a TTY must show measured speed and ETA."""
+        import io as _io
+        import time as _time
+        from contextlib import redirect_stderr
+
+        class _TTYBuf(_io.StringIO):
+            def isatty(self):  # pretend we're a real terminal
+                return True
+
+        cli = self._cli()
+        cb = cli._make_progress_printer()
+        err = _TTYBuf()
+        with redirect_stderr(err):
+            cb(0, 10_000)
+            # Simulate real elapsed time so EWMA has a finite dt.
+            _time.sleep(0.3)
+            cb(2_000, 10_000)
+            _time.sleep(0.3)
+            cb(5_000, 10_000)
+            _time.sleep(0.3)
+            cb(10_000, 10_000)  # final tick
+        text = err.getvalue()
+        self.assertRegex(text, r"(?:B/s|KB/s|MB/s)")
+        # Either a running ETA or the final "done" label is acceptable.
+        self.assertTrue("ETA " in text or " done" in text)
+        # TTY output must use \r + ESC[K so old chars are cleared.
+        self.assertIn("\r", text)
+        self.assertIn("\x1b[K", text)
+
+    def test_progress_non_tty_uses_newlines_not_carriage_returns(self):
+        """When stderr is a pipe, progress must be one full line per update.
+
+        Rewriting with ``\\r`` doesn't work in pipes/log files, so the printer
+        should emit newline-terminated lines and throttle hard to avoid
+        ballooning the log at 5 Hz.
+        """
+        import io as _io
+        import time as _time
+        from contextlib import redirect_stderr
+
+        cli = self._cli()
+        cb = cli._make_progress_printer()
+        err = _io.StringIO()  # not a TTY
+        with redirect_stderr(err):
+            cb(0, 10_000)
+            _time.sleep(0.05)
+            cb(2_500, 10_000)
+            _time.sleep(0.05)
+            cb(10_000, 10_000)  # final tick always emits
+        text = err.getvalue()
+        # No \r rewriting in non-TTY output.
+        self.assertNotIn("\r", text)
+        # Final line must be present with 100% and a "done" marker.
+        self.assertIn("100.0%", text)
+        self.assertIn("done", text)
 
 
 class TestCLICancelOnInterrupt(unittest.TestCase):

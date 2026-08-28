@@ -146,6 +146,60 @@ def stop_cli_server(port: int = DEFAULT_PORT) -> dict:
         }
 
 
+def _consume_sse_stream(resp, progress_cb=None, done_field="uploaded"):
+    """Consume a server-sent-events stream and return the ``result`` event.
+
+    Streams are always tiny newline-delimited ``data: {json}`` frames. We
+    forward every ``progress`` event to ``progress_cb(done, total)`` so the
+    CLI can render a live progress line, then return the final ``result``
+    event (or ``None`` if the stream ended without one).
+
+    ``done_field`` picks between ``uploaded`` (upload) and ``downloaded``
+    (download) since the server uses different keys per direction.
+    """
+    last_result = None
+    last_done = 0
+    last_total = 0
+    for raw in resp:
+        try:
+            line = raw.decode("utf-8", "replace").rstrip("\r\n")
+        except Exception:
+            continue
+        if not line.startswith("data: "):
+            continue
+        try:
+            event = json.loads(line[6:])
+        except Exception:
+            continue
+        et = event.get("type")
+        if et == "progress" and progress_cb is not None:
+            done = event.get(done_field, 0)
+            total = event.get("total", 0)
+            last_done, last_total = done, total
+            try:
+                progress_cb(done, total)
+            except Exception:
+                # Never let a UI error abort the transfer.
+                pass
+        elif et == "result":
+            last_result = event
+            # Emit a final 100% tick ONLY if the last progress event did
+            # not already reach it. The server usually emits a 100% tick
+            # before result, so this is only a safety net for streams
+            # that skip straight to result.
+            if progress_cb is not None and event.get("success"):
+                size = event.get("size") or event.get("total") or 0
+                already_final = (
+                    last_total and last_done >= last_total and last_total == size
+                )
+                if size and not already_final:
+                    try:
+                        progress_cb(size, size)
+                    except Exception:
+                        pass
+    return last_result
+
+
 class ServerProxy:
     """Proxy device operations through the running WebServer HTTP API."""
 
@@ -521,21 +575,56 @@ class ServerProxy:
         """
         return self._post("/api/transfer/cancel", {}, timeout=_PROBE_TIMEOUT)
 
-    def file_download(self, remote_path: str, timeout: float = 600.0) -> dict:
-        """Download file via WebServer (JSON with base64 data, no SSE).
+    def file_download(
+        self,
+        remote_path: str,
+        timeout: float = 600.0,
+        progress_cb=None,
+    ) -> dict:
+        """Download file via WebServer streaming SSE endpoint.
 
-        ``timeout`` defaults high because serial transfers are slow (~55 KB/s);
-        a fixed 30 s would spuriously fail large files while the server is still
-        transferring. Callers may raise it further for very large files.
+        The server pushes ``progress`` events (downloaded/total/speed/eta) and
+        a final ``result`` event carrying base64 ``data``. Passing
+        ``progress_cb(done, total)`` renders a live CLI progress line, just
+        like the direct-mode transfer. ``timeout`` defaults high because
+        serial transfers can be slow — actual throughput depends on the
+        baudrate and link quality; callers may raise it further for very
+        large files.
         """
-        return self._post(
-            "/api/transfer/download-sync",
-            {"remote_path": remote_path},
-            timeout=timeout,
-        )
+        url = self._build_url("/api/transfer/download")
+        payload = json.dumps({"remote_path": remote_path}).encode()
+        req = Request(url, data=payload, method="POST")
+        req.add_header("Content-Type", "application/json")
+        if self.token:
+            req.add_header("X-Auth-Token", self.token)
 
-    def file_upload(self, local_path: str, remote_path: str) -> dict:
-        """Upload file to device via WebServer (multipart form)."""
+        try:
+            resp = urlopen(req, timeout=timeout)
+        except HTTPError as e:
+            self._raise_for_auth(e)
+            raise
+
+        last_result = _consume_sse_stream(
+            resp,
+            progress_cb=progress_cb,
+            done_field="downloaded",
+        )
+        if last_result:
+            return last_result
+        return {"success": False, "error": "Download stream ended with no result"}
+
+    def file_upload(
+        self,
+        local_path: str,
+        remote_path: str,
+        progress_cb=None,
+    ) -> dict:
+        """Upload file to device via WebServer (multipart form, SSE stream).
+
+        If ``progress_cb`` is given, it is called as ``progress_cb(done, total)``
+        for every ``progress`` event the server pushes. This lets the CLI
+        render a live progress line just like the direct-mode transfer.
+        """
         import uuid
 
         url = self._build_url("/api/transfer/upload")
@@ -568,26 +657,25 @@ class ServerProxy:
         if self.token:
             req.add_header("X-Auth-Token", self.token)
 
-        # Serial uploads are slow (~55 KB/s); use a generous timeout so large
-        # files don't spuriously fail while the server is still transferring.
+        # Serial uploads are slow (throughput depends on baudrate + link);
+        # use a generous timeout so large files don't spuriously fail while
+        # the server is still transferring. The 20000 B/s divisor is a
+        # conservative lower bound only used to grow the timeout budget with
+        # payload size — it is NOT a claimed throughput.
         upload_timeout = max(600.0, len(file_data) / 20000.0 + 60.0)
         try:
-            with urlopen(req, timeout=upload_timeout) as resp:
-                resp_text = resp.read().decode()
+            resp = urlopen(req, timeout=upload_timeout)
         except HTTPError as e:
             self._raise_for_auth(e)
             raise
 
-        # SSE endpoint - parse stream for final result
-        last_result = None
-        for line in resp_text.splitlines():
-            if line.startswith("data: "):
-                try:
-                    event = json.loads(line[6:])
-                    if event.get("type") == "result":
-                        last_result = event
-                except Exception:
-                    pass
+        # Stream the SSE response line-by-line so `progress` events surface
+        # in real time instead of after the whole upload completes.
+        last_result = _consume_sse_stream(
+            resp,
+            progress_cb=progress_cb,
+            done_field="uploaded",
+        )
         if last_result:
             return last_result
         return {"success": True, "message": "Upload request sent"}

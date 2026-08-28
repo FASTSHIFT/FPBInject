@@ -191,9 +191,16 @@ class _MockHandler(http.server.BaseHTTPRequestHandler):
             self.rfile.read(content_length)
         path = self.path.split("?")[0]
         if path in self.responses:
-            body = json.dumps(self.responses[path]).encode()
+            raw = self.responses[path]
+            if isinstance(raw, str):
+                # Pre-serialised body (e.g. SSE stream). Send verbatim.
+                body = raw.encode()
+                content_type = "text/event-stream"
+            else:
+                body = json.dumps(raw).encode()
+                content_type = "application/json"
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
             self.end_headers()
             self.wfile.write(body)
         else:
@@ -223,11 +230,20 @@ class TestServerProxyNewMethods(unittest.TestCase):
                 "success": True,
                 "stat": {"size": 1024, "type": "file"},
             },
-            "/api/transfer/download-sync": {
-                "success": True,
-                "data": base64.b64encode(b"hello world").decode(),
-                "size": 11,
-            },
+            # New file_download() uses the SSE endpoint. Mock a minimal
+            # SSE stream: one result event carrying base64 data.
+            "/api/transfer/download": (
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "result",
+                        "success": True,
+                        "data": base64.b64encode(b"hello world").decode(),
+                        "size": 11,
+                    }
+                )
+                + "\n\n"
+            ),
             "/api/fpb/mem-read": {
                 "success": True,
                 "data": "48656C6C6F",
@@ -289,11 +305,18 @@ class TestCLIProxyNewCommands(unittest.TestCase):
                 "path": "/data/log.bin",
                 "stat": {"size": 256, "type": "file"},
             },
-            "/api/transfer/download-sync": {
-                "success": True,
-                "data": base64.b64encode(b"binary data here").decode(),
-                "size": 16,
-            },
+            "/api/transfer/download": (
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "result",
+                        "success": True,
+                        "data": base64.b64encode(b"binary data here").decode(),
+                        "size": 16,
+                    }
+                )
+                + "\n\n"
+            ),
             "/api/fpb/mem-read": {
                 "success": True,
                 "data": "AABBCCDD",

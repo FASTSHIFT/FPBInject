@@ -1137,54 +1137,134 @@ class FPBCLI(FileMemCommandsMixin):
         except Exception as e:
             self.output_error(f"Virtual serial status failed: {str(e)}", e)
 
-    # Approximate serial throughput for ETA hints (bytes/sec). Matches the
-    # ~55 KB/s figure used elsewhere (capture timeout math, docs).
-    _SERIAL_BYTES_PER_SEC = 55000
-
     def _transfer_notice(self, verb: str, name: str, size: int) -> None:
         """Print a one-line predictive notice to stderr before a transfer.
 
         Serial transfers are slow; without this an AI sees a long silence and
         assumes the tool hung. Progress (below) and the final JSON confirm
-        liveness. Suppressed when --quiet.
+        liveness. Actual speed depends on the baudrate, link quality and
+        tuning, so we do NOT hard-code a ~KB/s figure here; the live
+        progress line reports the measured speed/ETA once bytes flow.
+        Suppressed when --quiet.
         """
         if getattr(self, "_quiet", False):
             return
-        eta = size / self._SERIAL_BYTES_PER_SEC if size else 0
+        size_str = f"{size} bytes" if size else "unknown size"
         print(
-            f"[transfer] {verb} {name} ({size} bytes over serial "
-            f"~{self._SERIAL_BYTES_PER_SEC // 1000} KB/s, ~{eta:.0f}s); "
-            f"progress on stderr, JSON on stdout when done",
+            f"[transfer] {verb} {name} ({size_str}); speed depends on "
+            "serial link, live progress on stderr, JSON on stdout when done",
             file=sys.stderr,
             flush=True,
         )
 
-    def _make_progress_printer(self):
-        """Return a progress_cb that prints a throttled \\r line to stderr.
+    @staticmethod
+    def _fmt_speed(bps: float) -> str:
+        if bps <= 0:
+            return "  ?   "
+        if bps >= 1_000_000:
+            return f"{bps / 1_000_000:5.2f}MB/s"
+        if bps >= 1_000:
+            return f"{bps / 1_000:5.1f}KB/s"
+        return f"{bps:5.0f} B/s"
 
-        Returns None when --quiet so callers can pass it through unchanged.
+    @staticmethod
+    def _fmt_eta(seconds: float) -> str:
+        if seconds < 0 or seconds != seconds:  # NaN/negative
+            return "  ?  "
+        if seconds >= 3600:
+            return f"{seconds / 3600:4.1f}h"
+        if seconds >= 60:
+            return f"{seconds / 60:4.1f}m"
+        return f"{seconds:4.0f}s"
+
+    def _make_progress_printer(self):
+        """Return a progress_cb that renders a live progress line on stderr.
+
+        Speed and ETA come from real byte deltas (EWMA), no hard-coded
+        baudrate assumption. Behaviour depends on whether stderr is a TTY:
+
+        - TTY: rewrites the same line in place at ~5 Hz using ``\\r`` plus the
+          ANSI erase-to-end-of-line sequence, so a shorter follow-up never
+          leaves stale characters. A final newline closes the line at 100%.
+        - Non-TTY (pipes, log files, CI): ``\\r`` has no effect, so we throttle
+          hard (~1 line every 2 s + a final 100% tick) and end each line with
+          a newline, so downstream tools see one line per update instead of a
+          rapidly-appended 5 Hz stream.
+
+        Suppressed entirely when --quiet.
         """
         if getattr(self, "_quiet", False):
             return None
         import time as _time
 
-        state = {"last": 0.0}
+        state = {
+            "printed": 0.0,  # last print wall-time
+            "sample_t": 0.0,  # last sample wall-time
+            "sample_bytes": 0,  # bytes seen at last sample
+            "start_t": 0.0,  # first callback wall-time
+            "ewma_bps": 0.0,  # exponential-moving-average speed
+            "final_done": False,  # emitted the final line yet?
+        }
 
         def cb(done: int, total: int) -> None:
+            # Read the current stderr each call so tests that redirect stderr
+            # after building the callback (or that swap it during a run) see
+            # the right TTY behaviour.
+            stream = sys.stderr
+            is_tty = bool(getattr(stream, "isatty", lambda: False)())
+            # 5 Hz for TTY overwrites, ~0.5 Hz for pipes so logs don't balloon.
+            min_interval = 0.2 if is_tty else 2.0
+
             now = _time.time()
-            # Throttle to ~5 Hz; always show the final 100% tick.
-            if now - state["last"] < 0.2 and (not total or done < total):
+            if state["start_t"] == 0.0:
+                state["start_t"] = now
+                state["sample_t"] = now
+                state["sample_bytes"] = done
+
+            # Refresh EWMA on every callback so speed follows real rate.
+            dt = now - state["sample_t"]
+            if dt >= 0.05:
+                inst = (done - state["sample_bytes"]) / dt if dt > 0 else 0.0
+                if state["ewma_bps"] <= 0:
+                    state["ewma_bps"] = inst
+                else:
+                    # Alpha 0.3: responsive without being twitchy.
+                    state["ewma_bps"] = 0.7 * state["ewma_bps"] + 0.3 * inst
+                state["sample_t"] = now
+                state["sample_bytes"] = done
+
+            final = bool(total) and done >= total
+            if final and state["final_done"]:
+                return  # suppress duplicate 100% ticks
+            if not final and now - state["printed"] < min_interval:
                 return
-            state["last"] = now
+            state["printed"] = now
+
             pct = f"{(done / total * 100):5.1f}%" if total else "  ?  "
-            print(
-                f"\r[transfer] {pct}  {done}/{total} bytes",
-                end="",
-                file=sys.stderr,
-                flush=True,
-            )
-            if total and done >= total:
-                print("", file=sys.stderr, flush=True)  # newline at completion
+            if final:
+                elapsed = max(now - state["start_t"], 1e-3)
+                avg = done / elapsed
+                speed_str = self._fmt_speed(avg)
+                eta_str = " done"
+            else:
+                speed_str = self._fmt_speed(state["ewma_bps"])
+                remaining = (total - done) if total else 0
+                eta = remaining / state["ewma_bps"] if state["ewma_bps"] > 0 else -1
+                eta_str = "ETA " + self._fmt_eta(eta) if eta >= 0 else "ETA   ?  "
+
+            line = f"[transfer] {pct}  {done}/{total} B  {speed_str}  {eta_str}"
+            if is_tty:
+                # \r + ESC[K: return to column 0 and clear to end-of-line so
+                # shorter follow-ups don't leave leftover characters.
+                print(f"\r{line}\x1b[K", end="", file=stream, flush=True)
+                if final:
+                    print("", file=stream, flush=True)
+                    state["final_done"] = True
+            else:
+                # Non-TTY: single line per update, terminated normally.
+                print(line, file=stream, flush=True)
+                if final:
+                    state["final_done"] = True
 
         return cb
 

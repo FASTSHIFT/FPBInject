@@ -1363,9 +1363,13 @@ class TestFPBCLIInfo(unittest.TestCase):
                 self.cli.file_upload(local_path, "/remote.bin")
             output = json.loads(f.getvalue())
             self.assertTrue(output["success"])
-            self.cli._proxy.file_upload.assert_called_once_with(
-                local_path, "/remote.bin"
-            )
+            # The CLI now forwards a progress_cb so the SSE stream can
+            # render a live progress line. Just check positional args
+            # since the callback identity is not meaningful.
+            self.cli._proxy.file_upload.assert_called_once()
+            call_args, call_kwargs = self.cli._proxy.file_upload.call_args
+            self.assertEqual(call_args, (local_path, "/remote.bin"))
+            self.assertIn("progress_cb", call_kwargs)
         finally:
             os.unlink(local_path)
 

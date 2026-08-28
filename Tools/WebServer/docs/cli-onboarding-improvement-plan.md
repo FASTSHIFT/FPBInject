@@ -59,8 +59,9 @@ CLI 全部命令输出 JSON，本就是为 AI 集成设计的。但实测发现�
      每 ~500ms 刷一行 `\r` 进度到 stderr。
    - proxy 模式：改用 SSE 端点，边收边把 progress 事件转成 stderr 进度行。
 2. 传输开始时先打印一行预告到 stderr：
-   `"[transfer] <file> <size> over serial (~55 KB/s), expect ~<eta>s; progress on stderr, JSON on stdout when done"`，
-   让 AI 预期到耗时，不误判超时。
+   `"[transfer] <verb> <file> (<size>); speed depends on serial link, live progress on stderr, JSON on stdout when done"`。
+   传输过程中的进度行每 200 ms 刷新一次，实时报告 `pct  done/total  speed  ETA`，
+   speed/ETA 基于字节流本地 EWMA 估算，不依赖硬编码波特率（见 §P2 后半段）。
 3. 增加 `--quiet` 关闭进度（脚本/CI 场景）。
 
 ### P3: proxy 传输 30s HTTP 超时会误伤大文件（真 bug，不只是引导）
@@ -75,8 +76,8 @@ CLI 全部命令输出 JSON，本就是为 AI 集成设计的。但实测发现�
 **整改**
 1. 传输类 proxy 调用不使用固定 30s：
    - 迁移到 SSE 流式端点（无单请求整体超时，靠 §P2 的活跃度反馈判活）；或
-   - 若保留同步端点，超时按 `size / 假定最低速率 + 富余`动态计算（参考 capture.sh 的
-     `bytes/55000 + 20s` 经验公式），并设下限。
+   - 若保留同步端点，超时按 `size / 保守下限速率 + 富余`动态计算，
+     下限速率取远低于实际测得吞吐（保证任何链路下都不会误超时），并设下限。
 2. 在超时报错里明确区分"client 等待超时（传输可能仍在进行）"与"设备无响应"，给出
    `建议：改用流式端点 / 增大超时 / 见 §P4 调优`。
 
@@ -213,7 +214,7 @@ AI 先按"我要做的事"定位到组，再进对应命令看细节——顶层
 |---|---|
 | Analysis | `Offline: no device or --port required.` |
 | Device | `--port only needed to open a port the first time; else omit it.` |
-| Files | `Serial is slow (~55 KB/s); progress on stderr, JSON on stdout. Not a hang.` |
+| Files | `Serial is slow; live progress (pct + measured speed + ETA) on stderr, JSON on stdout. Not a hang.` |
 | Serial console | `Reads are windowed & cursored (like adb logcat); default returns only a small tail.` |
 | Diagnostics | `Serial dropping data? run 'doctor' for copy-paste tuning commands.` |
 

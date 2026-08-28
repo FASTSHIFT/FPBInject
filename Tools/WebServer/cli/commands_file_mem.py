@@ -66,7 +66,10 @@ class FileMemCommandsMixin:
             if self._proxy:
                 self._transfer_notice("downloading", remote_path, 0)
                 try:
-                    result = self._proxy.file_download(remote_path)
+                    result = self._proxy.file_download(
+                        remote_path,
+                        progress_cb=self._make_progress_printer(),
+                    )
                 except KeyboardInterrupt:
                     # Client is going away mid-transfer: tell the server to
                     # cancel so it stops and releases the transaction lock.
@@ -140,7 +143,11 @@ class FileMemCommandsMixin:
                     _sz = 0
                 self._transfer_notice("uploading", remote_path, _sz)
                 try:
-                    result = self._proxy.file_upload(local_path, remote_path)
+                    result = self._proxy.file_upload(
+                        local_path,
+                        remote_path,
+                        progress_cb=self._make_progress_printer(),
+                    )
                 except KeyboardInterrupt:
                     # Client is going away mid-transfer: tell the server to
                     # cancel so it stops and releases the transaction lock.

@@ -232,7 +232,8 @@ client.file_mkdir("/data/new")
 client.file_rename("/data/a.bin", "/data/b.bin")
 
 # Optional progress callback (direct mode): callback(done_bytes, total_bytes).
-# Serial is slow (~55 KB/s); use this to drive your own progress UI/logging.
+# Serial throughput depends on baudrate + link quality; use this callback to
+# drive your own progress UI/logging (compute speed/ETA from timestamps).
 client.file_upload(
     "app.bin", "/data/app.bin",
     progress=lambda done, total: print(f"{done}/{total}", end="\r"),
