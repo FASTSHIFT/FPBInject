@@ -59,7 +59,10 @@ multi-device orchestration. Minimal example:
 
 Good SDK fits: batch-inject many functions, download-then-verify loops,
 retry-with-tuning on serial loss, driving several devices in parallel.
-See Docs/SDK.md for ready-to-run recipes.
+The full API surface (constructor, class methods, every device / file / mem
+call) is documented in the `Client` class docstring; from a REPL run
+`from fpbinject import Client; help(Client)` — or read
+`fpbinject/client.py` in the installed package.
         """
     description = (
         "FPBInject CLI - Lightweight interface for binary patching.\n"
@@ -72,7 +75,8 @@ See Docs/SDK.md for ready-to-run recipes.
         "  3. Serial transfers/reads are slow & windowed: progress on stderr,\n"
         "     small tail by default - a long-but-progressing op is NOT a hang.\n"
         "  4. Stuck on serial loss? run `%(prog)s doctor`.\n"
-        "  5. Multi-step automation? use the Python SDK (see Docs/SDK.md).\n"
+        "  5. Multi-step automation? use the Python SDK - see the epilog\n"
+        "     below for a minimal example, then `help(fpbinject.Client)`.\n"
     ) % {"prog": prog}
     parser = argparse.ArgumentParser(
         prog=prog,
