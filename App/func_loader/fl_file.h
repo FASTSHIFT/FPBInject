@@ -51,6 +51,7 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -149,6 +150,7 @@ typedef struct fl_file_ctx_s {
     char path[FL_FILE_PATH_MAX]; /* Current file path */
     size_t offset;               /* Current read/write offset */
     size_t total_size;           /* Total file size (for progress) */
+    bool writable;               /* True if opened for writing (fsync only then) */
 } fl_file_ctx_t;
 
 #if FL_FILE_USE_POSIX

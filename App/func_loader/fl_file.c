@@ -47,14 +47,18 @@ int fl_file_open(fl_file_ctx_t* file_ctx, const char* path, const char* mode) {
 
     /* Parse mode string to flags */
     int flags = 0;
+    bool writable = false;
     if (strchr(mode, 'r') && strchr(mode, 'w')) {
         flags = FL_O_RDWR | FL_O_CREAT | FL_O_TRUNC;
+        writable = true;
     } else if (strchr(mode, 'r')) {
         flags = FL_O_RDONLY;
     } else if (strchr(mode, 'w')) {
         flags = FL_O_WRONLY | FL_O_CREAT | FL_O_TRUNC;
+        writable = true;
     } else if (strchr(mode, 'a')) {
         flags = FL_O_WRONLY | FL_O_CREAT | FL_O_APPEND;
+        writable = true;
     } else {
         fl_println("Invalid mode string: %s", mode);
         return -1;
@@ -66,6 +70,7 @@ int fl_file_open(fl_file_ctx_t* file_ctx, const char* path, const char* mode) {
     }
 
     file_ctx->fp = fp;
+    file_ctx->writable = writable;
     strncpy(file_ctx->path, path, FL_FILE_PATH_MAX - 1);
     file_ctx->path[FL_FILE_PATH_MAX - 1] = '\0';
     file_ctx->offset = 0;
@@ -117,8 +122,9 @@ int fl_file_close(fl_file_ctx_t* file_ctx) {
         return -1;
     }
 
-    /* Sync before close */
-    if (file_ctx->fs->fsync) {
+    /* Sync before close, only for writable files. fsync on a read-only fd is
+     * meaningless and some backends reject it with EINVAL. */
+    if (file_ctx->writable && file_ctx->fs->fsync) {
         file_ctx->fs->fsync(file_ctx->fp);
     }
 
@@ -127,6 +133,7 @@ int fl_file_close(fl_file_ctx_t* file_ctx) {
     file_ctx->path[0] = '\0';
     file_ctx->offset = 0;
     file_ctx->total_size = 0;
+    file_ctx->writable = false;
 
     return ret;
 }

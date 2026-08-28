@@ -363,6 +363,37 @@ void test_file_open_append(void) {
     cleanup_file_test();
 }
 
+void test_file_open_readonly_not_writable(void) {
+    setup_file_test();
+
+    /* Create a file first */
+    int result = fl_file_open(&test_ctx.file_ctx, test_file_path, "w");
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(test_ctx.file_ctx.writable); /* write mode is writable */
+    fl_file_close(&test_ctx.file_ctx);
+    TEST_ASSERT(!test_ctx.file_ctx.writable); /* reset on close */
+
+    /* Read-only open must not be marked writable, so close skips fsync
+     * (fsync on a read-only fd yields EINVAL on some backends). */
+    result = fl_file_open(&test_ctx.file_ctx, test_file_path, "r");
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(!test_ctx.file_ctx.writable);
+    fl_file_close(&test_ctx.file_ctx);
+
+    cleanup_file_test();
+}
+
+void test_file_open_append_writable(void) {
+    setup_file_test();
+
+    int result = fl_file_open(&test_ctx.file_ctx, test_file_path, "a");
+    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT(test_ctx.file_ctx.writable); /* append is writable */
+    fl_file_close(&test_ctx.file_ctx);
+
+    cleanup_file_test();
+}
+
 void test_file_close_null_ctx(void) {
     int result = fl_file_close(NULL);
     TEST_ASSERT(result != 0);
@@ -520,6 +551,8 @@ void run_file_tests(void) {
     RUN_TEST(test_file_open_null_path);
     RUN_TEST(test_file_open_null_mode);
     RUN_TEST(test_file_open_append);
+    RUN_TEST(test_file_open_readonly_not_writable);
+    RUN_TEST(test_file_open_append_writable);
     RUN_TEST(test_file_close_null_ctx);
     RUN_TEST(test_file_close_no_fs);
     TEST_SUITE_END();
