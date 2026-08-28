@@ -1969,9 +1969,14 @@ class TestMainArgumentParsing(unittest.TestCase):
 
     def setUp(self):
         patchers = [
-            patch("fpbinject.cli.fpb_cli.discover_sync", return_value=[]),
-            patch("fpbinject.cli.fpb_cli.list_cli_servers", return_value=[]),
-            patch("fpbinject.cli.fpb_cli._localhost_status_ok", return_value=False),
+            patch("fpbinject.cli.connection_resolver.discover_sync", return_value=[]),
+            patch(
+                "fpbinject.cli.connection_resolver.list_cli_servers", return_value=[]
+            ),
+            patch(
+                "fpbinject.cli.connection_resolver._localhost_status_ok",
+                return_value=False,
+            ),
         ]
         for p in patchers:
             p.start()

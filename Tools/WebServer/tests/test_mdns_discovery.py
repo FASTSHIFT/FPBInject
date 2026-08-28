@@ -231,7 +231,7 @@ class TestResolveServerUrl(unittest.TestCase):
     def test_explicit_server_url_bypasses_discovery(self):
         # S5: explicit flag wins, never browses
         resolve_server_url, _ = _import_cli_helpers()
-        with patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
+        with patch("fpbinject.cli.connection_resolver.discover_sync") as mock_disc:
             url = resolve_server_url(
                 _ns(server_url="http://1.2.3.4:9999", requires_server=True)
             )
@@ -242,7 +242,7 @@ class TestResolveServerUrl(unittest.TestCase):
     def test_env_server_url_used_when_no_flag(self):
         # S5 via env
         resolve_server_url, _ = _import_cli_helpers()
-        with patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
+        with patch("fpbinject.cli.connection_resolver.discover_sync") as mock_disc:
             url = resolve_server_url(_ns(server_url=None, requires_server=True))
         self.assertEqual(url, "http://env.host:7777")
         mock_disc.assert_not_called()
@@ -251,7 +251,7 @@ class TestResolveServerUrl(unittest.TestCase):
     def test_offline_subcommand_skips_discovery(self):
         # S7: requires_server=False short-circuits, no 1s delay
         resolve_server_url, _ = _import_cli_helpers()
-        with patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
+        with patch("fpbinject.cli.connection_resolver.discover_sync") as mock_disc:
             t0 = time.monotonic()
             url = resolve_server_url(_ns(server_url=None, requires_server=False))
             elapsed = time.monotonic() - t0
@@ -263,7 +263,7 @@ class TestResolveServerUrl(unittest.TestCase):
     def test_no_discovery_flag_falls_back_to_localhost(self):
         # S6
         resolve_server_url, _ = _import_cli_helpers()
-        with patch("fpbinject.cli.fpb_cli.discover_sync") as mock_disc:
+        with patch("fpbinject.cli.connection_resolver.discover_sync") as mock_disc:
             url = resolve_server_url(
                 _ns(server_url=None, no_discovery=True, requires_server=True)
             )
@@ -276,7 +276,7 @@ class TestResolveServerUrl(unittest.TestCase):
     def test_zero_results_falls_back_to_localhost(self):
         # S3
         resolve_server_url, _ = _import_cli_helpers()
-        with patch("fpbinject.cli.fpb_cli.discover_sync", return_value=[]):
+        with patch("fpbinject.cli.connection_resolver.discover_sync", return_value=[]):
             url = resolve_server_url(_ns(server_url=None, requires_server=True))
         from fpbinject.cli.server_proxy import DEFAULT_SERVER_URL
 
@@ -287,7 +287,7 @@ class TestResolveServerUrl(unittest.TestCase):
         # S2
         resolve_server_url, _ = _import_cli_helpers()
         with patch(
-            "fpbinject.cli.fpb_cli.discover_sync",
+            "fpbinject.cli.connection_resolver.discover_sync",
             return_value=[_fake_server(port=5500)],
         ):
             url = resolve_server_url(_ns(server_url=None, requires_server=True))
@@ -301,7 +301,9 @@ class TestResolveServerUrl(unittest.TestCase):
             _fake_server(host="10.0.0.10", port=5500),
             _fake_server(host="10.0.0.11", port=5500),
         ]
-        with patch("fpbinject.cli.fpb_cli.discover_sync", return_value=servers):
+        with patch(
+            "fpbinject.cli.connection_resolver.discover_sync", return_value=servers
+        ):
             err = io.StringIO()
             with redirect_stderr(err):
                 with self.assertRaises(SystemExit) as cm:
@@ -324,7 +326,9 @@ class TestCmdDiscoverJson(unittest.TestCase):
             _fake_server(host="10.0.0.10", port=5500),
             _fake_server(host="10.0.0.11", port=5501),
         ]
-        with patch("fpbinject.cli.fpb_cli.discover_sync", return_value=servers):
+        with patch(
+            "fpbinject.cli.connection_resolver.discover_sync", return_value=servers
+        ):
             out = io.StringIO()
             with redirect_stdout(out):
                 rc = cmd_discover(_ns(timeout=0.1, json=True))
@@ -340,7 +344,7 @@ class TestCmdDiscoverJson(unittest.TestCase):
 
     def test_discover_subcommand_empty_emits_empty_list(self):
         _, cmd_discover = _import_cli_helpers()
-        with patch("fpbinject.cli.fpb_cli.discover_sync", return_value=[]):
+        with patch("fpbinject.cli.connection_resolver.discover_sync", return_value=[]):
             out = io.StringIO()
             with redirect_stdout(out):
                 rc = cmd_discover(_ns(timeout=0.1, json=True))

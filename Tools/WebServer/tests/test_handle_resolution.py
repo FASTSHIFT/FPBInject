@@ -112,7 +112,9 @@ class TestServerFlagResolves(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_url_in_s_flag_used_verbatim(self):
         resolve = _import_resolver()
-        with patch("fpbinject.cli.fpb_cli.discover_sync_by_handle") as mock_disc:
+        with patch(
+            "fpbinject.cli.connection_resolver.discover_sync_by_handle"
+        ) as mock_disc:
             plan = resolve(_ns(server="http://1.2.3.4:5500"))
         self.assertEqual(plan.server_url, "http://1.2.3.4:5500")
         self.assertEqual(plan.mode, ConnectionMode.REMOTE_PROXY)
@@ -122,7 +124,7 @@ class TestServerFlagResolves(unittest.TestCase):
     def test_host_port_resolved_via_mdns(self):
         resolve = _import_resolver()
         with patch(
-            "fpbinject.cli.fpb_cli.discover_sync_by_handle",
+            "fpbinject.cli.connection_resolver.discover_sync_by_handle",
             return_value=[_server("127.0.0.1", 5501, handle="bench:5501")],
         ):
             plan = resolve(_ns(server="bench:5501"))
@@ -133,7 +135,7 @@ class TestServerFlagResolves(unittest.TestCase):
     def test_host_only_unique_resolves(self):
         resolve = _import_resolver()
         with patch(
-            "fpbinject.cli.fpb_cli.discover_sync_by_handle",
+            "fpbinject.cli.connection_resolver.discover_sync_by_handle",
             return_value=[_server("127.0.0.1", 5500, handle="bench:5500")],
         ):
             plan = resolve(_ns(server="bench"))
@@ -145,7 +147,7 @@ class TestServerFlagResolves(unittest.TestCase):
 
         resolve = _import_resolver()
         with patch(
-            "fpbinject.cli.fpb_cli.discover_sync_by_handle",
+            "fpbinject.cli.connection_resolver.discover_sync_by_handle",
             return_value=[
                 _server("127.0.0.1", 5500, handle="bench:5500"),
                 _server("127.0.0.1", 5501, handle="bench:5501"),
@@ -161,7 +163,9 @@ class TestServerFlagResolves(unittest.TestCase):
         from fpbinject.cli.fpb_cli import FPBCLIError
 
         resolve = _import_resolver()
-        with patch("fpbinject.cli.fpb_cli.discover_sync_by_handle", return_value=[]):
+        with patch(
+            "fpbinject.cli.connection_resolver.discover_sync_by_handle", return_value=[]
+        ):
             with self.assertRaises(FPBCLIError) as cm:
                 resolve(_ns(server="nope:5500"))
         self.assertIn("No FPBInject server matches", str(cm.exception))
@@ -180,7 +184,7 @@ class TestFpbServerEnv(unittest.TestCase):
     def test_env_handle_resolved(self):
         resolve = _import_resolver()
         with patch(
-            "fpbinject.cli.fpb_cli.discover_sync_by_handle",
+            "fpbinject.cli.connection_resolver.discover_sync_by_handle",
             return_value=[_server("127.0.0.1", 5501, handle="bench:5501")],
         ):
             plan = resolve(_ns(server=None))

@@ -45,7 +45,6 @@ EXEMPT_FRAGMENTS = (
 # split; do not add new entries here without agreement. Paths are repo-relative
 # and posix-style.
 GRANDFATHERED = {
-    "Tools/WebServer/cli/fpb_cli.py",
     "Tools/WebServer/static/js/features/transfer.js",
     "Tools/WebServer/static/js/features/quick-commands.js",
     "Tools/WebServer/app/routes/symbols.py",
