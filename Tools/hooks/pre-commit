@@ -283,6 +283,31 @@ check_prettier() {
     fi
 }
 
+# ------------------------------------------------------------------
+# 7. Source file line-count limit (guards against oversized new files)
+# ------------------------------------------------------------------
+check_file_lines() {
+    command -v python3 &>/dev/null || {
+        skip "python3 not found (file line-count check)"
+        return
+    }
+
+    local files
+    files=$(staged_match '*.py' '*.c' '*.h' '*.cpp' '*.hpp' '*.js')
+    [ -z "$files" ] && return
+
+    CHECKS_RUN=$((CHECKS_RUN + 1))
+    # shellcheck disable=SC2086
+    local out
+    out=$(python3 Tools/check_file_lines.py $files 2>&1)
+    if [ $? -eq 0 ]; then
+        ok "file line-count limit"
+    else
+        fail "file exceeds line-count limit"
+        echo "$out" | sed 's/^/        /'
+    fi
+}
+
 note "running fast checks on staged files (bypass with --no-verify)"
 
 check_clang_format
@@ -291,6 +316,7 @@ check_cmake_format
 check_kconfig
 check_python
 check_prettier
+check_file_lines
 
 echo ""
 if [ "$FAILED" -ne 0 ]; then

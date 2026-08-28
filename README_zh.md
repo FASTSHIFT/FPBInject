@@ -325,6 +325,9 @@ Tools/hooks/install.sh --uninstall
   - 固件：`cd App/tests && ./run_tests.sh coverage`
 - **版本号变更**统一走 `Tools/update_version.py X.Y.Z[aN]`（固件头、Python、
   JS 的唯一来源）。
+- **文件行数限制**：第一方源码单文件须小于 1500 行
+  （`Tools/check_file_lines.py`，由钩子和 CI 强制）。三方代码与测试豁免；
+  少数存量超限文件已登记 grandfather，待后续拆分。
 
 ## 文档
 

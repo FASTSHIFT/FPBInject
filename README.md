@@ -330,6 +330,9 @@ Tools/hooks/install.sh --uninstall
   - Firmware: `cd App/tests && ./run_tests.sh coverage`
 - **Version bumps** go through `Tools/update_version.py X.Y.Z[aN]` (single
   source of truth for firmware header, Python, and JS).
+- **File size limit**: first-party source files must stay under 1500 lines
+  (`Tools/check_file_lines.py`, enforced by the hook and CI). Vendored code and
+  tests are exempt; a few pre-existing files are grandfathered pending a split.
 
 ## Documentation
 

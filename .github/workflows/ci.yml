@@ -67,6 +67,11 @@ jobs:
           fi
           Tools/check_commit_msg.sh --range "$RANGE"
 
+      - name: Check source file line-count limit
+        run: |
+          echo "🔍 Checking source files against the line-count limit..."
+          python3 Tools/check_file_lines.py
+
   # ============================================================
   # Lower Machine Tests (Embedded Firmware)
   # ============================================================
