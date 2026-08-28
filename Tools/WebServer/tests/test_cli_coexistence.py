@@ -807,6 +807,56 @@ class TestMainTokenArg(unittest.TestCase):
         self.assertEqual(plan.token, "env-token")
 
 
+class TestCLITransferProgress(unittest.TestCase):
+    """Transfer notices/progress go to stderr; stdout stays clean JSON."""
+
+    def _cli(self):
+        cli = FPBCLI.__new__(FPBCLI)
+        cli._proxy = None
+        cli._quiet = False
+        return cli
+
+    def test_notice_goes_to_stderr_not_stdout(self):
+        import io as _io
+        from contextlib import redirect_stderr
+
+        cli = self._cli()
+        out, err = _io.StringIO(), _io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            cli._transfer_notice("downloading", "/dev/f.bin", 100000)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("[transfer]", err.getvalue())
+        self.assertIn("downloading", err.getvalue())
+
+    def test_quiet_suppresses_notice_and_progress(self):
+        import io as _io
+        from contextlib import redirect_stderr
+
+        cli = self._cli()
+        cli._quiet = True
+        err = _io.StringIO()
+        with redirect_stderr(err):
+            cli._transfer_notice("uploading", "/dev/f.bin", 100)
+        self.assertEqual(err.getvalue(), "")
+        # progress printer is None when quiet
+        self.assertIsNone(cli._make_progress_printer())
+
+    def test_progress_printer_writes_stderr(self):
+        import io as _io
+        from contextlib import redirect_stderr
+
+        cli = self._cli()
+        cb = cli._make_progress_printer()
+        self.assertIsNotNone(cb)
+        out, err = _io.StringIO(), _io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            cb(500, 1000)  # partial
+            cb(1000, 1000)  # completion -> newline
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("bytes", err.getvalue())
+        self.assertIn("100.0%", err.getvalue())
+
+
 class TestCLICancelOnInterrupt(unittest.TestCase):
     """Interrupting a proxy transfer must tell the server to cancel."""
 

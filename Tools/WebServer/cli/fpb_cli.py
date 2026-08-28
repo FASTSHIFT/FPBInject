@@ -156,6 +156,8 @@ class FPBCLI:
 
         self._proxy = None
         self._port_lock = None
+        # Suppress stderr transfer notices/progress (set from --quiet).
+        self._quiet = False
 
         if plan is None:
             plan = self._legacy_kwargs_to_plan(
@@ -829,6 +831,7 @@ class FPBCLI:
         """Download a file from device to local path"""
         try:
             if self._proxy:
+                self._transfer_notice("downloading", remote_path, 0)
                 try:
                     result = self._proxy.file_download(remote_path)
                 except KeyboardInterrupt:
@@ -863,7 +866,19 @@ class FPBCLI:
                 download_chunk_size=self._device_state.download_chunk_size,
                 max_retries=self._device_state.transfer_max_retries,
             )
-            success, data, msg = ft.download(remote_path)
+            # Best-effort size lookup for the notice; never let it break the
+            # actual download (e.g. stat unsupported or mocked in tests).
+            size_hint = 0
+            try:
+                stat_ok, stat = ft.fstat(remote_path)
+                if stat_ok and isinstance(stat, dict):
+                    size_hint = stat.get("size", 0)
+            except Exception:
+                size_hint = 0
+            self._transfer_notice("downloading", remote_path, size_hint)
+            success, data, msg = ft.download(
+                remote_path, progress_cb=self._make_progress_printer()
+            )
             if not success:
                 raise FPBCLIError(f"Download failed: {msg}")
             self._write_local(local_path, data)
@@ -883,6 +898,11 @@ class FPBCLI:
         """Upload a local file to device"""
         try:
             if self._proxy:
+                try:
+                    _sz = os.path.getsize(local_path)
+                except OSError:
+                    _sz = 0
+                self._transfer_notice("uploading", remote_path, _sz)
                 try:
                     result = self._proxy.file_upload(local_path, remote_path)
                 except KeyboardInterrupt:
@@ -905,7 +925,10 @@ class FPBCLI:
                 download_chunk_size=self._device_state.download_chunk_size,
                 max_retries=self._device_state.transfer_max_retries,
             )
-            success, msg = ft.upload(data, remote_path)
+            self._transfer_notice("uploading", remote_path, len(data))
+            success, msg = ft.upload(
+                data, remote_path, progress_cb=self._make_progress_printer()
+            )
             if not success:
                 raise FPBCLIError(f"Upload failed: {msg}")
             self.output_json(
@@ -1342,6 +1365,57 @@ class FPBCLI:
             self.output_json(self._proxy.vserial_status())
         except Exception as e:
             self.output_error(f"Virtual serial status failed: {str(e)}", e)
+
+    # Approximate serial throughput for ETA hints (bytes/sec). Matches the
+    # ~55 KB/s figure used elsewhere (capture timeout math, docs).
+    _SERIAL_BYTES_PER_SEC = 55000
+
+    def _transfer_notice(self, verb: str, name: str, size: int) -> None:
+        """Print a one-line predictive notice to stderr before a transfer.
+
+        Serial transfers are slow; without this an AI sees a long silence and
+        assumes the tool hung. Progress (below) and the final JSON confirm
+        liveness. Suppressed when --quiet.
+        """
+        if getattr(self, "_quiet", False):
+            return
+        eta = size / self._SERIAL_BYTES_PER_SEC if size else 0
+        print(
+            f"[transfer] {verb} {name} ({size} bytes over serial "
+            f"~{self._SERIAL_BYTES_PER_SEC // 1000} KB/s, ~{eta:.0f}s); "
+            f"progress on stderr, JSON on stdout when done",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def _make_progress_printer(self):
+        """Return a progress_cb that prints a throttled \\r line to stderr.
+
+        Returns None when --quiet so callers can pass it through unchanged.
+        """
+        if getattr(self, "_quiet", False):
+            return None
+        import time as _time
+
+        state = {"last": 0.0}
+
+        def cb(done: int, total: int) -> None:
+            now = _time.time()
+            # Throttle to ~5 Hz; always show the final 100% tick.
+            if now - state["last"] < 0.2 and (not total or done < total):
+                return
+            state["last"] = now
+            pct = f"{(done / total * 100):5.1f}%" if total else "  ?  "
+            print(
+                f"\r[transfer] {pct}  {done}/{total} bytes",
+                end="",
+                file=sys.stderr,
+                flush=True,
+            )
+            if total and done >= total:
+                print("", file=sys.stderr, flush=True)  # newline at completion
+
+        return cb
 
     def _cancel_proxy_transfer(self):
         """Best-effort: tell the server to cancel an in-flight transfer.
@@ -1850,6 +1924,11 @@ Notes:
         "-v", "--verbose", action="store_true", help="Enable verbose output"
     )
     parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress stderr transfer notices/progress (stdout JSON only).",
+    )
+    parser.add_argument(
         "--version", action="version", version=f"%(prog)s {FPB_VERSION}"
     )
     # Serial/connection and transfer flags (--port, --baudrate, --data-bits,
@@ -2280,6 +2359,7 @@ Notes:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(e.exit_code)
     args.server_url = plan.server_url
+    cli._quiet = getattr(args, "quiet", False)
 
     try:
         if args.command == "analyze":
