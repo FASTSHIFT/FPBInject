@@ -78,9 +78,11 @@ async function fpbTestSerial() {
             ? ` (${test.response_time_ms}ms)`
             : '';
           const cmdLen = test.cmd_len ? ` [cmd:${test.cmd_len}B]` : '';
+          const trialStr =
+            test.trials !== undefined ? ` {${test.passes}/${test.trials}}` : '';
           const errStr = test.error ? ` - ${test.error}` : '';
           writeToOutput(
-            `  ${status} ${test.size} bytes${cmdLen}${timeStr}${errStr}`,
+            `  ${status} ${test.size} bytes${cmdLen}${trialStr}${timeStr}${errStr}`,
             test.passed ? 'success' : 'error',
           );
         });
@@ -123,9 +125,13 @@ async function fpbTestSerial() {
             const timeStr = test.response_time_ms
               ? ` (${test.response_time_ms}ms)`
               : '';
+            const trialStr =
+              test.trials !== undefined
+                ? ` {${test.passes}/${test.trials}}`
+                : '';
             const errStr = test.error ? ` - ${test.error}` : '';
             writeToOutput(
-              `  ${status} ${test.size} bytes${timeStr}${errStr}`,
+              `  ${status} ${test.size} bytes${trialStr}${timeStr}${errStr}`,
               test.passed ? 'success' : 'error',
             );
           });

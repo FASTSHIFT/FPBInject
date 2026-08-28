@@ -1992,24 +1992,46 @@ class TestSerialThroughput(unittest.TestCase):
         self.assertGreater(len(result["tests"]), 0)
 
     def test_test_serial_partial_pass(self):
-        """Test serial throughput with some tests failing"""
-        # First calls return OK, then empty (timeout)
-        call_count = [0]
+        """Throughput must accept fully-reliable sizes then stop at a failing one.
 
-        def mock_send_cmd(cmd, timeout=2.0):
-            call_count[0] += 1
-            if call_count[0] <= 2:
-                return "[FLOK] Echo received"
-            return ""  # Timeout
+        With reliability sampling, a size is only accepted if it passes every
+        trial. Here sizes up to 32B always succeed, but anything larger always
+        fails, so the probe reports success and stops at the boundary. Probes
+        are stubbed directly to isolate the upload phase from Phase 1/1.5.
+        """
+        proto = self.fpb._protocol
 
-        self.fpb._protocol.send_cmd = Mock(side_effect=mock_send_cmd)
+        def fake_probe_echo(size, timeout=2.0):
+            passed = size <= 32
+            return {
+                "size": size,
+                "passed": passed,
+                "response_time_ms": 1.0 if passed else 0,
+                "cmd_len": size * 2,
+                "error": None if passed else "No response (timeout)",
+            }
 
-        result = self.fpb.test_serial_throughput(
-            start_size=16, max_size=256, timeout=0.1
+        # Fragmentation not needed; download unsupported (skipped).
+        proto._phase_fragment_probe = lambda timeout=2.0: {"needed": False}
+        proto._probe_echo = fake_probe_echo
+        proto._probe_echoback = lambda size, timeout=3.0: {
+            "size": size,
+            "passed": False,
+            "error": "Device returned error",
+        }
+
+        result = proto.test_serial_throughput(
+            start_size=16, max_size=256, timeout=0.1, trials=4
         )
 
+        # Stepping is 16 -> 22 -> 30 -> 42 (x1.4); 30 <= 32 passes, 42 fails.
         self.assertTrue(result["success"])
+        self.assertEqual(result["max_working_size"], 30)
         self.assertGreater(len(result["tests"]), 0)
+        # Every accepted size must have passed all of its trials.
+        for t in result["tests"]:
+            if t["passed"]:
+                self.assertEqual(t["passes"], t["trials"])
 
     def test_test_serial_recommended_size(self):
         """Test that recommended chunk size is calculated correctly"""
@@ -2034,6 +2056,79 @@ class TestSerialThroughput(unittest.TestCase):
 
         # Should handle exception gracefully
         self.assertIn("tests", result)
+
+    def test_intermittent_size_rejected_by_default(self):
+        """A size that only passes intermittently must be rejected (rate 1.0).
+
+        This is the core of the strengthened stress test: previously one lucky
+        round-trip accepted a size. Now, with default min_success_rate=1.0,
+        a ~50% flaky size at 16B fails the whole probe.
+        """
+        proto = self.fpb._protocol
+        toggle = [0]
+
+        def flaky_probe_echo(size, timeout=2.0):
+            toggle[0] += 1
+            passed = toggle[0] % 2 == 0  # ~50% success rate
+            return {
+                "size": size,
+                "passed": passed,
+                "response_time_ms": 1.0 if passed else 0,
+                "cmd_len": size * 2,
+                "error": None if passed else "No response (timeout)",
+            }
+
+        # Fragmentation not needed so we reach the (flaky) upload phase.
+        proto._phase_fragment_probe = lambda timeout=2.0: {"needed": False}
+        proto._probe_echo = flaky_probe_echo
+        proto._probe_echoback = lambda size, timeout=3.0: {
+            "size": size,
+            "passed": False,
+            "error": "Device returned error",
+        }
+
+        result = proto.test_serial_throughput(
+            start_size=16, max_size=64, timeout=0.1, trials=8
+        )
+
+        # Smallest size is unreliable -> probe reports failure at 16B.
+        self.assertFalse(result["success"])
+        self.assertEqual(result["max_working_size"], 0)
+
+    def test_probe_samples_multiple_trials(self):
+        """Each accepted size must be sampled `trials` times, not once."""
+        proto = self.fpb._protocol
+        calls = [0]
+
+        def counting_probe_echo(size, timeout=2.0):
+            calls[0] += 1
+            return {
+                "size": size,
+                "passed": True,
+                "response_time_ms": 1.0,
+                "cmd_len": size * 2,
+                "error": None,
+            }
+
+        proto._phase_fragment_probe = lambda timeout=2.0: {"needed": False}
+        proto._probe_echo = counting_probe_echo
+        proto._probe_echoback = lambda size, timeout=3.0: {
+            "size": size,
+            "passed": False,
+            "error": "Device returned error",
+        }
+
+        result = proto.test_serial_throughput(
+            start_size=16, max_size=16, timeout=0.1, trials=6
+        )
+
+        self.assertTrue(result["success"])
+        first = result["tests"][0]
+        self.assertEqual(first["trials"], 6)
+        self.assertEqual(first["passes"], 6)
+        self.assertAlmostEqual(first["success_rate"], 1.0)
+        # 16B..16B is a single size, sampled exactly 6 times.
+        self.assertEqual(calls[0], 6)
 
 
 class TestBuildTimeFeature(unittest.TestCase):

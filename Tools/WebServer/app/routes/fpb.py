@@ -122,17 +122,28 @@ def api_fpb_test_serial():
     start_size = data.get("start_size", 16)
     max_size = data.get("max_size", 4096)
     timeout = data.get("timeout", 2.0)
+    trials = data.get("trials", 8)
+    min_success_rate = data.get("min_success_rate", 1.0)
 
     fpb = get_fpb_inject()
 
-    log_info("Starting 3-phase serial throughput test...")
+    log_info(
+        f"Starting 3-phase serial throughput test "
+        f"({trials} trials/size, >={int(min_success_rate * 100)}% to pass)..."
+    )
 
     def do_test():
         return fpb.test_serial_throughput(
-            start_size=start_size, max_size=max_size, timeout=timeout
+            start_size=start_size,
+            max_size=max_size,
+            timeout=timeout,
+            trials=trials,
+            min_success_rate=min_success_rate,
         )
 
-    result = _run_serial_op(do_test, timeout=60.0)
+    # Reliability sampling multiplies round-trips per size; widen the worker
+    # timeout so a full sweep (many sizes x trials) is not cut short.
+    result = _run_serial_op(do_test, timeout=180.0)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})

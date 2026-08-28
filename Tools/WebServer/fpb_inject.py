@@ -155,10 +155,25 @@ class FPBInject:
         return self._protocol.ping()
 
     def test_serial_throughput(
-        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+        self,
+        start_size: int = 16,
+        max_size: int = 4096,
+        timeout: float = 2.0,
+        trials: int = 8,
+        min_success_rate: float = 1.0,
     ) -> Dict:
-        """Test serial port throughput."""
-        return self._protocol.test_serial_throughput(start_size, max_size, timeout)
+        """Test serial port throughput.
+
+        Each candidate size is sampled ``trials`` times and only accepted if
+        its success rate reaches ``min_success_rate`` (reliability stress test).
+        """
+        return self._protocol.test_serial_throughput(
+            start_size,
+            max_size,
+            timeout,
+            trials=trials,
+            min_success_rate=min_success_rate,
+        )
 
     def info(self) -> Tuple[Optional[dict], str]:
         """Get device info including slot states."""

@@ -906,35 +906,109 @@ class FPBProtocol:
         result["recommended_fragment_delay"] = best_delay
         return result
 
+    def _sample_probe(
+        self,
+        probe_fn,
+        size: int,
+        timeout: float,
+        trials: int,
+        min_success_rate: float,
+    ) -> Dict:
+        """Run a single-shot probe multiple times and aggregate reliability.
+
+        The old strategy tested each size once (with retries that stopped on
+        the first success), which masks intermittent loss and can accept a
+        size that only works by luck. This runs ``trials`` independent probes
+        with no early exit, then marks the size as passed only if the observed
+        success rate meets ``min_success_rate`` — turning the throughput test
+        into an actual reliability stress test.
+
+        Args:
+            probe_fn: ``_probe_echo`` or ``_probe_echoback``.
+            size: Payload size under test.
+            timeout: Per-probe timeout.
+            trials: Number of independent round-trips to run.
+            min_success_rate: Fraction in [0, 1] required to consider the size
+                reliable (1.0 = every trial must pass).
+
+        Returns:
+            Aggregated dict compatible with the single-probe result (keys:
+            size, passed, response_time_ms, error, cmd_len) plus reliability
+            fields (trials, passes, success_rate, min_ms, max_ms).
+        """
+        passes = 0
+        latencies = []
+        last_error = None
+        cmd_len = 0
+        for _ in range(max(1, trials)):
+            probe = probe_fn(size, timeout=timeout)
+            if probe.get("cmd_len"):
+                cmd_len = probe["cmd_len"]
+            if probe.get("passed"):
+                passes += 1
+                rt = probe.get("response_time_ms")
+                if rt:
+                    latencies.append(rt)
+            else:
+                last_error = probe.get("error") or last_error
+
+        trials_run = max(1, trials)
+        success_rate = passes / trials_run
+        passed = success_rate >= min_success_rate
+        avg_ms = round(sum(latencies) / len(latencies), 2) if latencies else 0
+        result: Dict = {
+            "size": size,
+            "trials": trials_run,
+            "passes": passes,
+            "success_rate": round(success_rate, 3),
+            "passed": passed,
+            "response_time_ms": avg_ms,
+            "min_ms": round(min(latencies), 2) if latencies else 0,
+            "max_ms": round(max(latencies), 2) if latencies else 0,
+            "cmd_len": cmd_len,
+            "error": (
+                None if passed else (last_error or f"{passes}/{trials_run} passed")
+            ),
+        }
+        return result
+
     def _phase_upload_probe(
-        self, start_size: int = 16, max_size: int = 512, timeout: float = 2.0
+        self,
+        start_size: int = 16,
+        max_size: int = 512,
+        timeout: float = 2.0,
+        trials: int = 8,
+        min_success_rate: float = 1.0,
     ) -> Dict:
         """Phase 2: Find the device shell receive buffer limit (upload direction).
 
-        Uses increasing echo commands with x1.4 stepping.
+        Uses increasing echo commands with x1.4 stepping. Each size is sampled
+        ``trials`` times and must meet ``min_success_rate`` to be accepted, so
+        the reported max working size is a reliable limit, not a lucky one-off.
         """
         result: Dict = {
             "max_working_size": 0,
             "failed_size": 0,
             "recommended_upload_chunk_size": 0,
             "tests": [],
+            "trials": trials,
+            "min_success_rate": min_success_rate,
         }
 
         test_size = start_size
         max_working = 0
-        max_retries = 3
 
         while test_size <= max_size:
-            passed = False
-            probe = None
-            for attempt in range(max_retries):
-                probe = self._probe_echo(test_size, timeout=timeout)
-                if probe["passed"]:
-                    passed = True
-                    break
+            probe = self._sample_probe(
+                self._probe_echo,
+                test_size,
+                timeout=timeout,
+                trials=trials,
+                min_success_rate=min_success_rate,
+            )
             result["tests"].append(probe)
 
-            if passed:
+            if probe["passed"]:
                 max_working = test_size
             else:
                 result["failed_size"] = test_size
@@ -1018,12 +1092,15 @@ class FPBProtocol:
         start_size: int = 256,
         max_size: int = 8192,
         timeout: float = 3.0,
+        trials: int = 8,
+        min_success_rate: float = 1.0,
     ) -> Dict:
         """Phase 3: Find the max reliable download chunk size.
 
         Uses the `echoback` command to have the device generate and send
         increasing amounts of data. The device reuses its send buffer to
-        fill with a pattern, so no RAM allocation is needed.
+        fill with a pattern, so no RAM allocation is needed. Each size is
+        sampled ``trials`` times and must meet ``min_success_rate``.
         """
         result: Dict = {
             "max_working_size": 0,
@@ -1031,22 +1108,31 @@ class FPBProtocol:
             "recommended_download_chunk_size": 1024,
             "tests": [],
             "skipped": False,
+            "trials": trials,
+            "min_success_rate": min_success_rate,
         }
 
-        max_retries = 3
-
-        # Quick check: does the device support echoback?
-        probe = self._probe_echoback(start_size, timeout=timeout)
-        if probe.get("error") and (
-            "Device returned error" in (probe["error"] or "")
-            or "No response" in (probe["error"] or "")
+        # Quick capability check: does the device support echoback at all?
+        # A single unsupported/no-response reply means we should skip cleanly
+        # rather than sample it many times.
+        capability = self._probe_echoback(start_size, timeout=timeout)
+        if capability.get("error") and (
+            "Device returned error" in (capability["error"] or "")
+            or "No response" in (capability["error"] or "")
         ):
             result["skipped"] = True
             result["skip_reason"] = (
-                f"Device does not support echoback command: {probe['error']}"
+                f"Device does not support echoback command: {capability['error']}"
             )
             return result
 
+        probe = self._sample_probe(
+            self._probe_echoback,
+            start_size,
+            timeout=timeout,
+            trials=trials,
+            min_success_rate=min_success_rate,
+        )
         result["tests"].append(probe)
         if not probe["passed"]:
             result["failed_size"] = start_size
@@ -1056,16 +1142,16 @@ class FPBProtocol:
         test_size = max(start_size + 64, int(start_size * 1.5) // 64 * 64)
 
         while test_size <= max_size:
-            passed = False
-            probe = None
-            for attempt in range(max_retries):
-                probe = self._probe_echoback(test_size, timeout=timeout)
-                if probe["passed"]:
-                    passed = True
-                    break
+            probe = self._sample_probe(
+                self._probe_echoback,
+                test_size,
+                timeout=timeout,
+                trials=trials,
+                min_success_rate=min_success_rate,
+            )
             result["tests"].append(probe)
 
-            if passed:
+            if probe["passed"]:
                 max_working = test_size
             else:
                 result["failed_size"] = test_size
@@ -1083,9 +1169,19 @@ class FPBProtocol:
         return result
 
     def test_serial_throughput(
-        self, start_size: int = 16, max_size: int = 512, timeout: float = 2.0
+        self,
+        start_size: int = 16,
+        max_size: int = 512,
+        timeout: float = 2.0,
+        trials: int = 8,
+        min_success_rate: float = 1.0,
     ) -> Dict:
         """Test serial throughput with 3-phase probing.
+
+        Each candidate size is sampled ``trials`` times and only accepted if
+        its success rate reaches ``min_success_rate`` (1.0 = must pass every
+        trial), so the recommended chunk sizes reflect reliable limits under
+        repeated load rather than a single lucky round-trip.
 
         Phase 1: TX Fragment probe - detect if PC→device needs fragmentation.
         Phase 2: Upload chunk probe - find device shell buffer limit.
@@ -1145,7 +1241,11 @@ class FPBProtocol:
             # Phase 2: Upload chunk probe
             # (now works correctly with fragmentation if Phase 1.5 set it)
             upload = self._phase_upload_probe(
-                start_size=start_size, max_size=max_size, timeout=timeout
+                start_size=start_size,
+                max_size=max_size,
+                timeout=timeout,
+                trials=trials,
+                min_success_rate=min_success_rate,
             )
             results["phases"]["upload"] = upload
             results["tests"] = upload["tests"]  # backward compat
@@ -1169,6 +1269,8 @@ class FPBProtocol:
                 start_size=256,
                 max_size=8192,
                 timeout=max(timeout, 3.0),
+                trials=trials,
+                min_success_rate=min_success_rate,
             )
             results["phases"]["download"] = download
             results["recommended_download_chunk_size"] = download[

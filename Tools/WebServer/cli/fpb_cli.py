@@ -751,18 +751,31 @@ class FPBCLI:
             self.output_error(f"Info failed: {str(e)}", e)
 
     def test_serial(
-        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+        self,
+        start_size: int = 16,
+        max_size: int = 4096,
+        timeout: float = 2.0,
+        trials: int = 8,
+        min_success_rate: float = 1.0,
     ) -> None:
         """Test serial throughput to find max single-transfer size."""
         try:
             if self._proxy:
-                self.output_json(self._proxy.test_serial(start_size, max_size, timeout))
+                self.output_json(
+                    self._proxy.test_serial(
+                        start_size, max_size, timeout, trials, min_success_rate
+                    )
+                )
                 return
 
             self._require_device()
             self.output_json(
                 self._fpb.test_serial_throughput(
-                    start_size=start_size, max_size=max_size, timeout=timeout
+                    start_size=start_size,
+                    max_size=max_size,
+                    timeout=timeout,
+                    trials=trials,
+                    min_success_rate=min_success_rate,
                 )
             )
         except Exception as e:
@@ -1879,6 +1892,18 @@ Notes:
         default=2.0,
         help="Timeout per test in seconds (default: 2.0)",
     )
+    test_serial_parser.add_argument(
+        "--trials",
+        type=int,
+        default=8,
+        help="Round-trips sampled per size for reliability (default: 8)",
+    )
+    test_serial_parser.add_argument(
+        "--min-success-rate",
+        type=float,
+        default=1.0,
+        help="Success fraction required to accept a size (default: 1.0)",
+    )
 
     # inject command (requires device)
     inject_parser = subparsers.add_parser(
@@ -2169,7 +2194,13 @@ Notes:
         elif args.command == "info":
             cli.info()
         elif args.command == "test-serial":
-            cli.test_serial(args.start_size, args.max_size, args.timeout)
+            cli.test_serial(
+                args.start_size,
+                args.max_size,
+                args.timeout,
+                args.trials,
+                args.min_success_rate,
+            )
         elif args.command == "inject":
             cli.inject(
                 args.target_func,

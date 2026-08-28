@@ -464,12 +464,23 @@ class ServerProxy:
         )
 
     def test_serial(
-        self, start_size: int = 16, max_size: int = 4096, timeout: float = 2.0
+        self,
+        start_size: int = 16,
+        max_size: int = 4096,
+        timeout: float = 2.0,
+        trials: int = 8,
+        min_success_rate: float = 1.0,
     ) -> dict:
         """Test serial throughput via WebServer."""
         return self._post(
             "/api/fpb/test-serial",
-            {"start_size": start_size, "max_size": max_size, "timeout": timeout},
+            {
+                "start_size": start_size,
+                "max_size": max_size,
+                "timeout": timeout,
+                "trials": trials,
+                "min_success_rate": min_success_rate,
+            },
         )
 
     def file_list(self, path: str = "/") -> dict:
