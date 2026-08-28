@@ -696,6 +696,48 @@ class TestFileTransferDownload(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(data, test_data)
 
+    def test_download_aborts_on_cancel_event(self):
+        """A set cancel_event must abort the download before reading data."""
+        import threading
+
+        cancel_event = threading.Event()
+        cancel_event.set()  # already cancelled
+
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FSTAT /test.txt size=100 mtime=1 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, "[FLOK] FCLOSE"),  # fclose on cancel
+        ]
+        success, data, msg = self.ft.download("/test.txt", cancel_event=cancel_event)
+        self.assertFalse(success)
+        self.assertEqual(data, b"")
+        self.assertEqual(msg, "Cancelled")
+
+    def test_download_completes_when_cancel_event_unset(self):
+        """An unset cancel_event must not interfere with a normal download."""
+        import threading
+
+        cancel_event = threading.Event()  # not set
+        test_data = b"hello world"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = crc16(test_data)
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=1 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (
+                True,
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+            (True, "[FLOK] FREAD 0 bytes EOF"),
+            (True, "[FLOK] FCLOSE"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+        ]
+        success, data, msg = self.ft.download("/test.txt", cancel_event=cancel_event)
+        self.assertTrue(success)
+        self.assertEqual(data, test_data)
+
     def test_download_crc_mismatch(self):
         """Test download fails on CRC mismatch."""
         test_data = b"hello world"

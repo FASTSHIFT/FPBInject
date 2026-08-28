@@ -807,5 +807,44 @@ class TestMainTokenArg(unittest.TestCase):
         self.assertEqual(plan.token, "env-token")
 
 
+class TestCLICancelOnInterrupt(unittest.TestCase):
+    """Interrupting a proxy transfer must tell the server to cancel."""
+
+    def _cli_with_mock_proxy(self, proxy):
+        cli = FPBCLI.__new__(FPBCLI)  # bypass __init__/connection
+        cli._proxy = proxy
+        return cli
+
+    def test_download_interrupt_triggers_server_cancel(self):
+        proxy = MagicMock()
+        proxy.file_download.side_effect = KeyboardInterrupt()
+        cli = self._cli_with_mock_proxy(proxy)
+
+        with self.assertRaises(KeyboardInterrupt):
+            cli.file_download("/dev/file.bin", "/tmp/out.bin")
+
+        proxy.transfer_cancel.assert_called_once()
+
+    def test_upload_interrupt_triggers_server_cancel(self):
+        proxy = MagicMock()
+        proxy.file_upload.side_effect = KeyboardInterrupt()
+        cli = self._cli_with_mock_proxy(proxy)
+
+        with self.assertRaises(KeyboardInterrupt):
+            cli.file_upload("/tmp/in.bin", "/dev/file.bin")
+
+        proxy.transfer_cancel.assert_called_once()
+
+    def test_cancel_failure_does_not_mask_interrupt(self):
+        proxy = MagicMock()
+        proxy.file_download.side_effect = KeyboardInterrupt()
+        proxy.transfer_cancel.side_effect = RuntimeError("network down")
+        cli = self._cli_with_mock_proxy(proxy)
+
+        # The cancel best-effort failure must not replace the KeyboardInterrupt.
+        with self.assertRaises(KeyboardInterrupt):
+            cli.file_download("/dev/file.bin", "/tmp/out.bin")
+
+
 if __name__ == "__main__":
     unittest.main()

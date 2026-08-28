@@ -737,6 +737,7 @@ class FileTransfer:
         self,
         remote_path: str,
         progress_cb: Optional[Callable[[int, int], None]] = None,
+        cancel_event=None,
     ) -> Tuple[bool, bytes, str]:
         """
         Download a file from device.
@@ -744,10 +745,18 @@ class FileTransfer:
         Args:
             remote_path: Source path on device
             progress_cb: Optional callback(downloaded_bytes, total_bytes)
+            cancel_event: Optional threading.Event; when set, the download
+                aborts between chunks, closes the file, and returns a
+                "Cancelled" message. Lets a caller (or a disconnected client)
+                stop a long transfer instead of running it to completion.
 
         Returns:
             Tuple of (success, data_bytes, message)
         """
+
+        def _cancelled():
+            return cancel_event is not None and cancel_event.is_set()
+
         # Get file size first
         success, stat = self.fstat(remote_path)
         if not success:
@@ -766,6 +775,10 @@ class FileTransfer:
             data = b""
             current_offset = 0
             while True:
+                if _cancelled():
+                    self.fclose()
+                    return False, b"", "Cancelled"
+
                 # Pass current offset for seek on retry
                 success, chunk, msg = self.fread(
                     self.download_chunk_size, current_offset=current_offset

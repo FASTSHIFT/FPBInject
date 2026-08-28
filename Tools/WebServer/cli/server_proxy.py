@@ -512,11 +512,26 @@ class ServerProxy:
         """Get file stat via WebServer."""
         return self._get(f"/api/transfer/stat?path={path}")
 
-    def file_download(self, remote_path: str) -> dict:
-        """Download file via WebServer (JSON with base64 data, no SSE)."""
+    def transfer_cancel(self) -> dict:
+        """Ask the server to cancel the in-flight file transfer.
+
+        Used when the CLI is interrupted (Ctrl-C) so the server-side transfer
+        stops and releases the file transaction lock, instead of running to
+        completion while the client is gone.
+        """
+        return self._post("/api/transfer/cancel", {}, timeout=_PROBE_TIMEOUT)
+
+    def file_download(self, remote_path: str, timeout: float = 600.0) -> dict:
+        """Download file via WebServer (JSON with base64 data, no SSE).
+
+        ``timeout`` defaults high because serial transfers are slow (~55 KB/s);
+        a fixed 30 s would spuriously fail large files while the server is still
+        transferring. Callers may raise it further for very large files.
+        """
         return self._post(
             "/api/transfer/download-sync",
             {"remote_path": remote_path},
+            timeout=timeout,
         )
 
     def file_upload(self, local_path: str, remote_path: str) -> dict:
@@ -553,8 +568,11 @@ class ServerProxy:
         if self.token:
             req.add_header("X-Auth-Token", self.token)
 
+        # Serial uploads are slow (~55 KB/s); use a generous timeout so large
+        # files don't spuriously fail while the server is still transferring.
+        upload_timeout = max(600.0, len(file_data) / 20000.0 + 60.0)
         try:
-            with urlopen(req, timeout=120) as resp:
+            with urlopen(req, timeout=upload_timeout) as resp:
                 resp_text = resp.read().decode()
         except HTTPError as e:
             self._raise_for_auth(e)

@@ -577,39 +577,54 @@ def api_transfer_download_sync():
 
     ft = _get_file_transfer()
 
-    def do_download():
-        ft.fpb.enter_fl_mode()
-        try:
-            success, stat = ft.fstat(remote_path)
-            if not success:
+    def make_do_download(cancel_event):
+        def do_download():
+            ft.fpb.enter_fl_mode()
+            try:
+                success, stat = ft.fstat(remote_path)
+                if not success:
+                    return {
+                        "success": False,
+                        "error": f"Failed to stat: {stat.get('error', 'unknown')}",
+                    }
+
+                total_size = stat.get("size", 0)
+                if stat.get("type") == "dir":
+                    return {"success": False, "error": "Cannot download directory"}
+                if total_size == 0:
+                    return {"success": False, "error": "File is empty"}
+
+                # Pass the transaction's cancel_event so an explicit
+                # /transfer/cancel (e.g. from a CLI Ctrl-C) actually stops the
+                # server-side read instead of running to completion.
+                success, file_data, msg = ft.download(
+                    remote_path, cancel_event=cancel_event
+                )
+                if not success:
+                    cancelled = msg == "Cancelled"
+                    return {
+                        "success": False,
+                        "error": f"Download failed: {msg}",
+                        "cancelled": cancelled,
+                    }
+
+                b64_data = base64.b64encode(file_data).decode("ascii")
                 return {
-                    "success": False,
-                    "error": f"Failed to stat: {stat.get('error', 'unknown')}",
+                    "success": True,
+                    "data": b64_data,
+                    "size": len(file_data),
+                    "message": f"Downloaded {len(file_data)} bytes",
                 }
+            finally:
+                ft.fpb.exit_fl_mode()
 
-            total_size = stat.get("size", 0)
-            if stat.get("type") == "dir":
-                return {"success": False, "error": "Cannot download directory"}
-            if total_size == 0:
-                return {"success": False, "error": "File is empty"}
-
-            success, file_data, msg = ft.download(remote_path)
-            if not success:
-                return {"success": False, "error": f"Download failed: {msg}"}
-
-            b64_data = base64.b64encode(file_data).decode("ascii")
-            return {
-                "success": True,
-                "data": b64_data,
-                "size": len(file_data),
-                "message": f"Downloaded {len(file_data)} bytes",
-            }
-        finally:
-            ft.fpb.exit_fl_mode()
+        return do_download
 
     try:
-        with file_transaction(state.device, "download", remote_path):
-            result = _run_serial_op(do_download, timeout=120.0)
+        with file_transaction(state.device, "download", remote_path) as cancel_event:
+            # Serial is slow; allow a long worker window (cancellation, not a
+            # short timeout, is how a stuck/aborted transfer is stopped).
+            result = _run_serial_op(make_do_download(cancel_event), timeout=86400.0)
     except TransferBusy as e:
         return jsonify({"success": False, "error": str(e), "busy": True}), 409
 

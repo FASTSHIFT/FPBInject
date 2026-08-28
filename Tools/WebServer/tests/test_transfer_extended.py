@@ -403,6 +403,40 @@ class TestDownloadRoute(TransferTestBase):
         self.assertEqual(decoded, b"hello world")
 
     @patch("fpbinject.app.routes.transfer._get_file_transfer")
+    def test_download_sync_passes_cancel_event(self, mock_get_ft):
+        """download-sync must thread a cancel_event into ft.download().
+
+        This lets an explicit /transfer/cancel (e.g. from a CLI Ctrl-C) stop
+        the server-side read instead of running to completion.
+        """
+        mock_ft = Mock()
+        mock_ft.fstat.return_value = (True, {"size": 5, "type": "file"})
+        seen = {}
+
+        def fake_download(remote_path, cancel_event=None):
+            seen["cancel_event"] = cancel_event
+            # Simulate a cancel already signalled.
+            if cancel_event is not None and cancel_event.is_set():
+                return False, b"", "Cancelled"
+            return True, b"hello", "ok"
+
+        mock_ft.download.side_effect = fake_download
+        mock_ft.fpb = self.mock_fpb
+        mock_get_ft.return_value = mock_ft
+
+        response = self.client.post(
+            "/api/transfer/download-sync",
+            json={"remote_path": "/data/test.txt"},
+            content_type="application/json",
+        )
+        data = response.get_json()
+        # A cancel_event object must have been passed through (not None).
+        self.assertIn("cancel_event", seen)
+        self.assertIsNotNone(seen["cancel_event"])
+        # Normal (uncancelled) path succeeds.
+        self.assertTrue(data["success"])
+
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_stat_failure(self, mock_get_ft):
         """Test download when fstat fails."""
         mock_ft = Mock()

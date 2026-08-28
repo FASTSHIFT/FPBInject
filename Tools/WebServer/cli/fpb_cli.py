@@ -829,7 +829,13 @@ class FPBCLI:
         """Download a file from device to local path"""
         try:
             if self._proxy:
-                result = self._proxy.file_download(remote_path)
+                try:
+                    result = self._proxy.file_download(remote_path)
+                except KeyboardInterrupt:
+                    # Client is going away mid-transfer: tell the server to
+                    # cancel so it stops and releases the transaction lock.
+                    self._cancel_proxy_transfer()
+                    raise
                 if result.get("success") and result.get("data"):
                     import base64
 
@@ -877,7 +883,13 @@ class FPBCLI:
         """Upload a local file to device"""
         try:
             if self._proxy:
-                result = self._proxy.file_upload(local_path, remote_path)
+                try:
+                    result = self._proxy.file_upload(local_path, remote_path)
+                except KeyboardInterrupt:
+                    # Client is going away mid-transfer: tell the server to
+                    # cancel so it stops and releases the transaction lock.
+                    self._cancel_proxy_transfer()
+                    raise
                 self.output_json(result)
                 return
 
@@ -1330,6 +1342,21 @@ class FPBCLI:
             self.output_json(self._proxy.vserial_status())
         except Exception as e:
             self.output_error(f"Virtual serial status failed: {str(e)}", e)
+
+    def _cancel_proxy_transfer(self):
+        """Best-effort: tell the server to cancel an in-flight transfer.
+
+        Called when the CLI is interrupted mid-transfer so the server-side
+        transfer stops and releases the file transaction lock instead of
+        running to completion with no client to receive the result.
+        """
+        if not self._proxy:
+            return
+        try:
+            self._proxy.transfer_cancel()
+        except Exception:
+            # Never mask the original interrupt/error with a cancel failure.
+            pass
 
     def cleanup(self):
         """Cleanup resources"""

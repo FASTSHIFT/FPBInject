@@ -504,6 +504,14 @@ class TestServerProxySerialAndConnection(unittest.TestCase):
         self.assertIn("raw_data", result)
         self.assertEqual(result["raw_data"], "line1\nline2\n")
 
+    def test_transfer_cancel_posts_endpoint(self):
+        _MockHTTPHandler.responses["/api/transfer/cancel"] = {
+            "success": True,
+            "message": "Cancel requested",
+        }
+        result = self._proxy().transfer_cancel()
+        self.assertTrue(result["success"])
+
 
 class TestPidFileFunctions(unittest.TestCase):
     """Test PID file management functions."""
