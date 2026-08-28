@@ -2040,6 +2040,22 @@ Notes:
   --token (or FPB_TOKEN env) is required for remote servers.
   Output is JSON on stdout; pipe to jq for filtering.
   Run '{prog} <command> --help' for command-specific options.
+
+Complex / multi-step workflows -> use the Python SDK instead of chaining
+this CLI. Anything the CLI does, the SDK does in-process with real return
+values (no JSON re-parsing), which is far easier for loops, retries and
+multi-device orchestration. Minimal example:
+
+  from fpbinject import Client
+  with Client.direct("/dev/ttyACM0") as dev:      # or Client.discover(token=...)
+      dev.inject("digitalWrite", "patch.c", elf="firmware.elf")
+      dev.file_upload("app.bin", "/data/app.bin",
+                      progress=lambda done, total: None)
+      print(dev.test_serial())                    # tuning probe
+
+Good SDK fits: batch-inject many functions, download-then-verify loops,
+retry-with-tuning on serial loss, driving several devices in parallel.
+See Docs/SDK.md for ready-to-run recipes.
         """
     description = (
         "FPBInject CLI - Lightweight interface for binary patching.\n"

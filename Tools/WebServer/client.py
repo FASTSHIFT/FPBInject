@@ -572,6 +572,30 @@ class Client:
         ser.flush()
         return {"success": True, "sent": data}
 
+    def serial_read_window(
+        self,
+        since: int = 0,
+        *,
+        max_bytes: int = 4096,
+        tail: int = 0,
+        drop: bool = False,
+    ) -> Dict[str, Any]:
+        """Context-safe windowed serial read (proxy mode), adb-logcat style.
+
+        Returns ``{data, next, pending_bytes, pending_entries,
+        buffer_overflowed, ...}`` and never more than ``max_bytes`` of data, so
+        a large backlog cannot blow up memory. Page the rest with the returned
+        ``next`` cursor, or skip it with ``drop=True``.
+
+        Proxy mode only (the windowing lives on the server's ring buffer). In
+        direct mode use :meth:`serial_read`.
+        """
+        if self._proxy is None:
+            raise FPBError(
+                "serial_read_window requires proxy mode; use serial_read in direct mode"
+            )
+        return self._call(self._proxy.serial_read_window, since, max_bytes, tail, drop)
+
     def serial_read(self, since: int = 0, *, timeout: float = 1.0) -> Dict[str, Any]:
         if self._proxy is not None:
             return self._call(self._proxy.serial_read, since)
@@ -617,7 +641,14 @@ class Client:
             raise FPBError(f"Failed to stat: {stat.get('error', 'unknown')}")
         return {"success": True, "path": path, "stat": stat}
 
-    def file_download(self, remote: str, local: str) -> Dict[str, Any]:
+    def file_download(self, remote: str, local: str, progress=None) -> Dict[str, Any]:
+        """Download ``remote`` to ``local``.
+
+        ``progress``: optional ``callback(done_bytes, total_bytes)`` invoked
+        during a direct-mode transfer, for building your own UI/logging. In
+        proxy mode the transfer happens on the server, so per-chunk progress is
+        not surfaced here (the callback is simply not called).
+        """
         if self._proxy is not None:
             res = self._call(self._proxy.file_download, remote)
             if res.get("success") and res.get("data"):
@@ -628,7 +659,7 @@ class Client:
                 return res
         else:
             self._require_device()
-            success, data, msg = self._ft().download(remote)
+            success, data, msg = self._ft().download(remote, progress_cb=progress)
             if not success:
                 raise FPBError(f"Download failed: {msg}")
         parent = os.path.dirname(local)
@@ -643,13 +674,19 @@ class Client:
             "size": len(data),
         }
 
-    def file_upload(self, local: str, remote: str) -> Dict[str, Any]:
+    def file_upload(self, local: str, remote: str, progress=None) -> Dict[str, Any]:
+        """Upload ``local`` to ``remote``.
+
+        ``progress``: optional ``callback(done_bytes, total_bytes)`` invoked
+        during a direct-mode transfer. In proxy mode the transfer happens on
+        the server, so per-chunk progress is not surfaced here.
+        """
         if self._proxy is not None:
             return self._call(self._proxy.file_upload, local, remote)
         self._require_device()
         with open(local, "rb") as f:
             data = f.read()
-        success, msg = self._ft().upload(data, remote)
+        success, msg = self._ft().upload(data, remote, progress_cb=progress)
         if not success:
             raise FPBError(f"Upload failed: {msg}")
         return {

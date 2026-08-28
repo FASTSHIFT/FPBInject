@@ -32,6 +32,7 @@ print(client.serial_read()["raw_data"])
 - [Serial](#serial)
 - [Files](#files)
 - [Connection & virtual serial](#connection--virtual-serial)
+- [Cookbook: multi-step workflows](#cookbook-multi-step-workflows)
 - [Full method reference](#full-method-reference)
 
 ## Connecting
@@ -200,6 +201,14 @@ client.serial_read()                 # {"raw_data": "...", "raw_next": <cursor>}
 cur = client.serial_read()["raw_next"]
 client.serial_send("run_test\r\n")
 delta = client.serial_read(since=cur)["raw_data"]
+
+# Context-safe windowed read (proxy mode): never returns more than max_bytes,
+# so a large backlog cannot blow up memory. Page with the returned cursor,
+# skip the backlog with drop=True, or grab only the newest bytes with tail.
+win = client.serial_read_window(since=0, max_bytes=4096)
+# {"data": "...", "next": <cursor>, "pending_bytes": N, "buffer_overflowed": bool}
+client.serial_read_window(drop=True)          # skip backlog, advance cursor
+client.serial_read_window(tail=2048)          # newest 2 KB only
 ```
 
 > **Deep-sleep note:** some devices ignore `serial_send` while asleep. A
@@ -221,6 +230,13 @@ client.file_upload("patch.bin", "/data/patch.bin")# local -> device
 client.file_remove("/data/old.bin")
 client.file_mkdir("/data/new")
 client.file_rename("/data/a.bin", "/data/b.bin")
+
+# Optional progress callback (direct mode): callback(done_bytes, total_bytes).
+# Serial is slow (~55 KB/s); use this to drive your own progress UI/logging.
+client.file_upload(
+    "app.bin", "/data/app.bin",
+    progress=lambda done, total: print(f"{done}/{total}", end="\r"),
+)
 ```
 
 ## Connection & virtual serial
@@ -249,6 +265,97 @@ client.vserial_stop()
 # Stop a WebServer that the CLI auto-launched in the background
 # (equivalent to `fpbinject server-stop`). Static — no client needed.
 Client.stop_server(5500)               # {"success": True, "message": "..."}
+```
+
+## Cookbook: multi-step workflows
+
+These are the cases where the SDK beats chaining the CLI: real return values,
+in-process loops, retries and orchestration — no JSON re-parsing between steps.
+
+### Batch-inject many functions
+
+```python
+from fpbinject import Client
+
+patches = {
+    "digitalWrite": "patches/digitalWrite.c",
+    "digitalRead": "patches/digitalRead.c",
+    "analogWrite": "patches/analogWrite.c",
+}
+results = {}
+with Client.direct("/dev/ttyACM0") as dev:
+    for func, src in patches.items():
+        try:
+            dev.inject(func, src, elf="firmware.elf")
+            results[func] = "ok"
+        except Exception as e:               # keep going on a single failure
+            results[func] = f"failed: {e}"
+print(results)
+```
+
+### Download then verify (byte-for-byte)
+
+```python
+import hashlib
+from fpbinject import Client
+
+with Client.direct("/dev/ttyACM0") as dev:
+    dev.file_download("/data/blob.bin", "blob.bin")
+    st = dev.file_stat("/data/blob.bin")["stat"]
+local = open("blob.bin", "rb").read()
+assert len(local) == st["size"], "size mismatch"
+print("sha256", hashlib.sha256(local).hexdigest())
+```
+
+### Probe the link, then transfer
+
+```python
+from fpbinject import Client
+
+with Client.direct("/dev/ttyACM0") as dev:
+    probe = dev.test_serial()               # reliability-sampled throughput probe
+    print("recommended upload chunk:", probe.get("recommended_upload_chunk_size"))
+    print("fragmentation needed:", probe.get("fragment_needed"))
+    # Transfers already retry on CRC/loss (see transfer_max_retries); the probe
+    # tells you whether to lower chunk sizes or enable TX fragmentation. Apply
+    # those as connection args (CLI flags / server config) for the session.
+    dev.file_upload("app.bin", "/data/app.bin")
+```
+
+### Drive several devices in parallel
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from fpbinject import Client
+
+ports = ["/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2"]
+
+def flash(port):
+    with Client.direct(port) as dev:
+        dev.file_upload("app.bin", "/data/app.bin")
+        return port, "done"
+
+with ThreadPoolExecutor(max_workers=len(ports)) as pool:
+    for port, status in pool.map(flash, ports):
+        print(port, status)
+```
+
+### Context-safe serial capture (won't blow up memory)
+
+```python
+from fpbinject import Client
+
+# Proxy mode exposes the windowed reader; page with the returned cursor.
+client = Client.discover(token="...")
+cursor, captured = 0, []
+for _ in range(50):                          # bounded loop
+    win = client.serial_read_window(since=cursor, max_bytes=4096)
+    if not win.get("data"):
+        break
+    captured.append(win["data"])
+    cursor = win["next"]
+    if win.get("pending_bytes", 0) == 0:
+        break
 ```
 
 ## Full method reference

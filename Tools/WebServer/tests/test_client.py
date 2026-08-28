@@ -115,6 +115,15 @@ class TestClientProxyMethods(unittest.TestCase):
             "/api/vserial/status": {"success": True, "enabled": False},
             "/api/vserial/start": {"success": True, "enabled": True},
             "/api/vserial/stop": {"success": True},
+            "/api/serial/read": {
+                "success": True,
+                "data": "recent output\n",
+                "next": 42,
+                "pending_bytes": 0,
+                "pending_entries": 0,
+                "truncated": False,
+                "buffer_overflowed": False,
+            },
         }
         _MockHTTPHandler.sse_responses = {}
         cls.server = http.server.HTTPServer(("127.0.0.1", 0), _MockHTTPHandler)
@@ -158,6 +167,14 @@ class TestClientProxyMethods(unittest.TestCase):
         c = self._client()
         self.assertTrue(c.file_list("/data")["success"])
         self.assertEqual(c.file_stat("/x")["stat"]["size"], 1)
+
+    def test_serial_read_window_proxy(self):
+        c = self._client()
+        win = c.serial_read_window(since=0, max_bytes=4096)
+        self.assertTrue(win["success"])
+        self.assertEqual(win["data"], "recent output\n")
+        self.assertEqual(win["next"], 42)
+        self.assertIn("pending_bytes", win)
 
     def test_file_mutations(self):
         c = self._client()
@@ -616,6 +633,39 @@ class TestClientDirectMode(unittest.TestCase):
         fpb.test_serial_throughput.return_value = {"success": True, "chunk": 128}
         out = c.test_serial()
         self.assertTrue(out["success"])
+
+    def test_direct_serial_read_window_requires_proxy(self):
+        c, _, _ = self._direct_client()
+        with self.assertRaises(FPBError):
+            c.serial_read_window(since=0)
+
+    def test_direct_file_download_forwards_progress(self):
+        import tempfile
+
+        c, _, _ = self._direct_client()
+        ft = MagicMock()
+        ft.download.return_value = (True, b"data", "ok")
+        c._ft = lambda: ft
+        cb = lambda done, total: None  # noqa: E731
+        with tempfile.TemporaryDirectory() as d:
+            c.file_download("/r.bin", os.path.join(d, "out.bin"), progress=cb)
+        _, kwargs = ft.download.call_args
+        self.assertIs(kwargs.get("progress_cb"), cb)
+
+    def test_direct_file_upload_forwards_progress(self):
+        import tempfile
+
+        c, _, _ = self._direct_client()
+        ft = MagicMock()
+        ft.upload.return_value = (True, "ok")
+        c._ft = lambda: ft
+        cb = lambda done, total: None  # noqa: E731
+        with tempfile.NamedTemporaryFile("wb", suffix=".bin", delete=False) as tf:
+            tf.write(b"payload")
+            src = tf.name
+        c.file_upload(src, "/r.bin", progress=cb)
+        _, kwargs = ft.upload.call_args
+        self.assertIs(kwargs.get("progress_cb"), cb)
 
     def test_direct_file_stat_and_download_upload(self):
         import tempfile
