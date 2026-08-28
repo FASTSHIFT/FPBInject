@@ -123,6 +123,8 @@ def api_serial_read():
       max_bytes  hard cap on returned data bytes; default 4096
       tail       return only the newest N bytes (ignores ``since``)
       drop       "1"/"true" to skip the backlog and just advance the cursor
+      grep       optional regex; only entries matching (``re.search``) are
+                 considered before tail/paging is applied
 
     Returns data + next cursor + pending_bytes/entries + buffer_overflowed so a
     reader can page the whole backlog without ever over-reading its context.
@@ -134,6 +136,7 @@ def api_serial_read():
     tail = request.args.get("tail", 0, type=int)
     drop_raw = (request.args.get("drop", "") or "").lower()
     drop = drop_raw in ("1", "true", "yes")
+    grep = request.args.get("grep", None, type=str) or None
 
     device = state.device
     snapshot = list(device.raw_serial_log)
@@ -146,8 +149,9 @@ def api_serial_read():
         max_bytes=max_bytes,
         tail=tail,
         drop=drop,
+        grep=grep,
     )
-    result["success"] = True
+    result["success"] = not result.get("invalid_grep", False)
     return jsonify(result)
 
 

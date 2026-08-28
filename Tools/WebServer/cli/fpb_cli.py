@@ -959,12 +959,15 @@ class FPBCLI(FileMemCommandsMixin):
         max_bytes: int = 4096,
         tail: int = 0,
         drop: bool = False,
+        grep: Optional[str] = None,
     ) -> None:
         """Read serial output, context-safe (adb-logcat style).
 
         Bounded by ``max_bytes`` so a large backlog never blows up the
         consumer's context. Defaults to a tail read; page the rest with
-        ``--since <next>`` or skip it with ``--drop``.
+        ``--since <next>`` or skip it with ``--drop``. Pass ``grep`` for
+        a server-side regex filter (proxy mode only — direct mode falls
+        back to a local ``re.search`` over the freshly-read tail).
         """
         try:
             if self._proxy:
@@ -978,6 +981,7 @@ class FPBCLI(FileMemCommandsMixin):
                     max_bytes=max_bytes,
                     tail=effective_tail,
                     drop=drop,
+                    grep=grep,
                 )
                 self._emit_serial_window(win)
                 return
@@ -1009,6 +1013,26 @@ class FPBCLI(FileMemCommandsMixin):
                 truncated = True
 
             log_lines = [ln for ln in new_data.split("\n") if ln.strip()][-lines:]
+            # Direct mode has no server-side ring; apply grep locally over
+            # the freshly-read tail so the CLI flag behaves the same either
+            # way. Invalid regex surfaces as a structured error.
+            if grep:
+                import re as _re
+
+                try:
+                    pat = _re.compile(grep)
+                except _re.error as re_err:
+                    self.output_json(
+                        {
+                            "success": False,
+                            "invalid_grep": True,
+                            "error": f"invalid grep pattern: {re_err}",
+                        }
+                    )
+                    return
+                log_lines = [ln for ln in log_lines if pat.search(ln)]
+                new_data = "\n".join(log_lines)
+                data_bytes = new_data.encode("utf-8")
             out = {
                 "success": True,
                 "new_data": new_data,
@@ -1030,12 +1054,15 @@ class FPBCLI(FileMemCommandsMixin):
         """Emit a context-safe windowed read result (proxy mode).
 
         Builds a bounded JSON payload and attaches an actionable ``hint`` so
-        the caller knows how to page or skip the remaining backlog.
+        the caller knows how to page or skip the remaining backlog. Passes
+        through ``invalid_grep`` / ``error`` if the server rejected the
+        regex, so callers can branch on ``success`` without re-parsing text.
         """
         data = win.get("data", "")
         pending = win.get("pending_bytes", 0)
+        # Server flips success to false on invalid grep; propagate faithfully.
         out = {
-            "success": True,
+            "success": win.get("success", True),
             "data": data,
             "next": win.get("next", 0),
             "returned_bytes": win.get("returned_bytes", len(data.encode("utf-8"))),
@@ -1044,6 +1071,9 @@ class FPBCLI(FileMemCommandsMixin):
             "truncated": win.get("truncated", False),
             "buffer_overflowed": win.get("buffer_overflowed", False),
         }
+        if win.get("invalid_grep"):
+            out["invalid_grep"] = True
+            out["error"] = win.get("error", "invalid grep pattern")
         hints = []
         if pending and pending > 0:
             hints.append(
@@ -1421,6 +1451,7 @@ def main():
                 args.max_bytes,
                 args.tail,
                 args.drop,
+                grep=getattr(args, "grep", None),
             )
         elif args.command == "doctor":
             cli.doctor(args.start_size, args.max_size, args.timeout, args.trials)

@@ -444,17 +444,25 @@ class ServerProxy:
         max_bytes: int = 4096,
         tail: int = 0,
         drop: bool = False,
+        grep: Optional[str] = None,
     ) -> dict:
         """Context-safe windowed serial read via /api/serial/read.
 
-        Returns dict with data / next / pending_bytes / pending_entries /
-        buffer_overflowed. Never returns more than ``max_bytes`` of data.
+        ``grep`` is an optional server-side regex (``re.search``) applied
+        BEFORE the tail/paging window, so only matching entries consume
+        the byte budget. Returns dict with data / next / pending_bytes /
+        pending_entries / buffer_overflowed. Never returns more than
+        ``max_bytes`` of data.
         """
+        from urllib.parse import quote
+
         q = f"/api/serial/read?since={since}&max_bytes={max_bytes}"
         if tail and tail > 0:
             q += f"&tail={tail}"
         if drop:
             q += "&drop=1"
+        if grep:
+            q += f"&grep={quote(grep, safe='')}"
         return self._get(q)
 
     # ------------------------------------------------------------------

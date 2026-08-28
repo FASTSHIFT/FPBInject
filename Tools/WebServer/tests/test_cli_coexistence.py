@@ -454,6 +454,7 @@ class _CursorMockHandler(http.server.BaseHTTPRequestHandler):
             max_bytes = int(qs.get("max_bytes", [4096])[0])
             tail = int(qs.get("tail", [0])[0])
             drop = (qs.get("drop", [""])[0] or "").lower() in ("1", "true", "yes")
+            grep = qs.get("grep", [None])[0]
             next_id = (
                 max(e["id"] for e in self.log_entries) + 1 if self.log_entries else 0
             )
@@ -464,8 +465,10 @@ class _CursorMockHandler(http.server.BaseHTTPRequestHandler):
                 max_bytes=max_bytes,
                 tail=tail,
                 drop=drop,
+                grep=grep,
             )
-            result["success"] = True
+            # Match the real route: success flips false on invalid grep.
+            result["success"] = not result.get("invalid_grep", False)
             body = json.dumps(result).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -597,6 +600,43 @@ class TestSerialReadSinceCursor(unittest.TestCase):
 
         # Restore
         _CursorMockHandler.log_entries.pop()
+        cli.cleanup()
+
+    def test_serial_read_grep_filters_via_proxy(self):
+        """serial_read(grep=...) forwards to /api/serial/read; only matches
+        come back, and the JSON envelope carries the same schema."""
+        _CursorMockHandler.log_entries.extend(
+            [
+                {"id": 3, "data": "boot: ok\n"},
+                {"id": 4, "data": "PANIC: null deref\n"},
+                {"id": 5, "data": "boot: heartbeat\n"},
+            ]
+        )
+        try:
+            cli = self._make_cli()
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                cli.serial_read(grep="PANIC")
+            result = json.loads(buf.getvalue())
+            self.assertTrue(result["success"])
+            self.assertIn("PANIC", result["data"])
+            self.assertNotIn("boot:", result["data"])
+            cli.cleanup()
+        finally:
+            del _CursorMockHandler.log_entries[3:]
+
+    def test_serial_read_invalid_grep_surfaces_error(self):
+        """Invalid regex must round-trip as success=false + invalid_grep=true
+        so JSON callers can branch without regex-matching the error string."""
+        cli = self._make_cli()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cli.serial_read(grep="[unclosed")
+        result = json.loads(buf.getvalue())
+        self.assertFalse(result["success"])
+        self.assertTrue(result.get("invalid_grep"))
+        self.assertIn("invalid grep pattern", result.get("error", ""))
+        self.assertEqual(result["data"], "")
         cli.cleanup()
 
 

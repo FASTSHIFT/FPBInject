@@ -1647,6 +1647,42 @@ class TestLogsAPI(TestRoutesBase):
         self.assertTrue(data["success"])
         self.assertTrue(data["buffer_overflowed"])
 
+    def test_serial_read_window_grep_filters_before_budget(self):
+        """?grep=... keeps only matching entries; non-matches don't count."""
+        state.device.raw_serial_log = [
+            {"id": 0, "data": "boot: idle\n"},
+            {"id": 1, "data": "PANIC: null deref\n"},
+            {"id": 2, "data": "boot: ok\n"},
+            {"id": 3, "data": "assert: overflow\n"},
+        ]
+        state.device.raw_log_next_id = 4
+
+        response = self.client.get(
+            "/api/serial/read?tail=4096&max_bytes=4096&grep=PANIC%7Cassert"
+        )
+        data = json.loads(response.data)
+
+        self.assertTrue(data["success"])
+        self.assertIn("PANIC", data["data"])
+        self.assertIn("assert", data["data"])
+        self.assertNotIn("boot:", data["data"])
+
+    def test_serial_read_window_grep_invalid_regex(self):
+        """Invalid regex returns a structured error, not a 500."""
+        state.device.raw_serial_log = [{"id": 0, "data": "hi\n"}]
+        state.device.raw_log_next_id = 1
+
+        response = self.client.get("/api/serial/read?tail=4096&grep=%5Bunclosed")
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+
+        # success flips to false when the pattern is invalid so JSON callers
+        # can branch on it; the error text tells the human what went wrong.
+        self.assertFalse(data["success"])
+        self.assertTrue(data.get("invalid_grep"))
+        self.assertIn("invalid grep pattern", data.get("error", ""))
+        self.assertEqual(data["data"], "")
+
     def test_serial_send_no_data(self):
         """Test serial send without data"""
         response = self.client.post(

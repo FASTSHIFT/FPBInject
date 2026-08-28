@@ -30,7 +30,8 @@ duplicate data):
 The logic here is pure (no Flask, no device) so it can be unit tested directly.
 """
 
-from typing import Dict, List
+import re
+from typing import Dict, List, Optional
 
 # Default byte budget for a single read. Small on purpose: a bare read must
 # never dump the whole backlog.
@@ -57,6 +58,15 @@ def _empty_result(next_id: int, overflowed: bool = False) -> Dict:
     }
 
 
+def _invalid_grep_result(next_id: int, message: str) -> Dict:
+    """Return an error envelope when the caller-supplied regex fails to
+    compile. Keeps the schema stable so callers can branch on ``error``."""
+    r = _empty_result(next_id)
+    r["error"] = f"invalid grep pattern: {message}"
+    r["invalid_grep"] = True
+    return r
+
+
 def compute_read(
     entries: List[dict],
     next_id: int,
@@ -65,6 +75,7 @@ def compute_read(
     max_bytes: int = DEFAULT_MAX_BYTES,
     tail: int = 0,
     drop: bool = False,
+    grep: Optional[str] = None,
 ) -> Dict:
     """Compute a context-safe windowed read over a ring buffer snapshot.
 
@@ -75,6 +86,12 @@ def compute_read(
         max_bytes: Hard cap on returned ``data`` bytes. <= 0 means DEFAULT.
         tail: If > 0, cap the returned window to the newest ``tail`` bytes.
         drop: If True, return no data and advance the cursor to ``next_id``.
+        grep: Optional regex; only entries whose ``data`` matches (``re.search``)
+            are considered. Filtering is applied FIRST, then the tail/paging
+            window is computed over the filtered list. ``since``/``next``
+            cursors still refer to the underlying buffer ids so callers can
+            keep paging after they drop the filter. Invalid regex returns an
+            error envelope (``invalid_grep=True``) instead of raising.
 
     Returns:
         dict: data, next, returned_bytes, pending_bytes, pending_entries,
@@ -87,8 +104,21 @@ def compute_read(
     if drop:
         return _empty_result(next_id)
 
-    # Overflow: a since-cursor older than the oldest retained id means the ring
-    # evicted data the caller had not read yet. Only meaningful for paging.
+    # Compile and apply the grep filter up-front (before overflow/tail/page
+    # calculations) so every downstream branch operates on the filtered list.
+    # We keep the original ids so the returned cursor remains meaningful.
+    filtered = entries
+    if grep:
+        try:
+            pat = re.compile(grep)
+        except re.error as e:
+            return _invalid_grep_result(next_id, str(e))
+        filtered = [e for e in entries if pat.search(e.get("data", ""))]
+
+    # Overflow: a since-cursor older than the oldest retained id in the RAW
+    # buffer means the ring evicted data the caller had not read yet -- the
+    # dropped entry may well have been a match, so we must still flag this
+    # even when a grep filter is active. Only meaningful for paging.
     overflowed = (
         not tail and since > 0 and bool(entries) and since < _earliest_id(entries)
     )
@@ -96,12 +126,12 @@ def compute_read(
     # -------------------- tail mode (newest window) --------------------
     if tail and tail > 0:
         budget = min(tail, max_bytes)
-        total_all = _nbytes("".join(e.get("data", "") for e in entries))
+        total_all = _nbytes("".join(e.get("data", "") for e in filtered))
         # Walk entries from newest to oldest, accumulating whole entries until
         # the budget is reached; then byte-trim the oldest included entry.
         picked: List[str] = []
         acc = 0
-        for e in reversed(entries):
+        for e in reversed(filtered):
             d = e.get("data", "")
             picked.append(d)
             acc += _nbytes(d)
@@ -125,7 +155,7 @@ def compute_read(
         }
 
     # -------------------- paging mode (since, forward) --------------------
-    working = [e for e in entries if e.get("id", 0) >= since]
+    working = [e for e in filtered if e.get("id", 0) >= since]
     if not working:
         return _empty_result(next_id, overflowed)
 
@@ -159,7 +189,7 @@ def compute_read(
         truncated = True
         cursor = working[0].get("id", since)
 
-    remaining = [e for e in entries if e.get("id", 0) >= cursor]
+    remaining = [e for e in filtered if e.get("id", 0) >= cursor]
     pending_bytes = _nbytes("".join(e.get("data", "") for e in remaining))
     pending_entries = len(remaining)
     if pending_bytes > 0:

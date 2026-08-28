@@ -388,6 +388,15 @@ call) is documented in the `Client` class docstring; from a REPL run
         help="Skip the buffered backlog and just advance the cursor "
         "(adb logcat -c style); returns the new 'next'.",
     )
+    serial_read_parser.add_argument(
+        "--grep",
+        type=str,
+        default=None,
+        help="Server-side regex filter (re.search); only matching entries "
+        "count against --tail / --max-bytes. Great for spotting PANIC/assert "
+        "in a big backlog without dragging the whole thing into context. "
+        "Invalid regex returns success=false with invalid_grep=true.",
+    )
 
     # file-list command (requires device)
     file_list_parser = subparsers.add_parser(
@@ -457,6 +466,18 @@ call) is documented in the `Client` class docstring; from a REPL run
     vserial_start_parser = subparsers.add_parser(
         "vserial-start",
         help="Create virtual serial passthrough on the server (requires server)",
+        epilog=(
+            "Live tail with standard tools once the PTY exists:\n"
+            "  timeout 30 cat /tmp/fpb-ttyACM0                    "
+            "# adb-logcat-like tail\n"
+            "  timeout 60 grep --line-buffered -m1 PANIC "
+            "/tmp/fpb-ttyACM0   # exit on first hit\n"
+            "  tail -c 4096 <(timeout 5 cat /tmp/fpb-ttyACM0)     "
+            "# newest 4KB\n"
+            "For programmatic cursor-based reads with a byte budget and\n"
+            "server-side grep, use 'fpbinject serial-read --grep ...'."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     vserial_start_parser.add_argument(
         "--symlink",

@@ -149,5 +149,104 @@ class TestOverflowDetection(unittest.TestCase):
         self.assertFalse(r["buffer_overflowed"])
 
 
+class TestComputeReadGrep(unittest.TestCase):
+    """Server-side grep filter: applied before tail/paging over the raw ring."""
+
+    def test_grep_tail_returns_only_matches(self):
+        # Interleave matches and non-matches; tail should ignore non-matches
+        # entirely instead of just filtering the returned text after the fact.
+        entries = _entries(
+            [
+                "boot: idle\n",
+                "PANIC: null deref at 0x1234\n",
+                "boot: ok\n",
+                "assert: buffer overflow\n",
+                "boot: heartbeat\n",
+            ]
+        )
+        r = compute_read(entries, 5, tail=4096, grep=r"PANIC|assert")
+        self.assertIn("PANIC", r["data"])
+        self.assertIn("assert", r["data"])
+        self.assertNotIn("boot:", r["data"])
+        # Cursor still refers to the raw buffer end so callers can page later.
+        self.assertEqual(r["next"], 5)
+
+    def test_grep_no_match_returns_empty(self):
+        entries = _entries(["hello\n", "world\n"])
+        r = compute_read(entries, 2, tail=4096, grep=r"NOPE")
+        self.assertEqual(r["data"], "")
+        self.assertEqual(r["returned_bytes"], 0)
+        self.assertFalse(r["truncated"])
+
+    def test_grep_paging_walks_only_matches(self):
+        entries = _entries(
+            [
+                "ok\n",  # id 0
+                "ERR one\n",  # id 1  (8 bytes)
+                "ok\n",  # id 2
+                "ERR two\n",  # id 3  (8 bytes)
+                "ok\n",  # id 4
+            ]
+        )
+        # Budget of 8 bytes = exactly one match per page; the loop walks the
+        # filtered subset without ever revisiting a non-match.
+        collected: list[str] = []
+        cursor = 0
+        guard = 0
+        while True:
+            guard += 1
+            self.assertLess(guard, 20, "paging did not terminate")
+            r = compute_read(entries, 5, since=cursor, max_bytes=8, grep=r"^ERR")
+            collected.append(r["data"])
+            cursor = r["next"]
+            if r["pending_bytes"] == 0:
+                break
+        text = "".join(collected)
+        self.assertIn("ERR one", text)
+        self.assertIn("ERR two", text)
+        self.assertNotIn("ok", text)
+
+    def test_grep_budget_counts_only_matching_entries(self):
+        # Only matching entries count against max_bytes; ok\n between two
+        # matches is skipped for free. Budget of 8 fits exactly the first
+        # match; the second match is pending and cursor advances past the
+        # non-match entry (id 1) to the next unread match (id 2).
+        entries = _entries(["MATCH-A\n", "ok\n", "MATCH-B\n"])
+        r = compute_read(entries, 3, since=0, max_bytes=8, grep=r"MATCH")
+        self.assertEqual(r["data"], "MATCH-A\n")
+        self.assertGreater(r["pending_bytes"], 0)
+        # Cursor lands on the next matching entry so a re-read with
+        # since=r["next"] reads MATCH-B directly.
+        self.assertEqual(r["next"], 2)
+        followup = compute_read(entries, 3, since=r["next"], max_bytes=8, grep=r"MATCH")
+        self.assertEqual(followup["data"], "MATCH-B\n")
+        self.assertEqual(followup["pending_bytes"], 0)
+
+    def test_grep_invalid_regex_returns_error_envelope(self):
+        entries = _entries(["hello\n"])
+        r = compute_read(entries, 1, tail=4096, grep="[unclosed")
+        self.assertTrue(r.get("invalid_grep"))
+        self.assertIn("invalid grep pattern", r.get("error", ""))
+        # Never leak partial data on a bad pattern.
+        self.assertEqual(r["data"], "")
+        self.assertEqual(r["returned_bytes"], 0)
+
+    def test_grep_overflow_still_reported(self):
+        """A dropped entry might have been THE match; overflow must still
+        surface even when the caller passes a filter that excludes everything
+        currently retained. This prevents silent missed matches."""
+        entries = _entries([f"line {i}\n" for i in range(100, 105)], start_id=100)
+        r = compute_read(entries, 105, since=50, max_bytes=1000, grep=r"NOPE")
+        self.assertTrue(r["buffer_overflowed"])
+
+    def test_grep_none_matches_previous_behaviour(self):
+        # Passing grep=None must not change any observable output vs. omitting
+        # the argument entirely — regression guard for the routing layer.
+        entries = _entries(["A", "B", "C"])
+        baseline = compute_read(entries, 3, tail=4096)
+        with_none = compute_read(entries, 3, tail=4096, grep=None)
+        self.assertEqual(baseline, with_none)
+
+
 if __name__ == "__main__":
     unittest.main()
