@@ -318,6 +318,89 @@ class FileTransfer:
         """
         return self._send_cmd("fl -c fclose")
 
+    # Response format: [FLOK] FCRC offset=<off> size=<n> crc=0x<XXXX>
+    # offset= is echoed back by firmware so the host can detect a corrupted
+    # request (the fcrc request args -a/-l/-r are NOT CRC-protected on the wire,
+    # because -r is repurposed as the chained-CRC init value).
+    _FCRC_RE = re.compile(
+        r"FCRC\s+offset=(\d+)\s+size=(\d+)\s+crc=0x([0-9A-Fa-f]+)"
+    )
+
+    def _fcrc_call(
+        self, offset: int, length: int, init_crc: Optional[int]
+    ) -> Tuple[bool, int, int, int]:
+        """
+        Perform a single fcrc exchange with the device and validate the echo.
+
+        The fcrc request parameters (offset/length via -a/-l and the chained
+        init CRC via -r) travel over the wire without their own integrity
+        check. Under high packet loss a corrupted-but-parseable request can
+        make the device seek to the wrong offset or read the wrong length and
+        still return a well-formed [FLOK] FCRC line, which would silently fail
+        the whole-file verification. To guard against this we require the
+        device to echo back the offset it actually used and reject any reply
+        whose offset/size do not match what we requested, retrying the
+        exchange instead of trusting a bad result.
+
+        Args:
+            offset: Start offset requested (bytes from beginning)
+            length: Number of bytes requested for this chunk
+            init_crc: Chained CRC init value, or None for the initial 0xFFFF
+
+        Returns:
+            Tuple of (success, echoed_offset, chunk_size, crc)
+        """
+        if init_crc is None:
+            cmd = f"fl -c fcrc -a {offset} -l {length}"
+        else:
+            cmd = f"fl -c fcrc -a {offset} -l {length} -r 0x{init_crc:04X}"
+
+        last_msg = ""
+        for attempt in range(self.max_retries + 1):
+            if attempt > 0:
+                self.stats["retry_count"] += 1
+            success, response = self._send_cmd(cmd)
+            if not success:
+                last_msg = response
+                if attempt < self.max_retries:
+                    self.stats["timeout_errors"] += 1
+                    continue
+                return False, 0, 0, 0
+
+            match = self._FCRC_RE.search(response)
+            if not match:
+                last_msg = response
+                if attempt < self.max_retries:
+                    self.stats["other_errors"] += 1
+                    continue
+                return False, 0, 0, 0
+
+            echoed_offset = int(match.group(1))
+            chunk_size = int(match.group(2))
+            crc = int(match.group(3), 16)
+
+            # The device echoes the offset it actually seeked to; if it does
+            # not match our request, the request args were corrupted in
+            # transit. A short chunk (chunk_size < length) is legitimate only
+            # at EOF, so anything larger than requested is also rejected.
+            if echoed_offset != offset or chunk_size > length:
+                log_msg = (
+                    f"fcrc echo mismatch: requested offset={offset} len={length}, "
+                    f"device replied offset={echoed_offset} size={chunk_size}, "
+                    f"retry {attempt + 1}/{self.max_retries}"
+                )
+                self._log("[WARN] fcrc: " + log_msg)
+                logger.warning(log_msg)
+                if attempt < self.max_retries:
+                    self.stats["crc_errors"] += 1
+                    continue
+                return False, 0, 0, 0
+
+            return True, echoed_offset, chunk_size, crc
+
+        logger.error(f"fcrc failed after retries: {last_msg}")
+        return False, 0, 0, 0
+
     def fcrc(self, size: int = 0) -> Tuple[bool, int, int]:
         """
         Calculate CRC of open file on device using chunked reads.
@@ -335,18 +418,13 @@ class FileTransfer:
             Tuple of (success, size, crc)
         """
         FCRC_CHUNK = 32 * 1024  # 32KB per chunk to avoid watchdog timeout
-        FCRC_RE = re.compile(r"FCRC\s+offset=\d+\s+size=(\d+)\s+crc=0x([0-9A-Fa-f]+)")
 
         # For small files or unspecified size, use single call
         if 0 < size <= FCRC_CHUNK:
-            cmd = f"fl -c fcrc -l {size}"
-            success, response = self._send_cmd(cmd)
-            if not success:
+            ok, _echoed, chunk_size, crc = self._fcrc_call(0, size, None)
+            if not ok:
                 return False, 0, 0
-            match = FCRC_RE.search(response)
-            if not match:
-                return False, 0, 0
-            return True, int(match.group(1)), int(match.group(2), 16)
+            return True, chunk_size, crc
 
         # Chunked CRC for large files
         offset = 0
@@ -356,21 +434,12 @@ class FileTransfer:
 
         while remaining > 0:
             chunk = min(FCRC_CHUNK, remaining)
-            # Pass current CRC as init value via -r, offset via -a
-            if offset == 0 and crc == 0xFFFF:
-                cmd = f"fl -c fcrc -a {offset} -l {chunk}"
-            else:
-                cmd = f"fl -c fcrc -a {offset} -l {chunk} -r 0x{crc:04X}"
-            success, response = self._send_cmd(cmd)
-            if not success:
+            # Pass current CRC as init value via -r (None for the first chunk)
+            init_crc = None if (offset == 0 and crc == 0xFFFF) else crc
+            ok, _echoed, chunk_size, crc = self._fcrc_call(offset, chunk, init_crc)
+            if not ok:
                 return False, 0, 0
 
-            match = FCRC_RE.search(response)
-            if not match:
-                return False, 0, 0
-
-            chunk_size = int(match.group(1))
-            crc = int(match.group(2), 16)
             total_read += chunk_size
             offset += chunk_size
             remaining -= chunk_size
@@ -520,6 +589,71 @@ class FileTransfer:
         cmd = f"fl -c frename --path {_format_path_arg(old_path)} --newpath {_format_path_arg(new_path)} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
+    def _verify_crc_with_retry(
+        self, remote_path: str, expected_crc: int, expected_size: int
+    ) -> Tuple[bool, int, int, str]:
+        """
+        Verify the whole-file CRC on device, retrying the entire exchange.
+
+        Reopens the file read-only, runs fcrc, and closes it. Because every
+        data chunk was already CRC-verified per-chunk during fwrite/fread, a
+        whole-file CRC/size mismatch here is far more likely caused by a
+        corrupted fcrc verification exchange (its -a/-l/-r request args are not
+        integrity-protected on the wire) than by actually-bad data on storage.
+        So we retry the whole verification before declaring failure, instead of
+        failing a transfer whose data is already known good.
+
+        Args:
+            remote_path: File path on device to verify
+            expected_crc: Locally computed CRC-16 of the data
+            expected_size: Expected byte count
+
+        Returns:
+            Tuple of (ok, dev_size, dev_crc, reason). On failure, reason is
+            "unavailable" (could not obtain a device CRC) or "mismatch"
+            (device CRC/size disagreed on every attempt).
+        """
+        last_size = 0
+        last_crc = 0
+        for attempt in range(self.max_retries + 1):
+            if attempt > 0:
+                self.stats["retry_count"] += 1
+                self._log(
+                    f"[WARN] verify: whole-file CRC retry {attempt}/{self.max_retries}"
+                )
+
+            success, msg = self.fopen(remote_path, "r")
+            if not success:
+                logger.warning(f"verify reopen failed: {msg}")
+                if attempt < self.max_retries:
+                    continue
+                return False, 0, 0, "unavailable"
+
+            ok, dev_size, dev_crc = self.fcrc(expected_size)
+            self.fclose()  # Always close regardless of CRC result
+
+            if not ok:
+                if attempt < self.max_retries:
+                    continue
+                return False, 0, 0, "unavailable"
+
+            last_size, last_crc = dev_size, dev_crc
+            if dev_size == expected_size and dev_crc == expected_crc:
+                return True, dev_size, dev_crc, ""
+
+            # Data is already known good chunk-by-chunk, so a whole-file
+            # mismatch most likely means the verification exchange itself was
+            # corrupted. Retry the whole verify before giving up.
+            log_msg = (
+                f"whole-file CRC/size mismatch: expected size={expected_size} "
+                f"crc=0x{expected_crc:04X}, device size={dev_size} "
+                f"crc=0x{dev_crc:04X}, retry {attempt + 1}/{self.max_retries}"
+            )
+            self._log("[WARN] verify: " + log_msg)
+            logger.warning(log_msg)
+
+        return False, last_size, last_crc, "mismatch"
+
     def upload(
         self,
         local_data: bytes,
@@ -563,30 +697,26 @@ class FileTransfer:
             if not success:
                 return False, f"Failed to close file: {msg}"
 
-            # Verify CRC after close: reopen read-only for safe verification
+            # Verify CRC after close: reopen read-only for safe verification.
+            # Retries the whole verify exchange so a corrupted (not integrity-
+            # protected) fcrc request cannot fail an already-good transfer.
             if total_size > 0:
                 expected_crc = crc16(local_data)
-                success, msg = self.fopen(remote_path, "r")
-                if not success:
-                    return (
-                        False,
-                        f"Failed to reopen file for CRC verification: {msg}",
-                    )
+                ok, dev_size, dev_crc, reason = self._verify_crc_with_retry(
+                    remote_path, expected_crc, total_size
+                )
 
-                success, dev_size, dev_crc = self.fcrc(total_size)
-                self.fclose()  # Always close regardless of CRC result
-
-                if not success:
+                if reason == "unavailable":
                     self._log(
                         "[WARN] upload: CRC verification failed: could not get device CRC"
                     )
                     logger.warning("Failed to get device CRC for verification")
-                elif dev_size != total_size:
+                elif not ok and dev_size != total_size:
                     return (
                         False,
                         f"Size mismatch: expected {total_size}, device has {dev_size}",
                     )
-                elif dev_crc != expected_crc:
+                elif not ok:
                     return (
                         False,
                         f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}",
@@ -659,26 +789,21 @@ class FileTransfer:
             if not success:
                 return False, b"", f"Failed to close file: {msg}"
 
-            # Verify CRC after close: reopen read-only for safe verification
+            # Verify CRC after close: reopen read-only for safe verification.
+            # Retries the whole verify exchange so a corrupted (not integrity-
+            # protected) fcrc request cannot fail an already-good transfer.
             if len(data) > 0:
                 local_crc = crc16(data)
-                success, msg = self.fopen(remote_path, "r")
-                if not success:
-                    return (
-                        False,
-                        b"",
-                        f"Failed to reopen file for CRC verification: {msg}",
-                    )
+                ok, dev_size, dev_crc, reason = self._verify_crc_with_retry(
+                    remote_path, local_crc, len(data)
+                )
 
-                success, dev_size, dev_crc = self.fcrc(len(data))
-                self.fclose()  # Always close regardless of CRC result
-
-                if not success:
+                if reason == "unavailable":
                     self._log(
                         "[WARN] download: CRC verification failed: could not get device CRC"
                     )
                     logger.warning("Failed to get device CRC for verification")
-                elif dev_crc != local_crc:
+                elif not ok:
                     return (
                         False,
                         b"",

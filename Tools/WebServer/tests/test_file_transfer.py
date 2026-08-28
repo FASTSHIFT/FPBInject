@@ -512,6 +512,8 @@ class TestFileTransferUpload(unittest.TestCase):
         """Test upload fails on CRC mismatch."""
         data = b"x" * 100
         wrong_crc = 0x1234
+        # max_retries=0 so whole-file verification runs exactly once.
+        self.ft.max_retries = 0
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, "[FLOK] FWRITE 100 bytes"),
@@ -528,6 +530,8 @@ class TestFileTransferUpload(unittest.TestCase):
         """Test upload fails on size mismatch."""
         data = b"x" * 100
         expected_crc = crc16(data)
+        # max_retries=0 so whole-file verification runs exactly once.
+        self.ft.max_retries = 0
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (True, "[FLOK] FWRITE 100 bytes"),
@@ -699,6 +703,8 @@ class TestFileTransferDownload(unittest.TestCase):
         crc = crc16(test_data)
         wrong_crc = 0x1234
 
+        # max_retries=0 so whole-file verification runs exactly once.
+        self.ft.max_retries = 0
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
             (True, "[FLOK] FOPEN /test.txt mode=r"),
@@ -1703,6 +1709,69 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 1)
 
+    def test_fcrc_rejects_offset_echo_mismatch(self):
+        """fcrc must retry when the device echoes a different offset.
+
+        The fcrc request args (-a/-l/-r) are not CRC-protected on the wire, so
+        a corrupted-but-parseable request can make the device seek to the wrong
+        offset yet still return a well-formed [FLOK] FCRC line. The host must
+        detect this via the echoed offset and retry rather than trust it.
+        """
+        self.ft.max_retries = 2
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            # Device seeked to offset 7 instead of the requested 0 (corrupted -a)
+            (True, "[FLOK] FCRC offset=7 size=1024 crc=0xBAD1"),
+            # Retry succeeds with correct offset
+            (True, "[FLOK] FCRC offset=0 size=1024 crc=0x5678"),
+        ]
+        success, size, crc_val = self.ft.fcrc(1024)
+        self.assertTrue(success)
+        self.assertEqual(size, 1024)
+        self.assertEqual(crc_val, 0x5678)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+
+    def test_fcrc_rejects_oversized_chunk(self):
+        """fcrc must reject a reply whose size exceeds the requested length."""
+        self.ft.max_retries = 0
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            # size larger than the requested 512 -> corrupted -l
+            (True, "[FLOK] FCRC offset=0 size=99999 crc=0xDEAD"),
+        ]
+        success, size, crc_val = self.ft.fcrc(512)
+        self.assertFalse(success)
+        self.assertEqual(size, 0)
+        self.assertEqual(crc_val, 0)
+
+    def test_fcrc_offset_mismatch_exhausts_retries(self):
+        """fcrc fails cleanly if every reply has a bad offset echo."""
+        self.ft.max_retries = 1
+        self.mock_fpb.send_fl_cmd.return_value = (
+            True,
+            "[FLOK] FCRC offset=13 size=1024 crc=0x0001",
+        )
+        success, size, crc_val = self.ft.fcrc(1024)
+        self.assertFalse(success)
+        self.assertEqual(size, 0)
+        self.assertEqual(crc_val, 0)
+        # initial attempt + 1 retry
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 2)
+
+    def test_fcrc_chunked_validates_each_offset(self):
+        """Chunked fcrc must validate the echoed offset of every chunk."""
+        self.ft.max_retries = 1
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FCRC offset=0 size=32768 crc=0x1234"),
+            # Second chunk should be at offset 32768; device reports wrong offset
+            (True, "[FLOK] FCRC offset=999 size=32768 crc=0xBEEF"),
+            # Retry of second chunk with correct offset
+            (True, "[FLOK] FCRC offset=32768 size=32768 crc=0xABCD"),
+        ]
+        success, size, crc_val = self.ft.fcrc(65536)
+        self.assertTrue(success)
+        self.assertEqual(size, 65536)
+        self.assertEqual(crc_val, 0xABCD)
+        self.assertEqual(self.mock_fpb.send_fl_cmd.call_count, 3)
+
     def test_upload_fclose_before_fcrc(self):
         """Upload must close file before CRC verification (P1 fix)."""
         data = b"test data"
@@ -1844,3 +1913,121 @@ class TestFileTransferCRCEnhancements(unittest.TestCase):
         sent_crc = int(m.group(1), 16)
         expected = crc16_update(0xFFFF, b"/newdir")
         self.assertEqual(sent_crc, expected)
+
+
+class TestFileTransferVerifyRetry(unittest.TestCase):
+    """Tests for whole-file CRC verification retry (fcrc integrity gap)."""
+
+    def setUp(self):
+        """Set up mock FPB and FileTransfer."""
+        self.mock_fpb = Mock()
+        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] Test"))
+        self.ft = FileTransfer(
+            self.mock_fpb, upload_chunk_size=256, download_chunk_size=256
+        )
+
+    def test_upload_verify_retries_then_succeeds(self):
+        """A corrupted first verification must be retried, not fail the upload.
+
+        The fcrc request args are not integrity-protected, so a corrupted
+        verification exchange can report a wrong CRC even though the data
+        (already CRC-checked per chunk during fwrite) is good. Upload must
+        retry the whole verify and succeed on the good reply.
+        """
+        data = b"x" * 100
+        good_crc = crc16(data)
+        wrong_crc = good_crc ^ 0xFFFF
+        self.ft.max_retries = 3
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FWRITE 100 bytes"),
+            (True, "[FLOK] FCLOSE"),
+            # First verify: reopen + corrupted fcrc + close
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size=100 crc=0x{wrong_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            # Retry verify: reopen + good fcrc + close
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size=100 crc=0x{good_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+        ]
+        success, msg = self.ft.upload(data, "/test.txt")
+        self.assertTrue(success)
+        # One retry was counted for the corrupted verification.
+        self.assertGreaterEqual(self.ft.stats["retry_count"], 1)
+
+    def test_download_verify_retries_then_succeeds(self):
+        """A corrupted first verification must be retried during download."""
+        test_data = b"hello world"
+        b64_data = base64.b64encode(test_data).decode("ascii")
+        crc = crc16(test_data)
+        wrong_crc = crc ^ 0xFFFF
+        self.ft.max_retries = 3
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=1 type=file"),
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (
+                True,
+                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
+            ),
+            (True, "[FLOK] FREAD 0 bytes EOF"),
+            (True, "[FLOK] FCLOSE"),
+            # First verify: corrupted
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{wrong_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+            # Retry verify: good
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+        ]
+        success, data, msg = self.ft.download("/test.txt")
+        self.assertTrue(success)
+        self.assertEqual(data, test_data)
+        self.assertGreaterEqual(self.ft.stats["retry_count"], 1)
+
+    def test_verify_persistent_mismatch_fails(self):
+        """If every verification attempt disagrees, upload must still fail."""
+        data = b"x" * 100
+        wrong_crc = crc16(data) ^ 0xFFFF
+        self.ft.max_retries = 2
+        # 3 verify attempts (initial + 2 retries), each reopen/fcrc/close.
+        self.mock_fpb.send_fl_cmd.side_effect = [
+            (True, "[FLOK] FOPEN /test.txt mode=w"),
+            (True, "[FLOK] FWRITE 100 bytes"),
+            (True, "[FLOK] FCLOSE"),
+        ] + [
+            (True, "[FLOK] FOPEN /test.txt mode=r"),
+            (True, f"[FLOK] FCRC offset=0 size=100 crc=0x{wrong_crc:04X}"),
+            (True, "[FLOK] FCLOSE"),
+        ] * 3
+        success, msg = self.ft.upload(data, "/test.txt")
+        self.assertFalse(success)
+        self.assertIn("CRC mismatch", msg)
+
+    def test_verify_unavailable_is_warning_not_failure(self):
+        """If a device CRC can never be obtained, upload still reports success.
+
+        This preserves the original behavior: an unavailable verification is a
+        warning, not a hard failure (data was already verified per chunk).
+        Uses a command-dispatch mock so nested fcrc/verify retries never run
+        out of scripted responses.
+        """
+        data = b"x" * 100
+        self.ft.max_retries = 1
+
+        def dispatch(cmd, *args, **kwargs):
+            if "fwrite" in cmd:
+                return (True, "[FLOK] FWRITE 100 bytes")
+            if "fopen" in cmd:
+                return (True, "[FLOK] FOPEN /test.txt mode=r")
+            if "fclose" in cmd:
+                return (True, "[FLOK] FCLOSE")
+            if "fcrc" in cmd:
+                # Always unparseable -> fcrc never yields a device CRC.
+                return (True, "[FLOK] garbage response")
+            return (True, "[FLOK] Test")
+
+        self.mock_fpb.send_fl_cmd.side_effect = dispatch
+        success, msg = self.ft.upload(data, "/test.txt")
+        self.assertTrue(success)
