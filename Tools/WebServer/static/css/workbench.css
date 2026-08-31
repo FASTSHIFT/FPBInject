@@ -881,6 +881,16 @@ body.resizing-panel .sash {
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  min-height: 0;
+}
+
+/* Ace mounts absolutely-positioned layers, so it needs a sized box. Fill the
+   flex parent instead of relying on a fixed pixel height computed once at
+   init (which went stale when the editor pane was resized via the sash). */
+.ace-editor-container {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
 }
 
 .code-editor {
@@ -2901,7 +2911,11 @@ details[open] > .sidebar-content {
 /* --- Command list --- */
 .quick-command-list {
   overflow-y: auto;
-  max-height: 400px;
+  /* Fill the sidebar-content box so the list grows/shrinks with the section
+     resize handle instead of being capped at a fixed height. min-height: 0
+     lets the flex child actually shrink and scroll. */
+  flex: 1;
+  min-height: 0;
   font-size: 12px;
 }
 

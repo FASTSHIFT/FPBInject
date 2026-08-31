@@ -11,15 +11,10 @@ function initAceEditor(tabId, content, mode, readOnly = false) {
     return null;
   }
 
-  const tabContent = document.getElementById(`tabContent_${tabId}`);
-  if (tabContent) {
-    const rect = tabContent.getBoundingClientRect();
-    if (rect.height > 0) {
-      editorElement.style.height = rect.height + 'px';
-    } else {
-      editorElement.style.height = 'calc(100vh - 200px)';
-    }
-  }
+  // Height is driven by CSS (.ace-editor-container fills .editor-main). We
+  // intentionally do NOT set a fixed pixel height here: doing so froze the
+  // editor at its initial size so it no longer tracked the editor-pane sash.
+  // A resize() after mount (below) and on layout changes keeps Ace in sync.
 
   if (typeof ace === 'undefined') {
     return null;
@@ -65,6 +60,23 @@ function getAceEditorContent(tabId) {
   }
   const textarea = document.getElementById(`editor_${tabId}`);
   return textarea ? textarea.value : '';
+}
+
+/**
+ * Re-layout every open Ace editor. Call after any change to the editor pane
+ * size (sash drag, window resize) so the editor tracks its container instead
+ * of keeping a stale size.
+ */
+function resizeAllAceEditors() {
+  const state = window.FPBState;
+  if (!state || !state.aceEditors) return;
+  for (const editor of state.aceEditors.values()) {
+    try {
+      editor.resize();
+    } catch (e) {
+      // A disposed/again editor should never abort resizing the rest.
+    }
+  }
 }
 
 /* ===========================
@@ -491,6 +503,7 @@ function escapeHtml(text) {
 // Export for global access
 window.initAceEditor = initAceEditor;
 window.getAceEditorContent = getAceEditorContent;
+window.resizeAllAceEditors = resizeAllAceEditors;
 window.switchEditorTab = switchEditorTab;
 window.closeTab = closeTab;
 window.openDisassembly = openDisassembly;

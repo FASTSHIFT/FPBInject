@@ -128,6 +128,7 @@ function initSashResize() {
       sashSidebar.classList.remove('active');
       saveLayoutPreferences();
       fitTerminals();
+      relayoutEditors();
     }
 
     if (isResizingPanel) {
@@ -136,6 +137,7 @@ function initSashResize() {
       sashPanel.classList.remove('active');
       saveLayoutPreferences();
       fitTerminals();
+      relayoutEditors();
     }
 
     if (isResizingCorner) {
@@ -145,11 +147,23 @@ function initSashResize() {
       sashCorner.classList.remove('active');
       saveLayoutPreferences();
       fitTerminals();
+      relayoutEditors();
     }
   });
 
   updateCornerSashPosition();
-  window.addEventListener('resize', updateCornerSashPosition);
+  window.addEventListener('resize', () => {
+    updateCornerSashPosition();
+    relayoutEditors();
+  });
+}
+
+/** Re-layout Ace editors after a pane resize (guarded: editor module may not
+ * be loaded in every context). */
+function relayoutEditors() {
+  if (typeof window.resizeAllAceEditors === 'function') {
+    window.resizeAllAceEditors();
+  }
 }
 
 function loadLayoutPreferences() {

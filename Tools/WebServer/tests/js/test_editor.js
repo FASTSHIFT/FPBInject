@@ -33,6 +33,54 @@ module.exports = function (w) {
       assertTrue(typeof w.openManualPatchTab === 'function'));
     it('escapeHtml is a function', () =>
       assertTrue(typeof w.escapeHtml === 'function'));
+    it('resizeAllAceEditors is a function', () =>
+      assertTrue(typeof w.resizeAllAceEditors === 'function'));
+  });
+
+  describe('resizeAllAceEditors Function', () => {
+    it('calls resize on every open editor', () => {
+      let a = 0;
+      let b = 0;
+      w.FPBState.aceEditors = new Map();
+      w.FPBState.aceEditors.set('t1', {
+        resize: () => {
+          a++;
+        },
+      });
+      w.FPBState.aceEditors.set('t2', {
+        resize: () => {
+          b++;
+        },
+      });
+      w.resizeAllAceEditors();
+      assertEqual(a, 1);
+      assertEqual(b, 1);
+      w.FPBState.aceEditors.clear();
+    });
+
+    it('keeps resizing others when one editor throws', () => {
+      let good = 0;
+      w.FPBState.aceEditors = new Map();
+      w.FPBState.aceEditors.set('bad', {
+        resize: () => {
+          throw new Error('disposed');
+        },
+      });
+      w.FPBState.aceEditors.set('good', {
+        resize: () => {
+          good++;
+        },
+      });
+      w.resizeAllAceEditors(); // must not throw
+      assertEqual(good, 1);
+      w.FPBState.aceEditors.clear();
+    });
+
+    it('is a no-op with no editors', () => {
+      w.FPBState.aceEditors = new Map();
+      w.resizeAllAceEditors();
+      assertTrue(true); // no throw
+    });
   });
 
   describe('getAceEditorContent Function', () => {
