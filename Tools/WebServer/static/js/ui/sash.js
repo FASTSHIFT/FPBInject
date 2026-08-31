@@ -87,7 +87,7 @@ function initSashResize() {
 
     if (isResizingPanel) {
       const delta = startY - e.clientY;
-      const newHeight = startHeight + delta;
+      const newHeight = Math.min(startHeight + delta, maxPanelHeight());
       if (newHeight >= 80) {
         document.documentElement.style.setProperty(
           '--panel-height',
@@ -100,7 +100,7 @@ function initSashResize() {
       const deltaX = e.clientX - startX;
       const deltaY = startY - e.clientY;
       const newWidth = startWidth + deltaX;
-      const newHeight = startHeight + deltaY;
+      const newHeight = Math.min(startHeight + deltaY, maxPanelHeight());
 
       if (newWidth >= 280) {
         document.documentElement.style.setProperty(
@@ -153,9 +153,13 @@ function initSashResize() {
 
   updateCornerSashPosition();
   window.addEventListener('resize', () => {
+    clampPanelHeight();
     updateCornerSashPosition();
     relayoutEditors();
   });
+  // Clamp once on init in case a persisted --panel-height is too tall for the
+  // current viewport.
+  clampPanelHeight();
 }
 
 /** Re-layout Ace editors after a pane resize (guarded: editor module may not
@@ -163,6 +167,40 @@ function initSashResize() {
 function relayoutEditors() {
   if (typeof window.resizeAllAceEditors === 'function') {
     window.resizeAllAceEditors();
+  }
+}
+
+/**
+ * Largest panel height that still leaves room for the editor + status bar.
+ * The panel is a fixed grid row; without a cap it can overflow the grid and
+ * push the status bar off-screen.
+ */
+function maxPanelHeight() {
+  const TITLEBAR_H = 30;
+  const STATUSBAR_H = 22;
+  const SASH_H = 4;
+  const MIN_EDITOR_H = 80;
+  return Math.max(
+    80,
+    window.innerHeight - TITLEBAR_H - STATUSBAR_H - SASH_H - MIN_EDITOR_H,
+  );
+}
+
+/**
+ * Ensure --panel-height leaves room for the editor + status bar. Prevents the
+ * panel from overflowing the grid (which pushed the status bar off-screen)
+ * when dragged to the top or after the window shrinks.
+ */
+function clampPanelHeight() {
+  const max = maxPanelHeight();
+  const cur = parseInt(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      '--panel-height',
+    ),
+    10,
+  );
+  if (!isNaN(cur) && cur > max) {
+    document.documentElement.style.setProperty('--panel-height', max + 'px');
   }
 }
 
@@ -194,6 +232,8 @@ function saveLayoutPreferences() {
 
 // Export for global access
 window.initSashResize = initSashResize;
+window.maxPanelHeight = maxPanelHeight;
+window.clampPanelHeight = clampPanelHeight;
 window.loadLayoutPreferences = loadLayoutPreferences;
 window.saveLayoutPreferences = saveLayoutPreferences;
 window.updateCornerSashPosition = updateCornerSashPosition;

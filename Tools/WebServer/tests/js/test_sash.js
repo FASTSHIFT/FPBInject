@@ -24,6 +24,59 @@ module.exports = function (w) {
       assertTrue(typeof w.saveLayoutPreferences === 'function'));
     it('updateCornerSashPosition is a function', () =>
       assertTrue(typeof w.updateCornerSashPosition === 'function'));
+    it('maxPanelHeight is a function', () =>
+      assertTrue(typeof w.maxPanelHeight === 'function'));
+    it('clampPanelHeight is a function', () =>
+      assertTrue(typeof w.clampPanelHeight === 'function'));
+  });
+
+  describe('Panel height clamp', () => {
+    it('maxPanelHeight leaves room for editor + status bar', () => {
+      // innerHeight 1000 - titlebar 30 - statusbar 22 - sash 4 - minEditor 80
+      assertEqual(w.maxPanelHeight(), 864);
+    });
+
+    it('maxPanelHeight never goes below the minimum', () => {
+      const origH = browserGlobals.window.innerHeight;
+      browserGlobals.window.innerHeight = 50; // tiny viewport
+      global.window.innerHeight = 50;
+      assertTrue(w.maxPanelHeight() >= 80);
+      browserGlobals.window.innerHeight = origH;
+      global.window.innerHeight = origH;
+    });
+
+    it('clampPanelHeight shrinks an over-tall panel', () => {
+      const origGCS = global.getComputedStyle;
+      // Pretend the persisted panel height is absurdly tall.
+      global.getComputedStyle = () => ({ getPropertyValue: () => '5000px' });
+      let setName = null;
+      let setVal = null;
+      const origSet = browserGlobals.document.documentElement.style.setProperty;
+      browserGlobals.document.documentElement.style.setProperty = (n, v) => {
+        setName = n;
+        setVal = v;
+      };
+      w.clampPanelHeight();
+      assertEqual(setName, '--panel-height');
+      // Clamped to maxPanelHeight() = 864px.
+      assertEqual(setVal, '864px');
+      global.getComputedStyle = origGCS;
+      browserGlobals.document.documentElement.style.setProperty = origSet;
+    });
+
+    it('clampPanelHeight leaves a small panel untouched', () => {
+      const origGCS = global.getComputedStyle;
+      global.getComputedStyle = () => ({ getPropertyValue: () => '200px' });
+      let called = false;
+      const origSet = browserGlobals.document.documentElement.style.setProperty;
+      browserGlobals.document.documentElement.style.setProperty = () => {
+        called = true;
+      };
+      w.clampPanelHeight();
+      assertTrue(!called);
+      global.getComputedStyle = origGCS;
+      browserGlobals.document.documentElement.style.setProperty = origSet;
+    });
   });
 
   describe('updateCornerSashPosition Function', () => {
