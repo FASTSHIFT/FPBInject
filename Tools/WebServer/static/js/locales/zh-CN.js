@@ -349,6 +349,7 @@ window.i18nResources['zh-CN'] = {
       delete_group: '删除分组',
       confirm_delete_group: '删除分组「{{name}}」？命令将移至未分组。',
       rename_prompt: '输入新的分组名称：',
+      new_group_prompt: '输入新分组名称：',
       drag_command: '拖拽排序',
       export_title: '导出指令',
       export_btn: '导出',

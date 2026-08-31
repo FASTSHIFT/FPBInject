@@ -358,6 +358,7 @@ window.i18nResources['en'] = {
       confirm_delete_group:
         'Delete group "{{name}}"? Commands will be ungrouped.',
       rename_prompt: 'Enter new group name:',
+      new_group_prompt: 'Enter new group name:',
       drag_command: 'Drag to reorder',
       export_title: 'Export Commands',
       export_btn: 'Export',

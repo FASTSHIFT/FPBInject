@@ -1035,79 +1035,106 @@ module.exports = function (w) {
 
   // ===== Move to group =====
   describe('Quick Commands - Move to Group', () => {
-    it('moveToGroup updates command group on prompt', () => {
-      const store = {};
+    // Helper: back localStorage with an in-memory store seeded with commands.
+    function withStore(commands, fn) {
+      const store = {
+        'fpbinject-quick-commands': JSON.stringify(commands),
+      };
       const origGet = browserGlobals.localStorage.getItem;
       const origSet = browserGlobals.localStorage.setItem;
-      browserGlobals.localStorage.getItem = (k) => {
-        if (k === 'fpbinject-quick-commands')
-          return (
-            store[k] ||
-            JSON.stringify([{ id: 'qc_1', name: 'test', group: null }])
-          );
-        return store[k] || null;
-      };
+      browserGlobals.localStorage.getItem = (k) => store[k] || null;
       browserGlobals.localStorage.setItem = (k, v) => {
         store[k] = v;
       };
-      const origPrompt = global.prompt;
-      global.prompt = () => 'NewGroup';
-      w.moveToGroup('qc_1');
-      const saved = JSON.parse(store['fpbinject-quick-commands']);
-      assertEqual(saved[0].group, 'NewGroup');
-      global.prompt = origPrompt;
-      browserGlobals.localStorage.getItem = origGet;
-      browserGlobals.localStorage.setItem = origSet;
+      try {
+        return fn(store);
+      } finally {
+        browserGlobals.localStorage.getItem = origGet;
+        browserGlobals.localStorage.setItem = origSet;
+      }
+    }
+
+    it('moveToGroup opens a click picker (no prompt)', () => {
+      withStore([{ id: 'qc_1', name: 'test', group: null }], () => {
+        const origPrompt = global.prompt;
+        let promptCalled = false;
+        global.prompt = () => {
+          promptCalled = true;
+          return null;
+        };
+        const menu =
+          browserGlobals.document.getElementById('qcGroupPickerMenu');
+        w.moveToGroup('qc_1');
+        // Picker is shown and no prompt() is used to pick an existing group.
+        assertEqual(menu.style.display, 'block');
+        assertFalse(promptCalled);
+        global.prompt = origPrompt;
+      });
     });
-    it('moveToGroup cancels on null prompt', () => {
-      const origGet = browserGlobals.localStorage.getItem;
-      let setCalled = false;
-      const origSet = browserGlobals.localStorage.setItem;
-      browserGlobals.localStorage.getItem = (k) => {
-        if (k === 'fpbinject-quick-commands')
-          return JSON.stringify([{ id: 'qc_1', name: 'test', group: 'old' }]);
-        return null;
-      };
-      browserGlobals.localStorage.setItem = () => {
-        setCalled = true;
-      };
-      const origPrompt = global.prompt;
-      global.prompt = () => null;
-      w.moveToGroup('qc_1');
-      assertFalse(setCalled);
-      global.prompt = origPrompt;
-      browserGlobals.localStorage.getItem = origGet;
-      browserGlobals.localStorage.setItem = origSet;
+
+    it('assignCommandGroup sets the group by click', () => {
+      withStore([{ id: 'qc_1', name: 'test', group: null }], (store) => {
+        w.assignCommandGroup('qc_1', 'LVGL');
+        const saved = JSON.parse(store['fpbinject-quick-commands']);
+        assertEqual(saved[0].group, 'LVGL');
+      });
     });
-    it('moveToGroup ungroups on empty string', () => {
-      const store = {};
-      const origGet = browserGlobals.localStorage.getItem;
-      const origSet = browserGlobals.localStorage.setItem;
-      browserGlobals.localStorage.getItem = (k) => {
-        if (k === 'fpbinject-quick-commands')
-          return JSON.stringify([{ id: 'qc_1', name: 'test', group: 'old' }]);
-        return store[k] || null;
-      };
-      browserGlobals.localStorage.setItem = (k, v) => {
-        store[k] = v;
-      };
-      const origPrompt = global.prompt;
-      global.prompt = () => '';
-      w.moveToGroup('qc_1');
-      const saved = JSON.parse(store['fpbinject-quick-commands']);
-      assertEqual(saved[0].group, null);
-      global.prompt = origPrompt;
-      browserGlobals.localStorage.getItem = origGet;
-      browserGlobals.localStorage.setItem = origSet;
+
+    it('assignCommandGroup(null) ungroups', () => {
+      withStore([{ id: 'qc_1', name: 'test', group: 'old' }], (store) => {
+        w.assignCommandGroup('qc_1', null);
+        const saved = JSON.parse(store['fpbinject-quick-commands']);
+        assertEqual(saved[0].group, null);
+      });
     });
+
+    it('assignCommandGroup does nothing for unknown ID', () => {
+      withStore([{ id: 'qc_1', name: 'test', group: 'g' }], (store) => {
+        const before = store['fpbinject-quick-commands'];
+        w.assignCommandGroup('nonexistent', 'X');
+        // Unknown id -> no write.
+        assertEqual(store['fpbinject-quick-commands'], before);
+      });
+    });
+
+    it('createGroupForCommand assigns a new typed name', () => {
+      withStore([{ id: 'qc_1', name: 'test', group: null }], (store) => {
+        const origPrompt = global.prompt;
+        global.prompt = () => '  NewGroup  ';
+        w.createGroupForCommand('qc_1');
+        const saved = JSON.parse(store['fpbinject-quick-commands']);
+        assertEqual(saved[0].group, 'NewGroup'); // trimmed
+        global.prompt = origPrompt;
+      });
+    });
+
+    it('createGroupForCommand cancels on null prompt', () => {
+      withStore([{ id: 'qc_1', name: 'test', group: 'old' }], (store) => {
+        const origPrompt = global.prompt;
+        global.prompt = () => null;
+        w.createGroupForCommand('qc_1');
+        const saved = JSON.parse(store['fpbinject-quick-commands']);
+        assertEqual(saved[0].group, 'old'); // unchanged
+        global.prompt = origPrompt;
+      });
+    });
+
+    it('createGroupForCommand ignores empty/whitespace name', () => {
+      withStore([{ id: 'qc_1', name: 'test', group: 'old' }], (store) => {
+        const origPrompt = global.prompt;
+        global.prompt = () => '   ';
+        w.createGroupForCommand('qc_1');
+        const saved = JSON.parse(store['fpbinject-quick-commands']);
+        assertEqual(saved[0].group, 'old'); // unchanged
+        global.prompt = origPrompt;
+      });
+    });
+
     it('moveToGroup does nothing for unknown ID', () => {
-      const origGet = browserGlobals.localStorage.getItem;
-      browserGlobals.localStorage.getItem = (k) => {
-        if (k === 'fpbinject-quick-commands') return JSON.stringify([]);
-        return null;
-      };
-      w.moveToGroup('nonexistent');
-      browserGlobals.localStorage.getItem = origGet;
+      withStore([], () => {
+        w.moveToGroup('nonexistent');
+        assertTrue(true); // no throw
+      });
     });
   });
 

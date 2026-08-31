@@ -10,6 +10,7 @@ const QC_GROUP_META_KEY = 'fpbinject-quick-command-groups';
 let qcEditingId = null; // ID of command being edited, null = new
 let qcContextTargetId = null; // ID of command for context menu
 let qcGroupContextTargetName = null; // Name of group for context menu
+let qcLastMenuPos = { x: 0, y: 0 }; // Where the last context menu opened
 let qcMacroAbort = null; // AbortController for macro execution
 let qcExecuting = false; // Mutex: prevent concurrent command execution
 let qcDragItem = null; // Currently dragged command item
@@ -898,6 +899,7 @@ function showQcContextMenu(event, id) {
   const menu = document.getElementById('qcContextMenu');
   if (!menu) return;
 
+  qcLastMenuPos = { x: event.clientX, y: event.clientY };
   menu.style.display = 'block';
   menu.style.left = event.clientX + 'px';
   menu.style.top = event.clientY + 'px';
@@ -975,7 +977,12 @@ function showQuickCommandMenu(event) {
 }
 
 function hideQcContextMenus() {
-  const ids = ['qcContextMenu', 'qcSectionMenu', 'qcGroupContextMenu'];
+  const ids = [
+    'qcContextMenu',
+    'qcSectionMenu',
+    'qcGroupContextMenu',
+    'qcGroupPickerMenu',
+  ];
   for (const id of ids) {
     const menu = document.getElementById(id);
     if (menu) menu.style.display = 'none';
@@ -1024,6 +1031,124 @@ function qcGroupContextAction(action) {
 }
 
 function moveToGroup(id) {
+  const commands = loadQuickCommands();
+  const cmd = commands.find((c) => c.id === id);
+  if (!cmd) return;
+
+  const menu = document.getElementById('qcGroupPickerMenu');
+  if (!menu) {
+    // No picker element (e.g. minimal test DOM): fall back to a prompt.
+    _moveToGroupPrompt(id);
+    return;
+  }
+
+  const groups = [...new Set(commands.map((c) => c.group).filter(Boolean))];
+
+  // Build the picker: existing groups (current one checked), Ungrouped, and
+  // a "New Group..." action. Clicking assigns immediately -- no typing unless
+  // creating a brand-new group.
+  let html = '';
+  for (const g of groups) {
+    const active = g === cmd.group;
+    html +=
+      '<div class="qc-context-item" onclick="assignCommandGroup(\'' +
+      escapeHtml(id).replace(/'/g, "\\'") +
+      "', '" +
+      escapeHtml(g).replace(/'/g, "\\'") +
+      '\')">' +
+      '<i class="codicon ' +
+      (active ? 'codicon-check' : 'codicon-folder') +
+      '"></i>' +
+      '<span>' +
+      escapeHtml(g) +
+      '</span>' +
+      '</div>';
+  }
+  // Ungroup option (checked when the command currently has no group).
+  const ungrouped = !cmd.group;
+  html +=
+    (groups.length ? '<div class="qc-context-separator"></div>' : '') +
+    '<div class="qc-context-item" onclick="assignCommandGroup(\'' +
+    escapeHtml(id).replace(/'/g, "\\'") +
+    '\', null)">' +
+    '<i class="codicon ' +
+    (ungrouped ? 'codicon-check' : 'codicon-circle-slash') +
+    '"></i>' +
+    '<span>' +
+    t('quick_commands.no_group', 'No Group') +
+    '</span>' +
+    '</div>' +
+    '<div class="qc-context-separator"></div>' +
+    '<div class="qc-context-item" onclick="createGroupForCommand(\'' +
+    escapeHtml(id).replace(/'/g, "\\'") +
+    '\')">' +
+    '<i class="codicon codicon-add"></i>' +
+    '<span>' +
+    t('quick_commands.new_group', '+ New Group...') +
+    '</span>' +
+    '</div>';
+
+  menu.innerHTML = html;
+
+  // Defer showing the picker until after the current click finishes. The
+  // click that chose "Move to Group..." is still bubbling to the document
+  // "close menus" listener registered when the parent menu opened; showing
+  // synchronously would let that listener immediately hide the picker (the
+  // old prompt() was modal so it never hit this). Deferring also lets us
+  // register the picker's own close-on-next-click listener afterwards.
+  setTimeout(() => {
+    menu.style.display = 'block';
+    menu.style.left = qcLastMenuPos.x + 'px';
+    menu.style.top = qcLastMenuPos.y + 'px';
+
+    requestAnimationFrame(() => {
+      const rect = menu.getBoundingClientRect();
+      if (rect.right > window.innerWidth) {
+        menu.style.left = window.innerWidth - rect.width - 4 + 'px';
+      }
+      if (rect.bottom > window.innerHeight) {
+        menu.style.top = window.innerHeight - rect.height - 4 + 'px';
+      }
+    });
+
+    document.addEventListener('click', hideQcContextMenus, { once: true });
+  }, 0);
+}
+
+/**
+ * Assign a command to a group by click (group=null clears it). No typing.
+ */
+function assignCommandGroup(id, group) {
+  hideQcContextMenus();
+  const commands = loadQuickCommands();
+  const cmd = commands.find((c) => c.id === id);
+  if (!cmd) return;
+  cmd.group = group || null;
+  saveQuickCommands(commands);
+  ensureGroupMeta(commands);
+  renderQuickCommands();
+}
+
+/**
+ * Create a brand-new group name (the only path that still needs typing) and
+ * move the command into it.
+ */
+function createGroupForCommand(id) {
+  hideQcContextMenus();
+  const name = prompt(
+    t('quick_commands.new_group_prompt', 'Enter new group name:'),
+  );
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  assignCommandGroup(id, trimmed);
+}
+
+/**
+ * Legacy prompt-based move, kept as a fallback when the picker element is
+ * absent (e.g. reduced test DOM).
+ */
+function _moveToGroupPrompt(id) {
   const commands = loadQuickCommands();
   const cmd = commands.find((c) => c.id === id);
   if (!cmd) return;
@@ -1771,6 +1896,8 @@ window.escapeCommandForDisplay = escapeCommandForDisplay;
 window.generateId = generateId;
 window.sendSerialData = sendSerialData;
 window.moveToGroup = moveToGroup;
+window.assignCommandGroup = assignCommandGroup;
+window.createGroupForCommand = createGroupForCommand;
 window.initStepDragListeners = initStepDragListeners;
 window.collectMacroSteps = collectMacroSteps;
 window.populateGroupDropdown = populateGroupDropdown;

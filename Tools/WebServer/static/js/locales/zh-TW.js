@@ -350,6 +350,7 @@ window.i18nResources['zh-TW'] = {
       delete_group: '刪除分組',
       confirm_delete_group: '刪除分組「{{name}}」？指令將移至未分組。',
       rename_prompt: '輸入新的分組名稱：',
+      new_group_prompt: '輸入新分組名稱：',
       drag_command: '拖曳排序',
       export_title: '匯出指令',
       export_btn: '匯出',
