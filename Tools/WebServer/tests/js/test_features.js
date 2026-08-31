@@ -600,6 +600,67 @@ module.exports = function (w) {
       assertTrue(typeof w.onSymbolDblClick === 'function'));
     it('openSymbolValueTab is a function', () =>
       assertTrue(typeof w.openSymbolValueTab === 'function'));
+    it('showSymbolContextMenu is a function', () =>
+      assertTrue(typeof w.showSymbolContextMenu === 'function'));
+    it('symbolContextAction is a function', () =>
+      assertTrue(typeof w.symbolContextAction === 'function'));
+    it('hideSymbolContextMenu is a function', () =>
+      assertTrue(typeof w.hideSymbolContextMenu === 'function'));
+  });
+
+  describe('Symbol Context Menu', () => {
+    const ev = () => ({
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      clientX: 40,
+      clientY: 60,
+    });
+
+    it('function symbol menu offers disasm + patch, not view value', () => {
+      const menu = browserGlobals.document.getElementById('symbolContextMenu');
+      w.showSymbolContextMenu(ev(), 'main', '0x08000000', 'function');
+      assertEqual(menu.style.display, 'block');
+      assertContains(menu.innerHTML, "symbolContextAction('disasm')");
+      assertContains(menu.innerHTML, "symbolContextAction('patch')");
+      assertTrue(!menu.innerHTML.includes("symbolContextAction('value')"));
+    });
+
+    it('variable symbol menu offers view value, not patch', () => {
+      const menu = browserGlobals.document.getElementById('symbolContextMenu');
+      w.showSymbolContextMenu(ev(), 'g_var', '0x20000000', 'variable');
+      assertContains(menu.innerHTML, "symbolContextAction('value')");
+      assertTrue(!menu.innerHTML.includes("symbolContextAction('patch')"));
+    });
+
+    it('every menu offers copy name + address', () => {
+      const menu = browserGlobals.document.getElementById('symbolContextMenu');
+      w.showSymbolContextMenu(ev(), 'main', '0x08000000', 'function');
+      assertContains(menu.innerHTML, "symbolContextAction('copy-name')");
+      assertContains(menu.innerHTML, "symbolContextAction('copy-addr')");
+    });
+
+    it('hideSymbolContextMenu hides the menu', () => {
+      const menu = browserGlobals.document.getElementById('symbolContextMenu');
+      w.showSymbolContextMenu(ev(), 'main', '0x08000000', 'function');
+      w.hideSymbolContextMenu();
+      assertEqual(menu.style.display, 'none');
+    });
+
+    it('copy-name / copy-addr actions run without throwing', () => {
+      // Clipboard access is environment-dependent; just verify the action
+      // dispatches cleanly (delegates to the clipboard helper).
+      w.showSymbolContextMenu(ev(), 'my_sym', '0x1234', 'function');
+      w.symbolContextAction('copy-name');
+      w.showSymbolContextMenu(ev(), 'my_sym', '0xCAFE', 'variable');
+      w.symbolContextAction('copy-addr');
+      assertTrue(true);
+    });
+
+    it('symbolContextAction is a no-op with no target', () => {
+      w.hideSymbolContextMenu();
+      w.symbolContextAction('disasm'); // no target set
+      assertTrue(true); // no throw
+    });
   });
 
   describe('searchSymbols Function', () => {

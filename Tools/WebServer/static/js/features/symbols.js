@@ -767,6 +767,155 @@ function _escapeHtml(text) {
   return div.innerHTML;
 }
 
+/**
+ * Escape a value for safe embedding inside a single-quoted inline handler
+ * attribute (onclick="fn('...')"). Symbol names are normally clean C
+ * identifiers, but guard against quotes/backslashes just in case.
+ */
+function _escapeAttr(text) {
+  return String(text == null ? '' : text)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;');
+}
+
+/* ===========================
+   SYMBOL CONTEXT MENU
+   =========================== */
+
+let _symbolMenuTarget = null;
+
+/**
+ * Show a right-click menu for a symbol. Actions depend on the symbol type:
+ * functions get disassembly + create-patch, variables/consts get view-value.
+ * All types get copy name/address. Replaces the previously implicit
+ * single-vs-double-click behavior with explicit, discoverable actions.
+ */
+function showSymbolContextMenu(event, name, addr, type) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const menu = document.getElementById('symbolContextMenu');
+  if (!menu) return;
+
+  _symbolMenuTarget = { name, addr, type };
+
+  const item = (action, icon, label) =>
+    '<div class="qc-context-item" onclick="symbolContextAction(\'' +
+    action +
+    '\')"><i class="codicon ' +
+    icon +
+    '"></i><span>' +
+    label +
+    '</span></div>';
+
+  let html = '';
+  if (type === 'function') {
+    html += item(
+      'disasm',
+      'codicon-file-binary',
+      t('symbols.view_disassembly', 'View Disassembly'),
+    );
+    html += item(
+      'patch',
+      'codicon-file-code',
+      t('symbols.create_patch', 'Create Patch'),
+    );
+  } else {
+    html += item(
+      'value',
+      'codicon-symbol-variable',
+      t('symbols.view_value', 'View Value'),
+    );
+  }
+  html += '<div class="qc-context-separator"></div>';
+  html += item(
+    'copy-name',
+    'codicon-symbol-key',
+    t('symbols.copy_name', 'Copy Name'),
+  );
+  html += item(
+    'copy-addr',
+    'codicon-copy',
+    t('symbols.copy_address', 'Copy Address'),
+  );
+
+  menu.innerHTML = html;
+  menu.style.display = 'block';
+  menu.style.left = event.clientX + 'px';
+  menu.style.top = event.clientY + 'px';
+
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = window.innerWidth - rect.width - 4 + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = window.innerHeight - rect.height - 4 + 'px';
+    }
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', hideSymbolContextMenu, { once: true });
+  }, 0);
+}
+
+function hideSymbolContextMenu() {
+  const menu = document.getElementById('symbolContextMenu');
+  if (menu) menu.style.display = 'none';
+}
+
+function symbolContextAction(action) {
+  hideSymbolContextMenu();
+  const target = _symbolMenuTarget;
+  if (!target) return;
+  const { name, addr, type } = target;
+
+  switch (action) {
+    case 'disasm':
+      openDisassembly(name, addr);
+      break;
+    case 'patch':
+      openManualPatchTab(name, addr || null);
+      break;
+    case 'value':
+      openSymbolValueTab(name, type);
+      break;
+    case 'copy-name':
+      _copyToClipboard(name);
+      break;
+    case 'copy-addr':
+      _copyToClipboard(addr);
+      break;
+  }
+  _symbolMenuTarget = null;
+}
+
+/** Copy text to the clipboard with a graceful fallback + user feedback. */
+function _copyToClipboard(text) {
+  const value = String(text == null ? '' : text);
+  const done = () => log.info(`Copied: ${value}`);
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(done, () => {});
+      return;
+    }
+  } catch (e) {
+    // fall through to legacy path
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    done();
+  } catch (e) {
+    log.warn(`Copy failed: ${e}`);
+  }
+}
+
 /* ===========================
    SYMBOL SEARCH
    =========================== */
@@ -797,8 +946,11 @@ async function searchSymbols() {
         .map((sym) => {
           const cfg = _getSymbolTypeConfig(sym.type || 'function');
           const colorStyle = cfg.color ? ` style="color: ${cfg.color};"` : '';
+          const t3 = sym.type || 'function';
+          const escName = _escapeAttr(sym.name);
+          const escAddr = _escapeAttr(sym.addr);
           return `
-        <div class="symbol-item" onclick="onSymbolClick('${sym.name}', '${sym.addr}', '${sym.type || 'function'}')" ondblclick="onSymbolDblClick('${sym.name}', '${sym.addr}', '${sym.type || 'function'}')">
+        <div class="symbol-item" onclick="onSymbolClick('${escName}', '${escAddr}', '${t3}')" ondblclick="onSymbolDblClick('${escName}', '${escAddr}', '${t3}')" oncontextmenu="showSymbolContextMenu(event, '${escName}', '${escAddr}', '${t3}')">
           <i class="codicon ${cfg.icon} symbol-icon"${colorStyle}></i>
           <span class="symbol-name">${sym.name}</span>
           <span class="symbol-addr">${sym.addr}</span>
@@ -1240,6 +1392,9 @@ window.searchSymbols = searchSymbols;
 window.selectSymbol = selectSymbol;
 window.onSymbolClick = onSymbolClick;
 window.onSymbolDblClick = onSymbolDblClick;
+window.showSymbolContextMenu = showSymbolContextMenu;
+window.hideSymbolContextMenu = hideSymbolContextMenu;
+window.symbolContextAction = symbolContextAction;
 window.openSymbolValueTab = openSymbolValueTab;
 window.readSymbolFromDevice = readSymbolFromDevice;
 window.writeSymbolToDevice = writeSymbolToDevice;

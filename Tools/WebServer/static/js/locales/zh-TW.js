@@ -147,6 +147,11 @@ window.i18nResources['zh-TW'] = {
       reading_progress: '正在讀取 {{name}} {{percent}}%',
       loading_symbol: '正在載入 {{name}}...',
       save_to_file: '儲存',
+      view_disassembly: '查看反組譯',
+      create_patch: '建立補丁',
+      view_value: '查看值',
+      copy_name: '複製名稱',
+      copy_address: '複製位址',
     },
 
     // 內聯值編輯
@@ -462,7 +467,7 @@ window.i18nResources['zh-TW'] = {
       pause: '暫停',
       resume: '繼續',
       // 符號
-      symbols_hint: '單擊：查看反組譯；雙擊：建立補丁',
+      symbols_hint: '單擊：查看；雙擊：補丁/值；右鍵：選單',
       // 傳輸
       upload_file: '上傳檔案到裝置',
       upload_folder: '上傳資料夾到裝置',

@@ -147,6 +147,11 @@ window.i18nResources['en'] = {
       reading_progress: 'Reading {{name}} {{percent}}%',
       loading_symbol: 'Loading {{name}}...',
       save_to_file: 'Save',
+      view_disassembly: 'View Disassembly',
+      create_patch: 'Create Patch',
+      view_value: 'View Value',
+      copy_name: 'Copy Name',
+      copy_address: 'Copy Address',
     },
 
     // Inline value editing
@@ -470,8 +475,7 @@ window.i18nResources['en'] = {
       pause: 'Pause',
       resume: 'Resume',
       // Symbols
-      symbols_hint:
-        'Single-click: view disassembly; Double-click: create patch',
+      symbols_hint: 'Click: view; Double-click: patch/value; Right-click: menu',
       // Transfer
       upload_file: 'Upload files to device',
       upload_folder: 'Upload folder to device',

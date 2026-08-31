@@ -147,6 +147,11 @@ window.i18nResources['zh-CN'] = {
       reading_progress: '正在读取 {{name}} {{percent}}%',
       loading_symbol: '正在加载 {{name}}...',
       save_to_file: '保存',
+      view_disassembly: '查看反汇编',
+      create_patch: '创建补丁',
+      view_value: '查看值',
+      copy_name: '复制名称',
+      copy_address: '复制地址',
     },
 
     // 内联值编辑
@@ -461,7 +466,7 @@ window.i18nResources['zh-CN'] = {
       pause: '暂停',
       resume: '继续',
       // 符号
-      symbols_hint: '单击：查看反汇编；双击：创建补丁',
+      symbols_hint: '单击：查看；双击：补丁/值；右键：菜单',
       // 传输
       upload_file: '上传文件到设备',
       upload_folder: '上传文件夹到设备',

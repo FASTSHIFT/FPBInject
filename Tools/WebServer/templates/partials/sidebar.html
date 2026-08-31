@@ -140,7 +140,7 @@
     <details id="details-symbols">
       <summary
         class="sidebar-header"
-        title="Single-click: view disassembly; Double-click: create patch"
+        title="Click: view; Double-click: patch/value; Right-click: menu"
         data-i18n="[title]tooltips.symbols_hint"
       >
         <i class="codicon codicon-chevron-right"></i>
@@ -165,6 +165,9 @@
       <div class="sidebar-section-resize-handle"></div>
     </details>
   </div>
+
+  <!-- Symbol Context Menu (populated dynamically by showSymbolContextMenu) -->
+  <div class="qc-context-menu" id="symbolContextMenu" style="display: none"></div>
 
   <!-- Watch Expression Section -->
   <div class="sidebar-section" data-section-id="watch">

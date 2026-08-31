@@ -251,17 +251,13 @@ async function openManualPatchTab(funcName, origAddr = null) {
 
   log.debug(`Creating manual patch tab for ${funcName}...`);
 
-  const loadingContent = enableDecompile
-    ? `/*\n * Loading...\n * \n * Decompiling ${funcName}, please wait...\n * This may take a few seconds.\n */\n`
-    : '';
-
   state.editorTabs.push({
     id: tabId,
     title: tabTitle,
     type: 'c',
     closable: true,
     funcName: funcName,
-    content: loadingContent,
+    content: '',
   });
 
   const tabsHeader = document.getElementById('editorTabsHeader');
@@ -287,17 +283,31 @@ async function openManualPatchTab(funcName, origAddr = null) {
   contentDiv.className = 'tab-content';
   contentDiv.id = `tabContent_${tabId}`;
 
-  contentDiv.innerHTML = `
-    <div class="editor-main">
-      <div id="editor_${tabId}" class="ace-editor-container"></div>
-    </div>
-  `;
+  // Show an in-tab loading spinner while the patch template is prepared,
+  // matching the symbol value tab. The Ace editor is created only once the
+  // template is ready (see finishPatchTab below).
+  contentDiv.innerHTML = `<div class="sym-loading-container">
+    <div class="sym-loading-spinner"></div>
+    <div class="sym-loading-text">${t('symbols.loading_symbol', 'Loading {{name}}...', { name: funcName })}</div>
+  </div>`;
   tabsContent.appendChild(contentDiv);
 
   switchEditorTab(tabId);
   state.currentPatchTab = { id: tabId, funcName: funcName };
 
-  initAceEditor(tabId, loadingContent, 'c_cpp');
+  // Swap the spinner for the real editor and load the template. Guard against
+  // the tab being closed while the template was still loading.
+  const finishPatchTab = (code) => {
+    if (!state.editorTabs.find((t) => t.id === tabId)) return;
+    const el = document.getElementById(`tabContent_${tabId}`);
+    if (!el) return;
+    el.innerHTML = `
+      <div class="editor-main">
+        <div id="editor_${tabId}" class="ace-editor-container"></div>
+      </div>
+    `;
+    initAceEditor(tabId, code, 'c_cpp');
+  };
 
   let template = '';
   let decompiled = null;
@@ -453,11 +463,7 @@ async function openManualPatchTab(funcName, origAddr = null) {
     );
   }
 
-  const { aceEditors } = state;
-  const editor = aceEditors.get(tabId);
-  if (editor) {
-    editor.setValue(template, -1);
-  }
+  finishPatchTab(template);
 
   const tabEntry = state.editorTabs.find((t) => t.id === tabId);
   if (tabEntry) {
