@@ -406,6 +406,7 @@ window.i18nResources['en'] = {
       delete_item: 'Delete',
       create_dir_failed: 'Create directory failed: {{error}}',
       delete_failed: 'Delete failed: {{error}}',
+      confirm_delete_multi: 'Delete these {{count}} items?',
       rename_failed: 'Rename failed: {{error}}',
       // Text editor
       open_as_text: 'Open as Text',

@@ -397,6 +397,7 @@ window.i18nResources['zh-CN'] = {
       delete_item: '删除',
       create_dir_failed: '创建目录失败：{{error}}',
       delete_failed: '删除失败：{{error}}',
+      confirm_delete_multi: '确定删除这 {{count}} 项吗？',
       rename_failed: '重命名失败：{{error}}',
       // 文本编辑器
       open_as_text: '以文本方式打开',

@@ -398,6 +398,7 @@ window.i18nResources['zh-TW'] = {
       delete_item: '刪除',
       create_dir_failed: '建立目錄失敗：{{error}}',
       delete_failed: '刪除失敗：{{error}}',
+      confirm_delete_multi: '確定刪除這 {{count}} 項嗎？',
       rename_failed: '重新命名失敗：{{error}}',
       // 文字編輯器
       open_as_text: '以文字方式開啟',

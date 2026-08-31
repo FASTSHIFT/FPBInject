@@ -2330,24 +2330,52 @@ async function deleteFromDevice() {
     return;
   }
 
-  // Use first selected item for delete
-  const selectedFile = transferSelectedFiles[0];
-  const path = selectedFile.path;
-  const typeStr =
-    selectedFile.type === 'dir'
-      ? t('messages.directory', 'directory')
-      : t('transfer.file', 'file');
+  // Snapshot the selection: refreshDeviceFiles() at the end clears it, and
+  // the loop awaits network calls during which the selection could change.
+  const targets = transferSelectedFiles.slice();
 
-  if (
-    !confirm(
-      `${t('messages.confirm_delete', 'Are you sure you want to delete')} ${typeStr}: ${path}?`,
-    )
-  ) {
+  // Single confirmation for the whole batch, listing what will be removed.
+  let confirmMsg;
+  if (targets.length === 1) {
+    const only = targets[0];
+    const typeStr =
+      only.type === 'dir'
+        ? t('messages.directory', 'directory')
+        : t('transfer.file', 'file');
+    confirmMsg = `${t('messages.confirm_delete', 'Are you sure you want to delete')} ${typeStr}: ${only.path}?`;
+  } else {
+    const list = targets.map((f) => `  • ${f.path}`).join('\n');
+    confirmMsg = `${t(
+      'transfer.confirm_delete_multi',
+      'Delete these {{count}} items?',
+      { count: targets.length },
+    )}\n\n${list}`;
+  }
+  if (!confirm(confirmMsg)) {
     return;
   }
 
-  const result = await deleteDeviceFile(path);
-  if (result.success) {
+  let succeeded = 0;
+  let failed = 0;
+  for (let i = 0; i < targets.length; i++) {
+    const path = targets[i].path;
+    const prefix = targets.length > 1 ? `[${i + 1}/${targets.length}] ` : '';
+    log.info(`${prefix}Deleting: ${path}`);
+    const result = await deleteDeviceFile(path);
+    if (result.success) {
+      succeeded++;
+    } else {
+      failed++;
+      log.error(`${prefix}Delete failed: ${path}`);
+    }
+  }
+
+  if (targets.length > 1) {
+    log.info(`Delete finished: ${succeeded} succeeded, ${failed} failed`);
+  }
+
+  // Refresh once after the batch so the listing reflects all removals.
+  if (succeeded > 0) {
     refreshDeviceFiles();
   }
 }

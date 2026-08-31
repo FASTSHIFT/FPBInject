@@ -981,6 +981,93 @@ module.exports = function (w) {
       w.FPBState.isConnected = false;
       browserGlobals.confirm = () => true;
     });
+
+    it('deletes every selected item (multi-select)', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/transfer/delete', { success: true });
+      browserGlobals.confirm = () => true;
+
+      w.transferSelectedFiles = [
+        { path: '/a.txt', type: 'file' },
+        { path: '/b.txt', type: 'file' },
+        { path: '/sub', type: 'dir' },
+      ];
+
+      await w.deleteFromDevice();
+
+      const deleteCalls = getFetchCalls().filter((c) =>
+        c.url.includes('/api/transfer/delete'),
+      );
+      // One backend call per selected item (regression: used to delete only
+      // the first).
+      assertEqual(deleteCalls.length, 3);
+      const bodies = deleteCalls.map((c) => JSON.parse(c.options.body).path);
+      assertTrue(bodies.includes('/a.txt'));
+      assertTrue(bodies.includes('/b.txt'));
+      assertTrue(bodies.includes('/sub'));
+
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('single confirm covers the whole batch', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      setFetchResponse('/api/transfer/delete', { success: true });
+
+      // The module calls the global `confirm`, wired at startup; override
+      // that (not browserGlobals.confirm, which is copied by value once).
+      let confirmCount = 0;
+      const prevConfirm = global.confirm;
+      global.confirm = () => {
+        confirmCount++;
+        return true;
+      };
+
+      w.transferSelectedFiles = [
+        { path: '/x.txt', type: 'file' },
+        { path: '/y.txt', type: 'file' },
+      ];
+      await w.deleteFromDevice();
+
+      // Exactly one confirmation for the batch, not one per file.
+      assertEqual(confirmCount, 1);
+
+      global.confirm = prevConfirm;
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
+
+    it('continues attempting all items even when deletes fail', async () => {
+      resetMocks();
+      w.FPBState.isConnected = true;
+      w.FPBState.toolTerminal = new MockTerminal();
+      browserGlobals.confirm = () => true;
+
+      // Every delete fails; the loop must still attempt each selected item
+      // rather than aborting on the first failure.
+      setFetchResponse('/api/transfer/delete', {
+        success: false,
+        error: 'busy',
+      });
+
+      w.transferSelectedFiles = [
+        { path: '/1.bin', type: 'file' },
+        { path: '/2.bin', type: 'file' },
+      ];
+      await w.deleteFromDevice();
+
+      const deleteCalls = getFetchCalls().filter((c) =>
+        c.url.includes('/api/transfer/delete'),
+      );
+      assertEqual(deleteCalls.length, 2);
+
+      w.FPBState.toolTerminal = null;
+      w.FPBState.isConnected = false;
+    });
   });
 
   describe('createDeviceDir Function', () => {
