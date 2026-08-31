@@ -198,6 +198,136 @@ void test_stream_quoted_args(void) {
     TEST_ASSERT_EQUAL(FL_OK, result);
 }
 
+/* ============================================================================
+ * fl_stream_parse_line Tests
+ *
+ * Hits the tokenizer directly (declared in fl_stream.h) with a mix of
+ * ordinary and adversarial inputs, covering the regression that swallowed
+ * the first character of any '"'-quoted token.
+ * ============================================================================ */
+
+#define PARSE_MAX_ARGC 16
+
+/* Convenience: parse a mutable copy of `input` and check the resulting argv
+ * matches `expected` exactly. Return true on mismatch (so the caller can
+ * emit a nicer diagnostic). */
+static void assert_parse(const char* input, const char* const* expected, int expected_argc) {
+    char buf[256];
+    const char* argv[PARSE_MAX_ARGC];
+    /* strncpy + explicit terminator: we tokenize in place. */
+    size_t n = strlen(input);
+    TEST_ASSERT(n < sizeof(buf));
+    memcpy(buf, input, n + 1);
+
+    int argc = fl_stream_parse_line(buf, argv, PARSE_MAX_ARGC);
+    TEST_ASSERT_EQUAL(expected_argc, argc);
+    if (argc != expected_argc)
+        return;
+    for (int i = 0; i < argc; i++) {
+        TEST_ASSERT_STR_EQUAL(expected[i], argv[i]);
+    }
+}
+
+/*
+ * Regression: `"/tmp/x"` used to be tokenized as `tmp/x` because argv[argc]
+ * was assigned to `p + 1` before memmove shifted the payload down over the
+ * '"'. Any token starting with a '"' had its first character swallowed.
+ */
+void test_parse_quoted_token_preserves_first_char(void) {
+    const char* expected[] = {"fl", "-c", "fopen", "--path", "/tmp/112 1.svg", "-m", "rw"};
+    assert_parse("fl -c fopen --path \"/tmp/112 1.svg\" -m rw", expected, 7);
+}
+
+void test_parse_plain_no_quoting(void) {
+    const char* expected[] = {"fl", "-c", "fopen", "--path", "/etc/hosts"};
+    assert_parse("fl -c fopen --path /etc/hosts", expected, 5);
+}
+
+void test_parse_quoted_single_word(void) {
+    /* "hello" -> hello (the swallow bug turned this into "ello"). */
+    const char* expected[] = {"fl", "-c", "ping", "hello"};
+    assert_parse("fl -c ping \"hello\"", expected, 4);
+}
+
+void test_parse_quoted_path_with_multiple_spaces(void) {
+    /* Consecutive spaces inside quotes must survive as-is. */
+    const char* expected[] = {"fl", "--path", "/a  b/c"};
+    assert_parse("fl --path \"/a  b/c\"", expected, 3);
+}
+
+void test_parse_two_quoted_args(void) {
+    const char* expected[] = {"fl", "a b", "c d"};
+    assert_parse("fl \"a b\" \"c d\"", expected, 3);
+}
+
+void test_parse_adjacent_quoted_segments_concat(void) {
+    /* Adjacent quoted segments concatenate into a single arg (shell-ish). */
+    const char* expected[] = {"fl", "ab"};
+    assert_parse("fl \"a\"\"b\"", expected, 2);
+}
+
+void test_parse_empty_quoted_arg(void) {
+    /* An empty "" still produces an empty-string argument (not dropped). */
+    const char* expected[] = {"fl", "", "x"};
+    assert_parse("fl \"\" x", expected, 3);
+}
+
+void test_parse_quoted_tab_inside(void) {
+    /* Tabs inside quotes are literal, outside quotes they split tokens. */
+    const char* expected[] = {"fl", "--path", "a\tb"};
+    assert_parse("fl --path \"a\tb\"", expected, 3);
+}
+
+void test_parse_unicode_utf8_no_quotes(void) {
+    /* Non-ASCII path bytes must pass through untouched. */
+    const char* expected[] = {"fl", "--path", "/tmp/中文/文件.svg"};
+    assert_parse("fl --path /tmp/中文/文件.svg", expected, 3);
+}
+
+void test_parse_mid_arg_quotes_merge(void) {
+    /* a" "b -> "a b" as a single argument. */
+    const char* expected[] = {"fl", "a b"};
+    assert_parse("fl a\" \"b", expected, 2);
+}
+
+void test_parse_trailing_whitespace(void) {
+    const char* expected[] = {"fl", "-c", "info"};
+    assert_parse("fl -c info ", expected, 3);
+}
+
+void test_parse_multiple_internal_spaces(void) {
+    const char* expected[] = {"fl", "-c", "info"};
+    assert_parse("fl  -c   info", expected, 3);
+}
+
+void test_parse_special_chars_in_quoted_path(void) {
+    /* Various punctuation that could confuse a sloppy tokenizer. */
+    const char* expected[] = {"fl", "--path", "/tmp/a b (v2)[final]#1.svg"};
+    assert_parse("fl --path \"/tmp/a b (v2)[final]#1.svg\"", expected, 3);
+}
+
+void test_parse_path_with_leading_dot(void) {
+    /* Leading '.' after a quote used to survive; regression guard for the
+     * broader off-by-one to make sure we don't reintroduce a *different*
+     * swallow bug on any leading character. */
+    const char* expected[] = {"fl", "--path", ".hidden file"};
+    assert_parse("fl --path \".hidden file\"", expected, 3);
+}
+
+void test_parse_argc_capped(void) {
+    /* max_argc must be honored: only the first N tokens are recorded. */
+    char buf[64];
+    const char* argv[3];
+    strcpy(buf, "a b c d e");
+    int argc = fl_stream_parse_line(buf, argv, 3);
+    TEST_ASSERT_EQUAL(3, argc);
+    TEST_ASSERT_STR_EQUAL("a", argv[0]);
+    TEST_ASSERT_STR_EQUAL("b", argv[1]);
+    /* argv[2] captures whatever token 2 started; content past cap is
+     * unspecified, so we only assert it starts correctly. */
+    TEST_ASSERT(argv[2][0] == 'c');
+}
+
 void test_stream_output_via_serial(void) {
     /* Test that stream output goes through serial write */
     mock_output_reset();
@@ -278,5 +408,23 @@ void run_stream_tests(void) {
     RUN_TEST(test_stream_quoted_args);
     RUN_TEST(test_stream_output_via_serial);
     RUN_TEST(test_stream_process_buffer_full);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_loader_stream - parse_line Tokenizer");
+    RUN_TEST(test_parse_quoted_token_preserves_first_char);
+    RUN_TEST(test_parse_plain_no_quoting);
+    RUN_TEST(test_parse_quoted_single_word);
+    RUN_TEST(test_parse_quoted_path_with_multiple_spaces);
+    RUN_TEST(test_parse_two_quoted_args);
+    RUN_TEST(test_parse_adjacent_quoted_segments_concat);
+    RUN_TEST(test_parse_empty_quoted_arg);
+    RUN_TEST(test_parse_quoted_tab_inside);
+    RUN_TEST(test_parse_unicode_utf8_no_quotes);
+    RUN_TEST(test_parse_mid_arg_quotes_merge);
+    RUN_TEST(test_parse_trailing_whitespace);
+    RUN_TEST(test_parse_multiple_internal_spaces);
+    RUN_TEST(test_parse_special_chars_in_quoted_path);
+    RUN_TEST(test_parse_path_with_leading_dot);
+    RUN_TEST(test_parse_argc_capped);
     TEST_SUITE_END();
 }

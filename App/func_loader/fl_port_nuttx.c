@@ -51,6 +51,7 @@
 #ifdef __NuttX__
 
 #include "fl.h"
+#include "fl_stream.h"
 #include <nuttx/config.h>
 #include <nuttx/cache.h>
 #include <stdio.h>
@@ -124,38 +125,6 @@ static void nuttx_print_alloc_info(void) {
 }
 #endif
 
-static int parse_line(char* line, const char** argv, int max_argc) {
-    int argc = 0;
-    char* p = line;
-    bool in_quote = false;
-    bool in_arg = false;
-
-    while (*p && argc < max_argc) {
-        if (*p == '"') {
-            in_quote = !in_quote;
-            if (!in_arg) {
-                argv[argc++] = p + 1;
-                in_arg = true;
-            }
-            memmove(p, p + 1, strlen(p));
-            continue;
-        }
-
-        if (!in_quote && (*p == ' ' || *p == '\t')) {
-            if (in_arg) {
-                *p = '\0';
-                in_arg = false;
-            }
-        } else if (!in_arg) {
-            argv[argc++] = p;
-            in_arg = true;
-        }
-        p++;
-    }
-
-    return argc;
-}
-
 static int interactive_mode(fl_context_t* ctx, int argc_first, char** argv_first) {
     char line[FL_NUTTX_LINE_SIZE];
     static const char* argv[32];
@@ -194,7 +163,7 @@ static int interactive_mode(fl_context_t* ctx, int argc_first, char** argv_first
             continue;
         }
 
-        int argc = parse_line(line, argv, sizeof(argv) / sizeof(argv[0]));
+        int argc = fl_stream_parse_line(line, argv, sizeof(argv) / sizeof(argv[0]));
         if (argc > 0) {
             const fl_error_t ret = fl_exec_cmd(ctx, argc, argv);
             if (ret != FL_OK) {

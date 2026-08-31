@@ -74,6 +74,22 @@ void fl_stream_process(fl_stream_t* s);
  */
 fl_error_t fl_stream_exec_line(fl_stream_t* s, char* line);
 
+/**
+ * @brief Tokenize @p line in place into an argv-style array.
+ *
+ * Splits on unquoted whitespace and honors ``"..."`` quoting so tokens can
+ * embed spaces. The '"' characters are stripped from the tokens; the line
+ * buffer is mutated (NUL terminators are written to end each argument).
+ *
+ * Exposed in the header so unit tests can hit the tokenizer directly.
+ *
+ * @param line     Mutable input line (NUL-terminated). Contents are modified.
+ * @param argv     Output array receiving pointers into @p line.
+ * @param max_argc Capacity of @p argv; parsing stops when reached.
+ * @return Number of arguments recorded (0..max_argc).
+ */
+int fl_stream_parse_line(char* line, const char** argv, int max_argc);
+
 #ifdef __cplusplus
 }
 #endif

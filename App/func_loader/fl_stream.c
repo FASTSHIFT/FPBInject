@@ -53,7 +53,7 @@ void fl_stream_init(fl_stream_t* s, struct fl_context_s* ctx, const fl_serial_t*
     ctx->output_user = s;
 }
 
-static int parse_line(char* line, const char** argv, int max_argc) {
+int fl_stream_parse_line(char* line, const char** argv, int max_argc) {
     int argc = 0;
     char* p = line;
     bool in_quote = false;
@@ -62,11 +62,19 @@ static int parse_line(char* line, const char** argv, int max_argc) {
     while (*p && argc < max_argc) {
         if (*p == '"') {
             in_quote = !in_quote;
+            /*
+             * Drop the '"' in place first (shift the rest left over it),
+             * then record argv[] pointing at p -- which now holds the
+             * character formerly at p+1. Recording p+1 *before* the
+             * memmove used to swallow the first character of the token
+             * (e.g. `"/tmp/x"` was parsed as `tmp/x`).
+             */
+            memmove(p, p + 1, strlen(p));
             if (!in_arg) {
-                argv[argc++] = p + 1;
+                argv[argc++] = p;
                 in_arg = true;
             }
-            memmove(p, p + 1, strlen(p));
+            /* Do not advance p: reclassify the character that shifted in. */
             continue;
         }
 
@@ -86,7 +94,7 @@ static int parse_line(char* line, const char** argv, int max_argc) {
 
 fl_error_t fl_stream_exec_line(fl_stream_t* s, char* line) {
     static const char* argv[FL_MAX_ARGC];
-    int argc = parse_line(line, argv, FL_MAX_ARGC);
+    int argc = fl_stream_parse_line(line, argv, FL_MAX_ARGC);
     if (argc > 0) {
         return fl_exec_cmd(s->ctx, argc, argv);
     }
