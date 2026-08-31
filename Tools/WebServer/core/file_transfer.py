@@ -22,15 +22,40 @@ logger = logging.getLogger(__name__)
 
 
 def _sanitize_path(path: str) -> str:
-    """Sanitize path to prevent command injection."""
+    """Validate a path for the fl command line.
+
+    The device tokenizer (fl_stream_parse_line) only understands ``"..."``
+    quoting -- it strips quotes and splits on unquoted whitespace, with NO
+    backslash escaping. Consequently:
+
+    - CR/LF would break the line protocol.
+    - A double quote cannot be represented unambiguously (there is no escape
+      mechanism on the device), so paths containing ``"`` are rejected rather
+      than silently corrupted. Escaping it here (e.g. ``\\"``) does not help:
+      the device keeps the backslash and mis-toggles quote state, which then
+      fails the CRC-over-path check.
+
+    Returns the path unchanged (no mutation) when valid; raises ValueError
+    otherwise. Not mutating the path keeps the CRC input identical to what the
+    device parses.
+    """
     if "\r" in path or "\n" in path:
         raise ValueError("Path contains control characters")
-    return path.replace('"', '\\"')
+    if '"' in path:
+        raise ValueError(
+            "Path contains a double quote, which the device cannot represent"
+        )
+    return path
 
 
 def _format_path_arg(path: str) -> str:
-    """Format path argument for command line, quoting only if path contains spaces."""
-    if " " in path:
+    """Format a path argument for the fl command line.
+
+    Wrap in double quotes when the path contains any character the device
+    tokenizer treats as a separator (space or tab); otherwise pass it bare.
+    The device strips the wrapping quotes, recovering the exact path.
+    """
+    if " " in path or "\t" in path:
         return f'"{path}"'
     return path
 

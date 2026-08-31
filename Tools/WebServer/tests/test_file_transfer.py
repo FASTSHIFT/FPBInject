@@ -1565,21 +1565,40 @@ class TestPathSanitization(unittest.TestCase):
             ft.fstat("/path\rwith\rcarriage")
         self.assertIn("control characters", str(ctx.exception))
 
-    def test_path_with_quotes_escaped(self):
-        """Test path with quotes is escaped by sanitize, no wrapping without spaces."""
+    def test_path_with_quote_rejected(self):
+        """A path containing a double quote is rejected: the device tokenizer
+        has no escape mechanism, so it cannot be represented unambiguously.
+        Escaping it (old behavior) produced a corrupt path + CRC mismatch."""
         ft = FileTransfer(self.mock_fpb)
-        ft.flist('/path/with"quotes"')
-        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
-        # _sanitize_path escapes " to \", no spaces → no wrapping quotes
-        self.assertIn('--path /path/with\\"quotes\\"', call_args)
+        with self.assertRaises(ValueError) as ctx:
+            ft.flist('/path/with"quotes"')
+        self.assertIn("double quote", str(ctx.exception))
+        # Nothing should have been sent to the device.
+        self.mock_fpb.send_fl_cmd.assert_not_called()
 
-    def test_path_with_quotes_and_spaces_escaped(self):
-        """Test path with both quotes and spaces is properly escaped and quoted."""
+    def test_path_with_quote_and_spaces_rejected(self):
+        """Quote rejection wins even when spaces are also present."""
         ft = FileTransfer(self.mock_fpb)
-        ft.flist('/path/with "quotes"')
+        with self.assertRaises(ValueError):
+            ft.flist('/path/with "quotes"')
+        self.mock_fpb.send_fl_cmd.assert_not_called()
+
+    def test_path_with_tab_is_quoted(self):
+        """A tab is a device tokenizer separator, so the path must be wrapped
+        in quotes (previously only spaces triggered wrapping, which truncated
+        tab-containing paths on the device)."""
+        ft = FileTransfer(self.mock_fpb)
+        ft.flist("/path/with\ttab")
         call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
-        # _sanitize_path escapes " to \", then _format_path_arg wraps in quotes due to space
-        self.assertIn('--path "/path/with \\"quotes\\""', call_args)
+        self.assertIn('--path "/path/with\ttab"', call_args)
+
+    def test_path_with_backslash_unchanged(self):
+        """Backslash is a normal path byte (no escape semantics); it must pass
+        through verbatim and unquoted when there is no whitespace."""
+        ft = FileTransfer(self.mock_fpb)
+        ft.flist("/path/back\\slash")
+        call_args = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        self.assertIn("--path /path/back\\slash", call_args)
 
     def test_normal_path_unchanged(self):
         """Test normal path works correctly without quotes."""

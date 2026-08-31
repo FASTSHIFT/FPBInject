@@ -185,5 +185,125 @@ class TestFileTransferSingleCharPath(unittest.TestCase):
         self.assertNotIn('"/a"', call_args)
 
 
+def _device_parse_line(line):
+    """Faithful model of the fixed device tokenizer fl_stream_parse_line().
+
+    Strips ``"`` quotes (no backslash escaping), splits on unquoted
+    whitespace. Used to verify the host emits a command the device parses
+    back into the exact path -- i.e. the '--path' bytes round-trip.
+    """
+    buf = bytearray(line.encode("utf-8"))
+    offs, p, in_quote, in_arg = [], 0, False, False
+    while p < len(buf) and buf[p] != 0:
+        b = buf[p]
+        ch = chr(b) if b < 128 else None
+        if ch == '"':
+            in_quote = not in_quote
+            del buf[p]
+            if not in_arg:
+                offs.append(p)
+                in_arg = True
+            continue
+        if not in_quote and ch in (" ", "\t"):
+            if in_arg:
+                buf[p] = 0
+                in_arg = False
+        else:
+            if not in_arg:
+                offs.append(p)
+                in_arg = True
+        p += 1
+    out = []
+    for o in offs:
+        e = o
+        while e < len(buf) and buf[e] != 0:
+            e += 1
+        out.append(bytes(buf[o:e]).decode("utf-8", errors="replace"))
+    return out
+
+
+class TestPathRoundTripRobustness(unittest.TestCase):
+    """Host must emit commands whose --path the device tokenizer recovers
+    byte-for-byte, and whose CRC matches. Guards against host/device
+    tokenizer divergence for weird-but-valid paths."""
+
+    # Paths the device CAN represent and must round-trip exactly.
+    GOOD_PATHS = [
+        "/tmp/plain.svg",
+        "/tmp/112 1.svg",
+        "/tmp/two  spaces.txt",
+        "/tmp/中文/文件.svg",
+        "/tmp/a (v2)[final]#1.svg",
+        "/tmp/with\ttab.txt",
+        "/tmp/back\\slash.svg",
+        "/tmp/'single'.svg",
+        "/tmp/trailing ",
+        "/tmp/-dash --path.txt",
+    ]
+
+    # Paths the host must reject (device tokenizer cannot represent them).
+    BAD_PATHS = [
+        '/tmp/say "hi".svg',
+        "/tmp/line\nbreak",
+        "/tmp/carriage\rreturn",
+    ]
+
+    def setUp(self):
+        self.mock_fpb = MagicMock()
+        self.mock_fpb.send_fl_cmd.return_value = (True, "[FLOK]")
+        self.ft = FileTransfer(self.mock_fpb)
+
+    def _extract_path_and_crc(self, cmd):
+        argv = _device_parse_line(cmd)
+        path = None
+        crc = None
+        for i, tok in enumerate(argv):
+            if tok == "--path" and i + 1 < len(argv):
+                path = argv[i + 1]
+            if tok == "-r" and i + 1 < len(argv):
+                crc = int(argv[i + 1], 16)
+        return path, crc
+
+    def test_good_paths_round_trip_and_crc_matches(self):
+        from fpbinject.utils.crc import crc16_update
+
+        for path in self.GOOD_PATHS:
+            with self.subTest(path=path):
+                self.mock_fpb.reset_mock()
+                self.ft.fstat(path)
+                cmd = self.mock_fpb.send_fl_cmd.call_args[0][0]
+                dev_path, dev_crc = self._extract_path_and_crc(cmd)
+                # Device recovers the exact path...
+                self.assertEqual(dev_path, path)
+                # ...and the CRC the host advertised is over that same path.
+                expected = crc16_update(0xFFFF, path.encode("utf-8"))
+                self.assertEqual(dev_crc, expected)
+
+    def test_bad_paths_are_rejected(self):
+        for path in self.BAD_PATHS:
+            with self.subTest(path=path):
+                self.mock_fpb.reset_mock()
+                with self.assertRaises(ValueError):
+                    self.ft.fstat(path)
+                self.mock_fpb.send_fl_cmd.assert_not_called()
+
+    def test_frename_round_trips_both_paths(self):
+        from fpbinject.utils.crc import crc16_update
+
+        old, new = "/tmp/old name.txt", "/tmp/new (v2).txt"
+        self.ft.frename(old, new)
+        cmd = self.mock_fpb.send_fl_cmd.call_args[0][0]
+        argv = _device_parse_line(cmd)
+        dev_old = argv[argv.index("--path") + 1]
+        dev_new = argv[argv.index("--newpath") + 1]
+        self.assertEqual(dev_old, old)
+        self.assertEqual(dev_new, new)
+        # CRC chains old then new path.
+        crc = crc16_update(0xFFFF, old.encode("utf-8"))
+        crc = crc16_update(crc, new.encode("utf-8"))
+        dev_crc = int(argv[argv.index("-r") + 1], 16)
+        self.assertEqual(dev_crc, crc)
+
+
 if __name__ == "__main__":
     unittest.main()
