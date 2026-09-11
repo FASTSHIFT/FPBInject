@@ -263,6 +263,7 @@ window.i18nResources['zh-CN'] = {
       auto_generated_patch_preview: '自动生成的补丁（只读预览）',
       // 串口测试
       serial_test_complete: '测试完成',
+      serial_test_failed: '吞吐测试失败',
       apply_recommended_size: '是否应用推荐参数？',
       fragment_detected_hint:
         '检测到 PC → 设备方向存在丢包现象。为保证通信可靠性，数据将以 {{size}}B 为单位分片发送，每片间隔 {{delay}}ms。建议优化 UART 驱动以获得更好的传输速度。',

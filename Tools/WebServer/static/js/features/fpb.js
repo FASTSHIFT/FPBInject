@@ -203,10 +203,19 @@ async function fpbTestSerial() {
         log.info('Parameters unchanged');
       }
     } else {
-      log.error(`Test failed: ${data.error || 'Unknown error'}`);
+      const err = data.error || 'Unknown error';
+      log.error(`Test failed: ${err}`);
+      // Surface failures with a popup too: success pops a confirm dialog, so a
+      // silent log line on failure is easy to miss and looks like a no-op.
+      alert(
+        `❌ ${t('messages.serial_test_failed', 'Throughput test failed')}\n\n${err}`,
+      );
     }
   } catch (e) {
     log.error(`Serial test failed: ${e}`);
+    alert(
+      `❌ ${t('messages.serial_test_failed', 'Throughput test failed')}\n\n${e}`,
+    );
   }
 }
 

@@ -269,6 +269,7 @@ window.i18nResources['en'] = {
       auto_generated_patch_preview: 'Auto-generated patch (read-only preview)',
       // Serial test
       serial_test_complete: 'Test Complete',
+      serial_test_failed: 'Throughput test failed',
       apply_recommended_size: 'Apply recommended parameters?',
       fragment_detected_hint:
         'Serial TX data loss detected (PC → Device). To maintain reliability, transmissions will be split into {{size}}B segments with {{delay}}ms intervals. Consider optimizing the UART driver for better throughput.',

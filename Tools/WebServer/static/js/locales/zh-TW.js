@@ -263,6 +263,7 @@ window.i18nResources['zh-TW'] = {
       auto_generated_patch_preview: '自動產生的補丁（唯讀預覽）',
       // 序列埠測試
       serial_test_complete: '測試完成',
+      serial_test_failed: '吞吐測試失敗',
       apply_recommended_size: '是否套用建議參數？',
       fragment_detected_hint:
         '偵測到 PC → 裝置方向存在丟包現象。為確保通訊可靠性，資料將以 {{size}}B 為單位分片傳送，每片間隔 {{delay}}ms。建議優化 UART 驅動以獲得更佳的傳輸速度。',
