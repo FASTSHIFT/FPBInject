@@ -1070,16 +1070,12 @@ class FPBProtocol:
         timeout: float = 2.0,
         trials: int = 8,
         min_success_rate: float = 1.0,
-        seed_probe: Optional[Dict] = None,
     ) -> Dict:
         """Phase 2: Find the device shell receive buffer limit (upload direction).
 
         Uses increasing echo commands with x1.4 stepping. Each size is sampled
         ``trials`` times and must meet ``min_success_rate`` to be accepted, so
         the reported max working size is a reliable limit, not a lucky one-off.
-
-        ``seed_probe`` lets the caller supply an already-measured result for
-        ``start_size`` (from the short upload check) so it isn't sampled twice.
         """
         result: Dict = {
             "max_working_size": 0,
@@ -1094,17 +1090,13 @@ class FPBProtocol:
         max_working = 0
 
         while test_size <= max_size:
-            if seed_probe is not None and test_size == start_size:
-                probe = seed_probe
-                seed_probe = None
-            else:
-                probe = self._sample_probe(
-                    self._probe_echo,
-                    test_size,
-                    timeout=timeout,
-                    trials=trials,
-                    min_success_rate=min_success_rate,
-                )
+            probe = self._sample_probe(
+                self._probe_echo,
+                test_size,
+                timeout=timeout,
+                trials=trials,
+                min_success_rate=min_success_rate,
+            )
             result["tests"].append(probe)
 
             if probe["passed"]:
@@ -1282,22 +1274,9 @@ class FPBProtocol:
         trial), so the recommended chunk sizes reflect reliable limits under
         repeated load rather than a single lucky round-trip.
 
-        Ordering is deliberate. The upload sweep drives the device toward
-        overload with large shell-input lines, and an overloaded UART/shell
-        stays sluggish for a while afterwards -- if the read test ran right
-        after, its first probes would be measured against that backlog and
-        under-report the download limit. But the read probe (echoback) only
-        needs to *send* a tiny request line (``fl -c echoback -l N``), which the
-        fragment probe and a minimal upload check already prove the link can
-        carry. So we do a short write check, then the full read test on a fresh
-        (un-overloaded) link, and only then the heavy upload sweep last:
-
-        Phase 1:  TX Fragment probe - detect if PC->device needs fragmentation.
-        Phase 2a: Short upload check - confirm the minimum write size is
-                  reliable (also validates carrying the echoback request).
-        Phase 3:  Download chunk probe - find max reliable download size, before
-                  the heavy upload sweep can overload the device.
-        Phase 2b: Full upload sweep - find the device shell buffer limit, last.
+        Phase 1: TX Fragment probe - detect if PC→device needs fragmentation.
+        Phase 2: Upload chunk probe - find device shell buffer limit.
+        Phase 3: Download chunk probe - find max reliable download size.
 
         Returns a comprehensive result dict with recommended parameters.
         """
@@ -1350,52 +1329,14 @@ class FPBProtocol:
                     )
                     return results
 
-            # Phase 2a: Short upload check. A reliable minimum-size write both
-            # rules out a dead link early and proves we can carry the (tiny)
-            # echoback request line, so the read test below is trustworthy.
-            short = self._sample_probe(
-                self._probe_echo,
-                start_size,
-                timeout=timeout,
-                trials=trials,
-                min_success_rate=min_success_rate,
-            )
-            results["phases"]["upload_short"] = short
-            if not short["passed"]:
-                results["success"] = False
-                results["failed_size"] = start_size
-                results["error"] = (
-                    "Serial communication failed at minimum size "
-                    f"({start_size} bytes). Check connection and try again."
-                )
-                results["recommended_upload_chunk_size"] = 0
-                return results
-
-            # Phase 3: Download chunk probe (uses echoback command). Runs before
-            # the heavy upload sweep so read reliability is measured on a link
-            # the writes haven't overloaded yet.
-            download = self._phase_download_probe(
-                start_size=256,
-                max_size=8192,
-                timeout=max(timeout, 3.0),
-                trials=trials,
-                min_success_rate=min_success_rate,
-            )
-            results["phases"]["download"] = download
-            results["recommended_download_chunk_size"] = download[
-                "recommended_download_chunk_size"
-            ]
-
-            # Phase 2b: Full upload sweep, last -- if it overloads the device,
-            # the download result is already recorded. Reuse the short check's
-            # start_size result so it isn't sampled again.
+            # Phase 2: Upload chunk probe
+            # (now works correctly with fragmentation if Phase 1.5 set it)
             upload = self._phase_upload_probe(
                 start_size=start_size,
                 max_size=max_size,
                 timeout=timeout,
                 trials=trials,
                 min_success_rate=min_success_rate,
-                seed_probe=short,
             )
             results["phases"]["upload"] = upload
             results["tests"] = upload["tests"]  # backward compat
@@ -1413,6 +1354,19 @@ class FPBProtocol:
                 )
                 results["recommended_upload_chunk_size"] = 0
                 return results
+
+            # Phase 3: Download chunk probe (uses echoback command)
+            download = self._phase_download_probe(
+                start_size=256,
+                max_size=8192,
+                timeout=max(timeout, 3.0),
+                trials=trials,
+                min_success_rate=min_success_rate,
+            )
+            results["phases"]["download"] = download
+            results["recommended_download_chunk_size"] = download[
+                "recommended_download_chunk_size"
+            ]
 
         except Exception as e:
             results["success"] = False
