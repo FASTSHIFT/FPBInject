@@ -715,13 +715,31 @@ class FPBProtocol:
         bytes_per_chunk = (
             self.device.upload_chunk_size if self.device.upload_chunk_size > 0 else 128
         )
+
+        def _b64_len(n):
+            return ((n + 2) // 3) * 4
+
+        # upload_chunk_size is calibrated (by test-serial) so an fwrite command
+        # fits the device's interactive line buffer. The write command carries
+        # an extra "-a 0x{addr}" arg, so reusing upload_chunk_size verbatim can
+        # overflow that buffer and the device silently truncates the line.
+        # Budget the write command to the same total length a proven-safe
+        # fwrite would have, then shrink the payload to fit.
+        cmd_budget = _b64_len(bytes_per_chunk) + len("fl -c fwrite -d  -r 65535")
+
         total = len(data)
         offset = 0
 
         while offset < total:
-            chunk = data[offset : offset + bytes_per_chunk]
-            b64 = base64.b64encode(chunk).decode("ascii")
             chunk_addr = addr + offset
+            # Reserve room for this command's fixed overhead (incl. the address
+            # arg and the "fl " prefix send_cmd prepends).
+            overhead = len(f"fl -c write -a 0x{chunk_addr:X} -d  -r 0x{0:04X}")
+            max_bytes = ((cmd_budget - overhead) // 4) * 3
+            eff_chunk = max(1, min(bytes_per_chunk, max_bytes))
+
+            chunk = data[offset : offset + eff_chunk]
+            b64 = base64.b64encode(chunk).decode("ascii")
             # CRC covers: addr(4B LE) + len(4B LE) + data payload
             crc_val = crc16_update(0xFFFF, struct.pack("<II", chunk_addr, len(chunk)))
             crc_val = crc16_update(crc_val, chunk)

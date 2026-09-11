@@ -359,12 +359,42 @@ class TestWriteMemory(unittest.TestCase):
 
     def test_multi_chunk(self):
         """Write data spanning multiple chunks."""
-        self.device.upload_chunk_size = 4
-        self.protocol.send_cmd = MagicMock(return_value="[FLOK] WRITE 4 bytes")
+        self.device.upload_chunk_size = 128
+        sent = []
 
-        ok, msg = self.protocol.write_memory(0x20000000, b"\xaa" * 10)
+        def _capture(cmd, *a, **k):
+            sent.append(cmd)
+            return "[FLOK] WRITE bytes"
+
+        self.protocol.send_cmd = MagicMock(side_effect=_capture)
+
+        # 200 bytes > one effective chunk, so it must span multiple commands.
+        ok, msg = self.protocol.write_memory(0x20000000, b"\xaa" * 200)
         self.assertTrue(ok)
-        self.assertEqual(self.protocol.send_cmd.call_count, 3)
+        self.assertGreaterEqual(self.protocol.send_cmd.call_count, 2)
+
+    def test_write_cmd_length_bounded_by_fwrite_budget(self):
+        """Each write command must be no longer than an fwrite command carrying
+        a full upload_chunk_size payload -- otherwise it can overflow the
+        device's interactive line buffer and get silently truncated (the extra
+        '-a 0x{addr}' arg is what pushes it over)."""
+        self.device.upload_chunk_size = 128
+        sent = []
+
+        def _capture(cmd, *a, **k):
+            sent.append(cmd)
+            return "[FLOK] WRITE bytes"
+
+        self.protocol.send_cmd = MagicMock(side_effect=_capture)
+
+        self.protocol.write_memory(0x20000000, b"\xbb" * 400)
+
+        # b64 length of a full upload_chunk_size payload + fixed fwrite overhead.
+        b64_full = ((128 + 2) // 3) * 4
+        fwrite_budget = b64_full + len("fl -c fwrite -d  -r 65535")
+        for cmd in sent:
+            # send_cmd would prepend "fl "; account for it here.
+            self.assertLessEqual(len("fl " + cmd), fwrite_budget)
 
     def test_write_failure_after_retries(self):
         """Return False after exhausting all retries."""
