@@ -212,7 +212,7 @@ class TestRoutesFPB(TestRoutesBase):
         data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        mock_fpb.enter_fl_mode.assert_called()
+        # The op auto-enters fl mode; the shared runner guarantees the exit.
         mock_fpb.exit_fl_mode.assert_called()
 
     @patch("fpbinject.routes.get_fpb_inject")
@@ -864,7 +864,7 @@ class TestFPBInjectAPI(TestRoutesBase):
         data = json.loads(response.data)
 
         self.assertTrue(data["success"])
-        mock_fpb.enter_fl_mode.assert_called_once()
+        # The op auto-enters fl mode; the shared runner guarantees the exit.
         mock_fpb.exit_fl_mode.assert_called_once()
 
 

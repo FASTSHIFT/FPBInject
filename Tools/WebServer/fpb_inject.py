@@ -12,6 +12,7 @@ Provides injection operations based on fpb_loader.py but adapted for web server 
 import logging
 import os
 import time
+from contextlib import contextmanager
 from typing import Dict, Optional, Tuple
 
 from fpbinject.core import elf_utils
@@ -87,6 +88,24 @@ class FPBInject:
     def exit_fl_mode(self, timeout: float = 1.0) -> bool:
         """Exit fl interactive mode."""
         return self._protocol.exit_fl_mode(timeout)
+
+    @contextmanager
+    def fl_session(self):
+        """Scope a group of device commands, returning to the shell on exit.
+
+        For callers that don't go through the routes' run_serial_op (CLI direct
+        mode, the SDK, the GDB bridge). Entering fl mode is idempotent, so the
+        commands inside share one session; on leaving the block the device is
+        returned to the shell (exit_fl_mode), even on exception. Pairing is
+        guaranteed by the context manager instead of hand-written try/finally.
+
+            with fpb.fl_session():
+                fpb.unpatch(...)
+        """
+        try:
+            yield self
+        finally:
+            self.exit_fl_mode()
 
     def _send_cmd(
         self,

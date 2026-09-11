@@ -52,14 +52,22 @@ def _get_helpers():
     return log_info, log_success, log_error, log_warn, get_fpb_inject
 
 
-def _run_serial_op(func, timeout=10.0):
-    """Run a serial operation in the device worker thread."""
+def _run_serial_op(func, timeout=10.0, keep_fl=False, fpb=None):
+    """Run a serial operation in the device worker thread.
+
+    Returns the device to the shell (exit_fl_mode) after the op unless
+    keep_fl=True, via the shared with_fl_exit wrapper. ``fpb`` selects which
+    FPBInject instance to exit (defaults to the shared get_fpb_inject()).
+    """
+    from fpbinject.app.utils.device_op import with_fl_exit
+
     device = state.device
     result = {"error": None, "data": None}
+    work = with_fl_exit(func, keep_fl=keep_fl, fpb=fpb)
 
     def wrapper():
         try:
-            result["data"] = func()
+            result["data"] = work()
         except Exception as e:
             result["error"] = str(e)
             logger.exception(f"Serial operation error: {e}")
@@ -126,16 +134,12 @@ def api_transfer_list():
     ft = _get_file_transfer()
 
     def do_list():
-        ft.fpb.enter_fl_mode()
-        try:
-            success, entries = ft.flist(path)
-            return {"success": success, "entries": entries, "path": path}
-        finally:
-            ft.fpb.exit_fl_mode()
+        success, entries = ft.flist(path)
+        return {"success": success, "entries": entries, "path": path}
 
     try:
         with file_transaction(state.device, "list", path):
-            result = _run_serial_op(do_list, timeout=10.0)
+            result = _run_serial_op(do_list, timeout=10.0, fpb=ft.fpb)
     except TransferBusy as e:
         return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
@@ -164,16 +168,12 @@ def api_transfer_stat():
     ft = _get_file_transfer()
 
     def do_stat():
-        ft.fpb.enter_fl_mode()
-        try:
-            success, stat_info = ft.fstat(path)
-            return {"success": success, "stat": stat_info, "path": path}
-        finally:
-            ft.fpb.exit_fl_mode()
+        success, stat_info = ft.fstat(path)
+        return {"success": success, "stat": stat_info, "path": path}
 
     try:
         with file_transaction(state.device, "stat", path):
-            result = _run_serial_op(do_stat, timeout=5.0)
+            result = _run_serial_op(do_stat, timeout=5.0, fpb=ft.fpb)
     except TransferBusy as e:
         return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
@@ -204,16 +204,12 @@ def api_transfer_mkdir():
     ft = _get_file_transfer()
 
     def do_mkdir():
-        ft.fpb.enter_fl_mode()
-        try:
-            success, msg = ft.fmkdir(path)
-            return {"success": success, "message": msg}
-        finally:
-            ft.fpb.exit_fl_mode()
+        success, msg = ft.fmkdir(path)
+        return {"success": success, "message": msg}
 
     try:
         with file_transaction(state.device, "mkdir", path):
-            result = _run_serial_op(do_mkdir, timeout=5.0)
+            result = _run_serial_op(do_mkdir, timeout=5.0, fpb=ft.fpb)
     except TransferBusy as e:
         return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
@@ -247,16 +243,12 @@ def api_transfer_delete():
     ft = _get_file_transfer()
 
     def do_delete():
-        ft.fpb.enter_fl_mode()
-        try:
-            success, msg = ft.fremove(path)
-            return {"success": success, "message": msg}
-        finally:
-            ft.fpb.exit_fl_mode()
+        success, msg = ft.fremove(path)
+        return {"success": success, "message": msg}
 
     try:
         with file_transaction(state.device, "delete", path):
-            result = _run_serial_op(do_delete, timeout=5.0)
+            result = _run_serial_op(do_delete, timeout=5.0, fpb=ft.fpb)
     except TransferBusy as e:
         return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
@@ -294,16 +286,12 @@ def api_transfer_rename():
     ft = _get_file_transfer()
 
     def do_rename():
-        ft.fpb.enter_fl_mode()
-        try:
-            success, msg = ft.frename(old_path, new_path)
-            return {"success": success, "message": msg}
-        finally:
-            ft.fpb.exit_fl_mode()
+        success, msg = ft.frename(old_path, new_path)
+        return {"success": success, "message": msg}
 
     try:
         with file_transaction(state.device, "rename", old_path):
-            result = _run_serial_op(do_rename, timeout=5.0)
+            result = _run_serial_op(do_rename, timeout=5.0, fpb=ft.fpb)
     except TransferBusy as e:
         return jsonify({"success": False, "error": str(e), "busy": True}), 409
 
@@ -579,44 +567,40 @@ def api_transfer_download_sync():
 
     def make_do_download(cancel_event):
         def do_download():
-            ft.fpb.enter_fl_mode()
-            try:
-                success, stat = ft.fstat(remote_path)
-                if not success:
-                    return {
-                        "success": False,
-                        "error": f"Failed to stat: {stat.get('error', 'unknown')}",
-                    }
-
-                total_size = stat.get("size", 0)
-                if stat.get("type") == "dir":
-                    return {"success": False, "error": "Cannot download directory"}
-                if total_size == 0:
-                    return {"success": False, "error": "File is empty"}
-
-                # Pass the transaction's cancel_event so an explicit
-                # /transfer/cancel (e.g. from a CLI Ctrl-C) actually stops the
-                # server-side read instead of running to completion.
-                success, file_data, msg = ft.download(
-                    remote_path, cancel_event=cancel_event
-                )
-                if not success:
-                    cancelled = msg == "Cancelled"
-                    return {
-                        "success": False,
-                        "error": f"Download failed: {msg}",
-                        "cancelled": cancelled,
-                    }
-
-                b64_data = base64.b64encode(file_data).decode("ascii")
+            success, stat = ft.fstat(remote_path)
+            if not success:
                 return {
-                    "success": True,
-                    "data": b64_data,
-                    "size": len(file_data),
-                    "message": f"Downloaded {len(file_data)} bytes",
+                    "success": False,
+                    "error": f"Failed to stat: {stat.get('error', 'unknown')}",
                 }
-            finally:
-                ft.fpb.exit_fl_mode()
+
+            total_size = stat.get("size", 0)
+            if stat.get("type") == "dir":
+                return {"success": False, "error": "Cannot download directory"}
+            if total_size == 0:
+                return {"success": False, "error": "File is empty"}
+
+            # Pass the transaction's cancel_event so an explicit
+            # /transfer/cancel (e.g. from a CLI Ctrl-C) actually stops the
+            # server-side read instead of running to completion.
+            success, file_data, msg = ft.download(
+                remote_path, cancel_event=cancel_event
+            )
+            if not success:
+                cancelled = msg == "Cancelled"
+                return {
+                    "success": False,
+                    "error": f"Download failed: {msg}",
+                    "cancelled": cancelled,
+                }
+
+            b64_data = base64.b64encode(file_data).decode("ascii")
+            return {
+                "success": True,
+                "data": b64_data,
+                "size": len(file_data),
+                "message": f"Downloaded {len(file_data)} bytes",
+            }
 
         return do_download
 
@@ -624,7 +608,9 @@ def api_transfer_download_sync():
         with file_transaction(state.device, "download", remote_path) as cancel_event:
             # Serial is slow; allow a long worker window (cancellation, not a
             # short timeout, is how a stuck/aborted transfer is stopped).
-            result = _run_serial_op(make_do_download(cancel_event), timeout=86400.0)
+            result = _run_serial_op(
+                make_do_download(cancel_event), timeout=86400.0, fpb=ft.fpb
+            )
     except TransferBusy as e:
         return jsonify({"success": False, "error": str(e), "busy": True}), 409
 

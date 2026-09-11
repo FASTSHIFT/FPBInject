@@ -45,7 +45,9 @@ def _read_device_memory(addr, size):
 
     fpb = _get_fpb_inject()
     timeout = _dynamic_timeout(size)
-    result = _run_serial_op(lambda: fpb.read_memory(addr, size), timeout=timeout)
+    result = _run_serial_op(
+        lambda: fpb.read_memory(addr, size), timeout=timeout, fpb=fpb
+    )
     if isinstance(result, dict) and "error" in result:
         return None, result["error"]
     raw_data, msg = result

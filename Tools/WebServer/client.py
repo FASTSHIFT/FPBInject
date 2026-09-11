@@ -522,11 +522,8 @@ class Client:
             data = bytes.fromhex(hexdata)
         except ValueError as e:
             raise FPBError(f"Invalid hex data: {hexdata!r}") from e
-        self._fpb.enter_fl_mode()
-        try:
+        with self._fpb.fl_session():
             success, error = self._fpb.write_memory(addr, data)
-        finally:
-            self._fpb.exit_fl_mode()
         if not success:
             raise FPBError(f"Memory write failed: {error}")
         return {"success": True, "addr": hex(addr), "length": len(data)}
@@ -534,11 +531,8 @@ class Client:
     def _direct_read_memory(self, addr: int, length: int) -> bytes:
         """Direct-mode raw memory read (FL-mode wrapped)."""
         self._require_device()
-        self._fpb.enter_fl_mode()
-        try:
+        with self._fpb.fl_session():
             data, msg = self._fpb.read_memory(addr, length)
-        finally:
-            self._fpb.exit_fl_mode()
         if data is None:
             raise FPBError(f"Memory read failed: {msg}")
         return data

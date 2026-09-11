@@ -63,24 +63,22 @@ def _get_fpb_inject():
     return get_fpb_inject()
 
 
-def _run_serial_op(func, timeout=10.0):
+def _run_serial_op(func, timeout=10.0, keep_fl=False, fpb=None):
     """Run a serial operation in the device worker thread.
 
-    Ensures serial port access is always from the owner thread (fpb-worker).
-
-    Args:
-        func: Function to execute (should return a result)
-        timeout: Maximum time to wait for completion
-
-    Returns:
-        Result from func, or dict with 'error' key on failure
+    Returns the device to the shell (exit_fl_mode) after the op unless
+    keep_fl=True, via the shared with_fl_exit wrapper. ``fpb`` selects which
+    FPBInject instance to exit (defaults to the shared get_fpb_inject()).
     """
+    from fpbinject.app.utils.device_op import with_fl_exit
+
     device = state.device
     result = {"error": None, "data": None}
+    work = with_fl_exit(func, keep_fl=keep_fl, fpb=fpb)
 
     def wrapper():
         try:
-            result["data"] = func()
+            result["data"] = work()
         except Exception as e:
             result["error"] = str(e)
             logger.exception(f"Serial operation error: {e}")
@@ -933,7 +931,9 @@ def api_read_symbol_from_device():
 
         # Dispatch serial read to worker thread to avoid cross-thread access
         timeout = _dynamic_timeout(size)
-        result = _run_serial_op(lambda: fpb.read_memory(addr, size), timeout=timeout)
+        result = _run_serial_op(
+            lambda: fpb.read_memory(addr, size), timeout=timeout, fpb=fpb
+        )
         if isinstance(result, dict) and "error" in result:
             return jsonify({"success": False, "error": result["error"]})
 
@@ -1006,6 +1006,7 @@ def api_read_symbol_from_device():
                     deref_result = _run_serial_op(
                         lambda: fpb.read_memory(ptr_value, target_size),
                         timeout=deref_timeout,
+                        fpb=fpb,
                     )
                     if (
                         not isinstance(deref_result, dict)
@@ -1285,7 +1286,9 @@ def api_write_symbol_to_device():
         # Dispatch serial write to worker thread to avoid cross-thread access
         timeout = _dynamic_timeout(len(write_bytes))
         result = _run_serial_op(
-            lambda: fpb.write_memory(write_addr, write_bytes), timeout=timeout
+            lambda: fpb.write_memory(write_addr, write_bytes),
+            timeout=timeout,
+            fpb=fpb,
         )
         if isinstance(result, dict) and "error" in result:
             return jsonify({"success": False, "error": result["error"]})
@@ -1341,7 +1344,9 @@ def api_memory_read():
     try:
         fpb = _get_fpb_inject()
         timeout = _dynamic_timeout(size)
-        result = _run_serial_op(lambda: fpb.read_memory(addr, size), timeout=timeout)
+        result = _run_serial_op(
+            lambda: fpb.read_memory(addr, size), timeout=timeout, fpb=fpb
+        )
         if isinstance(result, dict) and "error" in result:
             return jsonify({"success": False, "error": result["error"]})
 
@@ -1390,7 +1395,7 @@ def api_memory_write():
         fpb = _get_fpb_inject()
         timeout = _dynamic_timeout(len(write_bytes))
         result = _run_serial_op(
-            lambda: fpb.write_memory(addr, write_bytes), timeout=timeout
+            lambda: fpb.write_memory(addr, write_bytes), timeout=timeout, fpb=fpb
         )
         if isinstance(result, dict) and "error" in result:
             return jsonify({"success": False, "error": result["error"]})

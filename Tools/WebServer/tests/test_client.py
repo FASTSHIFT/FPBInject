@@ -500,6 +500,18 @@ class TestClientDirectMode(unittest.TestCase):
                 StateCls.return_value = state
                 with patch("fpbinject.fpb_inject.FPBInject") as FpbCls:
                     fpb = MagicMock()
+                    # Give the mock a real fl_session so exit_fl_mode fires on
+                    # block exit, mirroring the production FPBInject.
+                    from contextlib import contextmanager
+
+                    @contextmanager
+                    def _fl_session():
+                        try:
+                            yield fpb
+                        finally:
+                            fpb.exit_fl_mode()
+
+                    fpb.fl_session.side_effect = _fl_session
                     FpbCls.return_value = fpb
                     c = Client.direct("/dev/ttyACM0")
         return c, c._fpb, c._device_state
@@ -560,8 +572,8 @@ class TestClientDirectMode(unittest.TestCase):
         fpb.write_memory.return_value = (True, "")
         out = c.mem_write(0x20000000, "deadbeef")
         self.assertTrue(out["success"])
-        # FL-mode must wrap raw memory access.
-        fpb.enter_fl_mode.assert_called()
+        # Raw memory access is wrapped in an fl_session that returns to shell.
+        fpb.fl_session.assert_called()
         fpb.exit_fl_mode.assert_called()
 
     def test_direct_mem_write_invalid_hex(self):

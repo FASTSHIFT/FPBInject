@@ -268,7 +268,10 @@ def _create_serial_memory_callbacks(state):
                 from fpbinject.routes import get_fpb_inject
 
                 fpb = get_fpb_inject()
-                result["data"], result["msg"] = fpb.read_memory(addr, length)
+                # fl_session returns the device to the shell after the read so
+                # NuttX doesn't stay stuck in fl> after every GDB access.
+                with fpb.fl_session():
+                    result["data"], result["msg"] = fpb.read_memory(addr, length)
                 if result["data"] is not None:
                     logger.info(
                         f"[ExtGDB] read 0x{addr:08X}+{length}: OK, got {len(result['data'])} bytes"
@@ -305,7 +308,8 @@ def _create_serial_memory_callbacks(state):
                 from fpbinject.routes import get_fpb_inject
 
                 fpb = get_fpb_inject()
-                result["ok"], result["msg"] = fpb.write_memory(addr, data)
+                with fpb.fl_session():
+                    result["ok"], result["msg"] = fpb.write_memory(addr, data)
                 logger.info(
                     f"[ExtGDB] write 0x{addr:08X}+{len(data)}: {'OK' if result['ok'] else 'FAILED'} - {result['msg']}"
                 )

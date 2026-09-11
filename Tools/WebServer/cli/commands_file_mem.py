@@ -270,11 +270,8 @@ class FileMemCommandsMixin:
                 return
 
             self._require_device()
-            self._fpb.enter_fl_mode()
-            try:
+            with self._fpb.fl_session():
                 data, msg = self._fpb.read_memory(addr, length)
-            finally:
-                self._fpb.exit_fl_mode()
 
             if data is None:
                 raise FPBCLIError(f"Memory read failed: {msg}")
@@ -321,11 +318,8 @@ class FileMemCommandsMixin:
                     f"Invalid hex data: '{data_hex}'. Use hex string like 'DEADBEEF'."
                 )
 
-            self._fpb.enter_fl_mode()
-            try:
+            with self._fpb.fl_session():
                 success, error = self._fpb.write_memory(addr, data)
-            finally:
-                self._fpb.exit_fl_mode()
 
             if not success:
                 raise FPBCLIError(f"Memory write failed: {error}")
@@ -362,11 +356,8 @@ class FileMemCommandsMixin:
                 return
 
             self._require_device()
-            self._fpb.enter_fl_mode()
-            try:
+            with self._fpb.fl_session():
                 data, msg = self._fpb.read_memory(addr, length)
-            finally:
-                self._fpb.exit_fl_mode()
 
             if data is None:
                 raise FPBCLIError(f"Memory read failed: {msg}")

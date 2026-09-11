@@ -1953,6 +1953,21 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(result)
         self.device.ser.write.assert_not_called()
 
+    def test_fl_session_exits_on_normal_exit(self):
+        """fl_session returns the device to the shell when the block ends."""
+        self.fpb.exit_fl_mode = Mock(return_value=True)
+        with self.fpb.fl_session() as f:
+            self.assertIs(f, self.fpb)
+        self.fpb.exit_fl_mode.assert_called_once()
+
+    def test_fl_session_exits_on_exception(self):
+        """fl_session still exits fl mode if the block raises."""
+        self.fpb.exit_fl_mode = Mock(return_value=True)
+        with self.assertRaises(ValueError):
+            with self.fpb.fl_session():
+                raise ValueError("boom")
+        self.fpb.exit_fl_mode.assert_called_once()
+
 
 class TestDecompileFunction(unittest.TestCase):
     """Decompile function tests"""

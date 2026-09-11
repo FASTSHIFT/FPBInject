@@ -699,14 +699,15 @@ class FPBCLI(FileMemCommandsMixin):
             if compile_commands:
                 self._device_state.compile_commands_path = compile_commands
 
-            success, result = self._fpb.inject(
-                source_content=source_content,
-                target_func=target_func,
-                patch_mode=patch_mode,
-                comp=comp,
-                source_ext=source_path.suffix,
-                original_source_file=str(source_path.absolute()),
-            )
+            with self._fpb.fl_session():
+                success, result = self._fpb.inject(
+                    source_content=source_content,
+                    target_func=target_func,
+                    patch_mode=patch_mode,
+                    comp=comp,
+                    source_ext=source_path.suffix,
+                    original_source_file=str(source_path.absolute()),
+                )
 
             self.output_json(
                 {
@@ -728,7 +729,8 @@ class FPBCLI(FileMemCommandsMixin):
                 return
 
             self._require_device()
-            success, msg = self._fpb.unpatch(comp=comp, all=all_patches)
+            with self._fpb.fl_session():
+                success, msg = self._fpb.unpatch(comp=comp, all=all_patches)
             self.output_json(
                 {
                     "success": success,
@@ -748,7 +750,8 @@ class FPBCLI(FileMemCommandsMixin):
                 return
 
             self._require_device()
-            info, error = self._fpb.info()
+            with self._fpb.fl_session():
+                info, error = self._fpb.info()
             if error:
                 raise FPBCLIError(f"Failed to get info: {error}")
 
@@ -801,15 +804,15 @@ class FPBCLI(FileMemCommandsMixin):
                 return
 
             self._require_device()
-            self.output_json(
-                self._fpb.test_serial_throughput(
+            with self._fpb.fl_session():
+                out = self._fpb.test_serial_throughput(
                     start_size=start_size,
                     max_size=max_size,
                     timeout=timeout,
                     trials=trials,
                     min_success_rate=min_success_rate,
                 )
-            )
+            self.output_json(out)
         except Exception as e:
             self.output_error(f"Serial test failed: {str(e)}", e)
 
@@ -882,13 +885,14 @@ class FPBCLI(FileMemCommandsMixin):
                 )
             else:
                 self._require_device()
-                result = self._fpb.test_serial_throughput(
-                    start_size=start_size,
-                    max_size=max_size,
-                    timeout=timeout,
-                    trials=trials,
-                    min_success_rate=1.0,
-                )
+                with self._fpb.fl_session():
+                    result = self._fpb.test_serial_throughput(
+                        start_size=start_size,
+                        max_size=max_size,
+                        timeout=timeout,
+                        trials=trials,
+                        min_success_rate=1.0,
+                    )
 
             suggestions = self._doctor_suggestions(result)
             combined = " ".join(s["command"] for s in suggestions).strip()

@@ -61,23 +61,22 @@ def _get_helpers():
     )
 
 
-def _run_serial_op(func, timeout=10.0):
-    """
-    Run a serial operation in the device worker thread.
+def _run_serial_op(func, timeout=10.0, keep_fl=False, fpb=None):
+    """Run a serial operation in the device worker thread.
 
-    Args:
-        func: Function to execute (should return a result dict)
-        timeout: Maximum time to wait for completion
-
-    Returns:
-        Result dict from func, or error dict on timeout/failure
+    Returns the device to the shell (exit_fl_mode) after the op unless
+    keep_fl=True, via the shared with_fl_exit wrapper. ``fpb`` selects which
+    FPBInject instance to exit (defaults to the shared get_fpb_inject()).
     """
+    from fpbinject.app.utils.device_op import with_fl_exit
+
     device = state.device
     result = {"error": None, "data": None}
+    work = with_fl_exit(func, keep_fl=keep_fl, fpb=fpb)
 
     def wrapper():
         try:
-            result["data"] = func()
+            result["data"] = work()
         except Exception as e:
             result["error"] = str(e)
             logger.exception(f"Serial operation error: {e}")
@@ -101,7 +100,7 @@ def api_fpb_ping():
         success, msg = fpb.ping()
         return {"success": success, "message": msg}
 
-    result = _run_serial_op(do_ping, timeout=5.0)
+    result = _run_serial_op(do_ping, timeout=5.0, fpb=fpb)
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "message": result["error"]})
     return jsonify(result)
@@ -143,7 +142,7 @@ def api_fpb_test_serial():
 
     # Reliability sampling multiplies round-trips per size; widen the worker
     # timeout so a full sweep (many sizes x trials) is not cut short.
-    result = _run_serial_op(do_test, timeout=180.0)
+    result = _run_serial_op(do_test, timeout=180.0, fpb=fpb)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -193,10 +192,9 @@ def api_fpb_info():
 
     def do_info():
         info, error = fpb.info()
-        fpb.exit_fl_mode()
         return {"info": info, "error": error}
 
-    result = _run_serial_op(do_info, timeout=5.0)
+    result = _run_serial_op(do_info, timeout=5.0, fpb=fpb)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -288,7 +286,7 @@ def api_fpb_unpatch():
         def do_unpatch():
             return fpb.unpatch(comp=comp, all=clear_all)
 
-        result = _run_serial_op(do_unpatch, timeout=5.0)
+        result = _run_serial_op(do_unpatch, timeout=5.0, fpb=fpb)
 
         if "error" in result and result.get("error"):
             return jsonify({"success": False, "message": result["error"]})
@@ -323,7 +321,7 @@ def api_fpb_enable():
         def do_enable():
             return fpb.enable_patch(comp=comp, enable=enable, all=enable_all)
 
-        result = _run_serial_op(do_enable, timeout=5.0)
+        result = _run_serial_op(do_enable, timeout=5.0, fpb=fpb)
 
         if "error" in result and result.get("error"):
             return jsonify({"success": False, "message": result["error"]})
@@ -366,21 +364,17 @@ def api_fpb_inject():
     log_info(f"Starting injection for {target_func} (mode: {patch_mode})")
 
     def do_inject():
-        fpb.enter_fl_mode()
-        try:
-            success, result = fpb.inject(
-                source_content=source_content,
-                target_func=target_func,
-                inject_func=inject_func,
-                patch_mode=patch_mode,
-                comp=comp,
-                source_ext=source_ext,
-            )
-            return {"success": success, "result": result}
-        finally:
-            fpb.exit_fl_mode()
+        success, result = fpb.inject(
+            source_content=source_content,
+            target_func=target_func,
+            inject_func=inject_func,
+            patch_mode=patch_mode,
+            comp=comp,
+            source_ext=source_ext,
+        )
+        return {"success": success, "result": result}
 
-    result = _run_serial_op(do_inject, timeout=30.0)
+    result = _run_serial_op(do_inject, timeout=30.0, fpb=fpb)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -414,18 +408,14 @@ def api_fpb_inject_multi():
     log_info(f"Starting multi-function injection (mode: {patch_mode})")
 
     def do_inject_multi():
-        fpb.enter_fl_mode()
-        try:
-            success, result = fpb.inject_multi(
-                source_content=source_content,
-                patch_mode=patch_mode,
-                source_ext=source_ext,
-            )
-            return {"success": success, "result": result}
-        finally:
-            fpb.exit_fl_mode()
+        success, result = fpb.inject_multi(
+            source_content=source_content,
+            patch_mode=patch_mode,
+            source_ext=source_ext,
+        )
+        return {"success": success, "result": result}
 
-    result = _run_serial_op(do_inject_multi, timeout=60.0)
+    result = _run_serial_op(do_inject_multi, timeout=60.0, fpb=fpb)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -463,11 +453,7 @@ def api_fpb_mem_read():
     fpb = get_fpb_inject()
 
     def do_mem_read():
-        fpb.enter_fl_mode()
-        try:
-            raw_data, msg = fpb.read_memory(addr, length)
-        finally:
-            fpb.exit_fl_mode()
+        raw_data, msg = fpb.read_memory(addr, length)
 
         if raw_data is None:
             return {"success": False, "error": f"Memory read failed: {msg}"}
@@ -498,7 +484,7 @@ def api_fpb_mem_read():
 
         return result
 
-    result = _run_serial_op(do_mem_read, timeout=10.0)
+    result = _run_serial_op(do_mem_read, timeout=10.0, fpb=fpb)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
@@ -531,11 +517,7 @@ def api_fpb_mem_write():
     fpb = get_fpb_inject()
 
     def do_mem_write():
-        fpb.enter_fl_mode()
-        try:
-            success, error = fpb.write_memory(addr, write_data)
-        finally:
-            fpb.exit_fl_mode()
+        success, error = fpb.write_memory(addr, write_data)
 
         if not success:
             return {"success": False, "error": f"Memory write failed: {error}"}
@@ -547,7 +529,7 @@ def api_fpb_mem_write():
             "message": f"Wrote {len(write_data)} bytes to 0x{addr:08X}",
         }
 
-    result = _run_serial_op(do_mem_write, timeout=10.0)
+    result = _run_serial_op(do_mem_write, timeout=10.0, fpb=fpb)
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
