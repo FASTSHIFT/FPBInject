@@ -244,13 +244,10 @@ def _trigger_auto_inject(file_path):
                     def do_unpatch():
                         try:
                             fpb = get_fpb_inject()
-                            fpb.enter_fl_mode()
-                            try:
+                            with fpb.fl_session():
                                 ok, msg = fpb.unpatch(0)
                                 unpatch_result["success"] = ok
                                 unpatch_result["msg"] = msg
-                            finally:
-                                fpb.exit_fl_mode()
                         except Exception as e:
                             unpatch_result["msg"] = str(e)
 
@@ -384,31 +381,31 @@ def _trigger_auto_inject(file_path):
                 device.auto_inject_last_update = time.time()
 
                 _inject_cancelled.clear()
-                fpb.enter_fl_mode()
 
                 try:
-                    device.auto_inject_message = "Compiling..."
-                    device.auto_inject_progress = 60
-                    device.auto_inject_last_update = time.time()
+                    with fpb.fl_session():
+                        device.auto_inject_message = "Compiling..."
+                        device.auto_inject_progress = 60
+                        device.auto_inject_last_update = time.time()
 
-                    source_ext = os.path.splitext(file_path)[1] or ".c"
+                        source_ext = os.path.splitext(file_path)[1] or ".c"
 
-                    success, result = fpb.inject_multi(
-                        source_file=file_path,
-                        inject_marker_lines=marked,
-                        patch_mode=device.patch_mode,
-                        source_ext=source_ext,
-                        original_source_file=file_path,
-                        progress_callback=_progress_callback,
-                        status_callback=_status_callback,
-                    )
+                        success, result = fpb.inject_multi(
+                            source_file=file_path,
+                            inject_marker_lines=marked,
+                            patch_mode=device.patch_mode,
+                            source_ext=source_ext,
+                            original_source_file=file_path,
+                            progress_callback=_progress_callback,
+                            status_callback=_status_callback,
+                        )
 
-                    inject_result["success"] = success
-                    inject_result["result"] = result
+                        inject_result["success"] = success
+                        inject_result["result"] = result
 
-                    # Update slot info after injection attempt
-                    if success:
-                        fpb.info()
+                        # Update slot info after injection attempt
+                        if success:
+                            fpb.info()
                 except _InjectCancelled:
                     logger.info("Auto inject cancelled by user")
                     inject_result["success"] = False
@@ -416,8 +413,6 @@ def _trigger_auto_inject(file_path):
                         "error": "Cancelled",
                         "cancelled": True,
                     }
-                finally:
-                    fpb.exit_fl_mode()
 
             if not run_in_device_worker(device, do_inject, timeout=WORKER_TIMEOUT):
                 device.auto_inject_status = "failed"

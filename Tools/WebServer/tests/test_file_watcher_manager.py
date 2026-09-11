@@ -16,6 +16,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fpbinject.core.state import state, DeviceState  # noqa: E402
 
 
+def _mock_fpb_with_fl_session():
+    """A mock FPBInject whose fl_session() really calls exit_fl_mode on exit,
+    mirroring production so tests can assert the device returns to the shell."""
+    from contextlib import contextmanager
+
+    fpb = Mock()
+
+    @contextmanager
+    def _fl_session():
+        try:
+            yield fpb
+        finally:
+            fpb.exit_fl_mode()
+
+    fpb.fl_session.side_effect = _fl_session
+    return fpb
+
+
 class TestFileWatcherManager(unittest.TestCase):
     """File watcher manager tests"""
 
@@ -239,7 +257,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_gen.generate_patch_inplace.return_value = (None, [])
             mock_gen_class.return_value = mock_gen
 
-            mock_fpb = Mock()
+            mock_fpb = _mock_fpb_with_fl_session()
             mock_fpb.unpatch.return_value = (True, "")
             mock_get_fpb.return_value = mock_fpb
 
@@ -251,7 +269,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             # Wait for background thread
             time.sleep(0.2)
 
-            mock_fpb.enter_fl_mode.assert_called_once()
+            mock_fpb.fl_session.assert_called_once()
             mock_fpb.unpatch.assert_called_once_with(0)
             mock_fpb.exit_fl_mode.assert_called_once()
             self.assertFalse(state.device.inject_active)
@@ -341,7 +359,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_ser.isOpen.return_value = True
             state.device.ser = mock_ser
 
-            mock_fpb = Mock()
+            mock_fpb = _mock_fpb_with_fl_session()
             mock_fpb.inject_multi.return_value = (
                 True,
                 {
@@ -370,7 +388,7 @@ class TestTriggerAutoInject(unittest.TestCase):
 
             self.assertEqual(state.device.auto_inject_status, "success")
             self.assertTrue(state.device.inject_active)
-            mock_fpb.enter_fl_mode.assert_called_once()
+            mock_fpb.fl_session.assert_called_once()
             mock_fpb.inject_multi.assert_called_once()
             mock_fpb.exit_fl_mode.assert_called_once()
         finally:
@@ -403,7 +421,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_ser.isOpen.return_value = True
             state.device.ser = mock_ser
 
-            mock_fpb = Mock()
+            mock_fpb = _mock_fpb_with_fl_session()
             mock_fpb.inject_multi.return_value = (
                 True,
                 {
@@ -464,7 +482,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_ser.isOpen.return_value = True
             state.device.ser = mock_ser
 
-            mock_fpb = Mock()
+            mock_fpb = _mock_fpb_with_fl_session()
             mock_fpb.inject_multi.return_value = (
                 False,
                 {"error": "Compile failed", "errors": ["Syntax error"]},
@@ -537,7 +555,7 @@ class TestTriggerAutoInject(unittest.TestCase):
             mock_ser.isOpen.return_value = True
             state.device.ser = mock_ser
 
-            mock_fpb = Mock()
+            mock_fpb = _mock_fpb_with_fl_session()
             mock_fpb.inject_multi.return_value = (
                 True,
                 {

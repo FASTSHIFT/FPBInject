@@ -18,6 +18,7 @@ import time as _time
 
 from flask import Blueprint, jsonify, request
 
+from fpbinject.app.utils.device_op import with_fl_exit
 from fpbinject.app.utils.sse import sse_response
 from fpbinject.core.state import state
 from fpbinject.services.device_worker import run_in_device_worker
@@ -68,8 +69,6 @@ def _run_serial_op(func, timeout=10.0, keep_fl=False, fpb=None):
     keep_fl=True, via the shared with_fl_exit wrapper. ``fpb`` selects which
     FPBInject instance to exit (defaults to the shared get_fpb_inject()).
     """
-    from fpbinject.app.utils.device_op import with_fl_exit
-
     device = state.device
     result = {"error": None, "data": None}
     work = with_fl_exit(func, keep_fl=keep_fl, fpb=fpb)
@@ -629,7 +628,6 @@ def api_fpb_inject_multi_stream():
 
         def do_inject_multi():
             _inject_cancelled.clear()
-            fpb.enter_fl_mode()
             try:
                 progress_queue.put({"type": "status", "stage": "compiling"})
 
@@ -658,11 +656,20 @@ def api_fpb_inject_multi_stream():
                         "cancelled": True,
                     }
                 )
+
+        # with_fl_exit returns the device to the shell; the None below is the
+        # SSE terminator and is queued regardless of how the op ended.
+        work = with_fl_exit(do_inject_multi, fpb=fpb)
+
+        def do_inject_multi_wrapped():
+            try:
+                work()
             finally:
-                fpb.exit_fl_mode()
                 progress_queue.put(None)
 
-        if not run_in_device_worker(state.device, do_inject_multi, timeout=120.0):
+        if not run_in_device_worker(
+            state.device, do_inject_multi_wrapped, timeout=120.0
+        ):
             progress_queue.put(
                 {"type": "result", "success": False, "error": "Device worker timeout"}
             )
@@ -704,7 +711,6 @@ def api_fpb_inject_stream():
 
         def do_inject():
             _inject_cancelled.clear()
-            fpb.enter_fl_mode()
             try:
                 progress_queue.put({"type": "status", "stage": "compiling"})
 
@@ -733,12 +739,19 @@ def api_fpb_inject_stream():
                         "cancelled": True,
                     }
                 )
+
+        # with_fl_exit returns the device to the shell; the None below is the
+        # SSE terminator and is queued regardless of how the op ended.
+        work = with_fl_exit(do_inject, fpb=fpb)
+
+        def do_inject_wrapped():
+            try:
+                work()
             finally:
-                fpb.exit_fl_mode()
                 progress_queue.put(None)
 
         # Run in device worker for thread safety
-        if not run_in_device_worker(state.device, do_inject, timeout=60.0):
+        if not run_in_device_worker(state.device, do_inject_wrapped, timeout=60.0):
             progress_queue.put(
                 {"type": "result", "success": False, "error": "Device worker timeout"}
             )

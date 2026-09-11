@@ -68,6 +68,25 @@ with fpb.fl_session():
 # 离开作用域时自动 exit_fl_mode()，异常也保证
 ```
 
+### 流式 / worker-direct 路径
+
+一部分操作因为要推送 SSE 进度，不经过 `_run_serial_op`，而是自建一个函数直接丢给
+`run_in_device_worker`：
+
+- 读：`/symbols/read/stream`、`/memory/read/stream`
+- 注入：`/fpb/inject/stream`、`/fpb/inject-multi/stream`
+- 传输：`/transfer/upload-sync`、`/transfer/download-sync`
+- 自动注入：`file_watcher_manager` 的 auto-inject / auto-unpatch
+
+这些是最初"退出散乱、易漏"的重灾区（读内存流式路径就曾整段漏掉退出，导致点击读内存后
+设备卡在 `fl>`）。现在统一处理：
+
+- 派发给 worker 的函数用 `with_fl_exit(fn, fpb=...)` 包一层，退出仍落在 worker 线程；
+- `file_watcher_manager` 这类持有 fpb 实例的，直接用 `with fpb.fl_session():`。
+
+SSE 的结束信号 `progress_queue.put(None)` 属于传输协议、不属于 fl 退出，保留在各自的
+`finally` 里，与退出解耦。
+
 ### 一次进入、一次退出
 
 因为进入幂等，整个多命令操作只在第一条命令时真正进入 `fl`，靠这里唯一的一次退出离开，
@@ -85,11 +104,12 @@ graph TD
     end
 
     subgraph After["新: 退出集中一处"]
-        B1["route do_inject<br/>纯业务"] --> WFE[with_fl_exit 包装]
-        B2["route do_download<br/>纯业务"] --> WFE
+        B1["route _run_serial_op<br/>纯业务"] --> WFE[with_fl_exit 包装]
+        B2["流式 read/inject/传输<br/>纯业务"] --> WFE
         WFE --> W2[DeviceWorker]
         B3["cli read_memory<br/>纯业务"] --> FS[fl_session 上下文]
-        B4["gdb read/write<br/>纯业务"] --> FS
+        B4["gdb read/write ✅<br/>纯业务"] --> FS
+        B5["auto-inject/unpatch<br/>纯业务"] --> FS
         FS --> W2
     end
 ```

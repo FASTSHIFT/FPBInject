@@ -19,6 +19,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fpbinject.core import compiler  # noqa: E402
 from fpbinject.core.patch_generator import PatchGenerator  # noqa: E402
 
+
+def _attach_fl_session(fpb):
+    """Give a mock fpb a real fl_session() that fires exit_fl_mode on exit."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _fl_session():
+        try:
+            yield fpb
+        finally:
+            fpb.exit_fl_mode()
+
+    fpb.fl_session.side_effect = _fl_session
+    return fpb
+
+
 # =============================================================================
 # Test: compile_inject in-place mode
 # =============================================================================
@@ -537,7 +553,7 @@ class TestAutoInjectInplace(unittest.TestCase):
         self.state.device.ser = mock_ser
 
         # Mock FPB inject
-        mock_fpb = Mock()
+        mock_fpb = _attach_fl_session(Mock())
         mock_get_fpb.return_value = mock_fpb
         mock_fpb.enter_fl_mode.return_value = True
         mock_fpb.exit_fl_mode.return_value = True
@@ -600,7 +616,7 @@ class TestAutoInjectInplace(unittest.TestCase):
         self.state.device.inject_active = True
         self.state.device.last_inject_target = "old_func"
 
-        mock_fpb = Mock()
+        mock_fpb = _attach_fl_session(Mock())
         mock_get_fpb.return_value = mock_fpb
         mock_fpb.enter_fl_mode.return_value = True
         mock_fpb.exit_fl_mode.return_value = True

@@ -15,6 +15,7 @@ import time
 
 from flask import Blueprint, jsonify, request, Response
 
+from fpbinject.app.utils.device_op import with_fl_exit
 from fpbinject.app.utils.sse import sse_response
 from fpbinject.core.state import state
 from fpbinject.services.device_worker import run_in_device_worker
@@ -70,8 +71,6 @@ def _run_serial_op(func, timeout=10.0, keep_fl=False, fpb=None):
     keep_fl=True, via the shared with_fl_exit wrapper. ``fpb`` selects which
     FPBInject instance to exit (defaults to the shared get_fpb_inject()).
     """
-    from fpbinject.app.utils.device_op import with_fl_exit
-
     device = state.device
     result = {"error": None, "data": None}
     work = with_fl_exit(func, keep_fl=keep_fl, fpb=fpb)
@@ -1114,16 +1113,11 @@ def api_read_symbol_stream():
                         }
                     )
 
-            def do_read():
-                return fpb.read_memory(addr, size, progress_callback=progress_cb)
-
             timeout = _dynamic_timeout(size)
-            if not run_in_device_worker(device, lambda: None, timeout=0.1):
-                # Quick check if worker is alive
-                pass
-
             result = {"data": None, "error": None}
 
+            # Streaming read runs on the worker directly (not via _run_serial_op),
+            # so wrap it with with_fl_exit to return the device to the shell.
             def do_read_wrapper():
                 try:
                     result["data"] = fpb.read_memory(
@@ -1132,7 +1126,9 @@ def api_read_symbol_stream():
                 except Exception as e:
                     result["error"] = str(e)
 
-            if not run_in_device_worker(device, do_read_wrapper, timeout=timeout):
+            if not run_in_device_worker(
+                device, with_fl_exit(do_read_wrapper, fpb=fpb), timeout=timeout
+            ):
                 progress_queue.put(
                     {
                         "type": "result",
@@ -1478,7 +1474,11 @@ def api_memory_read_stream():
 
             timeout = _dynamic_timeout(size)
             device = state.device
-            ok = run_in_device_worker(device, do_read, timeout=timeout)
+            # Streaming read runs on the worker directly (not via _run_serial_op),
+            # so wrap it with with_fl_exit to return the device to the shell.
+            ok = run_in_device_worker(
+                device, with_fl_exit(do_read, fpb=fpb), timeout=timeout
+            )
 
             if not ok:
                 progress_queue.put(
