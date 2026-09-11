@@ -147,25 +147,65 @@ class FPBProtocol:
             self._platform = Platform.UNKNOWN
             return False
 
-    def exit_fl_mode(self, timeout: float = 0.3) -> bool:
-        """Exit fl interactive mode by sending 'exit' command."""
+    def exit_fl_mode(self, timeout: float = 0.5) -> bool:
+        """Exit fl mode, verifying via a bare-Enter probe.
+
+        Send ``exit``, then a lone Enter: still-in-fl re-prints ``fl>``, while
+        the shell does not. So "reply contains fl>" == still inside. Uses the
+        ``fl>`` prompt we control instead of guessing the shell prompt.
+
+        Keeps ``_in_fl_mode`` set and returns False if it can't confirm the exit.
+        """
         if not self._in_fl_mode:
             logger.debug("Not in fl mode, skipping exit")
             return True
 
         ser = self.device.ser
         if not ser:
+            self._in_fl_mode = False
             return False
 
-        try:
-            self._log_raw(LogDirection.TX, "exit")
-            ser.write(b"exit\n")
-            ser.flush()
-            self._in_fl_mode = False
-            return True
-        except Exception as e:
-            logger.error(f"Error exiting fl mode: {e}")
-            return False
+        for attempt in range(3):
+            try:
+                self._log_raw(LogDirection.TX, "exit")
+                ser.write(b"exit\n")
+                ser.flush()
+                time.sleep(0.05)  # let the device settle before probing
+
+                # Clear the exit echo so the reply reflects only the probe.
+                try:
+                    ser.reset_input_buffer()
+                except Exception:
+                    pass
+                self._log_raw(LogDirection.TX, "<enter>")
+                ser.write(b"\n")
+                ser.flush()
+
+                start = time.time()
+                response = ""
+                while time.time() - start < timeout:
+                    if ser.in_waiting:
+                        chunk = ser.read(ser.in_waiting).decode(
+                            "utf-8", errors="replace"
+                        )
+                        response += chunk
+                    else:
+                        time.sleep(0.02)
+
+                self._log_raw(LogDirection.RX, response.strip())
+
+                if "fl>" not in response:
+                    self._in_fl_mode = False
+                    logger.debug("Exited fl mode")
+                    return True
+
+                logger.warning(f"exit_fl_mode: still in fl> (attempt {attempt + 1}/3)")
+            except Exception as e:
+                logger.error(f"Error exiting fl mode: {e}")
+                return False
+
+        logger.warning("exit_fl_mode: still in fl mode after retries")
+        return False
 
     def send_cmd(
         self,

@@ -1911,6 +1911,48 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         self.assertFalse(result)
 
+    def test_exit_fl_mode_probe_still_shows_fl_stays_in_fl(self):
+        """If the Enter probe still returns fl>, exit fails and stays in fl."""
+        self.fpb._protocol._in_fl_mode = True
+
+        # Device keeps re-printing fl> on every probe (never left the loop);
+        # in_waiting stays non-zero so each retry sees the fl> reply.
+        self.device.ser.in_waiting = 3
+        self.device.ser.read.return_value = b"fl>"
+
+        result = self.fpb.exit_fl_mode(timeout=0.05)
+
+        self.assertFalse(result)
+        # Must NOT falsely believe it left fl mode.
+        self.assertTrue(self.fpb._protocol._in_fl_mode)
+
+    def test_exit_fl_mode_probe_no_fl_confirms(self):
+        """No fl> in the probe reply confirms the exit and clears the flag."""
+        self.fpb._protocol._in_fl_mode = True
+
+        # After exit, the Enter probe yields only a shell prompt (no fl>).
+        def mock_read(size=None):
+            self.device.ser.in_waiting = 0
+            return b"nsh> "
+
+        self.device.ser.read.side_effect = mock_read
+        self.device.ser.in_waiting = 5
+
+        result = self.fpb.exit_fl_mode(timeout=0.1)
+
+        self.assertTrue(result)
+        self.assertFalse(self.fpb._protocol._in_fl_mode)
+
+    def test_exit_fl_mode_not_in_mode_is_noop(self):
+        """When not in fl mode, exit is a no-op success and sends nothing."""
+        self.fpb._protocol._in_fl_mode = False
+        self.device.ser.write.reset_mock()
+
+        result = self.fpb.exit_fl_mode(timeout=0.1)
+
+        self.assertTrue(result)
+        self.device.ser.write.assert_not_called()
+
 
 class TestDecompileFunction(unittest.TestCase):
     """Decompile function tests"""
