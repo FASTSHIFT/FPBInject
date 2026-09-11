@@ -61,9 +61,7 @@ except ImportError:
     HAS_SERIAL = False
 
 
-# Error types + connection/discovery helpers were extracted to keep this
-# module under the file-size limit. Re-export so existing imports
-# (from fpbinject.cli.fpb_cli import ...) keep working.
+# Re-export extracted helpers so existing imports keep working.
 from fpbinject.cli.errors import FPBCLIError, AmbiguousServerError  # noqa: E402,F401
 from fpbinject.cli.connection_resolver import (  # noqa: E402,F401
     _is_local_url,
@@ -180,15 +178,7 @@ class FPBCLI(FileMemCommandsMixin):
         port: Optional[str],
         baudrate: int,
     ) -> ConnectionPlan:
-        """Translate the historical __init__ kwargs into a ConnectionPlan.
-
-        Preserves the old behavior used by 65+ tests:
-        - direct=True opens the serial port directly.
-        - server_url=None or localhost + port: local proxy with auto-launch
-          and direct-serial fallback enabled.
-        - server_url=None and no port: pure offline (no probe).
-        - non-local server_url: remote proxy, no auto-launch, no fallback.
-        """
+        """Translate the historical __init__ kwargs into a ConnectionPlan."""
         if direct:
             if server_url and not _is_local_url(server_url):
                 raise FPBCLIError(
