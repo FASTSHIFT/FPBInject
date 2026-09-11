@@ -251,6 +251,26 @@ class TestVirtualSerialService(unittest.TestCase):
         self.assertTrue(ok, err)
         self.assertIsNone(self.svc.status()["symlink"])
 
+    def test_symlink_parent_dir_created_when_missing(self):
+        """A symlink target in a not-yet-existing dir gets its parent created
+        (regression: os.symlink failed with ENOENT for e.g. a per-run dir)."""
+        import tempfile
+
+        base_tmp = tempfile.mkdtemp()
+        missing_dir = os.path.join(base_tmp, "sub", "nested")
+        target = os.path.join(missing_dir, "fpb_vs")
+        try:
+            ok, err = self.svc.start(symlink=target)
+            self.assertTrue(ok, err)
+            status = self.svc.status()
+            self.assertEqual(status["symlink"], target)
+            self.assertTrue(os.path.islink(target))
+        finally:
+            self.svc.stop()
+            import shutil
+
+            shutil.rmtree(base_tmp, ignore_errors=True)
+
     def test_openpty_failure_returns_error(self):
         """openpty failing yields (False, error), not an exception."""
         svc = VirtualSerialService(_FakeDevice())

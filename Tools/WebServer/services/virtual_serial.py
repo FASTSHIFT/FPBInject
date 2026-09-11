@@ -175,6 +175,20 @@ class VirtualSerialService:
                 return not os.path.exists(target)
             return False
 
+        # Ensure the target's parent directory exists; a caller may point the
+        # symlink at a not-yet-created dir (e.g. a per-run temp dir). Without
+        # this, os.symlink fails with ENOENT ("No such file or directory").
+        parent = os.path.dirname(base_path)
+        if parent and not os.path.isdir(parent):
+            try:
+                os.makedirs(parent, exist_ok=True)
+            except OSError as e:
+                logger.warning(
+                    f"Could not create symlink parent dir {parent}: {e}; "
+                    f"external tools can still open {self._slave_name} directly"
+                )
+                return None
+
         candidates = [base_path] + [f"{base_path}-{i}" for i in range(1, 10)]
         for path in candidates:
             try:
