@@ -119,6 +119,90 @@ class TestUploadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertTrue(len(results) > 0)
         self.assertTrue(results[-1]["success"])
+        # The guard must be released once the stream ends, or the follow-up
+        # refreshDeviceFiles() the frontend fires would 409.
+        self.assertFalse(self.mock_device.file_txn_lock.locked())
+
+    @patch("fpbinject.app.routes.transfer.end_transaction")
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
+    def test_upload_result_emitted_after_guard_release(self, mock_get_ft, mock_end_txn):
+        """The terminal 'result' event must be emitted AFTER the guard is
+        released. The frontend resolves its upload promise on that event and
+        instantly fires refreshDeviceFiles() (/transfer/list); if end_transaction
+        hasn't run yet, that follow-up 409s. Regression: previously the result
+        was queued inside do_upload, before the outer finally released the lock."""
+        mock_ft = Mock()
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
+        mock_ft.fopen.return_value = (True, "OK")
+        mock_ft.fwrite.return_value = (True, "OK")
+        mock_ft.fclose.return_value = (True, "OK")
+        mock_ft.fcrc.return_value = (False, 0, 0)
+        mock_ft.get_stats.return_value = {"packet_loss_rate": "0.0"}
+        mock_ft.reset_stats = Mock()
+        mock_ft.fpb = self.mock_fpb
+        mock_get_ft.return_value = mock_ft
+
+        # Record the moment end_transaction runs relative to the emitted events.
+        order = []
+        mock_end_txn.side_effect = lambda dev: order.append("end_transaction")
+
+        data = {
+            "file": (io.BytesIO(b"hello world"), "test.txt"),
+            "remote_path": "/data/test.txt",
+        }
+        response = self.client.post(
+            "/api/transfer/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        events = self._parse_sse_events(response)
+
+        # end_transaction ran exactly once.
+        self.assertEqual(order, ["end_transaction"])
+        # A successful terminal result was emitted (it now comes from the outer
+        # finally, i.e. strictly after the end_transaction call above).
+        results = [e for e in events if e.get("type") == "result"]
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[-1]["success"])
+
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
+    def test_list_right_after_upload_does_not_409(self, mock_get_ft):
+        """End-to-end guard race: a /transfer/list issued immediately after the
+        upload stream ends (what refreshDeviceFiles does) must not 409. Uses the
+        real begin/end_transaction so the lock lifecycle matches production."""
+        mock_ft = Mock()
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
+        mock_ft.fopen.return_value = (True, "OK")
+        mock_ft.fwrite.return_value = (True, "OK")
+        mock_ft.fclose.return_value = (True, "OK")
+        mock_ft.fcrc.return_value = (False, 0, 0)
+        mock_ft.flist.return_value = (True, [])
+        mock_ft.get_stats.return_value = {"packet_loss_rate": "0.0"}
+        mock_ft.reset_stats = Mock()
+        mock_ft.fpb = self.mock_fpb
+        mock_get_ft.return_value = mock_ft
+
+        data = {
+            "file": (io.BytesIO(b"hello world"), "test.txt"),
+            "remote_path": "/data/test.txt",
+        }
+        up = self.client.post(
+            "/api/transfer/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        # Drain the stream fully (this is what the frontend reader does).
+        self._parse_sse_events(up)
+
+        # The lock must be free now.
+        self.assertFalse(self.mock_device.file_txn_lock.locked())
+
+        # And an immediate follow-up list must succeed, not 409.
+        listed = self.client.get("/api/transfer/list?path=/data")
+        self.assertEqual(listed.status_code, 200)
+        self.assertTrue(listed.get_json()["success"])
 
     @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_upload_fopen_failure(self, mock_get_ft):

@@ -26,6 +26,7 @@ from fpbinject.core.file_txn import (
     request_cancel,
 )
 from fpbinject.utils.crc import crc16
+from fpbinject.app.utils.device_op import with_fl_exit
 from fpbinject.services.device_worker import run_in_device_worker
 
 bp = Blueprint("transfer", __name__)
@@ -59,8 +60,6 @@ def _run_serial_op(func, timeout=10.0, keep_fl=False, fpb=None):
     keep_fl=True, via the shared with_fl_exit wrapper. ``fpb`` selects which
     FPBInject instance to exit (defaults to the shared get_fpb_inject()).
     """
-    from fpbinject.app.utils.device_op import with_fl_exit
-
     device = state.device
     result = {"error": None, "data": None}
     work = with_fl_exit(func, keep_fl=keep_fl, fpb=fpb)
@@ -402,21 +401,25 @@ def api_transfer_upload():
                 }
             )
 
+        # The terminal "result" event is emitted by the outer finally, AFTER
+        # the transaction guard is released. The frontend resolves its upload
+        # promise on this event and immediately fires refreshDeviceFiles()
+        # (/transfer/list); emitting it while the guard is still held races and
+        # 409s. do_upload only records the outcome here.
+        result_holder = {"result": None}
+
         def do_upload():
             nonlocal cancelled
-            ft.fpb.enter_fl_mode()
             try:
                 # Manual upload with cancel check
                 # Use "rw" mode to allow CRC verification after write
                 success, msg = ft.fopen(remote_path, "rw")
                 if not success:
-                    progress_queue.put(
-                        {
-                            "type": "result",
-                            "success": False,
-                            "error": f"Failed to open: {msg}",
-                        }
-                    )
+                    result_holder["result"] = {
+                        "type": "result",
+                        "success": False,
+                        "error": f"Failed to open: {msg}",
+                    }
                     return
 
                 uploaded = 0
@@ -428,27 +431,23 @@ def api_transfer_upload():
                         cancelled = True
                         ft.fclose()
                         log_info("Upload cancelled by user")
-                        progress_queue.put(
-                            {
-                                "type": "result",
-                                "success": False,
-                                "error": "Cancelled",
-                                "cancelled": True,
-                            }
-                        )
+                        result_holder["result"] = {
+                            "type": "result",
+                            "success": False,
+                            "error": "Cancelled",
+                            "cancelled": True,
+                        }
                         return
 
                     chunk = file_data[uploaded : uploaded + chunk_size]
                     success, msg = ft.fwrite(chunk, current_offset=uploaded)
                     if not success:
                         ft.fclose()
-                        progress_queue.put(
-                            {
-                                "type": "result",
-                                "success": False,
-                                "error": f"Write failed: {msg}",
-                            }
-                        )
+                        result_holder["result"] = {
+                            "type": "result",
+                            "success": False,
+                            "error": f"Write failed: {msg}",
+                        }
                         return
 
                     uploaded += len(chunk)
@@ -473,26 +472,22 @@ def api_transfer_upload():
                     elif dev_size != total_size:
                         ft.fclose()
                         error_msg = f"Size mismatch: expected {total_size}, device has {dev_size}"
-                        progress_queue.put(
-                            {
-                                "type": "result",
-                                "success": False,
-                                "error": error_msg,
-                                "crc_error": True,
-                            }
-                        )
+                        result_holder["result"] = {
+                            "type": "result",
+                            "success": False,
+                            "error": error_msg,
+                            "crc_error": True,
+                        }
                         return
                     elif dev_crc != expected_crc:
                         ft.fclose()
                         error_msg = f"CRC mismatch: expected 0x{expected_crc:04X}, device has 0x{dev_crc:04X}"
-                        progress_queue.put(
-                            {
-                                "type": "result",
-                                "success": False,
-                                "error": error_msg,
-                                "crc_error": True,
-                            }
-                        )
+                        result_holder["result"] = {
+                            "type": "result",
+                            "success": False,
+                            "error": error_msg,
+                            "crc_error": True,
+                        }
                         return
                     else:
                         log_info(f"CRC verified: 0x{dev_crc:04X}")
@@ -507,34 +502,42 @@ def api_transfer_upload():
                     f"({total_size} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s, "
                     f"loss rate: {transfer_stats['packet_loss_rate']}%)"
                 )
-                progress_queue.put(
-                    {
-                        "type": "result",
-                        "success": True,
-                        "message": f"Uploaded {total_size} bytes",
-                        "elapsed": round(elapsed, 2),
-                        "avg_speed": round(avg_speed, 1),
-                        "stats": transfer_stats,
-                    }
-                )
-            finally:
-                ft.fpb.exit_fl_mode()
-                progress_queue.put(None)
+                result_holder["result"] = {
+                    "type": "result",
+                    "success": True,
+                    "message": f"Uploaded {total_size} bytes",
+                    "elapsed": round(elapsed, 2),
+                    "avg_speed": round(avg_speed, 1),
+                    "stats": transfer_stats,
+                }
+            except Exception as e:
+                result_holder["result"] = {
+                    "type": "result",
+                    "success": False,
+                    "error": str(e),
+                }
 
         # Use very long timeout - actual timeout is managed by activity tracking
         try:
-            if not run_in_device_worker(state.device, do_upload, timeout=86400.0):
-                progress_queue.put(
-                    {
-                        "type": "result",
-                        "success": False,
-                        "error": "Device worker not running",
-                    }
-                )
-                progress_queue.put(None)
+            if not run_in_device_worker(
+                state.device, with_fl_exit(do_upload, fpb=ft.fpb), timeout=86400.0
+            ):
+                result_holder["result"] = {
+                    "type": "result",
+                    "success": False,
+                    "error": "Device worker not running",
+                }
         finally:
-            # Release the file transaction guard acquired in the HTTP handler.
+            # Emit the terminal result only AFTER the guard is released and the
+            # device is back to the shell. The frontend resolves its upload
+            # promise on this event and instantly fires refreshDeviceFiles()
+            # (/transfer/list) -- if the guard were still held, or fl-exit still
+            # running on the worker, that follow-up would 409. Releasing first
+            # closes the race.
             end_transaction(state.device)
+            if result_holder["result"] is not None:
+                progress_queue.put(result_holder["result"])
+            progress_queue.put(None)
 
     thread = threading.Thread(target=upload_task, daemon=True)
     thread.start()
@@ -707,53 +710,49 @@ def api_transfer_download():
                 }
             )
 
+        # See upload: the terminal result is emitted by the outer finally after
+        # the guard is released, so a follow-up request the frontend fires on
+        # this event doesn't race the still-held transaction lock.
+        result_holder = {"result": None}
+
         def do_download():
             nonlocal cancelled
-            ft.fpb.enter_fl_mode()
             try:
                 # Get file size first
                 success, stat = ft.fstat(remote_path)
                 if not success:
-                    progress_queue.put(
-                        {
-                            "type": "result",
-                            "success": False,
-                            "error": f"Failed to stat: {stat.get('error', 'unknown')}",
-                        }
-                    )
+                    result_holder["result"] = {
+                        "type": "result",
+                        "success": False,
+                        "error": f"Failed to stat: {stat.get('error', 'unknown')}",
+                    }
                     return
 
                 total_size = stat.get("size", 0)
                 if stat.get("type") == "dir":
-                    progress_queue.put(
-                        {
-                            "type": "result",
-                            "success": False,
-                            "error": "Cannot download directory",
-                        }
-                    )
+                    result_holder["result"] = {
+                        "type": "result",
+                        "success": False,
+                        "error": "Cannot download directory",
+                    }
                     return
 
                 if total_size == 0:
-                    progress_queue.put(
-                        {
-                            "type": "result",
-                            "success": False,
-                            "error": "File is empty",
-                        }
-                    )
+                    result_holder["result"] = {
+                        "type": "result",
+                        "success": False,
+                        "error": "File is empty",
+                    }
                     return
 
                 # Open file for reading
                 success, msg = ft.fopen(remote_path, "r")
                 if not success:
-                    progress_queue.put(
-                        {
-                            "type": "result",
-                            "success": False,
-                            "error": f"Failed to open: {msg}",
-                        }
-                    )
+                    result_holder["result"] = {
+                        "type": "result",
+                        "success": False,
+                        "error": f"Failed to open: {msg}",
+                    }
                     return
 
                 file_data = b""
@@ -766,14 +765,12 @@ def api_transfer_download():
                         cancelled = True
                         ft.fclose()
                         log_info("Download cancelled by user")
-                        progress_queue.put(
-                            {
-                                "type": "result",
-                                "success": False,
-                                "error": "Cancelled",
-                                "cancelled": True,
-                            }
-                        )
+                        result_holder["result"] = {
+                            "type": "result",
+                            "success": False,
+                            "error": "Cancelled",
+                            "cancelled": True,
+                        }
                         return
 
                     success, chunk, msg = ft.fread(
@@ -781,13 +778,11 @@ def api_transfer_download():
                     )
                     if not success:
                         ft.fclose()
-                        progress_queue.put(
-                            {
-                                "type": "result",
-                                "success": False,
-                                "error": f"Read failed: {msg}",
-                            }
-                        )
+                        result_holder["result"] = {
+                            "type": "result",
+                            "success": False,
+                            "error": f"Read failed: {msg}",
+                        }
                         return
 
                     if msg == "EOF" or len(chunk) == 0:
@@ -816,14 +811,12 @@ def api_transfer_download():
                     elif dev_crc != local_crc:
                         ft.fclose()
                         error_msg = f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}"
-                        progress_queue.put(
-                            {
-                                "type": "result",
-                                "success": False,
-                                "error": error_msg,
-                                "crc_error": True,
-                            }
-                        )
+                        result_holder["result"] = {
+                            "type": "result",
+                            "success": False,
+                            "error": error_msg,
+                            "crc_error": True,
+                        }
                         return
                     else:
                         log_info(f"CRC verified: 0x{dev_crc:04X}")
@@ -842,36 +835,41 @@ def api_transfer_download():
                     f"({len(file_data)} bytes in {elapsed:.1f}s, {avg_speed:.0f} B/s, "
                     f"loss rate: {transfer_stats['packet_loss_rate']}%)"
                 )
-                progress_queue.put(
-                    {
-                        "type": "result",
-                        "success": True,
-                        "message": f"Downloaded {len(file_data)} bytes",
-                        "data": b64_data,
-                        "size": len(file_data),
-                        "elapsed": round(elapsed, 2),
-                        "avg_speed": round(avg_speed, 1),
-                        "stats": transfer_stats,
-                    }
-                )
-            finally:
-                ft.fpb.exit_fl_mode()
-                progress_queue.put(None)
+                result_holder["result"] = {
+                    "type": "result",
+                    "success": True,
+                    "message": f"Downloaded {len(file_data)} bytes",
+                    "data": b64_data,
+                    "size": len(file_data),
+                    "elapsed": round(elapsed, 2),
+                    "avg_speed": round(avg_speed, 1),
+                    "stats": transfer_stats,
+                }
+            except Exception as e:
+                result_holder["result"] = {
+                    "type": "result",
+                    "success": False,
+                    "error": str(e),
+                }
 
         # Use very long timeout - actual timeout is managed by activity tracking
         try:
-            if not run_in_device_worker(state.device, do_download, timeout=86400.0):
-                progress_queue.put(
-                    {
-                        "type": "result",
-                        "success": False,
-                        "error": "Device worker not running",
-                    }
-                )
-                progress_queue.put(None)
+            if not run_in_device_worker(
+                state.device, with_fl_exit(do_download, fpb=ft.fpb), timeout=86400.0
+            ):
+                result_holder["result"] = {
+                    "type": "result",
+                    "success": False,
+                    "error": "Device worker not running",
+                }
         finally:
-            # Release the file transaction guard acquired in the HTTP handler.
+            # Emit the terminal result only AFTER the guard is released and the
+            # device is back to the shell, so a follow-up request the frontend
+            # fires on this event doesn't 409 against a still-held lock.
             end_transaction(state.device)
+            if result_holder["result"] is not None:
+                progress_queue.put(result_holder["result"])
+            progress_queue.put(None)
 
     thread = threading.Thread(target=download_task, daemon=True)
     thread.start()
