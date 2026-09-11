@@ -85,7 +85,7 @@ class FPBInject:
         """Get detected platform type."""
         return self._protocol.get_platform()
 
-    def exit_fl_mode(self, timeout: float = 1.0) -> bool:
+    def exit_fl_mode(self, timeout: float = 0.3) -> bool:
         """Exit fl interactive mode."""
         return self._protocol.exit_fl_mode(timeout)
 

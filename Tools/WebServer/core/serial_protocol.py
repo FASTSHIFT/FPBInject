@@ -147,13 +147,60 @@ class FPBProtocol:
             self._platform = Platform.UNKNOWN
             return False
 
-    def exit_fl_mode(self, timeout: float = 0.5) -> bool:
-        """Exit fl mode, verifying via a bare-Enter probe.
+    def _read_pending(self, ser, max_wait: float = 0.05) -> str:
+        """Drain whatever is already buffered, returning once it empties.
 
-        Send ``exit``, then a lone Enter: still-in-fl re-prints ``fl>``, while
-        the shell does not. So "reply contains fl>" == still inside. Uses the
-        ``fl>`` prompt we control instead of guessing the shell prompt.
+        After a command the fl loop prints its next ``fl> `` prompt and blocks
+        in ``fgets`` -- that stale prompt is sitting in the buffer. Reading it
+        out (and forwarding it) here keeps it from polluting the exit probe.
+        """
+        start = time.time()
+        buf = ""
+        while time.time() - start < max_wait:
+            if ser.in_waiting:
+                buf += ser.read(ser.in_waiting).decode("utf-8", errors="replace")
+            else:
+                break
+        return buf
 
+    def _drain_serial(self, ser, idle: float, max_wait: float) -> str:
+        """Read until the device goes quiet for ``idle`` s (cap ``max_wait``).
+
+        Returns as soon as the reply stops, so a normal probe costs a few tens
+        of ms instead of the full window. If nothing arrives at all it gives up
+        after a short first-byte grace rather than blocking the whole timeout.
+        """
+        start = time.time()
+        last_rx = start
+        first_byte = min(max_wait, max(idle * 2, 0.05))
+        buf = ""
+        while True:
+            now = time.time()
+            if now - start >= max_wait:
+                break
+            if ser.in_waiting:
+                buf += ser.read(ser.in_waiting).decode("utf-8", errors="replace")
+                last_rx = time.time()
+            elif buf and now - last_rx >= idle:
+                break
+            elif not buf and now - start >= first_byte:
+                break
+            else:
+                time.sleep(0.005)
+        return buf
+
+    def exit_fl_mode(self, timeout: float = 0.3) -> bool:
+        """Exit fl mode, verifying via a fast double-Enter probe.
+
+        Clears the pending ``fl> `` prompt first, then sends ``q`` followed by
+        two quick Enters. In fl mode each Enter makes the loop re-print ``fl>``;
+        the shell does not. Detection is by *presence* of the ``fl>`` token in
+        the probe reply, never by its position -- so async log lines that
+        interleave (whether they land after a prompt, or happen to contain some
+        other ``word>``) can neither hide a real ``fl>`` nor fake one.
+
+        Reads are idle-based (a normal exit returns in tens of ms) and every
+        byte is forwarded to the terminal log, so no device output is swallowed.
         Keeps ``_in_fl_mode`` set and returns False if it can't confirm the exit.
         """
         if not self._in_fl_mode:
@@ -165,34 +212,20 @@ class FPBProtocol:
             self._in_fl_mode = False
             return False
 
-        for attempt in range(3):
-            try:
-                self._log_raw(LogDirection.TX, "exit")
-                ser.write(b"exit\n")
-                ser.flush()
-                time.sleep(0.05)  # let the device settle before probing
+        try:
+            # Flush the stale prompt so only fresh probe output is inspected.
+            self._log_raw(LogDirection.RX, self._read_pending(ser))
 
-                # Clear the exit echo so the reply reflects only the probe.
-                try:
-                    ser.reset_input_buffer()
-                except Exception:
-                    pass
-                self._log_raw(LogDirection.TX, "<enter>")
-                ser.write(b"\n")
+            for attempt in range(3):
+                self._log_raw(LogDirection.TX, "q")
+                # q leaves fl (harmless "command not found" if already in shell);
+                # the two Enters then echo a prompt we can read back.
+                ser.write(b"q\n\n\n")
                 ser.flush()
 
-                start = time.time()
-                response = ""
-                while time.time() - start < timeout:
-                    if ser.in_waiting:
-                        chunk = ser.read(ser.in_waiting).decode(
-                            "utf-8", errors="replace"
-                        )
-                        response += chunk
-                    else:
-                        time.sleep(0.02)
-
-                self._log_raw(LogDirection.RX, response.strip())
+                response = self._drain_serial(ser, idle=0.03, max_wait=timeout)
+                # Forward, don't swallow: keep whatever the device printed.
+                self._log_raw(LogDirection.RX, response)
 
                 if "fl>" not in response:
                     self._in_fl_mode = False
@@ -200,9 +233,9 @@ class FPBProtocol:
                     return True
 
                 logger.warning(f"exit_fl_mode: still in fl> (attempt {attempt + 1}/3)")
-            except Exception as e:
-                logger.error(f"Error exiting fl mode: {e}")
-                return False
+        except Exception as e:
+            logger.error(f"Error exiting fl mode: {e}")
+            return False
 
         logger.warning("exit_fl_mode: still in fl mode after retries")
         return False

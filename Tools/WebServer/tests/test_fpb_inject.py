@@ -6,6 +6,7 @@ FPB Inject module tests
 
 import os
 import sys
+import time
 import unittest
 import tempfile
 import json
@@ -1901,6 +1902,22 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         self.assertTrue(result)
 
+    def test_exit_fl_mode_sends_q(self):
+        """Exit uses the 'q' command, not 'exit'."""
+        self.fpb._protocol._in_fl_mode = True
+
+        def mock_read(size=None):
+            self.device.ser.in_waiting = 0
+            return b"nsh> "
+
+        self.device.ser.read.side_effect = mock_read
+        self.device.ser.in_waiting = 5
+
+        self.fpb.exit_fl_mode(timeout=0.1)
+
+        writes = b"".join(c.args[0] for c in self.device.ser.write.call_args_list)
+        self.assertIn(b"q\n", writes)
+
     def test_exit_fl_mode_error(self):
         """Test exiting fl mode exception"""
         # Set the fl mode flag to ensure exit is attempted
@@ -1942,6 +1959,73 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertFalse(self.fpb._protocol._in_fl_mode)
+
+    def test_exit_fl_mode_returns_fast_on_idle(self):
+        """A prompt reply that then goes idle returns well before the timeout."""
+        self.fpb._protocol._in_fl_mode = True
+
+        state = {"served": False}
+
+        def mock_in_waiting():
+            # Serve the prompt once, then stay idle so the drain loop breaks
+            # on the idle window instead of waiting out the full timeout.
+            if not state["served"]:
+                return 5
+            return 0
+
+        def mock_read(size=None):
+            state["served"] = True
+            return b"nsh> "
+
+        type(self.device.ser).in_waiting = property(lambda s: mock_in_waiting())
+        self.device.ser.read.side_effect = mock_read
+
+        start = time.time()
+        result = self.fpb.exit_fl_mode(timeout=5.0)
+        elapsed = time.time() - start
+
+        self.assertTrue(result)
+        # Idle-based drain must return far faster than the 5s cap.
+        self.assertLess(elapsed, 1.0)
+
+    def test_exit_fl_mode_trailing_log_after_shell_prompt(self):
+        """An async log printed after the shell prompt still counts as exited.
+
+        Detection is by presence of 'fl>', not position, so a log line landing
+        after the shell prompt cannot mask a successful exit.
+        """
+        self.fpb._protocol._in_fl_mode = True
+
+        chunks = [b"nsh> \n", b"[INFO] task done cpu>90\n"]
+
+        def mock_read(size=None):
+            return chunks.pop(0) if chunks else b""
+
+        type(self.device.ser).in_waiting = property(lambda s: 5 if chunks else 0)
+        self.device.ser.read.side_effect = mock_read
+
+        result = self.fpb.exit_fl_mode(timeout=0.2)
+
+        # No literal 'fl>' anywhere -> exited, despite the trailing 'cpu>' log.
+        self.assertTrue(result)
+        self.assertFalse(self.fpb._protocol._in_fl_mode)
+
+    def test_exit_fl_mode_interleaved_log_before_fl_prompt(self):
+        """A log line ahead of a re-printed fl> is still detected as in-fl.
+
+        Presence-based detection finds the 'fl>' even when it is not the last
+        thing on the wire.
+        """
+        self.fpb._protocol._in_fl_mode = True
+
+        # Device keeps re-printing fl> (never left), with a log wedged in.
+        self.device.ser.in_waiting = 20
+        self.device.ser.read.return_value = b"[INFO] busy\nfl> "
+
+        result = self.fpb.exit_fl_mode(timeout=0.05)
+
+        self.assertFalse(result)
+        self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_not_in_mode_is_noop(self):
         """When not in fl mode, exit is a no-op success and sends nothing."""
