@@ -11,8 +11,8 @@
 #   - CMake cmake-format --check        (Tools/cmake_format.sh)
 #   - Shell shfmt -d
 #   - Kconfig lint                      (Tools/kconfig_lint.py)
-#   - Python black --check + flake8     (Tools/WebServer/format.sh)
-#   - JS/HTML/CSS prettier --check
+#   - WebServer Python + JS/HTML/CSS    (Tools/WebServer/format.sh --check --lint)
+#     (delegated to the exact CI script so local checks never drift from CI)
 #
 # Any check whose tool is missing is skipped with a notice (never blocks).
 # Bypass entirely with `git commit --no-verify`.
@@ -199,87 +199,40 @@ check_kconfig() {
 }
 
 # ------------------------------------------------------------------
-# 5. Python black --check + flake8 (whole repo staged *.py)
+# 5. WebServer Python + JS/HTML/CSS format & lint
 # ------------------------------------------------------------------
-check_python() {
-    local files
-    files=$(staged_match '*.py')
-    [ -z "$files" ] && return
-
-    # black --check
-    if python3 -m black --version &>/dev/null; then
-        CHECKS_RUN=$((CHECKS_RUN + 1))
-        # shellcheck disable=SC2086
-        if python3 -m black --check --quiet --line-length 88 $files 2>/dev/null; then
-            ok "Python black"
-        else
-            fail "Python needs formatting (black)"
-            echo "        fix: python3 -m black --line-length 88 <files>  (or Tools/WebServer/format.sh)"
-        fi
-    else
-        skip "black not installed (Python format check)"
-    fi
-
-    # flake8 (split test vs src ignore rules, matching format.sh)
-    if command -v flake8 &>/dev/null; then
-        CHECKS_RUN=$((CHECKS_RUN + 1))
-        local test_files="" src_files="" f
-        while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            if [[ "$f" == */tests/* ]]; then
-                test_files="$test_files $f"
-            else
-                src_files="$src_files $f"
-            fi
-        done <<<"$files"
-
-        local lint_ok=1
-        if [ -n "$src_files" ]; then
-            # shellcheck disable=SC2086
-            flake8 --ignore=E501,W503,E203 --max-line-length=120 $src_files || lint_ok=0
-        fi
-        if [ -n "$test_files" ]; then
-            # shellcheck disable=SC2086
-            flake8 --ignore=E501,W503,E203,E402 --max-line-length=120 $test_files || lint_ok=0
-        fi
-        if [ "$lint_ok" = 1 ]; then
-            ok "Python flake8"
-        else
-            fail "Python flake8 warnings"
-        fi
-    else
-        skip "flake8 not installed (Python lint)"
-    fi
-}
-
-# ------------------------------------------------------------------
-# 6. Prettier for JS/HTML/CSS (excludes vendored libs)
-# ------------------------------------------------------------------
-check_prettier() {
-    local prettier=""
-    if command -v prettier &>/dev/null; then
-        prettier="prettier"
-    elif command -v npx &>/dev/null; then
-        prettier="npx --yes prettier"
-    else
-        skip "prettier not installed (JS/HTML/CSS format check)"
+# Delegate to the SAME script CI runs (Tools/WebServer/format.sh) so the local
+# check can never drift from CI. Previously this hook re-implemented black /
+# flake8 / prettier invocations by hand, and a missing `--single-quote` on the
+# JS prettier call disagreed with format.sh -- the hook blessed double-quoted
+# JS that CI then rejected. One source of truth avoids that class of bug.
+#
+# format.sh formats in place (even in --check mode), exactly like CI; we then
+# detect whether it changed anything and fail if so, mirroring CI's
+# `git diff --quiet` gate.
+check_webserver_format() {
+    local ws="Tools/WebServer"
+    if [ ! -x "$ws/format.sh" ]; then
+        skip "$ws/format.sh not found (WebServer format/lint)"
         return
     fi
 
-    local files
-    files=$(staged_match '*.js' '*.html' '*.css' \
-        | grep -v 'static/js/lib/' \
-        | grep -v 'node_modules/' || true)
-    [ -z "$files" ] && return
-
     CHECKS_RUN=$((CHECKS_RUN + 1))
-    # prettier --check reads its own config; batch all files.
-    # shellcheck disable=SC2086
-    if $prettier --check $files >/dev/null 2>&1; then
-        ok "JS/HTML/CSS prettier"
+
+    # Snapshot tracked-file state so we can tell if format.sh rewrote anything.
+    local before after
+    before=$(git -C "$REPO_ROOT" diff)
+    if ! (cd "$ws" && ./format.sh --check --lint >/dev/null 2>&1); then
+        fail "WebServer lint failed (see: $ws/format.sh --check --lint)"
+        return
+    fi
+    after=$(git -C "$REPO_ROOT" diff)
+
+    if [ "$before" != "$after" ]; then
+        fail "WebServer files need formatting"
+        echo "        fix: (cd $ws && ./format.sh) then re-stage"
     else
-        fail "JS/HTML/CSS needs formatting (prettier)"
-        echo "        fix: Tools/WebServer/format.sh"
+        ok "WebServer format + lint"
     fi
 }
 
@@ -314,8 +267,7 @@ check_clang_format
 check_shfmt
 check_cmake_format
 check_kconfig
-check_python
-check_prettier
+check_webserver_format
 check_file_lines
 
 echo ""
