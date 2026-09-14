@@ -828,6 +828,55 @@ class TestFPBProtocolInfo(unittest.TestCase):
         self.assertGreaterEqual(len(empty), 1)
 
 
+class TestPhaseFragmentProbe(unittest.TestCase):
+    """Test _phase_fragment_probe (Phase 1)."""
+
+    def setUp(self):
+        self.device = MagicMock()
+        self.device.ser = MagicMock()
+        self.device.raw_serial_log = []
+        self.device.raw_log_next_id = 0
+        self.device.raw_log_max_size = 5000
+        self.device.serial_tx_fragment_size = 0
+        self.device.serial_tx_fragment_delay = 0.002
+        self.protocol = FPBProtocol(self.device)
+
+    def test_probes_with_small_size(self):
+        """Phase 1 must probe with a SMALL payload (<= 64B).
+
+        A large probe (e.g. the original 256B) exceeds a typical device RX
+        line buffer and overloads it, which made the verdict flip run to run
+        ("one good, one bad"). Lock the probe size small so it can't regress.
+        """
+        seen_sizes = []
+
+        def fake_probe_echo(size, timeout=2.0):
+            seen_sizes.append(size)
+            return {"passed": True}
+
+        self.protocol._probe_echo = fake_probe_echo
+
+        self.protocol._phase_fragment_probe(timeout=1.0)
+
+        self.assertTrue(seen_sizes)
+        self.assertLessEqual(max(seen_sizes), 64)
+
+    def test_pass_means_not_needed(self):
+        """A passing probe => fragmentation not needed."""
+        self.protocol._probe_echo = lambda size, timeout=2.0: {"passed": True}
+        result = self.protocol._phase_fragment_probe(timeout=1.0)
+        self.assertFalse(result["needed"])
+
+    def test_fail_means_needed(self):
+        """A failing probe (after retries) => fragmentation needed."""
+        self.protocol._probe_echo = lambda size, timeout=2.0: {
+            "passed": False,
+            "error": "timeout",
+        }
+        result = self.protocol._phase_fragment_probe(timeout=1.0)
+        self.assertTrue(result["needed"])
+
+
 class TestPhaseFragmentSizeProbe(unittest.TestCase):
     """Test _phase_fragment_size_probe (Phase 1.5)"""
 

@@ -891,9 +891,9 @@ class FPBProtocol:
     def _phase_fragment_probe(self, timeout: float = 2.0) -> Dict:
         """Phase 1: Detect whether TX fragmentation is needed.
 
-        Sends a medium-length echo command (256 bytes). If it succeeds,
-        fragmentation is not needed. If it fails, fragmentation is required
-        but the optimal fragment size is left to the user or a future probe.
+        Sends a short echo command (16 bytes). If it succeeds, fragmentation is
+        not needed. If it fails, fragmentation is required but the optimal
+        fragment size is left to the user or a future probe.
         """
         result: Dict = {
             "needed": False,
@@ -901,7 +901,7 @@ class FPBProtocol:
         }
         max_retries = 3
         for attempt in range(max_retries):
-            probe = self._probe_echo(256, timeout=timeout)
+            probe = self._probe_echo(16, timeout=timeout)
             if probe["passed"]:
                 break
         result["test"] = probe
