@@ -359,9 +359,9 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.fpb = FPBInject(self.device)
 
     def test_enter_fl_mode(self):
-        """Test entering fl mode"""
-        self.device.ser.read.return_value = b"fl>"
-        self.device.ser.in_waiting = 3
+        """Entry is confirmed by the unique banner, not the bare 'fl>' prompt."""
+        self.device.ser.read.return_value = b"FPBInject Function Loader (NuttX)\nfl> "
+        self.device.ser.in_waiting = 33
 
         result = self.fpb.enter_fl_mode(timeout=0.1)
 
@@ -369,8 +369,19 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.assertEqual(self.fpb.get_platform(), Platform.NUTTX)
         self.device.ser.write.assert_called()
 
+    def test_enter_fl_mode_bare_fl_prompt_not_enough(self):
+        """A stray 'fl>' substring without the banner must NOT be taken as
+        entering fl mode (that false positive is the bug this guards)."""
+        self.device.ser.read.return_value = b"nsh> cat /etc/fl>config\nnsh> "
+        self.device.ser.in_waiting = 28
+
+        result = self.fpb.enter_fl_mode(timeout=0.1)
+
+        self.assertFalse(result)
+        self.assertFalse(self.fpb._protocol._in_fl_mode)
+
     def test_enter_fl_mode_bare_metal(self):
-        """Test entering fl mode on bare-metal (no fl> prompt)"""
+        """Test entering fl mode on bare-metal (no banner)"""
         self.device.ser.read.return_value = b"[FLOK] some response"
         self.device.ser.in_waiting = 18
 
@@ -381,10 +392,10 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
     def test_enter_fl_mode_nuttx_hint(self):
         """Test detecting NuttX platform via hint message"""
-        # Simulate NuttX returning the hint message
+        # Simulate NuttX returning the hint message, then the banner.
         responses = [
             b"[FLERR] Enter 'fl' to start interactive mode",
-            b"fl>",
+            b"FPBInject Function Loader (NuttX)\nfl> ",
         ]
         call_count = [0]
 
@@ -413,10 +424,7 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.assertEqual(self.fpb.get_platform(), Platform.UNKNOWN)
 
     def test_exit_fl_mode(self):
-        """Test exiting fl mode"""
-        self.device.ser.read.return_value = b"[FLOK]\nap>"
-        self.device.ser.in_waiting = 8
-
+        """Not in fl mode -> exit is a no-op success."""
         result = self.fpb.exit_fl_mode(timeout=0.1)
 
         self.assertTrue(result)
@@ -1886,41 +1894,70 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         self.assertTrue(success)
 
-    def test_exit_fl_mode(self):
-        """Test exiting fl mode"""
-        # Set the fl mode flag to ensure exit is attempted
-        self.fpb._protocol._in_fl_mode = True
+    def _serve_once(self, payload: bytes):
+        """Answer the exit probe with ``payload`` once, then go idle.
+
+        The reply is withheld until the ``echo fldet`` probe has been written,
+        so the initial stale-prompt flush (_read_pending) sees an empty buffer
+        and only the probe drain observes the payload. Mirrors a device that
+        stays silent until asked, then answers and falls quiet.
+        """
+        state = {"probed": False, "served": False}
+
+        def mock_write(data, *a, **k):
+            if b"echo fldet" in data:
+                state["probed"] = True
+            return len(data)
+
+        def mock_in_waiting():
+            if state["probed"] and not state["served"]:
+                return len(payload)
+            return 0
 
         def mock_read(size=None):
-            self.device.ser.in_waiting = 0
-            return b"[FLOK]\nap>"
+            if state["probed"] and not state["served"]:
+                state["served"] = True
+                return payload
+            return b""
 
+        self.device.ser.write.side_effect = mock_write
+        type(self.device.ser).in_waiting = property(lambda s: mock_in_waiting())
         self.device.ser.read.side_effect = mock_read
-        self.device.ser.in_waiting = 10
+
+    def test_exit_fl_mode_shell_echo_confirms(self):
+        """nsh echoing 'fldet' back positively confirms the exit."""
+        self.fpb._protocol._in_fl_mode = True
+        self._serve_once(b"echo fldet\r\nfldet\r\nnsh> ")
 
         result = self.fpb.exit_fl_mode(timeout=0.1)
 
         self.assertTrue(result)
+        self.assertFalse(self.fpb._protocol._in_fl_mode)
 
-    def test_exit_fl_mode_sends_q(self):
-        """Exit uses the 'q' command, not 'exit'."""
+    def test_exit_fl_mode_command_not_found_confirms(self):
+        """When nsh has no echo builtin, 'command not found' still confirms
+        we're in the shell (not fl)."""
         self.fpb._protocol._in_fl_mode = True
+        self._serve_once(b"nsh: echo: command not found\r\nnsh> ")
 
-        def mock_read(size=None):
-            self.device.ser.in_waiting = 0
-            return b"nsh> "
+        result = self.fpb.exit_fl_mode(timeout=0.1)
 
-        self.device.ser.read.side_effect = mock_read
-        self.device.ser.in_waiting = 5
+        self.assertTrue(result)
+        self.assertFalse(self.fpb._protocol._in_fl_mode)
+
+    def test_exit_fl_mode_sends_q_and_probe(self):
+        """Exit sends 'q' to leave and 'echo fldet' as the positive probe."""
+        self.fpb._protocol._in_fl_mode = True
+        self._serve_once(b"fldet\r\nnsh> ")
 
         self.fpb.exit_fl_mode(timeout=0.1)
 
         writes = b"".join(c.args[0] for c in self.device.ser.write.call_args_list)
         self.assertIn(b"q\n", writes)
+        self.assertIn(b"echo fldet\n", writes)
 
     def test_exit_fl_mode_error(self):
-        """Test exiting fl mode exception"""
-        # Set the fl mode flag to ensure exit is attempted
+        """A write exception during exit is reported as failure."""
         self.fpb._protocol._in_fl_mode = True
         self.device.ser.write.side_effect = Exception("Write error")
 
@@ -1928,99 +1965,64 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         self.assertFalse(result)
 
-    def test_exit_fl_mode_probe_still_shows_fl_stays_in_fl(self):
-        """If the Enter probe still returns fl>, exit fails and stays in fl."""
+    def test_exit_fl_mode_fl_error_means_still_in_fl(self):
+        """fl_error in the reply means the fl loop rejected the probe -> still
+        inside; must fail and keep the flag set."""
         self.fpb._protocol._in_fl_mode = True
-
-        # Device keeps re-printing fl> on every probe (never left the loop);
-        # in_waiting stays non-zero so each retry sees the fl> reply.
-        self.device.ser.in_waiting = 3
-        self.device.ser.read.return_value = b"fl>"
+        # Device keeps rejecting the unknown 'echo fldet' with fl_error.
+        self.device.ser.in_waiting = 32
+        self.device.ser.read.return_value = b"fl_error: -3. Type 'q' to exit\r\nfl> "
 
         result = self.fpb.exit_fl_mode(timeout=0.05)
 
         self.assertFalse(result)
-        # Must NOT falsely believe it left fl mode.
         self.assertTrue(self.fpb._protocol._in_fl_mode)
 
-    def test_exit_fl_mode_probe_no_fl_confirms(self):
-        """No fl> in the probe reply confirms the exit and clears the flag."""
+    def test_exit_fl_mode_empty_reply_is_not_success(self):
+        """The core bug: a heavily-lossy link returns nothing. Absence of a
+        reply must NOT be read as success -- we may still be stuck in fl."""
         self.fpb._protocol._in_fl_mode = True
+        self.device.ser.in_waiting = 0
+        self.device.ser.read.return_value = b""
 
-        # After exit, the Enter probe yields only a shell prompt (no fl>).
-        def mock_read(size=None):
-            self.device.ser.in_waiting = 0
-            return b"nsh> "
+        result = self.fpb.exit_fl_mode(timeout=0.05)
 
-        self.device.ser.read.side_effect = mock_read
-        self.device.ser.in_waiting = 5
+        self.assertFalse(result)
+        # Must not falsely clear the flag on an unconfirmed exit.
+        self.assertTrue(self.fpb._protocol._in_fl_mode)
 
-        result = self.fpb.exit_fl_mode(timeout=0.1)
+    def test_exit_fl_mode_garbage_reply_is_not_success(self):
+        """A non-empty reply that proves neither shell nor fl (no fldet / no
+        'command not found' / no fl_error) is unconfirmed -> failure."""
+        self.fpb._protocol._in_fl_mode = True
+        self.device.ser.in_waiting = 16
+        self.device.ser.read.return_value = b"[INFO] random log line\r\n"
 
-        self.assertTrue(result)
-        self.assertFalse(self.fpb._protocol._in_fl_mode)
+        result = self.fpb.exit_fl_mode(timeout=0.05)
+
+        self.assertFalse(result)
+        self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_returns_fast_on_idle(self):
-        """A prompt reply that then goes idle returns well before the timeout."""
+        """A confirming reply that then goes idle returns before the timeout."""
         self.fpb._protocol._in_fl_mode = True
-
-        state = {"served": False}
-
-        def mock_in_waiting():
-            # Serve the prompt once, then stay idle so the drain loop breaks
-            # on the idle window instead of waiting out the full timeout.
-            if not state["served"]:
-                return 5
-            return 0
-
-        def mock_read(size=None):
-            state["served"] = True
-            return b"nsh> "
-
-        type(self.device.ser).in_waiting = property(lambda s: mock_in_waiting())
-        self.device.ser.read.side_effect = mock_read
+        self._serve_once(b"fldet\r\nnsh> ")
 
         start = time.time()
         result = self.fpb.exit_fl_mode(timeout=5.0)
         elapsed = time.time() - start
 
         self.assertTrue(result)
-        # Idle-based drain must return far faster than the 5s cap.
         self.assertLess(elapsed, 1.0)
 
-    def test_exit_fl_mode_trailing_log_after_shell_prompt(self):
-        """An async log printed after the shell prompt still counts as exited.
-
-        Detection is by presence of 'fl>', not position, so a log line landing
-        after the shell prompt cannot mask a successful exit.
-        """
+    def test_exit_fl_mode_fl_error_before_shell_prompt_stays_in_fl(self):
+        """fl_error anywhere in the reply wins over a later shell-looking token:
+        the fl loop is still active, so do not report success."""
         self.fpb._protocol._in_fl_mode = True
-
-        chunks = [b"nsh> \n", b"[INFO] task done cpu>90\n"]
-
-        def mock_read(size=None):
-            return chunks.pop(0) if chunks else b""
-
-        type(self.device.ser).in_waiting = property(lambda s: 5 if chunks else 0)
-        self.device.ser.read.side_effect = mock_read
-
-        result = self.fpb.exit_fl_mode(timeout=0.2)
-
-        # No literal 'fl>' anywhere -> exited, despite the trailing 'cpu>' log.
-        self.assertTrue(result)
-        self.assertFalse(self.fpb._protocol._in_fl_mode)
-
-    def test_exit_fl_mode_interleaved_log_before_fl_prompt(self):
-        """A log line ahead of a re-printed fl> is still detected as in-fl.
-
-        Presence-based detection finds the 'fl>' even when it is not the last
-        thing on the wire.
-        """
-        self.fpb._protocol._in_fl_mode = True
-
-        # Device keeps re-printing fl> (never left), with a log wedged in.
-        self.device.ser.in_waiting = 20
-        self.device.ser.read.return_value = b"[INFO] busy\nfl> "
+        self.device.ser.in_waiting = 40
+        self.device.ser.read.return_value = (
+            b"fl_error: -3. Type 'q' to exit\r\n[INFO] busy nsh> "
+        )
 
         result = self.fpb.exit_fl_mode(timeout=0.05)
 

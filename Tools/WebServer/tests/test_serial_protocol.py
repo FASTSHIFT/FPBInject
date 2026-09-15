@@ -108,9 +108,9 @@ class TestFPBProtocolPlatform(unittest.TestCase):
         self.assertEqual(self.protocol.get_platform(), Platform.UNKNOWN)
 
     def test_platform_nuttx_detected(self):
-        """Test NuttX platform detection"""
-        self.device.ser.in_waiting = 3
-        self.device.ser.read.return_value = b"fl>"
+        """Test NuttX platform detection (via the unique entry banner)"""
+        self.device.ser.in_waiting = 33
+        self.device.ser.read.return_value = b"FPBInject Function Loader (NuttX)\nfl> "
 
         call_count = 0
 

@@ -38,6 +38,14 @@ class LogDirection(Enum):
     RX = "RX"
 
 
+# Unique banner the firmware prints on entering fl interactive mode
+# (see App/func_loader/fl_port_nuttx.c: "FPBInject Function Loader (NuttX)").
+# Used as the enter-success signal instead of the bare "fl>" prompt: "fl>" is a
+# 3-char token that can appear in unrelated shell output/logs and cause a false
+# "already in fl mode" verdict, whereas this full string is effectively unique.
+FL_MODE_BANNER = "FPBInject Function Loader"
+
+
 class FPBProtocolError(Exception):
     """Exception for FPB protocol operations."""
 
@@ -107,7 +115,7 @@ class FPBProtocol:
                     chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
                     response += chunk
                     if (
-                        "fl>" in response
+                        FL_MODE_BANNER in response
                         or "[FLOK]" in response
                         or "[FLERR]" in response
                     ):
@@ -116,7 +124,9 @@ class FPBProtocol:
             self._log_raw(LogDirection.RX, response.strip())
             logger.debug(f"Entered fl mode: {response.strip()}")
 
-            if "fl>" in response:
+            # Success signal is the unique entry banner, not the bare "fl>"
+            # prompt (which can appear in unrelated shell output).
+            if FL_MODE_BANNER in response:
                 self._in_fl_mode = True
                 self._platform = Platform.NUTTX
                 logger.info("Detected NuttX platform (fl interactive mode)")
@@ -131,7 +141,7 @@ class FPBProtocol:
                             "utf-8", errors="replace"
                         )
                         response += chunk
-                        if "fl>" in response:
+                        if FL_MODE_BANNER in response:
                             self._in_fl_mode = True
                             return True
                     time.sleep(0.01)
@@ -192,16 +202,22 @@ class FPBProtocol:
     def exit_fl_mode(self, timeout: float = 0.3) -> bool:
         """Exit fl mode, verifying via a fast double-Enter probe.
 
-        Clears the pending ``fl> `` prompt first, then sends ``q`` followed by
-        two quick Enters. In fl mode each Enter makes the loop re-print ``fl>``;
-        the shell does not. Detection is by *presence* of the ``fl>`` token in
-        the probe reply, never by its position -- so async log lines that
-        interleave (whether they land after a prompt, or happen to contain some
-        other ``word>``) can neither hide a real ``fl>`` nor fake one.
+        Sends ``q`` to leave, then verifies with a POSITIVE probe: ``echo
+        fldet``. The verdict is based on what the reply *contains*, not on the
+        absence of a prompt (the old "no ``fl>`` == out" test wrongly reported
+        success on an empty/lost reply -- exactly when the link was worst):
 
-        Reads are idle-based (a normal exit returns in tens of ms) and every
-        byte is forwarded to the terminal log, so no device output is swallowed.
-        Keeps ``_in_fl_mode`` set and returns False if it can't confirm the exit.
+        - reply contains ``fl_error`` -> still inside the fl interactive loop
+          (it rejects the unknown ``echo`` line), so exit has NOT happened;
+        - reply contains ``fldet`` (nsh echoed it back) or ``command not
+          found`` (nsh has no echo builtin) -> we are in the shell, exit
+          confirmed;
+        - empty / unrecognizable reply -> cannot confirm, treat as failure and
+          retry, never as success.
+
+        Reads are idle-based and every byte is forwarded to the terminal log,
+        so no device output is swallowed. Keeps ``_in_fl_mode`` set and returns
+        False if it can't positively confirm the exit.
         """
         if not self._in_fl_mode:
             logger.debug("Not in fl mode, skipping exit")
@@ -216,28 +232,45 @@ class FPBProtocol:
             # Flush the stale prompt so only fresh probe output is inspected.
             self._log_raw(LogDirection.RX, self._read_pending(ser))
 
-            for attempt in range(3):
+            for attempt in range(5):
                 self._log_raw(LogDirection.TX, "q")
-                # q leaves fl (harmless "command not found" if already in shell);
-                # the two Enters then echo a prompt we can read back.
-                ser.write(b"q\n\n\n")
+                ser.write(b"q\n")
+                ser.flush()
+                # Positive probe: an unknown token. In fl it yields fl_error;
+                # in the shell it is echoed back (or reported not found).
+                self._log_raw(LogDirection.TX, "echo fldet")
+                ser.write(b"echo fldet\n")
                 ser.flush()
 
                 response = self._drain_serial(ser, idle=0.03, max_wait=timeout)
                 # Forward, don't swallow: keep whatever the device printed.
                 self._log_raw(LogDirection.RX, response)
 
-                if "fl>" not in response:
+                if "fl_error" in response:
+                    # Still in the fl loop; the shell never prints fl_error.
+                    logger.warning(
+                        f"exit_fl_mode: still in fl (fl_error seen, "
+                        f"attempt {attempt + 1}/5)"
+                    )
+                    continue
+
+                if "fldet" in response or "command not found" in response:
+                    # Shell echoed our token or rejected it -> we are out.
                     self._in_fl_mode = False
-                    logger.debug("Exited fl mode")
+                    logger.debug("Exited fl mode (shell probe confirmed)")
                     return True
 
-                logger.warning(f"exit_fl_mode: still in fl> (attempt {attempt + 1}/3)")
+                # Empty or unrecognizable reply: cannot confirm the exit. This
+                # is the dangerous case (heavy loss) -- never assume success.
+                logger.warning(
+                    f"exit_fl_mode: exit unconfirmed, no shell echo "
+                    f"(attempt {attempt + 1}/5): {response[:80]!r}"
+                )
         except Exception as e:
             logger.error(f"Error exiting fl mode: {e}")
             return False
 
-        logger.warning("exit_fl_mode: still in fl mode after retries")
+        logger.warning("exit_fl_mode: could not confirm exit from fl mode")
         return False
 
     def send_cmd(
