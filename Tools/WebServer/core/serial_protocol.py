@@ -45,6 +45,10 @@ class LogDirection(Enum):
 # "already in fl mode" verdict, whereas this full string is effectively unique.
 FL_MODE_BANNER = "FPBInject Function Loader"
 
+# Marker the firmware prints on leaving the fl loop (see fl_port_nuttx.c).
+# Part of the [FLxxx] protocol family; preferred exit-confirmation signal.
+FL_MODE_EXIT_MARKER = "[FLEXIT]"
+
 
 class FPBProtocolError(Exception):
     """Exception for FPB protocol operations."""
@@ -200,22 +204,15 @@ class FPBProtocol:
         return buf
 
     def exit_fl_mode(self, timeout: float = 0.3) -> bool:
-        """Exit fl mode, verifying with a bogus-command probe.
+        """Exit fl mode, verifying via ``[FLEXIT]`` marker + bogus-command probe.
 
-        Sends ``q`` to leave, then a bogus token ``fldet`` as a command. The
-        verdict is based on the two mutually-exclusive *error* responses, which
-        (unlike the token itself) serial echo cannot fabricate:
+        Sends ``q`` then a bogus command ``fldet``; decides from reply content
+        (not serial echo, which bounces the token back in both modes):
 
-        - reply contains ``fl_error`` -> still inside the fl interactive loop
-          (it rejects the unknown command), so exit has NOT happened;
-        - reply contains ``command not found`` -> nsh rejected the unknown
-          command, i.e. we are in the shell -> exit confirmed;
-        - empty / unrecognizable reply -> cannot confirm, treat as failure and
-          retry, never as success.
-
-        The probe token is deliberately NOT used as the success signal: with
-        serial echo on, ``fldet`` is echoed back in *both* modes, so matching
-        it would be a false positive. Only the shell/fl error strings decide.
+        - ``[FLEXIT]`` -> confirmed (firmware's explicit exit marker; primary);
+        - ``fl_error`` -> still in the fl loop (rejected the bogus command);
+        - ``command not found`` -> fallback for firmware without the marker;
+        - empty/unrecognizable -> unconfirmed, retry, never assume success.
 
         Reads are idle-based and every byte is forwarded to the terminal log,
         so no device output is swallowed. Keeps ``_in_fl_mode`` set and returns
@@ -248,8 +245,13 @@ class FPBProtocol:
                 # Forward, don't swallow: keep whatever the device printed.
                 self._log_raw(LogDirection.RX, response)
 
+                if FL_MODE_EXIT_MARKER in response:
+                    self._in_fl_mode = False
+                    logger.debug("Exited fl mode ([FLEXIT] confirmed)")
+                    return True
+
                 if "fl_error" in response:
-                    # Still in the fl loop; the shell never prints fl_error.
+                    # Bogus command hit the fl loop; shell never prints this.
                     logger.warning(
                         f"exit_fl_mode: still in fl (fl_error seen, "
                         f"attempt {attempt + 1}/5)"
@@ -257,7 +259,7 @@ class FPBProtocol:
                     continue
 
                 if "command not found" in response:
-                    # nsh rejected the bogus command -> we are in the shell.
+                    # Fallback for firmware without the [FLEXIT] marker.
                     self._in_fl_mode = False
                     logger.debug("Exited fl mode (shell probe confirmed)")
                     return True

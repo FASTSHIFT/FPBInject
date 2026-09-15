@@ -1924,8 +1924,31 @@ class TestFPBInjectCommands(unittest.TestCase):
         type(self.device.ser).in_waiting = property(lambda s: mock_in_waiting())
         self.device.ser.read.side_effect = mock_read
 
+    def test_exit_fl_mode_exit_marker_confirms(self):
+        """The firmware's [FLEXIT] marker confirms the exit, regardless of nsh
+        prompt/wording."""
+        self.fpb._protocol._in_fl_mode = True
+        self._serve_once(b"q\r\n[FLEXIT]\r\nnsh> ")
+
+        result = self.fpb.exit_fl_mode(timeout=0.1)
+
+        self.assertTrue(result)
+        self.assertFalse(self.fpb._protocol._in_fl_mode)
+
+    def test_exit_fl_mode_marker_wins_over_missing_shell_wording(self):
+        """With [FLEXIT] present, exit is confirmed even without a
+        'command not found' (e.g. nsh has an echo builtin / different wording)."""
+        self.fpb._protocol._in_fl_mode = True
+        self._serve_once(b"[FLEXIT]\r\nap> ")
+
+        result = self.fpb.exit_fl_mode(timeout=0.1)
+
+        self.assertTrue(result)
+        self.assertFalse(self.fpb._protocol._in_fl_mode)
+
     def test_exit_fl_mode_command_not_found_confirms(self):
-        """nsh rejecting the bogus 'fldet' command confirms we're in the shell."""
+        """Fallback: nsh rejecting the bogus 'fldet' command confirms we're in
+        the shell (older firmware without the exit marker)."""
         self.fpb._protocol._in_fl_mode = True
         self._serve_once(b"fldet\r\nnsh: fldet: command not found\r\nnsh> ")
 

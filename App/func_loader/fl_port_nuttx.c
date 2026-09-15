@@ -172,6 +172,11 @@ static int interactive_mode(fl_context_t* ctx, int argc_first, char** argv_first
         }
     }
 
+    /* Explicit exit marker (host detects this instead of guessing the shell
+     * prompt). Uses the [FLxxx] protocol family; fires on every exit path. */
+    printf("[FLEXIT]\n");
+    fflush(stdout);
+
     return 0;
 }
 
