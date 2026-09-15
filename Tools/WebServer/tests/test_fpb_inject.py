@@ -1897,15 +1897,15 @@ class TestFPBInjectCommands(unittest.TestCase):
     def _serve_once(self, payload: bytes):
         """Answer the exit probe with ``payload`` once, then go idle.
 
-        The reply is withheld until the ``echo fldet`` probe has been written,
-        so the initial stale-prompt flush (_read_pending) sees an empty buffer
-        and only the probe drain observes the payload. Mirrors a device that
-        stays silent until asked, then answers and falls quiet.
+        The reply is withheld until the ``fldet`` probe has been written, so the
+        initial stale-prompt flush (_read_pending) sees an empty buffer and only
+        the probe drain observes the payload. Mirrors a device that stays silent
+        until asked, then answers and falls quiet.
         """
         state = {"probed": False, "served": False}
 
         def mock_write(data, *a, **k):
-            if b"echo fldet" in data:
+            if b"fldet" in data:
                 state["probed"] = True
             return len(data)
 
@@ -1924,37 +1924,38 @@ class TestFPBInjectCommands(unittest.TestCase):
         type(self.device.ser).in_waiting = property(lambda s: mock_in_waiting())
         self.device.ser.read.side_effect = mock_read
 
-    def test_exit_fl_mode_shell_echo_confirms(self):
-        """nsh echoing 'fldet' back positively confirms the exit."""
-        self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"echo fldet\r\nfldet\r\nnsh> ")
-
-        result = self.fpb.exit_fl_mode(timeout=0.1)
-
-        self.assertTrue(result)
-        self.assertFalse(self.fpb._protocol._in_fl_mode)
-
     def test_exit_fl_mode_command_not_found_confirms(self):
-        """When nsh has no echo builtin, 'command not found' still confirms
-        we're in the shell (not fl)."""
+        """nsh rejecting the bogus 'fldet' command confirms we're in the shell."""
         self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"nsh: echo: command not found\r\nnsh> ")
+        self._serve_once(b"fldet\r\nnsh: fldet: command not found\r\nnsh> ")
 
         result = self.fpb.exit_fl_mode(timeout=0.1)
 
         self.assertTrue(result)
         self.assertFalse(self.fpb._protocol._in_fl_mode)
+
+    def test_exit_fl_mode_echoed_token_alone_is_not_success(self):
+        """Serial echo bounces 'fldet' back in BOTH modes, so the token alone
+        must NOT be read as success -- only the shell's 'command not found'
+        (or fl's 'fl_error') decides. Here the reply is just the echo."""
+        self.fpb._protocol._in_fl_mode = True
+        self._serve_once(b"fldet\r\n")
+
+        result = self.fpb.exit_fl_mode(timeout=0.05)
+
+        self.assertFalse(result)
+        self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_sends_q_and_probe(self):
-        """Exit sends 'q' to leave and 'echo fldet' as the positive probe."""
+        """Exit sends 'q' to leave and the bogus 'fldet' command as the probe."""
         self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"fldet\r\nnsh> ")
+        self._serve_once(b"fldet\r\nnsh: fldet: command not found\r\nnsh> ")
 
         self.fpb.exit_fl_mode(timeout=0.1)
 
         writes = b"".join(c.args[0] for c in self.device.ser.write.call_args_list)
         self.assertIn(b"q\n", writes)
-        self.assertIn(b"echo fldet\n", writes)
+        self.assertIn(b"fldet\n", writes)
 
     def test_exit_fl_mode_error(self):
         """A write exception during exit is reported as failure."""
@@ -1969,7 +1970,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         """fl_error in the reply means the fl loop rejected the probe -> still
         inside; must fail and keep the flag set."""
         self.fpb._protocol._in_fl_mode = True
-        # Device keeps rejecting the unknown 'echo fldet' with fl_error.
+        # Device keeps rejecting the unknown 'fldet' command with fl_error.
         self.device.ser.in_waiting = 32
         self.device.ser.read.return_value = b"fl_error: -3. Type 'q' to exit\r\nfl> "
 
@@ -1992,7 +1993,7 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_garbage_reply_is_not_success(self):
-        """A non-empty reply that proves neither shell nor fl (no fldet / no
+        """A non-empty reply that proves neither shell nor fl (no
         'command not found' / no fl_error) is unconfirmed -> failure."""
         self.fpb._protocol._in_fl_mode = True
         self.device.ser.in_waiting = 16
@@ -2006,7 +2007,7 @@ class TestFPBInjectCommands(unittest.TestCase):
     def test_exit_fl_mode_returns_fast_on_idle(self):
         """A confirming reply that then goes idle returns before the timeout."""
         self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"fldet\r\nnsh> ")
+        self._serve_once(b"fldet\r\nnsh: fldet: command not found\r\nnsh> ")
 
         start = time.time()
         result = self.fpb.exit_fl_mode(timeout=5.0)

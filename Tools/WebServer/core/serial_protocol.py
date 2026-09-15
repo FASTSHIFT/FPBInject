@@ -200,20 +200,22 @@ class FPBProtocol:
         return buf
 
     def exit_fl_mode(self, timeout: float = 0.3) -> bool:
-        """Exit fl mode, verifying via a fast double-Enter probe.
+        """Exit fl mode, verifying with a bogus-command probe.
 
-        Sends ``q`` to leave, then verifies with a POSITIVE probe: ``echo
-        fldet``. The verdict is based on what the reply *contains*, not on the
-        absence of a prompt (the old "no ``fl>`` == out" test wrongly reported
-        success on an empty/lost reply -- exactly when the link was worst):
+        Sends ``q`` to leave, then a bogus token ``fldet`` as a command. The
+        verdict is based on the two mutually-exclusive *error* responses, which
+        (unlike the token itself) serial echo cannot fabricate:
 
         - reply contains ``fl_error`` -> still inside the fl interactive loop
-          (it rejects the unknown ``echo`` line), so exit has NOT happened;
-        - reply contains ``fldet`` (nsh echoed it back) or ``command not
-          found`` (nsh has no echo builtin) -> we are in the shell, exit
-          confirmed;
+          (it rejects the unknown command), so exit has NOT happened;
+        - reply contains ``command not found`` -> nsh rejected the unknown
+          command, i.e. we are in the shell -> exit confirmed;
         - empty / unrecognizable reply -> cannot confirm, treat as failure and
           retry, never as success.
+
+        The probe token is deliberately NOT used as the success signal: with
+        serial echo on, ``fldet`` is echoed back in *both* modes, so matching
+        it would be a false positive. Only the shell/fl error strings decide.
 
         Reads are idle-based and every byte is forwarded to the terminal log,
         so no device output is swallowed. Keeps ``_in_fl_mode`` set and returns
@@ -236,10 +238,10 @@ class FPBProtocol:
                 self._log_raw(LogDirection.TX, "q")
                 ser.write(b"q\n")
                 ser.flush()
-                # Positive probe: an unknown token. In fl it yields fl_error;
-                # in the shell it is echoed back (or reported not found).
-                self._log_raw(LogDirection.TX, "echo fldet")
-                ser.write(b"echo fldet\n")
+                # Probe with a bogus command: fl -> fl_error, nsh -> "command
+                # not found". The token echo itself is ignored (see docstring).
+                self._log_raw(LogDirection.TX, "fldet")
+                ser.write(b"fldet\n")
                 ser.flush()
 
                 response = self._drain_serial(ser, idle=0.03, max_wait=timeout)
@@ -254,8 +256,8 @@ class FPBProtocol:
                     )
                     continue
 
-                if "fldet" in response or "command not found" in response:
-                    # Shell echoed our token or rejected it -> we are out.
+                if "command not found" in response:
+                    # nsh rejected the bogus command -> we are in the shell.
                     self._in_fl_mode = False
                     logger.debug("Exited fl mode (shell probe confirmed)")
                     return True
@@ -263,7 +265,7 @@ class FPBProtocol:
                 # Empty or unrecognizable reply: cannot confirm the exit. This
                 # is the dangerous case (heavy loss) -- never assume success.
                 logger.warning(
-                    f"exit_fl_mode: exit unconfirmed, no shell echo "
+                    f"exit_fl_mode: exit unconfirmed, no shell response "
                     f"(attempt {attempt + 1}/5): {response[:80]!r}"
                 )
         except Exception as e:
