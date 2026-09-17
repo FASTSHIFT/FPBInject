@@ -94,6 +94,10 @@ fl_error_t fl_cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
 
     fl_println("FPBInject " FPBINJECT_VERSION_STRING);
     fl_println("Build: " __DATE__ " " __TIME__);
+    fl_println("Mode: %s", ctx->interactive ? "interactive" : "oneshot");
+    if (ctx->platform_desc) {
+        fl_println("Platform: %s", ctx->platform_desc);
+    }
 
     fl_cmd_print_fpb_info(ctx);
 
