@@ -99,8 +99,13 @@ typedef struct fl_context_s {
     /* ICache invalidate callback (optional, for platforms with icache) */
     fl_invalidate_icache_cb_t invalidate_icache_cb;
 
+    /* Optional port descriptor string reported by 'info' (e.g. "nuttx-p62");
+     * lets the host identify the target without probing. NULL = unset. */
+    const char* platform_desc;
+
     /* Internal state (managed by fl_init) */
     bool is_inited;         /* true after first fl_init() call */
+    bool interactive;       /* true while inside interactive_mode() loop */
     uintptr_t last_alloc;   /* Last dynamic allocation address */
     size_t last_alloc_size; /* Last dynamic allocation size */
 

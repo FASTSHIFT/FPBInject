@@ -192,6 +192,11 @@ int main(int argc, char** argv) {
         ctx.flush_dcache_cb = nuttx_flush_dcache_cb;
         ctx.invalidate_icache_cb = nuttx_invalidate_icache_cb;
 
+        /* Report to host via 'info': this port always runs the interactive
+         * fl loop, so being able to reach 'info' at all means we're in it. */
+        ctx.interactive = true;
+        ctx.platform_desc = "NuttX";
+
         /* Initialize allocator */
         nuttx_alloc_init();
 
