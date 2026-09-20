@@ -125,8 +125,11 @@ class TestFPBProtocolPlatform(unittest.TestCase):
 
         self.assertEqual(self.protocol.get_platform(), Platform.NUTTX)
 
-    def test_platform_bare_metal_detected(self):
-        """Test bare metal platform detection"""
+    def test_platform_unknown_on_ambiguous_reply(self):
+        """An enter reply with no positive fl evidence (banner / fl_error)
+        must stay UNKNOWN, not pin BARE_METAL. Pinning BARE_METAL used to
+        deadlock: try_enter_fl_mode then short-circuited forever and no
+        future command ever sent 'fl' again."""
         self.device.ser.in_waiting = 3
         self.device.ser.read.return_value = b"[FLOK] pong"
 
@@ -141,7 +144,7 @@ class TestFPBProtocolPlatform(unittest.TestCase):
             with patch("time.time", side_effect=fake_time):
                 self.protocol.enter_fl_mode(timeout=0.5)
 
-        self.assertEqual(self.protocol.get_platform(), Platform.BARE_METAL)
+        self.assertEqual(self.protocol.get_platform(), Platform.UNKNOWN)
 
 
 class TestFPBProtocolParseResponse(unittest.TestCase):

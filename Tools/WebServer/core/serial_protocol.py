@@ -122,6 +122,7 @@ class FPBProtocol:
                         FL_MODE_BANNER in response
                         or "[FLOK]" in response
                         or "[FLERR]" in response
+                        or "fl_error" in response
                     ):
                         break
 
@@ -134,6 +135,17 @@ class FPBProtocol:
                 self._in_fl_mode = True
                 self._platform = Platform.NUTTX
                 logger.info("Detected NuttX platform (fl interactive mode)")
+                return True
+            elif "fl_error" in response:
+                # Device is ALREADY inside the fl loop -- our 'fl' line was
+                # treated as an unknown command and rejected. Correct verdict
+                # is "in fl mode" (not bare-metal). This closes a state-lock:
+                # previously this response fell into the else branch and
+                # permanently pinned _platform = BARE_METAL, after which every
+                # subsequent try_enter_fl_mode short-circuited.
+                self._in_fl_mode = True
+                self._platform = Platform.NUTTX
+                logger.info("Detected NuttX platform (already in fl loop)")
                 return True
             elif "Enter" in response and "interactive mode" in response:
                 self._platform = Platform.NUTTX
@@ -152,8 +164,11 @@ class FPBProtocol:
                 self._in_fl_mode = False
                 return False
             else:
+                # No positive evidence either way (empty/unrecognizable reply).
+                # DO NOT pin BARE_METAL here -- that permanently disabled every
+                # future fl attempt. Stay UNKNOWN so the next call can retry.
                 self._in_fl_mode = False
-                self._platform = Platform.BARE_METAL
+                self._platform = Platform.UNKNOWN
                 return False
         except Exception as e:
             logger.error(f"Error entering fl mode: {e}")

@@ -380,15 +380,30 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.assertFalse(result)
         self.assertFalse(self.fpb._protocol._in_fl_mode)
 
-    def test_enter_fl_mode_bare_metal(self):
-        """Test entering fl mode on bare-metal (no banner)"""
+    def test_enter_fl_mode_unknown_on_ambiguous_reply(self):
+        """No positive fl evidence -> platform stays UNKNOWN (not BARE_METAL).
+        UNKNOWN lets the next try_enter_fl_mode retry; BARE_METAL used to
+        latch, deadlocking every future command."""
         self.device.ser.read.return_value = b"[FLOK] some response"
         self.device.ser.in_waiting = 18
 
         result = self.fpb.enter_fl_mode(timeout=0.1)
 
         self.assertFalse(result)
-        self.assertEqual(self.fpb.get_platform(), Platform.BARE_METAL)
+        self.assertEqual(self.fpb.get_platform(), Platform.UNKNOWN)
+
+    def test_enter_fl_mode_already_in_fl_loop(self):
+        """When the device is already inside the fl loop, sending 'fl' again
+        gets rejected with 'fl_error: -3'. Old code fell into the else branch
+        and latched BARE_METAL; now we recognize this as NUTTX + in-fl."""
+        self.device.ser.read.return_value = b"fl_error: -3. Type 'q' to exit\r\nfl> "
+        self.device.ser.in_waiting = 32
+
+        result = self.fpb.enter_fl_mode(timeout=0.1)
+
+        self.assertTrue(result)
+        self.assertEqual(self.fpb.get_platform(), Platform.NUTTX)
+        self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_enter_fl_mode_nuttx_hint(self):
         """Test detecting NuttX platform via hint message"""
