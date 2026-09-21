@@ -266,12 +266,16 @@ class _GDBFLIdleExit:
         self._last_active = 0.0
         self._armed = False
         self._timer = None
+        # Guards _armed / _timer against the RSP thread (mark_active, stop)
+        # and the worker thread (_tick) racing on timer registration/removal.
+        self._lock = threading.Lock()
 
     def mark_active(self):
-        # Called from RSP bridge thread. Bool/float writes are atomic in
-        # CPython; the timer callback tolerates a slightly stale timestamp.
-        self._last_active = time.monotonic()
-        if not self._armed and self._tm is not None:
+        # Called from the RSP bridge thread.
+        with self._lock:
+            self._last_active = time.monotonic()
+            if self._armed or self._tm is None:
+                return
             self._armed = True
             if self._timer is None:
                 # Poll interval == idle window: worst-case exit fires one
@@ -285,23 +289,28 @@ class _GDBFLIdleExit:
 
     def _tick(self):
         # Runs on the worker thread, serialized with all other serial ops.
-        if not self._armed:
-            return
-        if time.monotonic() - self._last_active < self._idle_sec:
-            return  # still active, keep polling
-        self._armed = False
-        if self._timer is not None:
-            self._timer.enabled = False
+        with self._lock:
+            if not self._armed:
+                return
+            if time.monotonic() - self._last_active < self._idle_sec:
+                return  # still active, keep polling
+            self._armed = False
+            if self._timer is not None:
+                self._timer.enabled = False
+        # Call exit_fl_mode outside the lock: it does serial I/O and can take
+        # a few hundred ms; keeping the lock held would stall mark_active().
         try:
             self._get_fpb().exit_fl_mode()
         except Exception as e:
             logger.debug(f"[ExtGDB] idle exit_fl_mode error: {e}")
 
     def stop(self):
-        self._armed = False
-        if self._timer is not None and self._tm is not None:
-            self._tm.remove(self._timer)
-        self._timer = None
+        with self._lock:
+            self._armed = False
+            timer = self._timer
+            self._timer = None
+        if timer is not None and self._tm is not None:
+            self._tm.remove(timer)
 
 
 def _create_serial_memory_callbacks(state):
