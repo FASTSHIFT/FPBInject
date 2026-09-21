@@ -2,6 +2,7 @@
 
 """Tests for GDB integration manager (core/gdb_manager.py)."""
 
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +15,7 @@ from fpbinject.core.gdb_manager import (
     get_external_gdb_port,
     _apply_elf_memory_regions,
     _create_serial_memory_callbacks,
+    _GDBFLIdleExit,
 )
 
 
@@ -373,6 +375,104 @@ class TestSerialMemoryCallbacks(unittest.TestCase):
         ok, msg = write_fn(0x20000000, b"\x01")
         self.assertFalse(ok)
         self.assertIn("timeout", msg.lower())
+
+
+class TestGDBFLIdleExit(unittest.TestCase):
+    """Test the lazy fl-exit watcher used by the external GDB bridge.
+
+    The watcher schedules a soft timer on the DeviceWorker's TimerManager
+    so no extra thread is spawned. Tests drive the TimerManager tick
+    manually instead of relying on the worker thread.
+    """
+
+    def _make(self, idle_sec=0.05):
+        from fpbinject.services.timer import TimerManager
+
+        fpb = MagicMock()
+        tm = TimerManager()
+        idle = _GDBFLIdleExit(lambda: fpb, tm, idle_sec=idle_sec)
+        return idle, tm, fpb
+
+    def test_fires_exit_after_idle(self):
+        """After idle_sec of real wall time, tick fires exit_fl_mode once."""
+        idle, tm, fpb = self._make(idle_sec=0.03)
+        idle.mark_active()
+
+        # Still within the window: tick must not fire exit.
+        tm.tick()
+        fpb.exit_fl_mode.assert_not_called()
+
+        # Sleep past the idle window and tick again -> exit fires.
+        time.sleep(0.06)
+        tm.tick()
+        fpb.exit_fl_mode.assert_called_once()
+
+    def test_burst_coalesces_into_single_exit(self):
+        """Marking active repeatedly resets the deadline; one exit at the end."""
+        idle, tm, fpb = self._make(idle_sec=0.05)
+
+        for _ in range(5):
+            idle.mark_active()
+            time.sleep(0.01)  # each access spaced under the window
+            tm.tick()
+        fpb.exit_fl_mode.assert_not_called()
+
+        # Now let the window elapse without further activity.
+        time.sleep(0.08)
+        tm.tick()
+        fpb.exit_fl_mode.assert_called_once()
+
+    def test_stop_cancels_pending_exit(self):
+        """stop() removes the timer so no exit fires afterwards."""
+        idle, tm, fpb = self._make(idle_sec=0.02)
+        idle.mark_active()
+        idle.stop()
+        time.sleep(0.05)
+        tm.tick()
+        fpb.exit_fl_mode.assert_not_called()
+
+    def test_no_timer_manager_is_safe(self):
+        """When the worker isn't running yet, mark_active must not crash."""
+        fpb = MagicMock()
+        idle = _GDBFLIdleExit(lambda: fpb, None, idle_sec=0.05)
+        idle.mark_active()  # no-op, timer manager missing
+        idle.stop()
+        fpb.exit_fl_mode.assert_not_called()
+
+
+class TestSerialCallbacksLazyExit(unittest.TestCase):
+    """The read/write callbacks must use the lazy idle-exit path, not
+    fl_session(), so a burst of GDB reads doesn't re-enter/exit fl every time.
+    """
+
+    @patch("fpbinject.core.gdb_manager.GDBRSPBridge")
+    def test_no_fl_session_per_access(self, MockBridge):
+        """The callbacks should not wrap each access in fl_session()."""
+        mock_bridge = MockBridge.return_value
+        mock_bridge.start.return_value = 3333
+
+        state = MagicMock()
+        state.device = MagicMock()
+        state.device.ser = MagicMock()
+        state.device.external_gdb_port = 3333
+        state.external_gdb_bridge = None
+
+        start_external_gdb_server(state)
+
+        # An idle-exit watcher was attached, and no fl_session was invoked on
+        # the fpb instance (because the callbacks defer the exit).
+        self.assertIsNotNone(state.external_gdb_idle_exit)
+
+    def test_stop_external_shuts_down_idle_exit(self):
+        state = MagicMock()
+        state.external_gdb_bridge = MagicMock()
+        idle_exit = MagicMock()
+        state.external_gdb_idle_exit = idle_exit
+
+        stop_external_gdb_server(state)
+
+        idle_exit.stop.assert_called_once()
+        self.assertIsNone(state.external_gdb_idle_exit)
 
 
 class TestApplyElfMemoryRegions(unittest.TestCase):

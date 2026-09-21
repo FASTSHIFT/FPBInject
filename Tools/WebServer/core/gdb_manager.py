@@ -240,16 +240,92 @@ def start_external_gdb_server(state, read_memory_fn=None, write_memory_fn=None) 
         return False
 
 
+# Idle window before we exit fl mode after the last GDB access. GDB tends
+# to burst many small reads together (register/variable refresh, stack
+# unwind); wrapping each read in its own fl_session() thrashes the device
+# by re-entering/exiting fl for every access. Instead we enter fl on the
+# first access, then only exit once GDB has been silent for this long.
+GDB_FL_IDLE_EXIT_SEC = 0.5
+
+
+class _GDBFLIdleExit:
+    """Lazy fl-mode exit driven by GDB access idleness.
+
+    Each memory read/write calls ``mark_active()``. A soft timer on the
+    DeviceWorker's TimerManager polls the last-activity timestamp; once
+    GDB has been quiet for ``idle_sec``, the timer callback (already on
+    the worker thread) calls ``exit_fl_mode`` directly. Any new access
+    resets the deadline, so a burst of reads counts as one session and
+    no extra thread is spawned.
+    """
+
+    def __init__(self, get_fpb, timer_manager, idle_sec=GDB_FL_IDLE_EXIT_SEC):
+        self._get_fpb = get_fpb
+        self._tm = timer_manager
+        self._idle_sec = idle_sec
+        self._last_active = 0.0
+        self._armed = False
+        self._timer = None
+
+    def mark_active(self):
+        # Called from RSP bridge thread. Bool/float writes are atomic in
+        # CPython; the timer callback tolerates a slightly stale timestamp.
+        self._last_active = time.monotonic()
+        if not self._armed and self._tm is not None:
+            self._armed = True
+            if self._timer is None:
+                # Poll interval == idle window: worst-case exit fires one
+                # window after the last access.
+                self._timer = self._tm.add(
+                    self._idle_sec, self._tick, name="gdb-fl-idle-exit"
+                )
+            else:
+                self._timer.enabled = True
+                self._timer.reset()
+
+    def _tick(self):
+        # Runs on the worker thread, serialized with all other serial ops.
+        if not self._armed:
+            return
+        if time.monotonic() - self._last_active < self._idle_sec:
+            return  # still active, keep polling
+        self._armed = False
+        if self._timer is not None:
+            self._timer.enabled = False
+        try:
+            self._get_fpb().exit_fl_mode()
+        except Exception as e:
+            logger.debug(f"[ExtGDB] idle exit_fl_mode error: {e}")
+
+    def stop(self):
+        self._armed = False
+        if self._timer is not None and self._tm is not None:
+            self._tm.remove(self._timer)
+        self._timer = None
+
+
 def _create_serial_memory_callbacks(state):
     """Create memory read/write callbacks that go through DeviceWorker.
 
     These callbacks serialize serial access through the fpb-worker thread,
     so they are safe to call from the RSP bridge's client-handling thread.
 
+    Enters fl on demand (send_cmd handles that idempotently) and exits fl
+    lazily via ``_GDBFLIdleExit`` once GDB has been silent for a short window.
+    This avoids the enter/exit churn caused by GDB's burst of small reads.
+
     Returns:
         (read_memory_fn, write_memory_fn) tuple
     """
-    from fpbinject.services.device_worker import run_in_device_worker
+    from fpbinject.routes import get_fpb_inject
+    from fpbinject.services.device_worker import (
+        get_device_timer_manager,
+        run_in_device_worker,
+    )
+
+    idle_exit = _GDBFLIdleExit(get_fpb_inject, get_device_timer_manager(state.device))
+    # Attach so stop_external_gdb_server can shut the watcher down.
+    state.external_gdb_idle_exit = idle_exit
 
     def read_memory_fn(addr, length):
         """Read device memory via serial, routed through DeviceWorker."""
@@ -258,28 +334,14 @@ def _create_serial_memory_callbacks(state):
             logger.warning(f"[ExtGDB] read 0x{addr:08X}+{length}: NOT CONNECTED")
             return (None, "Not connected")
 
-        logger.info(
-            f"[ExtGDB] read 0x{addr:08X}+{length}: dispatching to DeviceWorker..."
-        )
+        idle_exit.mark_active()
         result = {"data": None, "msg": "timeout"}
 
         def do_read():
             try:
-                from fpbinject.routes import get_fpb_inject
-
-                fpb = get_fpb_inject()
-                # fl_session returns the device to the shell after the read so
-                # NuttX doesn't stay stuck in fl> after every GDB access.
-                with fpb.fl_session():
-                    result["data"], result["msg"] = fpb.read_memory(addr, length)
-                if result["data"] is not None:
-                    logger.info(
-                        f"[ExtGDB] read 0x{addr:08X}+{length}: OK, got {len(result['data'])} bytes"
-                    )
-                else:
-                    logger.warning(
-                        f"[ExtGDB] read 0x{addr:08X}+{length}: FAILED - {result['msg']}"
-                    )
+                result["data"], result["msg"] = get_fpb_inject().read_memory(
+                    addr, length
+                )
             except Exception as e:
                 result["data"] = None
                 result["msg"] = str(e)
@@ -289,6 +351,9 @@ def _create_serial_memory_callbacks(state):
             logger.error(f"[ExtGDB] read 0x{addr:08X}+{length}: DeviceWorker TIMEOUT")
             return (None, "DeviceWorker timeout")
 
+        # Refresh the idle deadline after the call so the exit fires N ms
+        # after the last completed access, not after the request was queued.
+        idle_exit.mark_active()
         return (result["data"], result["msg"])
 
     def write_memory_fn(addr, data):
@@ -298,21 +363,12 @@ def _create_serial_memory_callbacks(state):
             logger.warning(f"[ExtGDB] write 0x{addr:08X}+{len(data)}: NOT CONNECTED")
             return (False, "Not connected")
 
-        logger.info(
-            f"[ExtGDB] write 0x{addr:08X}+{len(data)}: dispatching to DeviceWorker..."
-        )
+        idle_exit.mark_active()
         result = {"ok": False, "msg": "timeout"}
 
         def do_write():
             try:
-                from fpbinject.routes import get_fpb_inject
-
-                fpb = get_fpb_inject()
-                with fpb.fl_session():
-                    result["ok"], result["msg"] = fpb.write_memory(addr, data)
-                logger.info(
-                    f"[ExtGDB] write 0x{addr:08X}+{len(data)}: {'OK' if result['ok'] else 'FAILED'} - {result['msg']}"
-                )
+                result["ok"], result["msg"] = get_fpb_inject().write_memory(addr, data)
             except Exception as e:
                 result["ok"] = False
                 result["msg"] = str(e)
@@ -323,6 +379,7 @@ def _create_serial_memory_callbacks(state):
         if not run_in_device_worker(device, do_write, timeout=10.0):
             return (False, "DeviceWorker timeout")
 
+        idle_exit.mark_active()
         return (result["ok"], result["msg"])
 
     return read_memory_fn, write_memory_fn
@@ -336,6 +393,14 @@ def stop_external_gdb_server(state):
         except Exception as e:
             logger.debug(f"Error stopping external GDB server: {e}")
         state.external_gdb_bridge = None
+
+    idle_exit = getattr(state, "external_gdb_idle_exit", None)
+    if idle_exit is not None:
+        try:
+            idle_exit.stop()
+        except Exception as e:
+            logger.debug(f"Error stopping GDB idle exit watcher: {e}")
+        state.external_gdb_idle_exit = None
 
 
 def get_external_gdb_port(state) -> int:
