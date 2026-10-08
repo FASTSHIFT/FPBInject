@@ -14,6 +14,25 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, List, Optional, Tuple
 from enum import Enum
 
+# ---------------------------------------------------------------------------
+# Transfer defaults: the single source of truth.
+#
+# Every other place that needs a fallback (DeviceStateBase, FileTransfer,
+# route/protocol fallbacks for "0 = unset", probe failure results, ...) must
+# import these instead of repeating the literal.
+#
+# The values are deliberately conservative so transfers work on devices with
+# small line/transfer buffers out of the box. Users can raise them via config,
+# CLI flags, or the 'doctor' / throughput-test recommendations.
+#   - upload: one fwrite command line = prefix + base64(chunk) must fit the
+#     device's line buffer (can be as small as 128-256 bytes).
+#   - download: bounded by the device transfer buffer (FL_BUF_SIZE) and by
+#     serial reliability, not by the (short) request line.
+# ---------------------------------------------------------------------------
+DEFAULT_UPLOAD_CHUNK_SIZE = 64
+DEFAULT_DOWNLOAD_CHUNK_SIZE = 512
+DEFAULT_TRANSFER_MAX_RETRIES = 10
+
 
 class ConfigType(Enum):
     """Configuration item types."""
@@ -285,9 +304,10 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         label="Upload Chunk",
         group=ConfigGroup.TRANSFER,
         config_type=ConfigType.NUMBER,
-        default=128,
+        default=DEFAULT_UPLOAD_CHUNK_SIZE,
         tooltip="Size of each data block for PC→Device transfers (upload/inject/mem_write). "
-        "Limited by device shell receive buffer.",
+        "Limited by device shell receive buffer. Default is conservative; "
+        "run 'doctor' / throughput test to raise it.",
         min_value=16,
         max_value=512,
         step=16,
@@ -300,9 +320,10 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         label="Download Chunk",
         group=ConfigGroup.TRANSFER,
         config_type=ConfigType.NUMBER,
-        default=1024,
+        default=DEFAULT_DOWNLOAD_CHUNK_SIZE,
         tooltip="Size of each data block for Device→PC transfers (download/mem_read/mem_dump). "
-        "Can be much larger than upload chunk since device puts has no buffer limit.",
+        "Can be larger than upload chunk, but is bounded by the device transfer "
+        "buffer. Default is conservative; run 'doctor' / throughput test to raise it.",
         min_value=128,
         max_value=8192,
         step=128,
@@ -347,7 +368,7 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         label="Max Retries",
         group=ConfigGroup.TRANSFER,
         config_type=ConfigType.NUMBER,
-        default=10,
+        default=DEFAULT_TRANSFER_MAX_RETRIES,
         tooltip="Maximum retry attempts for file transfer when CRC mismatch occurs.",
         min_value=0,
         max_value=20,

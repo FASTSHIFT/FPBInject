@@ -23,6 +23,11 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from fpbinject.core.config_schema import (
+    DEFAULT_DOWNLOAD_CHUNK_SIZE,
+    DEFAULT_TRANSFER_MAX_RETRIES,
+    DEFAULT_UPLOAD_CHUNK_SIZE,
+)
 from fpbinject.core.state import DeviceStateBase, DeviceState
 from fpbinject.cli.fpb_cli import DeviceState as CLIDeviceState, FPBCLI
 from fpbinject.cli.server_proxy import ServerProxy
@@ -48,9 +53,9 @@ class TestDeviceStateBaseInheritance(unittest.TestCase):
         self.assertEqual(ds.ram_start, 0x20000000)
         self.assertEqual(ds.ram_size, 0x10000)
         self.assertEqual(ds.inject_base, 0x20001000)
-        self.assertEqual(ds.upload_chunk_size, 128)
-        self.assertEqual(ds.download_chunk_size, 1024)
-        self.assertEqual(ds.transfer_max_retries, 10)
+        self.assertEqual(ds.upload_chunk_size, DEFAULT_UPLOAD_CHUNK_SIZE)
+        self.assertEqual(ds.download_chunk_size, DEFAULT_DOWNLOAD_CHUNK_SIZE)
+        self.assertEqual(ds.transfer_max_retries, DEFAULT_TRANSFER_MAX_RETRIES)
 
     def test_cli_device_state_has_connected(self):
         ds = CLIDeviceState()

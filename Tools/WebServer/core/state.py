@@ -15,6 +15,9 @@ import os
 import threading
 
 from fpbinject.core.config_schema import (
+    DEFAULT_DOWNLOAD_CHUNK_SIZE,
+    DEFAULT_TRANSFER_MAX_RETRIES,
+    DEFAULT_UPLOAD_CHUNK_SIZE,
     PERSISTENT_KEYS,
     get_config_defaults,
 )
@@ -77,11 +80,11 @@ class DeviceStateBase:
         self.inject_base = 0x20001000
         self.cached_slots = None
         self.slot_update_id = 0
-        self.upload_chunk_size = 128
-        self.download_chunk_size = 1024
+        self.upload_chunk_size = DEFAULT_UPLOAD_CHUNK_SIZE
+        self.download_chunk_size = DEFAULT_DOWNLOAD_CHUNK_SIZE
         self.serial_tx_fragment_size = 0
         self.serial_tx_fragment_delay = 0.002
-        self.transfer_max_retries = 10
+        self.transfer_max_retries = DEFAULT_TRANSFER_MAX_RETRIES
 
     def add_tool_log(self, message):
         """Override in subclasses to route log messages."""

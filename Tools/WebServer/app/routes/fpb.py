@@ -20,6 +20,7 @@ from flask import Blueprint, jsonify, request
 
 from fpbinject.app.utils.device_op import with_fl_exit
 from fpbinject.app.utils.sse import sse_response
+from fpbinject.core.config_schema import DEFAULT_DOWNLOAD_CHUNK_SIZE
 from fpbinject.core.state import state
 from fpbinject.services.device_worker import run_in_device_worker
 
@@ -165,7 +166,9 @@ def api_fpb_test_serial():
         log_info(f"Recommended upload chunk: {rec_upload}B")
 
         # Phase 3 summary
-        rec_download = result.get("recommended_download_chunk_size", 1024)
+        rec_download = result.get(
+            "recommended_download_chunk_size", DEFAULT_DOWNLOAD_CHUNK_SIZE
+        )
         phases = result.get("phases", {})
         dl_phase = phases.get("download", {})
         if dl_phase.get("skipped"):

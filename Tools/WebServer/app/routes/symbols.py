@@ -17,6 +17,7 @@ from flask import Blueprint, jsonify, request, Response
 
 from fpbinject.app.utils.device_op import with_fl_exit
 from fpbinject.app.utils.sse import sse_response
+from fpbinject.core.config_schema import DEFAULT_DOWNLOAD_CHUNK_SIZE
 from fpbinject.core.state import state
 from fpbinject.services.device_worker import run_in_device_worker
 
@@ -107,7 +108,7 @@ def _dynamic_timeout(size):
     chunk_size = (
         state.device.download_chunk_size
         if state.device.download_chunk_size > 0
-        else 1024
+        else DEFAULT_DOWNLOAD_CHUNK_SIZE
     )
     num_chunks = max(1, (size + chunk_size - 1) // chunk_size)
     return max(10.0, num_chunks * 3.0)

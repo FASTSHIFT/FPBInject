@@ -16,6 +16,11 @@ import threading
 from flask import Blueprint, jsonify, request
 
 from fpbinject.app.utils.sse import sse_response
+from fpbinject.core.config_schema import (
+    DEFAULT_DOWNLOAD_CHUNK_SIZE,
+    DEFAULT_TRANSFER_MAX_RETRIES,
+    DEFAULT_UPLOAD_CHUNK_SIZE,
+)
 from fpbinject.core.file_transfer import FileTransfer
 from fpbinject.core.state import state
 from fpbinject.core.file_txn import (
@@ -84,12 +89,14 @@ def _get_file_transfer(log_callback=None):
     """Get FileTransfer instance."""
     *_, get_fpb_inject = _get_helpers()
     fpb = get_fpb_inject()
-    chunk_size = state.device.upload_chunk_size or 128
-    download_chunk_size = state.device.download_chunk_size or 1024
+    chunk_size = state.device.upload_chunk_size or DEFAULT_UPLOAD_CHUNK_SIZE
+    download_chunk_size = (
+        state.device.download_chunk_size or DEFAULT_DOWNLOAD_CHUNK_SIZE
+    )
     max_retries = (
         state.device.transfer_max_retries
         if hasattr(state.device, "transfer_max_retries")
-        else 10
+        else DEFAULT_TRANSFER_MAX_RETRIES
     )
     return FileTransfer(
         fpb,
