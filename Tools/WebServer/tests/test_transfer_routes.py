@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
 from fpbinject.app.routes.transfer import bp  # noqa: E402
+from fpbinject.core.config_schema import DEFAULT_UPLOAD_CHUNK_SIZE  # noqa: E402
 
 
 def mock_run_in_device_worker(device, func, timeout=10.0):
@@ -528,7 +529,7 @@ class TestTransferHelpers(unittest.TestCase):
                 from fpbinject.app.routes.transfer import _get_file_transfer
 
                 ft = _get_file_transfer()
-                self.assertEqual(ft.upload_chunk_size, 128)
+                self.assertEqual(ft.upload_chunk_size, DEFAULT_UPLOAD_CHUNK_SIZE)
 
     def test_get_file_transfer_default_max_retries(self):
         """Test _get_file_transfer with default max_retries when not set."""

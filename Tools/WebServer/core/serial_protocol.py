@@ -18,6 +18,10 @@ from enum import Enum
 from typing import Dict, Optional, Tuple
 
 from fpbinject.utils.crc import crc16, crc16_update
+from fpbinject.core.config_schema import (
+    DEFAULT_DOWNLOAD_CHUNK_SIZE,
+    DEFAULT_UPLOAD_CHUNK_SIZE,
+)
 from fpbinject.core.state import tool_log
 
 logger = logging.getLogger(__name__)
@@ -626,7 +630,9 @@ class FPBProtocol:
         total = len(data)
         data_offset = 0
         bytes_per_chunk = (
-            self.device.upload_chunk_size if self.device.upload_chunk_size > 0 else 128
+            self.device.upload_chunk_size
+            if self.device.upload_chunk_size > 0
+            else DEFAULT_UPLOAD_CHUNK_SIZE
         )
 
         upload_start = time.time()
@@ -720,7 +726,7 @@ class FPBProtocol:
         bytes_per_chunk = (
             self.device.download_chunk_size
             if self.device.download_chunk_size > 0
-            else 1024
+            else DEFAULT_DOWNLOAD_CHUNK_SIZE
         )
         buf = bytearray()
         offset = 0
@@ -765,7 +771,9 @@ class FPBProtocol:
         Returns (success, message).
         """
         bytes_per_chunk = (
-            self.device.upload_chunk_size if self.device.upload_chunk_size > 0 else 128
+            self.device.upload_chunk_size
+            if self.device.upload_chunk_size > 0
+            else DEFAULT_UPLOAD_CHUNK_SIZE
         )
 
         def _b64_len(n):
@@ -1248,7 +1256,7 @@ class FPBProtocol:
         result: Dict = {
             "max_working_size": 0,
             "failed_size": 0,
-            "recommended_download_chunk_size": 1024,
+            "recommended_download_chunk_size": DEFAULT_DOWNLOAD_CHUNK_SIZE,
             "tests": [],
             "skipped": False,
             "trials": trials,
@@ -1340,7 +1348,7 @@ class FPBProtocol:
                 "failed_size": 0,
                 "tests": [],
                 "recommended_upload_chunk_size": 16,
-                "recommended_download_chunk_size": 1024,
+                "recommended_download_chunk_size": DEFAULT_DOWNLOAD_CHUNK_SIZE,
                 "fragment_needed": False,
             }
 
@@ -1350,7 +1358,7 @@ class FPBProtocol:
             "failed_size": 0,
             "tests": [],
             "recommended_upload_chunk_size": 16,
-            "recommended_download_chunk_size": 1024,
+            "recommended_download_chunk_size": DEFAULT_DOWNLOAD_CHUNK_SIZE,
             "fragment_needed": False,
             "phases": {},
         }

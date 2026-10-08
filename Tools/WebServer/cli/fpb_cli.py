@@ -28,6 +28,7 @@ from typing import Any, Dict, Optional
 # Import from existing WebServer modules
 sys.path.insert(0, str(Path(__file__).parent))
 from fpbinject.fpb_inject import FPBInject  # noqa: E402
+from fpbinject.core.config_schema import DEFAULT_TRANSFER_MAX_RETRIES  # noqa: E402
 from fpbinject.core.state import DeviceStateBase  # noqa: E402
 from fpbinject.utils.port_lock import PortLock  # noqa: E402
 from fpbinject.cli.server_proxy import (  # noqa: E402
@@ -138,7 +139,7 @@ class FPBCLI(FileMemCommandsMixin):
         compile_commands: Optional[str] = None,
         tx_chunk_size: int = 0,
         tx_chunk_delay: float = 0.002,
-        max_retries: int = 10,
+        max_retries: int = DEFAULT_TRANSFER_MAX_RETRIES,
         direct: bool = False,
         server_url: Optional[str] = None,
         token: Optional[str] = None,

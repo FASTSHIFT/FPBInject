@@ -258,6 +258,16 @@ async function saveConfig(silent = false) {
 }
 
 /**
+ * Read an integer input by element id; undefined when missing or not a number.
+ * @param {string} id - Element id.
+ * @param {number} [divisor=1] - Divide the parsed value (e.g. ms -> s).
+ */
+function parseIntOrUndefined(id, divisor = 1) {
+  const n = parseInt(document.getElementById(id)?.value);
+  return Number.isNaN(n) ? undefined : n / divisor;
+}
+
+/**
  * Legacy save function for backward compatibility.
  */
 async function saveConfigLegacy(silent = false) {
@@ -267,16 +277,14 @@ async function saveConfigLegacy(silent = false) {
       document.getElementById('compileCommandsPath')?.value || '',
     toolchain_path: document.getElementById('toolchainPath')?.value || '',
     patch_mode: document.getElementById('patchMode')?.value || 'trampoline',
-    upload_chunk_size:
-      parseInt(document.getElementById('chunkSize')?.value) || 128,
-    download_chunk_size:
-      parseInt(document.getElementById('downloadChunkSize')?.value) || 1024,
-    serial_tx_fragment_size:
-      parseInt(document.getElementById('txChunkSize')?.value) || 0,
-    serial_tx_fragment_delay:
-      (parseInt(document.getElementById('txChunkDelay')?.value) || 2) / 1000,
-    transfer_max_retries:
-      parseInt(document.getElementById('transferMaxRetries')?.value) || 3,
+    // Transfer params: send only what the UI actually provides. Omitted keys
+    // (undefined is dropped by JSON.stringify) leave the server value alone, so
+    // the schema in core/config_schema.py stays the single source of defaults.
+    upload_chunk_size: parseIntOrUndefined('chunkSize'),
+    download_chunk_size: parseIntOrUndefined('downloadChunkSize'),
+    serial_tx_fragment_size: parseIntOrUndefined('txChunkSize'),
+    serial_tx_fragment_delay: parseIntOrUndefined('txChunkDelay', 1000),
+    transfer_max_retries: parseIntOrUndefined('transferMaxRetries'),
     watch_dirs: getWatchDirs(),
     auto_compile: document.getElementById('autoCompile')?.checked || false,
     enable_decompile:

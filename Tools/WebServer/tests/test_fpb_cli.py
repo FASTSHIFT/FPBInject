@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from fpbinject.core.config_schema import DEFAULT_UPLOAD_CHUNK_SIZE  # noqa: E402
 from fpbinject.cli.fpb_cli import (
     FPBCLI,
     FPBCLIError,
@@ -41,7 +42,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertEqual(state.inject_base, 0x20001000)
         self.assertIsNone(state.cached_slots)
         self.assertEqual(state.slot_update_id, 0)
-        self.assertEqual(state.upload_chunk_size, 128)
+        self.assertEqual(state.upload_chunk_size, DEFAULT_UPLOAD_CHUNK_SIZE)
         self.assertEqual(state.serial_tx_fragment_size, 0)
         self.assertEqual(state.serial_tx_fragment_delay, 0.002)
 
@@ -2701,7 +2702,7 @@ class TestDeviceStateCLI(unittest.TestCase):
         device = DeviceState()
         self.assertIsNone(device.ser)
         self.assertFalse(device.connected)
-        self.assertEqual(device.upload_chunk_size, 128)
+        self.assertEqual(device.upload_chunk_size, DEFAULT_UPLOAD_CHUNK_SIZE)
 
     def test_disconnect(self):
         """Test disconnect"""

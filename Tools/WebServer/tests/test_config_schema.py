@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fpbinject.core.config_schema import (  # noqa: E402
     CONFIG_SCHEMA,
+    DEFAULT_DOWNLOAD_CHUNK_SIZE,
+    DEFAULT_UPLOAD_CHUNK_SIZE,
     ConfigItem,
     ConfigType,
     ConfigGroup,
@@ -179,7 +181,7 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertEqual(len(defaults), len(CONFIG_SCHEMA))
 
         # Check some known defaults
-        self.assertEqual(defaults["upload_chunk_size"], 128)
+        self.assertEqual(defaults["upload_chunk_size"], DEFAULT_UPLOAD_CHUNK_SIZE)
         self.assertEqual(defaults["patch_mode"], "trampoline")
 
     def test_get_schema_by_key_found(self):
@@ -270,6 +272,40 @@ class TestConfigGroups(unittest.TestCase):
             self.assertGreater(len(items), 0, f"Group {group.value} has no items")
 
 
+class TestTransferDefaultsSingleSource(unittest.TestCase):
+    """Every component must derive transfer defaults from config_schema."""
+
+    KEYS = {
+        "upload_chunk_size": "DEFAULT_UPLOAD_CHUNK_SIZE",
+        "download_chunk_size": "DEFAULT_DOWNLOAD_CHUNK_SIZE",
+        "transfer_max_retries": "DEFAULT_TRANSFER_MAX_RETRIES",
+    }
+
+    def test_schema_matches_constants(self):
+        import fpbinject.core.config_schema as cs
+
+        defaults = get_config_defaults()
+        for key, const in self.KEYS.items():
+            self.assertEqual(defaults[key], getattr(cs, const), key)
+
+    def test_device_state_base_matches_schema(self):
+        from fpbinject.core.state import DeviceStateBase
+
+        base = DeviceStateBase()
+        defaults = get_config_defaults()
+        for key in self.KEYS:
+            self.assertEqual(getattr(base, key), defaults[key], key)
+
+    def test_file_transfer_matches_schema(self):
+        from fpbinject.core.file_transfer import FileTransfer
+
+        ft = FileTransfer(fpb_inject=None)
+        defaults = get_config_defaults()
+        self.assertEqual(ft.upload_chunk_size, defaults["upload_chunk_size"])
+        self.assertEqual(ft.download_chunk_size, defaults["download_chunk_size"])
+        self.assertEqual(ft.max_retries, defaults["transfer_max_retries"])
+
+
 class TestKnownConfigItems(unittest.TestCase):
     """Test specific known config items."""
 
@@ -297,7 +333,7 @@ class TestKnownConfigItems(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item.group, ConfigGroup.TRANSFER)
         self.assertEqual(item.config_type, ConfigType.NUMBER)
-        self.assertEqual(item.default, 128)
+        self.assertEqual(item.default, DEFAULT_UPLOAD_CHUNK_SIZE)
         self.assertEqual(item.min_value, 16)
         self.assertEqual(item.max_value, 512)
         self.assertEqual(item.unit, "Bytes")
@@ -308,7 +344,7 @@ class TestKnownConfigItems(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item.group, ConfigGroup.TRANSFER)
         self.assertEqual(item.config_type, ConfigType.NUMBER)
-        self.assertEqual(item.default, 1024)
+        self.assertEqual(item.default, DEFAULT_DOWNLOAD_CHUNK_SIZE)
         self.assertEqual(item.min_value, 128)
         self.assertEqual(item.max_value, 8192)
         self.assertEqual(item.unit, "Bytes")

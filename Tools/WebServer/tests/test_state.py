@@ -14,7 +14,10 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fpbinject.core.state import DeviceState, AppState  # noqa: E402
-from fpbinject.core.config_schema import PERSISTENT_KEYS  # noqa: E402
+from fpbinject.core.config_schema import (  # noqa: E402
+    DEFAULT_UPLOAD_CHUNK_SIZE,
+    PERSISTENT_KEYS,
+)
 
 
 class TestDeviceState(unittest.TestCase):
@@ -27,7 +30,7 @@ class TestDeviceState(unittest.TestCase):
         self.assertIsNone(device.ser)
         self.assertEqual(device.baudrate, 115200)
         self.assertEqual(device.patch_mode, "trampoline")
-        self.assertEqual(device.upload_chunk_size, 128)
+        self.assertEqual(device.upload_chunk_size, DEFAULT_UPLOAD_CHUNK_SIZE)
 
     def test_add_tool_log(self):
         """Test adding tool log"""

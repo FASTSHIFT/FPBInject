@@ -16,6 +16,11 @@ import re
 import struct
 from typing import Callable, Optional, Tuple, List, Dict, Any
 
+from fpbinject.core.config_schema import (
+    DEFAULT_DOWNLOAD_CHUNK_SIZE,
+    DEFAULT_TRANSFER_MAX_RETRIES,
+    DEFAULT_UPLOAD_CHUNK_SIZE,
+)
 from fpbinject.utils.crc import crc16, crc16_update
 
 logger = logging.getLogger(__name__)
@@ -63,9 +68,10 @@ def _format_path_arg(path: str) -> str:
 class FileTransfer:
     """File transfer handler for device communication."""
 
-    DEFAULT_UPLOAD_CHUNK_SIZE = 128
-    DEFAULT_DOWNLOAD_CHUNK_SIZE = 1024
-    DEFAULT_MAX_RETRIES = 10
+    # Aliases of the schema defaults (single source of truth: config_schema).
+    DEFAULT_UPLOAD_CHUNK_SIZE = DEFAULT_UPLOAD_CHUNK_SIZE
+    DEFAULT_DOWNLOAD_CHUNK_SIZE = DEFAULT_DOWNLOAD_CHUNK_SIZE
+    DEFAULT_MAX_RETRIES = DEFAULT_TRANSFER_MAX_RETRIES
 
     def __init__(
         self,
@@ -80,9 +86,12 @@ class FileTransfer:
 
         Args:
             fpb_inject: FPBInject instance for device communication
-            upload_chunk_size: Size of data chunks for upload (default 128)
-            download_chunk_size: Size of data chunks for download (default 1024)
-            max_retries: Maximum retry attempts for transfer (default 10)
+            upload_chunk_size: Size of data chunks for upload
+                (default: config_schema.DEFAULT_UPLOAD_CHUNK_SIZE)
+            download_chunk_size: Size of data chunks for download
+                (default: config_schema.DEFAULT_DOWNLOAD_CHUNK_SIZE)
+            max_retries: Maximum retry attempts for transfer
+                (default: config_schema.DEFAULT_TRANSFER_MAX_RETRIES)
             log_callback: Optional callback for logging transfer events to UI
         """
         self.fpb = fpb_inject
