@@ -18,52 +18,27 @@ def build_parser(prog: str) -> argparse.ArgumentParser:
     """Build the CLI ArgumentParser (all subcommands)."""
     epilog = f"""
 Examples:
-  # ELF analysis works offline — no device, no --port:
+  # ELF analysis works offline - no device, no --port:
   {prog} analyze firmware.elf digitalWrite
   {prog} search firmware.elf gpio
-  {prog} compile patch.c --elf firmware.elf --compile-commands build/compile_commands.json
 
-  # Local device commands — first time, --port triggers auto-launch:
+  # Local device commands - first time, --port triggers auto-launch:
   {prog} --port /dev/ttyACM0 info
   {prog} --port /dev/ttyACM0 inject digitalWrite patch.c --elf firmware.elf
 
-  # Once a local server has the device connected, --port is no longer needed:
+  # Once the server has the device connected, --port is no longer needed:
   {prog} info
   {prog} file-stat /etc/init.d/rcS
 
-  # Remote control — the device lives on the server, so no --port needed:
-  {prog} --server-url http://192.168.1.20:5500 --token TOKEN info
-  # Only pass --port to tell the remote server which port to open if it has none:
-  {prog} --server-url http://192.168.1.20:5500 --token TOKEN --port /dev/ttyACM0 connect
+  # Remote server (needs --token or FPB_TOKEN):
+  {prog} -s http://192.168.1.20:5500 --token TOKEN info
 
 Notes:
-  The serial port belongs to the WebServer, not the CLI. In proxy mode (local
-  or remote) --port is optional whenever the server already has a connected
-  device; it is only required to open a port when no device is connected yet,
-  or for direct/auto-launch on a fresh local environment.
-  --token (or FPB_TOKEN env) is required for remote servers.
   Output is JSON on stdout; pipe to jq for filtering.
   Run '{prog} <command> --help' for command-specific options.
-
-Complex / multi-step workflows -> use the Python SDK instead of chaining
-this CLI. Anything the CLI does, the SDK does in-process with real return
-values (no JSON re-parsing), which is far easier for loops, retries and
-multi-device orchestration. Minimal example:
-
-  from fpbinject import Client
-  with Client.direct("/dev/ttyACM0") as dev:      # or Client.discover(token=...)
-      dev.inject("digitalWrite", "patch.c", elf="firmware.elf")
-      dev.file_upload("app.bin", "/data/app.bin",
-                      progress=lambda done, total: None)
-      print(dev.test_serial())                    # tuning probe
-
-Good SDK fits: batch-inject many functions, download-then-verify loops,
-retry-with-tuning on serial loss, driving several devices in parallel.
-The full API surface (constructor, class methods, every device / file / mem
-call) is documented in the `Client` class docstring; from a REPL run
-`from fpbinject import Client; help(Client)` — or read
-`fpbinject/client.py` in the installed package.
-        """
+  Multi-step automation: use the Python SDK
+  (from fpbinject import Client; help(Client)).
+"""
     description = (
         "FPBInject CLI - Lightweight interface for binary patching.\n"
         "\n"
@@ -75,8 +50,6 @@ call) is documented in the `Client` class docstring; from a REPL run
         "  3. Serial transfers/reads are slow & windowed: progress on stderr,\n"
         "     small tail by default - a long-but-progressing op is NOT a hang.\n"
         "  4. Stuck on serial loss? run `%(prog)s doctor`.\n"
-        "  5. Multi-step automation? use the Python SDK - see the epilog\n"
-        "     below for a minimal example, then `help(fpbinject.Client)`.\n"
     ) % {"prog": prog}
     parser = argparse.ArgumentParser(
         prog=prog,
@@ -319,16 +292,15 @@ call) is documented in the `Client` class docstring; from a REPL run
     # exec command (requires device)
     exec_parser = subparsers.add_parser(
         "exec",
-        help="Run a shell command on the device via the fl protocol "
-        "(requires device; resends follow --transfer-max-retries)",
+        help="Run a shell command on the device (requires device)",
     )
     exec_parser.add_argument("cmd", help="Command line to run, e.g. 'ls -l /data'")
     exec_parser.add_argument(
         "--timeout",
         type=float,
         default=10.0,
-        help="Seconds to wait for the command to finish (default: 10). The "
-        "device does not stop a running command; avoid commands that block.",
+        help="Seconds to wait (default: 10). The device cannot stop a "
+        "running command.",
     )
 
     # mem-dump command (requires device)
