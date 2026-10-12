@@ -68,6 +68,7 @@ set(SUT_SOURCES_COMMON
     ${FUNC_LOADER_DIR}/fl_codec.c
     ${FUNC_LOADER_DIR}/fl_cmd_file.c
     ${FUNC_LOADER_DIR}/fl_cmd_core.c
+    ${FUNC_LOADER_DIR}/fl_cmd_exec.c
     ${FUNC_LOADER_DIR}/fl_cmd_mem.c
     ${FUNC_LOADER_DIR}/fl_cmd_patch.c
     ${FUNC_LOADER_DIR}/fl_stream.c
@@ -89,6 +90,7 @@ set(SUT_SOURCES_FATFS
     ${FUNC_LOADER_DIR}/fl_codec.c
     ${FUNC_LOADER_DIR}/fl_cmd_file.c
     ${FUNC_LOADER_DIR}/fl_cmd_core.c
+    ${FUNC_LOADER_DIR}/fl_cmd_exec.c
     ${FUNC_LOADER_DIR}/fl_cmd_mem.c
     ${FUNC_LOADER_DIR}/fl_cmd_patch.c
     ${FUNC_LOADER_DIR}/fl_stream.c
@@ -189,6 +191,24 @@ target_compile_definitions(test_runner_no_fpb PRIVATE FL_NO_FPB=1)
 target_link_libraries(test_runner_no_fpb m)
 
 # ============================================================================
+# NuttX porting layer (fl_port_nuttx.c) test executable
+#
+# test_fl_port_nuttx.c #includes the port source to reach its static functions
+# (nuttx_exec_cb, ...) and replaces system() with a mock. Compiled the way the
+# port is built on a NuttX target with exec support: __NuttX__ and
+# CONFIG_SYSTEM_SYSTEM defined, static code buffer, FL_NO_FPB (no FPB hardware
+# is needed to exercise the port).
+# ============================================================================
+
+add_executable(
+  test_runner_nuttx_port ${SUT_SOURCES_COMMON} ${MOCK_SOURCES}
+                         ${TEST_FRAMEWORK_SOURCES} test_fl_port_nuttx.c)
+target_compile_definitions(
+  test_runner_nuttx_port PRIVATE FL_NO_FPB=1 __NuttX__=1 CONFIG_SYSTEM_SYSTEM=1
+                                 FL_NUTTX_BUF_SIZE=1024)
+target_link_libraries(test_runner_nuttx_port m)
+
+# ============================================================================
 # library.cmake integration tests (compile-only, verifies exported variables)
 # ============================================================================
 
@@ -253,8 +273,11 @@ add_custom_target(
   COMMAND ${CMAKE_COMMAND} -E echo ""
   COMMAND ${CMAKE_COMMAND} -E echo "=== Running FL_NO_FPB tests ==="
   COMMAND ./test_runner_no_fpb
+  COMMAND ${CMAKE_COMMAND} -E echo ""
+  COMMAND ${CMAKE_COMMAND} -E echo "=== Running NuttX port tests ==="
+  COMMAND ./test_runner_nuttx_port
   DEPENDS test_runner test_runner_nuttx test_runner_fatfs
-          test_runner_nuttx_compat test_runner_no_fpb
+          test_runner_nuttx_compat test_runner_no_fpb test_runner_nuttx_port
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   COMMENT "Running all unit tests...")
 

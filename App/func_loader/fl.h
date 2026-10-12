@@ -58,6 +58,19 @@ typedef void (*fl_flush_dcache_cb_t)(uintptr_t start, uintptr_t end);
 typedef void (*fl_invalidate_icache_cb_t)(uintptr_t start, uintptr_t end);
 
 /**
+ * @brief  Execute a command line on the target platform
+ * @param  user        exec_user from the context
+ * @param  cmdline     NUL-terminated command line (valid only during the call)
+ * @param  timeout_ms  Requested run-time limit in milliseconds, 0 = none.
+ *                     Passed through unchanged; a port MAY ignore it.
+ * @return >= 0: status of the command (platform defined)
+ *         <  0: the command could not be started (negative errno)
+ * @note   Called synchronously from the fl task. Must not call fl_print*().
+ *         A port that does not enforce timeout_ms can block indefinitely.
+ */
+typedef int (*fl_exec_cb_t)(void* user, const char* cmdline, uint32_t timeout_ms);
+
+/**
  * @brief Patch mode for slot tracking
  */
 typedef enum {
@@ -98,6 +111,15 @@ typedef struct fl_context_s {
 
     /* ICache invalidate callback (optional, for platforms with icache) */
     fl_invalidate_icache_cb_t invalidate_icache_cb;
+
+    /* Exec callback (optional, set by port layer; NULL = exec unavailable) */
+    fl_exec_cb_t exec_cb;
+    void* exec_user;
+
+    /* Last executed exec request, used for de-duplication and result query */
+    bool exec_seq_valid;
+    int32_t exec_last_seq;
+    int32_t exec_last_ret;
 
     /* Optional port descriptor string reported by 'info' (e.g. "nuttx-board");
      * lets the host identify the target without probing. NULL = unset. */

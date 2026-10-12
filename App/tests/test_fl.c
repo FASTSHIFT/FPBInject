@@ -2205,6 +2205,505 @@ void test_loader_upload_offset_cache_range(void) {
 }
 
 /* ============================================================================
+ * Exec Command
+ * ============================================================================ */
+
+#define EXEC_TEST_CMD_MAX 1100
+
+static int g_exec_calls;
+static char g_exec_cmd[EXEC_TEST_CMD_MAX];
+static uint32_t g_exec_timeout;
+static int g_exec_ret;
+static bool g_exec_start_seen;  /* start line was already printed when the cb ran */
+static bool g_exec_result_seen; /* a result line was already printed when the cb ran */
+static void* g_exec_user_seen;
+static int g_exec_marker;
+
+static int mock_exec_cb(void* user, const char* cmdline, uint32_t timeout_ms) {
+    g_exec_calls++;
+    snprintf(g_exec_cmd, sizeof(g_exec_cmd), "%s", cmdline);
+    g_exec_timeout = timeout_ms;
+    g_exec_user_seen = user;
+    g_exec_start_seen = mock_output_contains("[FLEXEC] seq=");
+    g_exec_result_seen = mock_output_contains("[FLOK]") || mock_output_contains("[FLERR]");
+    return g_exec_ret;
+}
+
+static void setup_exec(void) {
+    setup_loader();
+    g_exec_calls = 0;
+    g_exec_cmd[0] = '\0';
+    g_exec_timeout = 0;
+    g_exec_ret = 0;
+    g_exec_start_seen = false;
+    g_exec_result_seen = false;
+    g_exec_user_seen = NULL;
+    test_ctx.exec_cb = mock_exec_cb;
+    test_ctx.exec_user = &g_exec_marker;
+    fl_init(&test_ctx);
+}
+
+/* Independent CRC helpers: integers are packed little-endian by hand so the
+ * wire layout is checked rather than mirrored from the implementation. */
+static void exec_put_le32(uint8_t* p, uint32_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+
+static uint16_t exec_req_crc(int32_t seq, uint32_t timeout, const void* cmd, uint32_t len) {
+    uint8_t hdr[12];
+    exec_put_le32(hdr, (uint32_t)seq);
+    exec_put_le32(hdr + 4, timeout);
+    exec_put_le32(hdr + 8, len);
+    uint16_t crc = fl_crc16_base(0xFFFF, hdr, sizeof(hdr));
+    if (len > 0) {
+        crc = fl_crc16_base(crc, cmd, len);
+    }
+    return crc;
+}
+
+static uint16_t exec_start_crc(int32_t seq) {
+    uint8_t b[4];
+    exec_put_le32(b, (uint32_t)seq);
+    return fl_crc16_base(0xFFFF, b, sizeof(b));
+}
+
+static uint16_t exec_result_crc(int32_t seq, int32_t ret) {
+    uint8_t b[8];
+    exec_put_le32(b, (uint32_t)seq);
+    exec_put_le32(b + 4, (uint32_t)ret);
+    return fl_crc16_base(0xFFFF, b, sizeof(b));
+}
+
+/* Send an exec request; any NULL argument is omitted from the command line */
+static fl_error_t exec_send(const char* b64, const char* seq, const char* timeout, const char* crc, bool force) {
+    const char* argv[16];
+    int argc = 0;
+
+    argv[argc++] = "fl";
+    argv[argc++] = "--cmd";
+    argv[argc++] = "exec";
+    if (b64) {
+        argv[argc++] = "-d";
+        argv[argc++] = b64;
+    }
+    if (seq) {
+        argv[argc++] = "--seq";
+        argv[argc++] = seq;
+    }
+    if (timeout) {
+        argv[argc++] = "--timeout";
+        argv[argc++] = timeout;
+    }
+    if (crc) {
+        argv[argc++] = "--crc";
+        argv[argc++] = crc;
+    }
+    if (force) {
+        argv[argc++] = "--force";
+    }
+    return fl_exec_cmd(&test_ctx, argc, argv);
+}
+
+/* Full control: what is sent (seq/timeout/data) and what the CRC was built from */
+static fl_error_t exec_run_full(const uint8_t* data, size_t len, int seq, int timeout, int crc_seq, int crc_timeout,
+                                int crc_delta) {
+    static char b64[FL_B64_BUF_SIZE + 16];
+    char seq_s[16], to_s[16], crc_s[16];
+
+    TEST_ASSERT(fl_base64_encode(data, len, b64, sizeof(b64)) >= 0);
+    snprintf(seq_s, sizeof(seq_s), "%d", seq);
+    snprintf(to_s, sizeof(to_s), "%d", timeout);
+    const uint16_t crc = (uint16_t)(exec_req_crc(crc_seq, (uint32_t)crc_timeout, data, (uint32_t)len) + crc_delta);
+    snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)crc);
+
+    return exec_send(b64, seq_s, to_s, crc_s, false);
+}
+
+static fl_error_t exec_run(const char* cmd, int seq, int timeout) {
+    return exec_run_full((const uint8_t*)cmd, strlen(cmd), seq, timeout, seq, timeout, 0);
+}
+
+/* Query: no -d, CRC covers seq + timeout(0) + len(0) */
+static fl_error_t exec_query_run(int seq, int crc_delta) {
+    char seq_s[16], crc_s[16];
+    snprintf(seq_s, sizeof(seq_s), "%d", seq);
+    const uint16_t crc = (uint16_t)(exec_req_crc(seq, 0, NULL, 0) + crc_delta);
+    snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)crc);
+    return exec_send(NULL, seq_s, NULL, crc_s, false);
+}
+
+static bool exec_output_has_result(int seq, int ret, bool replay) {
+    char expect[96];
+    snprintf(expect, sizeof(expect), "EXEC seq=%d ret=%d crc=0x%04X%s", seq, ret, (unsigned)exec_result_crc(seq, ret),
+             replay ? " replay=1" : "");
+    return mock_output_contains(expect);
+}
+
+void test_exec_no_callback(void) {
+    setup_exec();
+    test_ctx.exec_cb = NULL;
+
+    fl_error_t result = exec_run("ls", 1, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_STATE, result);
+    TEST_ASSERT(mock_output_contains("FLERR"));
+    TEST_ASSERT(mock_output_contains("No exec_cb"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_basic(void) {
+    setup_exec();
+    g_exec_ret = 0;
+
+    fl_error_t result = exec_run("ls -l /data", 7, 5000);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+    TEST_ASSERT_STR_EQUAL("ls -l /data", g_exec_cmd);
+    TEST_ASSERT_EQUAL(5000, g_exec_timeout);
+    TEST_ASSERT(g_exec_user_seen == &g_exec_marker);
+
+    char start[64];
+    snprintf(start, sizeof(start), "[FLEXEC] seq=7 crc=0x%04X\n", (unsigned)exec_start_crc(7));
+    TEST_ASSERT(mock_output_contains(start));
+    TEST_ASSERT(mock_output_contains("[FLOK] "));
+    TEST_ASSERT(exec_output_has_result(7, 0, false));
+}
+
+void test_exec_frame_layout(void) {
+    setup_exec();
+
+    exec_run("ls", 7, 1000);
+
+    /* start line, then result line, then exactly one [FLEND] after the result */
+    const char* out = mock_output_get();
+    const char* p_start = strstr(out, "[FLEXEC]");
+    const char* p_res = strstr(out, "[FLOK] EXEC");
+    const char* p_end = strstr(out, "[FLEND]");
+
+    TEST_ASSERT_NOT_NULL(p_start);
+    TEST_ASSERT_NOT_NULL(p_res);
+    TEST_ASSERT_NOT_NULL(p_end);
+    if (p_start && p_res && p_end) {
+        TEST_ASSERT(p_start < p_res);
+        TEST_ASSERT(p_res < p_end);
+        TEST_ASSERT(strstr(p_end + 1, "[FLEND]") == NULL);
+
+        /* the start line is terminated by a newline and NOT followed by [FLEND] */
+        const char* nl = strchr(p_start, '\n');
+        TEST_ASSERT_NOT_NULL(nl);
+        if (nl) {
+            TEST_ASSERT(strncmp(nl + 1, "[FLEND]", 7) != 0);
+        }
+    }
+}
+
+void test_exec_start_line_before_callback(void) {
+    setup_exec();
+
+    exec_run("ls", 7, 0);
+
+    TEST_ASSERT(g_exec_start_seen);
+    TEST_ASSERT_FALSE(g_exec_result_seen);
+}
+
+void test_exec_special_characters(void) {
+    setup_exec();
+    const char* cmd = "echo \"a b\" > /tmp/x; cat $HOME 'q' | grep -v \\n && true";
+
+    fl_error_t result = exec_run(cmd, 3, 0);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_STR_EQUAL(cmd, g_exec_cmd);
+}
+
+void test_exec_nonzero_ret(void) {
+    setup_exec();
+    g_exec_ret = 3;
+
+    fl_error_t result = exec_run("false", 4, 0);
+
+    /* a command that ran and returned non-zero is still a successful fl command */
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT(mock_output_contains("[FLOK] "));
+    TEST_ASSERT(exec_output_has_result(4, 3, false));
+}
+
+void test_exec_spawn_failure(void) {
+    setup_exec();
+    g_exec_ret = -5;
+
+    fl_error_t result = exec_run("whatever", 5, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_IO, result);
+    TEST_ASSERT(mock_output_contains("[FLERR] "));
+    TEST_ASSERT(mock_output_contains("spawn failed"));
+    TEST_ASSERT(exec_output_has_result(5, -5, false));
+}
+
+void test_exec_missing_crc(void) {
+    setup_exec();
+
+    fl_error_t result = exec_send("bHM=", "1", "0", NULL, false);
+
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
+    TEST_ASSERT(mock_output_contains("Missing --crc"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_force_waives_crc(void) {
+    setup_exec();
+
+    fl_error_t result = exec_send("bHM=", "1", "0", NULL, true);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+    TEST_ASSERT_STR_EQUAL("ls", g_exec_cmd);
+}
+
+void test_exec_invalid_base64(void) {
+    setup_exec();
+
+    fl_error_t result = exec_send("!!!!", "1", "0", "0x0000", false);
+
+    TEST_ASSERT_EQUAL(FL_ERR_ENCODE, result);
+    TEST_ASSERT(mock_output_contains("Invalid base64"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_crc_mismatch(void) {
+    setup_exec();
+
+    fl_error_t result = exec_run_full((const uint8_t*)"ls", 2, 1, 0, 1, 0, 1);
+
+    TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+    TEST_ASSERT_FALSE(mock_output_contains("[FLEXEC]"));
+}
+
+void test_exec_crc_covers_seq(void) {
+    setup_exec();
+
+    /* CRC built for seq=7 but seq=8 arrives: a corrupted seq must be rejected */
+    fl_error_t result = exec_run_full((const uint8_t*)"ls", 2, 8, 0, 7, 0, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_crc_covers_timeout(void) {
+    setup_exec();
+
+    fl_error_t result = exec_run_full((const uint8_t*)"ls", 2, 1, 2000, 1, 1000, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_crc_covers_payload(void) {
+    setup_exec();
+    uint8_t good[] = "rm /a";
+    uint8_t bad[] = "rm /b";
+    char b64[32], crc_s[16];
+
+    fl_base64_encode(bad, 5, b64, sizeof(b64));
+    snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)exec_req_crc(1, 0, good, 5));
+
+    fl_error_t result = exec_send(b64, "1", "0", crc_s, false);
+
+    TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_embedded_nul_rejected(void) {
+    setup_exec();
+    const uint8_t cmd[] = {'a', 0, 'b'};
+
+    fl_error_t result = exec_run_full(cmd, sizeof(cmd), 1, 0, 1, 0, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
+    TEST_ASSERT(mock_output_contains("Invalid command"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_negative_timeout_rejected(void) {
+    setup_exec();
+
+    fl_error_t result = exec_run("ls", 1, -5);
+
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
+    TEST_ASSERT(mock_output_contains("Invalid command"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_max_length(void) {
+    setup_exec();
+    char cmd[FL_BUF_SIZE + 2];
+
+    /* FL_BUF_SIZE - 1 bytes is the longest command (one byte kept for the NUL) */
+    memset(cmd, 'a', FL_BUF_SIZE - 1);
+    cmd[FL_BUF_SIZE - 1] = '\0';
+    fl_error_t result = exec_run(cmd, 1, 0);
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+    TEST_ASSERT_EQUAL((long)(FL_BUF_SIZE - 1), (long)strlen(g_exec_cmd));
+
+    /* one byte more must be rejected, not truncated */
+    mock_output_reset();
+    memset(cmd, 'a', FL_BUF_SIZE);
+    cmd[FL_BUF_SIZE] = '\0';
+    result = exec_run(cmd, 2, 0);
+    TEST_ASSERT_EQUAL(FL_ERR_ENCODE, result);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+}
+
+void test_exec_timeout_passthrough(void) {
+    setup_exec();
+
+    exec_run("ls", 1, 12345);
+    TEST_ASSERT_EQUAL(12345, g_exec_timeout);
+
+    /* omitted --timeout reaches the callback as 0 */
+    char crc_s[16];
+    snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)exec_req_crc(2, 0, "ls", 2));
+    fl_error_t result = exec_send("bHM=", "2", NULL, crc_s, false);
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_EQUAL(0, g_exec_timeout);
+}
+
+void test_exec_dedupe_replays_without_executing(void) {
+    setup_exec();
+    g_exec_ret = 4;
+
+    exec_run("touch /a", 9, 0);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+
+    mock_output_reset();
+    fl_error_t result = exec_run("touch /a", 9, 0);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+    TEST_ASSERT_FALSE(mock_output_contains("[FLEXEC]"));
+    TEST_ASSERT(exec_output_has_result(9, 4, true));
+}
+
+void test_exec_dedupe_replays_failure(void) {
+    setup_exec();
+    g_exec_ret = -5;
+
+    exec_run("x", 9, 0);
+    mock_output_reset();
+    fl_error_t result = exec_run("x", 9, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_IO, result);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+    TEST_ASSERT(exec_output_has_result(9, -5, true));
+}
+
+void test_exec_different_seq_executes_again(void) {
+    setup_exec();
+
+    exec_run("ls", 1, 0);
+    exec_run("ls", 2, 0);
+
+    TEST_ASSERT_EQUAL(2, g_exec_calls);
+}
+
+void test_exec_without_seq_never_deduped(void) {
+    setup_exec();
+
+    exec_run("ls", -1, 0);
+    mock_output_reset();
+    exec_run("ls", -1, 0);
+
+    TEST_ASSERT_EQUAL(2, g_exec_calls);
+    TEST_ASSERT(exec_output_has_result(-1, 0, false));
+}
+
+void test_exec_query_hit(void) {
+    setup_exec();
+    g_exec_ret = 7;
+    exec_run("ls", 11, 0);
+    mock_output_reset();
+
+    fl_error_t result = exec_query_run(11, 0);
+
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+    TEST_ASSERT_FALSE(mock_output_contains("[FLEXEC]"));
+    TEST_ASSERT(exec_output_has_result(11, 7, true));
+}
+
+void test_exec_query_miss(void) {
+    setup_exec();
+    exec_run("ls", 11, 0);
+    mock_output_reset();
+
+    fl_error_t result = exec_query_run(12, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_STATE, result);
+    TEST_ASSERT(mock_output_contains("no record"));
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+}
+
+void test_exec_query_without_history(void) {
+    setup_exec();
+
+    fl_error_t result = exec_query_run(5, 0);
+
+    TEST_ASSERT_EQUAL(FL_ERR_STATE, result);
+    TEST_ASSERT(mock_output_contains("no record"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_query_bad_crc(void) {
+    setup_exec();
+    exec_run("ls", 11, 0);
+    mock_output_reset();
+
+    fl_error_t result = exec_query_run(11, 1);
+
+    TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
+    TEST_ASSERT(mock_output_contains("CRC mismatch"));
+    TEST_ASSERT_EQUAL(1, g_exec_calls);
+}
+
+void test_exec_query_requires_seq(void) {
+    setup_exec();
+
+    fl_error_t result = exec_send(NULL, NULL, NULL, "0x0000", false);
+
+    TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
+    TEST_ASSERT(mock_output_contains("Missing --data"));
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_query_never_calls_callback(void) {
+    setup_exec();
+
+    /* a query carrying no -d must never execute, hit or miss */
+    exec_query_run(3, 0);
+    TEST_ASSERT_EQUAL(0, g_exec_calls);
+}
+
+void test_exec_info_reports_state(void) {
+    setup_exec();
+    const char* argv[] = {"fl", "--cmd", "info"};
+
+    fl_exec_cmd(&test_ctx, 3, argv);
+    TEST_ASSERT(mock_output_contains("Exec: enabled"));
+
+    mock_output_reset();
+    test_ctx.exec_cb = NULL;
+    fl_exec_cmd(&test_ctx, 3, argv);
+    TEST_ASSERT(mock_output_contains("Exec: disabled"));
+}
+
+/* ============================================================================
  * Test Runner
  * ============================================================================ */
 
@@ -2369,5 +2868,37 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_write_invalidates_icache);
     RUN_TEST(test_loader_no_cache_cb_no_crash);
     RUN_TEST(test_loader_upload_offset_cache_range);
+    TEST_SUITE_END();
+
+    TEST_SUITE_BEGIN("func_loader - Exec Command");
+    RUN_TEST(test_exec_no_callback);
+    RUN_TEST(test_exec_basic);
+    RUN_TEST(test_exec_frame_layout);
+    RUN_TEST(test_exec_start_line_before_callback);
+    RUN_TEST(test_exec_special_characters);
+    RUN_TEST(test_exec_nonzero_ret);
+    RUN_TEST(test_exec_spawn_failure);
+    RUN_TEST(test_exec_missing_crc);
+    RUN_TEST(test_exec_force_waives_crc);
+    RUN_TEST(test_exec_invalid_base64);
+    RUN_TEST(test_exec_crc_mismatch);
+    RUN_TEST(test_exec_crc_covers_seq);
+    RUN_TEST(test_exec_crc_covers_timeout);
+    RUN_TEST(test_exec_crc_covers_payload);
+    RUN_TEST(test_exec_embedded_nul_rejected);
+    RUN_TEST(test_exec_negative_timeout_rejected);
+    RUN_TEST(test_exec_max_length);
+    RUN_TEST(test_exec_timeout_passthrough);
+    RUN_TEST(test_exec_dedupe_replays_without_executing);
+    RUN_TEST(test_exec_dedupe_replays_failure);
+    RUN_TEST(test_exec_different_seq_executes_again);
+    RUN_TEST(test_exec_without_seq_never_deduped);
+    RUN_TEST(test_exec_query_hit);
+    RUN_TEST(test_exec_query_miss);
+    RUN_TEST(test_exec_query_without_history);
+    RUN_TEST(test_exec_query_bad_crc);
+    RUN_TEST(test_exec_query_requires_seq);
+    RUN_TEST(test_exec_query_never_calls_callback);
+    RUN_TEST(test_exec_info_reports_state);
     TEST_SUITE_END();
 }

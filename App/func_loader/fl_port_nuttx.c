@@ -54,6 +54,7 @@
 #include "fl_stream.h"
 #include <nuttx/config.h>
 #include <nuttx/cache.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,6 +89,28 @@ static void nuttx_flush_dcache_cb(uintptr_t start, uintptr_t end) {
 static void nuttx_invalidate_icache_cb(uintptr_t start, uintptr_t end) {
     up_invalidate_icache(start, end);
 }
+
+#ifdef CONFIG_SYSTEM_SYSTEM
+/* Exec callback: run the command line through NSH via system().
+ *
+ * system() blocks (waitpid) until the command exits and has no timeout
+ * support, so timeout_ms is accepted but NOT enforced here: do not run
+ * commands that block for a long time. The command's stdout/stderr go
+ * straight to this task's fd 1/2 (inherited), i.e. the console. */
+static int nuttx_exec_cb(void* user, const char* cmdline, uint32_t timeout_ms) {
+    (void)user;
+    (void)timeout_ms;
+
+    const int ret = system(cmdline);
+    if (ret < 0) {
+        /* system() returns ERROR (-1) and sets errno when it cannot spawn or
+         * wait for the shell task. Report that as -errno (fl_exec_cb_t
+         * contract) so the host sees the real cause. */
+        return errno > 0 ? -errno : -EIO;
+    }
+    return ret;
+}
+#endif
 
 /* ==========================================================================
  * Memory Allocation Configuration
@@ -196,6 +219,12 @@ int main(int argc, char** argv) {
          * fl loop, so being able to reach 'info' at all means we're in it. */
         ctx.interactive = true;
         ctx.platform_desc = "NuttX";
+
+#ifdef CONFIG_SYSTEM_SYSTEM
+        /* exec needs system(); without it exec_cb stays NULL and the
+         * command reports "No exec_cb". */
+        ctx.exec_cb = nuttx_exec_cb;
+#endif
 
         /* Initialize allocator */
         nuttx_alloc_init();

@@ -152,6 +152,7 @@ static const cmd_entry_t s_cmd_table[] = {
     { "unpatch",  fl_cmd_unpatch  },
     { "enable",   fl_cmd_enable   },
     { "hello",    fl_cmd_hello    },
+    { "exec",     fl_cmd_exec     },
 #if FL_USE_FILE
     /* File transfer commands */
     { "fopen",    fl_cmd_fopen    },
@@ -180,6 +181,7 @@ fl_error_t fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     args.crc = -1;
     args.len = 64;
     args.enable = -1;
+    args.seq = -1;
 
     struct argparse_option opts[] = {
         OPT_HELP(),
@@ -198,6 +200,8 @@ fl_error_t fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_STRING(0, "path", &args.path, "File path", NULL, 0, 0),
         OPT_STRING(0, "newpath", &args.newpath, "New file path", NULL, 0, 0),
         OPT_STRING('m', "mode", &args.mode, "File mode (r/w/a)", NULL, 0, 0),
+        OPT_INTEGER(0, "seq", &args.seq, "Exec request id", NULL, 0, 0),
+        OPT_INTEGER(0, "timeout", &args.timeout, "Exec timeout (ms)", NULL, 0, 0),
         OPT_END(),
     };
 

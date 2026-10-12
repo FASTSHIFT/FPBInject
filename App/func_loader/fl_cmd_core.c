@@ -99,6 +99,8 @@ fl_error_t fl_cmd_info(fl_context_t* ctx, const cmd_args_t* args) {
         fl_println("Platform: %s", ctx->platform_desc);
     }
 
+    fl_println("Exec: %s", ctx->exec_cb ? "enabled" : "disabled");
+
     fl_cmd_print_fpb_info(ctx);
 
 #if FL_USE_FILE

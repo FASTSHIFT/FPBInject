@@ -98,8 +98,13 @@ run_tests() {
     ./test_runner_no_fpb
     NO_FPB_EXIT_CODE=$?
 
+    # Run NuttX port layer tests (fl_port_nuttx.c with mocked system())
+    print_info "Running NuttX port tests..."
+    ./test_runner_nuttx_port
+    PORT_EXIT_CODE=$?
+
     # Check results
-    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ] && [ $COMPAT_EXIT_CODE -eq 0 ] && [ $NO_FPB_EXIT_CODE -eq 0 ]; then
+    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ] && [ $COMPAT_EXIT_CODE -eq 0 ] && [ $NO_FPB_EXIT_CODE -eq 0 ] && [ $PORT_EXIT_CODE -eq 0 ]; then
         print_success "All tests passed"
     else
         if [ $MAIN_EXIT_CODE -ne 0 ]; then
@@ -116,6 +121,9 @@ run_tests() {
         fi
         if [ $NO_FPB_EXIT_CODE -ne 0 ]; then
             print_error "FL_NO_FPB tests failed (exit code: $NO_FPB_EXIT_CODE)"
+        fi
+        if [ $PORT_EXIT_CODE -ne 0 ]; then
+            print_error "NuttX port tests failed (exit code: $PORT_EXIT_CODE)"
         fi
         exit 1
     fi

@@ -20,4 +20,10 @@ static inline void up_invalidate_dcache(uintptr_t start, uintptr_t end)
     (void)end;
 }
 
+static inline void up_invalidate_icache(uintptr_t start, uintptr_t end)
+{
+    (void)start;
+    (void)end;
+}
+
 #endif /* __NUTTX_CACHE_H */

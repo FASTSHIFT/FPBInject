@@ -479,6 +479,7 @@ BSS is included in the binary (zeroed) via a sentinel `.fpb_end` section, ensuri
 | `echo` | `--data HEX` | Throughput test: echoes length and CRC |
 | `echoback` | `--len N` | Throughput test: sends N bytes back as Base64 |
 | `hello` | — | Call `fl_hello()` to verify injection |
+| `exec` | `--data BASE64 --seq ID --timeout MS --crc CRC` / `--seq ID --crc CRC` (query) | Run a shell command through the port's `exec_cb` (NuttX: `system()`); see below |
 | `fopen` | `--path PATH [--mode r\|w\|a]` | Open file on device filesystem |
 | `fwrite` | `--data BASE64 [--crc CRC]` | Write to open file |
 | `fread` | `--len N` | Read from open file, returns Base64 |
@@ -502,6 +503,23 @@ BSS is included in the binary (zeroed) via a sentinel `.fpb_end` section, ensuri
 ```
 
 CRC-16 covers `addr(4B) + len(4B) + payload` for upload/read/write commands, and `comp(4B) + orig(4B) + target(4B)` for patch commands.
+
+### `exec` Command
+
+`exec` runs a shell command on the device. The command line travels Base64-encoded (no quoting problems) and CRC-protected; the platform decides how to run it through the `exec_cb` callback in `fl_context_t` (NuttX: `system()`, enabled when `CONFIG_SYSTEM_SYSTEM=y`). The command's own stdout/stderr go straight to the console.
+
+```
+host:   fl -c exec -d <base64(cmd)> --seq <id> --timeout <ms> -r 0x<crc>
+device: [FLEXEC] seq=<id> crc=0x<crc>                    # command is about to start
+        <command stdout / stderr>
+        [FLOK] EXEC seq=<id> ret=<status> crc=0x<crc>      # result (negative ret = could not start, -errno)
+        [FLEND]
+```
+
+- Request CRC covers `seq(4B) + timeout(4B) + len(4B) + command`; the start line carries `crc(seq)` and the result line `crc(seq + ret)` (all little-endian).
+- `--seq` makes a repeated request idempotent: the device caches the last result and answers a repeat with `... replay=1` instead of running the command again. A request without `-d` (`fl -c exec --seq <id> -r <crc>`) is a read-only **query** of that cached result.
+- The host resends a request only while the device has not shown the start line; once it has, a damaged result is recovered with a query. See `Tools/WebServer/docs/exec-command-design.md`.
+- `--timeout` is handed to the callback unchanged; the NuttX port does not enforce it, so avoid commands that block.
 
 ## API Reference
 

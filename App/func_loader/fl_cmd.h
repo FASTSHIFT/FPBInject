@@ -57,6 +57,8 @@ typedef struct {
     const char* path;
     const char* newpath;
     const char* mode;
+    int seq;     /* exec request id, -1 = none (no de-duplication) */
+    int timeout; /* exec run-time limit in ms, 0 = none (passed to exec_cb) */
 } cmd_args_t;
 
 /**
@@ -99,6 +101,9 @@ fl_error_t fl_cmd_echo(fl_context_t* ctx, const cmd_args_t* args);
 fl_error_t fl_cmd_echoback(fl_context_t* ctx, const cmd_args_t* args);
 fl_error_t fl_cmd_info(fl_context_t* ctx, const cmd_args_t* args);
 fl_error_t fl_cmd_hello(fl_context_t* ctx, const cmd_args_t* args);
+
+/* Exec command (fl_cmd_exec.c) */
+fl_error_t fl_cmd_exec(fl_context_t* ctx, const cmd_args_t* args);
 
 /* Memory commands (fl_cmd_mem.c) */
 fl_error_t fl_cmd_alloc(fl_context_t* ctx, const cmd_args_t* args);
