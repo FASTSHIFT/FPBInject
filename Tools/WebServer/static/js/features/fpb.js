@@ -351,6 +351,10 @@ async function fpbInfo(showPopup = false) {
           );
         }
 
+        if (info.exec) {
+          infoLines.push(`${t('messages.exec_support', 'Exec')}: ${info.exec}`);
+        }
+
         if (info.fpb_detail) {
           infoLines.push(
             `${t('messages.fpb_detail', 'FPB')}: ${info.fpb_detail}`,

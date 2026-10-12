@@ -42,7 +42,6 @@ class ExecRouteBase(unittest.TestCase):
         self.app.config["TESTING"] = True
         self.original_device = state.device
         state.device = DeviceState()
-        state.device.exec_enabled = True
         self.app.register_blueprint(fpb.bp, url_prefix="/api")
         self.client = self.app.test_client()
 
@@ -131,25 +130,7 @@ class TestExecRoute(ExecRouteBase):
 
 
 class TestExecRouteGuards(ExecRouteBase):
-    def test_disabled_by_default_setting(self):
-        state.device.exec_enabled = False
-        resp = self.post({"cmd": "ls"})
-        data = json.loads(resp.data)
-        self.assertEqual(resp.status_code, 200)
-        self.assertFalse(data["success"])
-        self.assertEqual(data["error_code"], "exec_disabled")
-        self.fpb.exec_cmd.assert_not_called()
-
-    def test_disabled_status_is_not_auth_status(self):
-        # The SDK maps 401/403 to AuthError ("check your token"): not for this
-        state.device.exec_enabled = False
-        resp = self.post({"cmd": "ls"})
-        self.assertNotIn(resp.status_code, (401, 403))
-
-    def test_disabled_when_attribute_missing(self):
-        del state.device.exec_enabled
-        resp = self.post({"cmd": "ls"})
-        self.assertEqual(json.loads(resp.data)["error_code"], "exec_disabled")
+    """Request validation. There is no on/off switch for exec in the WebServer."""
 
     def test_non_json_content_type_rejected(self):
         for ctype in ("text/plain", "application/x-www-form-urlencoded"):
@@ -198,11 +179,6 @@ class TestExecRouteGuards(ExecRouteBase):
             resp = self.post(body)
             self.assertEqual(resp.status_code, 400, body)
         self.fpb.exec_cmd.assert_not_called()
-
-    def test_validation_happens_before_enabled_check(self):
-        state.device.exec_enabled = False
-        resp = self.post({"cmd": ""})
-        self.assertEqual(resp.status_code, 400)
 
     def test_busy_with_file_transfer(self):
         state.device.file_txn_lock.acquire()

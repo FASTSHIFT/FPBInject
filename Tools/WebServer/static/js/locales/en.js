@@ -46,7 +46,6 @@ window.i18nResources['en'] = {
         external_gdb_port: 'External GDB Port',
         ghidra_path: 'Ghidra Path',
         enable_decompile: 'Enable Decompilation',
-        exec_enabled: 'Allow Exec',
         ui_theme: 'Theme',
         ui_language: 'Language',
       },
@@ -226,6 +225,7 @@ window.i18nResources['en'] = {
       firmware_version: 'Firmware',
       fpb_detail: 'FPB',
       file_transfer: 'File Transfer',
+      exec_support: 'Exec',
       unknown_error: 'Unknown error',
       // Build time mismatch
       build_time_mismatch: 'Build Time Mismatch',
@@ -520,8 +520,6 @@ window.i18nResources['en'] = {
         'Path to Ghidra installation directory (containing support/analyzeHeadless)',
       enable_decompile:
         'Enable decompilation when creating patch templates (requires Ghidra)',
-      exec_enabled:
-        'Allow running shell commands on the device through the exec API. This is remote command execution; keep it off unless needed.',
       ui_theme: 'UI color theme',
       ui_language: 'UI display language',
     },

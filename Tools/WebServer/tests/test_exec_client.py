@@ -924,32 +924,10 @@ class TestSerialProtocolBits(unittest.TestCase):
 
 
 class TestConfigSchema(unittest.TestCase):
-    def test_exec_disabled_by_default(self):
-        from fpbinject.core.config_schema import get_config_defaults
-
-        self.assertIs(get_config_defaults()["exec_enabled"], False)
-
-    def test_exec_enabled_is_a_visible_boolean_setting(self):
-        from fpbinject.core.config_schema import (
-            ConfigType,
-            get_schema_by_key,
-            get_sidebar_schema,
-        )
-
-        item = get_schema_by_key("exec_enabled")
-        self.assertEqual(item.config_type, ConfigType.BOOLEAN)
-        self.assertIn(item, get_sidebar_schema())
-        self.assertIn("remote command execution", item.tooltip)
-
     def test_retries_tooltip_mentions_exec(self):
         from fpbinject.core.config_schema import get_schema_by_key
 
         self.assertIn("exec", get_schema_by_key("transfer_max_retries").tooltip)
-
-    def test_device_state_has_exec_enabled_off(self):
-        from fpbinject.core.state import DeviceState
-
-        self.assertFalse(DeviceState().exec_enabled)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,6 @@ from fpbinject.app.utils.sse import sse_response
 from fpbinject.core.config_schema import DEFAULT_DOWNLOAD_CHUNK_SIZE
 from fpbinject.core.exec_client import (
     ERR_BUSY,
-    ERR_EXEC_DISABLED,
     ERR_REQUEST_FAILED,
     ExecArgumentError,
     default_max_retries as exec_default_max_retries,
@@ -554,7 +553,7 @@ def _exec_error(error_code, message, status=200, **extra):
 
     Protocol-level outcomes use HTTP 200 on purpose: the SDK's ServerProxy maps
     401/403 to AuthError ("check your token"), which would be misleading for
-    e.g. "exec disabled". Only malformed requests get 4xx.
+    e.g. "device busy". Only malformed requests get 4xx.
     """
     body = {"success": False, "error": message, "error_code": error_code}
     body.update(extra)
@@ -577,9 +576,9 @@ def api_fpb_exec():
     elapsed_ms, error_code, error. ``success`` means the command ran and its
     result was verified; the command's own exit status is ``ret``.
     """
-    # Require a real JSON body: a cross-site form or text/plain POST cannot set
-    # this content type without a CORS preflight, so a web page cannot use the
-    # (unauthenticated) localhost access to run commands.
+    # Require a real JSON body. This only turns away plain cross-site <form> /
+    # text/plain posts; it is not an access control (the app enables CORS for
+    # every origin, and localhost callers skip token auth).
     if not request.is_json:
         return _exec_error(
             "bad_request", "Content-Type must be application/json", status=415
@@ -600,12 +599,6 @@ def api_fpb_exec():
         validate_exec_args(cmd, timeout, ack_timeout, max_retries)
     except ExecArgumentError as e:
         return _exec_error("bad_request", str(e), status=400)
-
-    if not getattr(state.device, "exec_enabled", False):
-        return _exec_error(
-            ERR_EXEC_DISABLED,
-            "Exec is disabled. Turn on 'Allow Exec' in the configuration to use it.",
-        )
 
     _, _, _, _, get_fpb_inject, _ = _get_helpers()
     fpb = get_fpb_inject()

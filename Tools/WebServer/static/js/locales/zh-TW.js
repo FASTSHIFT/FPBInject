@@ -46,7 +46,6 @@ window.i18nResources['zh-TW'] = {
         external_gdb_port: '外部 GDB 連接埠',
         ghidra_path: 'Ghidra 路徑',
         enable_decompile: '啟用反編譯',
-        exec_enabled: '允許執行命令',
         ui_theme: '主題',
         ui_language: '語言',
       },
@@ -225,6 +224,7 @@ window.i18nResources['zh-TW'] = {
       firmware_version: '韌體',
       fpb_detail: 'FPB',
       file_transfer: '檔案傳輸',
+      exec_support: '命令執行',
       unknown_error: '未知錯誤',
       // 建置時間不符
       build_time_mismatch: '建置時間不符',
@@ -507,8 +507,6 @@ window.i18nResources['zh-TW'] = {
       serial_echo_enabled: '在串列埠面板回顯傳送的命令（用於除錯）',
       ghidra_path: 'Ghidra 安裝目錄路徑（包含 support/analyzeHeadless）',
       enable_decompile: '建立補丁範本時啟用反編譯（需要 Ghidra）',
-      exec_enabled:
-        '允許透過 exec 介面在裝置上執行 shell 命令。這相當於遠端命令執行，不需要時請保持關閉',
       ui_theme: '介面顏色主題',
       ui_language: '介面顯示語言',
     },

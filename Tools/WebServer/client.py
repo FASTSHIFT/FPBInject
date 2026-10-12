@@ -554,8 +554,6 @@ class Client:
         ``unknown_state`` or ``device_suspect`` instead of raising. Raises
         ``FPBError`` for invalid arguments, ``DeviceNotConnected`` when there
         is no device (including offline mode).
-
-        Proxy mode needs ``exec_enabled`` turned on in the WebServer config.
         """
         from fpbinject.core.exec_client import ExecArgumentError, validate_args
 

@@ -175,12 +175,6 @@ class TestClientExecProxyMode(unittest.TestCase):
         with patch.object(c._proxy, "exec_cmd", return_value=failure):
             self.assertEqual(c.exec_cmd("sleep 9")["error_code"], "unknown_state")
 
-    def test_exec_disabled_is_not_an_auth_error(self):
-        c = Client("http://127.0.0.1:1")
-        disabled = {"success": False, "error_code": "exec_disabled", "error": "off"}
-        with patch.object(c._proxy, "exec_cmd", return_value=disabled):
-            self.assertEqual(c.exec_cmd("ls")["error_code"], "exec_disabled")
-
     def test_invalid_arguments_raise_without_request(self):
         c = Client("http://127.0.0.1:1")
         with patch.object(c._proxy, "exec_cmd") as m:
@@ -269,13 +263,6 @@ class TestClientExecDirectMode(unittest.TestCase):
         fpb.exec_cmd.return_value = dict(OK)
         client.exec_cmd("ls")
         self.assertIsNone(fpb.exec_cmd.call_args.kwargs["max_retries"])
-
-    def test_not_gated_by_exec_enabled(self):
-        # exec_enabled guards the HTTP route; the caller owns the port here
-        client, fpb = self._direct_client()
-        client._device_state.exec_enabled = False
-        fpb.exec_cmd.return_value = dict(OK)
-        self.assertTrue(client.exec_cmd("ls")["success"])
 
     def test_invalid_arguments_raise(self):
         client, fpb = self._direct_client()

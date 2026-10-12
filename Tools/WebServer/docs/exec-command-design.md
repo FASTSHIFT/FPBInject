@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |------|------|
-| 状态 | 已实现，第 5 版（与实现同步） |
+| 状态 | 已实现，第 6 版 |
 | 范围 | 下位机 `App/func_loader`、上位机 `Tools/WebServer`（core / app / cli） |
 | 目标平台 | NuttX（通过 `system()` 对接 NSH） |
 | 相关文档 | `file-transfer-design.md`、`crc-integrity-audit-v2.md`、`security-token-design.md`、`tx-fragment-auto-adapt-design.md` |
@@ -23,6 +23,8 @@
   - **NuttX port 失败时返回 `-errno`**（取不到时用 `-EIO`），而不是固定的 `-EIO`。上位机的提示里带上 `errno N on the device`。注意这是设备（NuttX）的 errno 编号，不一定与上位机操作系统的编号一致，所以只显示数字，不翻译成名字。
   - HTTP 客户端超时统一用 `worst_case_seconds(timeout, ack_timeout, max_retries)`，覆盖存活探测、全部重发、命令等待和结果恢复查询；服务器的 worker 窗口也用同一个函数。
   - 新增错误码 `device_error`（设备以非“请求损坏”类原因拒绝了请求，例如 `Invalid command`）。
+
+- 第 6 版：**删除上位机的 `exec_enabled`（Allow Exec）开关**，WebServer 不再有 exec 的开关，也没有 `exec_disabled` 错误码；设备信息弹窗增加一行 `Exec: enabled|disabled`（来自固件 `info`）。第 8 节同步修正：此前文档称 JSON 请求头能挡住网页的跨站请求，这并不成立，因为 WebServer 对所有来源开启了 CORS。
 
 ## 1. 背景与目标
 
@@ -518,7 +520,6 @@ Content-Type: application/json
 
 | `error_code` | 含义 |
 |--------------|------|
-| `exec_disabled` | 上位机 `exec_enabled` 为 false |
 | `not_supported` | 设备 `info` 报告 `Exec: disabled`（未挂载 `exec_cb`） |
 | `too_long` | 命令超出 6.5 的长度预算 |
 | `device_suspect` | 会话处于可疑状态，且 `ping` 未通（6.8） |
@@ -601,14 +602,14 @@ SDK 现有约定是“返回原始 JSON `dict`；传输、鉴权、设备未连�
 | 情形 | 表现 |
 |------|------|
 | 命令执行完成（含 `ret` 非 0） | 返回 `success=True` |
-| `unknown_state`、`device_suspect`、`too_long`、`request_failed`、`spawn_failed`、`busy`、`exec_disabled`、`not_supported` | 返回 `success=False` 和对应的 `error_code`，**不抛异常** |
+| `unknown_state`、`device_suspect`、`too_long`、`request_failed`、`spawn_failed`、`busy`、`not_supported` | 返回 `success=False` 和对应的 `error_code`，**不抛异常** |
 | 参数非法（`cmd` 为空、`timeout` 不大于 0 或超出协议上界、`max_retries` 越界） | 抛 `FPBError`，客户端先行校验，不发请求 |
 | 代理模式下 WebServer 不可达 / 需要 token | 抛 `ServerUnavailable` / `AuthError` |
 | 没有连接设备 | 抛 `DeviceNotConnected` |
 
 两个需要注意的细节：
 
-1. **`exec_disabled` 不能用 HTTP 401 / 403 返回。** SDK 的 `ServerProxy` 会把 401 / 403 统一映射成 `AuthError`（提示“检查 token”），上位机“exec 被配置关闭”如果用 403，调用方会被误导去检查 token。因此这类协议层错误用 HTTP 200 加 `success=false` 和 `error_code` 返回。请求格式错误（缺字段、`Content-Type` 不对）仍然用 400 / 415。
+1. **协议层的失败不能用 HTTP 401 / 403 返回。** SDK 的 `ServerProxy` 会把 401 / 403 统一映射成 `AuthError`（提示“检查 token”），例如“串口被文件传输占用（`busy`）”如果用 403，调用方会被误导去检查 token。因此这类结局用 HTTP 200 加 `success=false` 和 `error_code` 返回。请求格式错误（缺字段、`Content-Type` 不对）仍然用 400 / 415。
 2. **HTTP 客户端超时必须覆盖整个 exec 的最坏耗时。** `ServerProxy._post` 的默认超时是 30 秒（`_API_TIMEOUT`），而 exec 的 `timeout` 没有人为上限，可以远大于 30 秒。`ServerProxy.exec_cmd()` 要像 `file_upload` 那样自己算超时：
 
    ```
@@ -618,9 +619,9 @@ SDK 现有约定是“返回原始 JSON `dict`；传输、鉴权、设备未连�
 
    这个上界覆盖存活探测、全部重发、命令本身的等待和结果恢复查询。不这样做，SDK 会在服务器还在等命令的时候先把连接断掉。`max_retries` 不指定时由服务器决定，SDK 按最大值 20 估算。
 
-#### 与 `exec_enabled` 的关系
+#### 没有上位机开关
 
-`exec_enabled`（第 8 节）是 **WebServer 的安全边界**，只作用于 HTTP 路由，也就只影响代理模式。直连模式下，调用方自己持有串口、自己运行进程，没有“远程调用”的问题，因此不受 `exec_enabled` 限制。
+WebServer 没有“是否允许 exec”的配置项，代理模式和直连模式的行为一致：能连上 WebServer、通过鉴权的调用方都可以执行（风险见第 8 节）。
 
 #### 文档与能力矩阵
 
@@ -738,15 +739,15 @@ Ctrl-C（`0x03`）作为备用手段是否有效，还没有验证：串口驱�
 
 ## 8. 安全
 
-exec 在串口上等价于一个远程 shell，这是本特性最需要谨慎的地方。
+exec 能在设备上执行任意 shell 命令，但它**没有带来新的访问能力**：WebServer 本来就有 `POST /api/serial/send`（以及 CLI 的 `serial-send`），可以把任意文本写进设备串口，也就是直接进 NSH。谁能访问 WebServer，谁就已经能在设备上执行命令。exec 的价值是可靠（CRC、不重复执行、拿到返回值），不是新增权限。所以本节只记录现状，不设额外限制。
 
 1. **固件侧没有独立开关**：去掉 `FL_USE_EXEC` 之后，只要固件打开了 `CONFIG_SYSTEM_SYSTEM`，exec 就是可用的。不想暴露 exec 的产品，需要关闭 `CONFIG_SYSTEM_SYSTEM`，或者在 port 层不挂 `exec_cb`。这一点需要产品配置侧知晓。
 2. **WebServer 鉴权**：`app/middleware.py` 的全局 `before_request` 对非本机请求要求 token，**本机请求(localhost)免鉴权**。WebServer 默认监听 `0.0.0.0:5500`，因此远程调用 exec 依赖这个 token 机制。实现时需确认新路由没有被白名单绕过。
-3. **本机免鉴权的风险**：任何本机进程，以及能向 `localhost:5500` 发请求的网页，都能调用 exec。路由应严格要求 `Content-Type: application/json`（跨站表单无法构造），不接受 `form` 或 `text/plain` 的请求体。
-4. **上位机开关**：由于固件侧不再单独设开关，强烈建议在 `config_schema` 增加 `exec_enabled`，默认 `false`，关闭时路由返回 `error_code=exec_disabled`（HTTP 状态不用 401 / 403，原因见 6.9）。这样即使固件支持 exec，也需要使用者在上位机显式打开，作为唯一的“默认关闭”防线。
+3. **本机免鉴权与 CORS**：这是整个 WebServer 的既有特性，与 exec 无关：任何本机进程都能调用所有接口；WebServer 对所有来源开启了 CORS（`CORS(app)`），浏览器里的网页也可能从用户本机向它发请求并被当作 localhost 免鉴权。路由要求 `Content-Type: application/json` 只能挡住普通的跨站表单，不是访问控制。如果要收紧，应当对整个 WebServer 做（例如限制 CORS 来源），而不是只限制 exec。
+4. **没有上位机开关**：评审后决定不加“允许 exec”的配置项（曾设计过默认关闭的 `exec_enabled`，已删除）。固件侧也没有独立开关，所以只要固件开了 `CONFIG_SYSTEM_SYSTEM`、调用方能访问 WebServer，exec 就可用。想限制的话，靠关闭固件的 `CONFIG_SYSTEM_SYSTEM`、WebServer 的 token 鉴权，以及不把 WebServer 暴露到不可信的网络。
 5. **等待时间不设人为上限**：`timeout` 只受协议上界约束。一个很长的 `timeout` 会让该请求长期持有串口，期间其他串口操作会得到 `busy`。如果以后需要保护 WebServer，可以增加可配置的 `exec_max_timeout`（默认不限），不写进协议。
 6. **审计**：每次 exec 请求通过现有的 `tool_log` 记录命令文本和结果。
-7. **与既有能力的对比**：`write` / `patch` 本来就能任意写设备内存，exec 并没有扩大“能控制设备”这一事实，但把门槛从“懂内存布局”降到了“会写 shell 命令”，因此要有独立的开关。
+7. **与既有能力的对比**：`serial-send` 能直接向 NSH 输入命令，`write` / `patch` 能任意写设备内存，`file-remove` 能删文件，它们同样经由 WebServer、同样适用上面的第 2、3 点。exec 没有扩大“能控制设备”这一事实。
 
 ## 9. 已知限制与风险
 
@@ -786,7 +787,6 @@ exec 在串口上等价于一个远程 shell，这是本特性最需要谨慎的
 | `core/serial_protocol.py` | 抽出 `_write_line()`；`info()` 解析 `Exec:` 行 |
 | `fpb_inject.py` | `exec_cmd()` 门面 |
 | `app/routes/fpb.py` | `POST /api/fpb/exec` |
-| `core/config_schema.py` | `exec_enabled` 配置项（建议，见第 8 节） |
 | `cli/fpb_cli.py`、`cli/server_proxy.py` | `exec` 子命令与代理方法（`exec_cmd`，HTTP 超时按 6.9 计算） |
 | `client.py` | SDK 门面新增 `Client.exec_cmd()`，代理与直连两种模式 |
 | `Docs/SDK.md`、`Tools/WebServer/docs/python-sdk-design.md`、`Docs/CLI.md` | 使用说明，需注明“阻塞命令靠用户自觉” |
@@ -832,15 +832,15 @@ exec 在串口上等价于一个远程 shell，这是本特性最需要谨慎的
 - 阶段二等待时间等于 `timeout`；超时返回 `Unknown`，`error` 文案包含“命令可能仍在运行”
 - 会话可疑：`Unknown` 后新请求先 `ping`，成功则放行，失败则返回 `device_suspect` 且不发命令
 - 输出切分：`\n` 与 `\r\n`、输出为空、输出含类似开始行或结果行的文本
-- 路由：未启用时返回 `exec_disabled`（且 HTTP 状态不是 401 / 403）、`Content-Type` 不对时拒绝、`timeout` 不大于 0 或超出协议上界时拒绝、鉴权行为
+- 路由：`Content-Type` 不对时拒绝、`timeout` 不大于 0 或超出协议上界时拒绝、鉴权行为
 - 输出上限：超过上限后继续读到响应结束，`output` 被截断且 `output_truncated` 为 true
 - **SDK（`client.py`）**：
   - 代理模式：请求体和 `ServerProxy.exec_cmd` 的参数对应；HTTP 超时等于 `worst_case_seconds(...)`
-  - 直连模式：不经过 HTTP，返回结构与代理模式一致；不受 `exec_enabled` 影响
+  - 直连模式：不经过 HTTP，返回结构与代理模式一致
   - 离线模式抛 `FPBError`；未连接设备抛 `DeviceNotConnected`
   - 参数非法（空命令、`timeout` 不大于 0 或超出协议上界）抛 `FPBError` 且不发请求
   - `unknown_state`、`device_suspect` 等协议结局以 `success=False` 返回，不抛异常
-  - 代理模式下 `exec_disabled` 不被映射成 `AuthError`
+  - 代理模式下协议层失败（如 `busy`）不被映射成 `AuthError`
 - 会话可疑状态保存在 `FPBProtocol.exec_suspect_ser` 上，路由、CLI 直连、SDK 直连共享同一份，重新连接（新的串口对象）后自动失效
 
 ### 11.3 上板验证（无法在主机上自动化）
@@ -869,9 +869,8 @@ exec 在串口上等价于一个远程 shell，这是本特性最需要谨慎的
 
 1. 回调签名是否只需返回整型状态，还是需要把命令输出也捕获成缓冲区返回给核心层（捕获会引入管道或文件重定向，复杂度明显上升）。本方案选择**不捕获**，由串口直接透传。
 2. 参数命名：`--seq` 是否合适，是否更倾向 `--id`。
-3. 固件侧去掉独立开关后，`exec_enabled`（上位机默认关闭）是否在 v1 就实现。建议实现，它现在是唯一的默认关闭防线。
-4. 目标板的 defconfig 是否已开启 `CONFIG_SYSTEM_SYSTEM`（没开启时 `exec_cb` 不会挂载，exec 返回 `No exec_cb`）。
-5. 是否需要 `--raw` 之类让 CLI 直接以命令退出码结束进程的模式。
-6. `timeout` 不设人为上限后，是否需要一个可配置的 `exec_max_timeout`（默认不限）来保护 WebServer。
-7. SDK 方法名用 `exec_cmd` 还是 `exec`。本方案选 `exec_cmd`，避免与 Python 内建函数同名。
-8. `output` 上限默认 256 KiB 是否合适，是否需要做成请求参数。
+3. 目标板的 defconfig 是否已开启 `CONFIG_SYSTEM_SYSTEM`（没开启时 `exec_cb` 不会挂载，exec 返回 `No exec_cb`）。
+4. 是否需要 `--raw` 之类让 CLI 直接以命令退出码结束进程的模式。
+5. `timeout` 不设人为上限后，是否需要一个可配置的 `exec_max_timeout`（默认不限）来保护 WebServer。
+6. SDK 方法名用 `exec_cmd` 还是 `exec`。本方案选 `exec_cmd`，避免与 Python 内建函数同名。
+7. `output` 上限默认 256 KiB 是否合适，是否需要做成请求参数。

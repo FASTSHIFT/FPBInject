@@ -69,7 +69,6 @@ RESULT_GRACE_S = 0.3
 POLL_INTERVAL_S = 0.002
 
 # error_code values reported to callers
-ERR_EXEC_DISABLED = "exec_disabled"
 ERR_NOT_SUPPORTED = "not_supported"
 ERR_TOO_LONG = "too_long"
 ERR_DEVICE_SUSPECT = "device_suspect"

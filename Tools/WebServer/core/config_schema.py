@@ -494,16 +494,6 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         tooltip="Enable decompilation when creating patch templates (requires Ghidra)",
         order=20,
     ),
-    ConfigItem(
-        key="exec_enabled",
-        label="Allow Exec",
-        group=ConfigGroup.TOOLS,
-        config_type=ConfigType.BOOLEAN,
-        default=False,
-        tooltip="Allow running shell commands on the device through the exec API. "
-        "This is remote command execution; keep it off unless needed.",
-        order=30,
-    ),
     # === User Interface ===
     ConfigItem(
         key="ui_theme",

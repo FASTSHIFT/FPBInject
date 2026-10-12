@@ -104,7 +104,7 @@ with Client.direct("/dev/ttyACM0") as dev:
 | Device info / test_serial | ✓ | ✓ | — |
 | inject / unpatch | ✓ | ✓ | — |
 | Memory (mem_read/write/dump) | ✓ | ✓ | — |
-| Exec (exec_cmd) | ✓ ⁴ | ✓ | — |
+| Exec (exec_cmd) | ✓ | ✓ | — |
 | Serial (serial_send/read) | ✓ | ✓ | — |
 | Files (file_*) | ✓ | ✓ | — |
 | Virtual serial (vserial_*) | ✓ | — ¹ | — |
@@ -117,7 +117,6 @@ cannot keep the device node alive. Use proxy mode for virtual serial.
 ² Proxy mode asks the server to open/close the physical port.
 ³ Direct mode owns the port for its whole lifetime — pass the port to
 `Client.direct(...)` and release it with `close()` / the context manager.
-⁴ Proxy mode needs the **Allow Exec** setting (`exec_enabled`) turned on in the WebServer; direct mode is not gated by it.
 
 ## Return values & errors
 
@@ -212,9 +211,7 @@ Signature: `exec_cmd(cmd, *, timeout=10.0, ack_timeout=1.0, max_retries=None)`.
 - `max_retries` — resends of a request that was damaged or lost. `None` (default) uses the `transfer_max_retries` setting shared with file transfer. Once the device has started the command it is never resent, so non-idempotent commands run at most once.
 - Result keys: `success`, `ret` (the command's status), `output`, `replayed` (the status came from the device's cache, `output` may be incomplete), `started`, `output_truncated`, `elapsed_ms`, `error_code`, `error`.
 
-Protocol-level outcomes are returned, not raised: `success` is `False` with an `error_code` — `unknown_state` (did not finish in time; it may still be running), `device_suspect` (a previous exec is still unresolved), `too_long`, `request_failed`, `not_supported`, `exec_disabled`, `spawn_failed`, `device_error`, `busy`. Exceptions are raised for invalid arguments (`FPBError`), a missing device (`DeviceNotConnected`, also in offline mode), and transport/auth problems (`ServerUnavailable`, `AuthError`).
-
-Proxy mode requires **Allow Exec** (`exec_enabled`) in the WebServer config; direct mode does not.
+Protocol-level outcomes are returned, not raised: `success` is `False` with an `error_code` — `unknown_state` (did not finish in time; it may still be running), `device_suspect` (a previous exec is still unresolved), `too_long`, `request_failed`, `not_supported`, `spawn_failed`, `device_error`, `busy`. Exceptions are raised for invalid arguments (`FPBError`), a missing device (`DeviceNotConnected`, also in offline mode), and transport/auth problems (`ServerUnavailable`, `AuthError`).
 
 ## Serial
 

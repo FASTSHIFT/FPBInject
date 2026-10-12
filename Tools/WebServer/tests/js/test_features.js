@@ -226,6 +226,50 @@ module.exports = function (w) {
       w.FPBState.isConnected = false;
     });
 
+    describe('device info popup shows Exec support', () => {
+      const popup = async (payload) => {
+        w.FPBState.isConnected = true;
+        w.FPBState.toolTerminal = new MockTerminal();
+        w.FPBState.slotStates = Array(8)
+          .fill()
+          .map(() => ({ occupied: false }));
+        const calls = [];
+        const origAlert = browserGlobals.alert;
+        browserGlobals.alert = (msg) => calls.push(msg);
+        global.alert = browserGlobals.alert;
+        setFetchResponse('/api/fpb/info', payload);
+        await w.fpbInfo(true);
+        browserGlobals.alert = origAlert;
+        global.alert = origAlert;
+        w.FPBState.toolTerminal = null;
+        w.FPBState.isConnected = false;
+        return calls.join('\n');
+      };
+      it('lists the device exec state when enabled', async () => {
+        const text = await popup({
+          success: true,
+          slots: [],
+          info: { exec: 'enabled' },
+        });
+        assertTrue(text.includes('Exec: enabled'));
+      });
+      it('lists the device exec state when disabled', async () => {
+        const text = await popup({
+          success: true,
+          slots: [],
+          info: { exec: 'disabled' },
+        });
+        assertTrue(text.includes('Exec: disabled'));
+      });
+      it('omits the line for firmware that does not report exec', async () => {
+        const text = await popup({
+          success: true,
+          slots: [],
+          info: { version_string: 'FPBInject v1.6.0' },
+        });
+        assertTrue(!text.includes('Exec'));
+      });
+    });
     it('updates slot states from response', async () => {
       w.FPBState.isConnected = true;
       w.FPBState.toolTerminal = new MockTerminal();
