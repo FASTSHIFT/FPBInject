@@ -316,6 +316,21 @@ call) is documented in the `Client` class docstring; from a REPL run
         "data", help="Hex data to write (e.g., DEADBEEF01020304)"
     )
 
+    # exec command (requires device)
+    exec_parser = subparsers.add_parser(
+        "exec",
+        help="Run a shell command on the device via the fl protocol "
+        "(requires device; resends follow --transfer-max-retries)",
+    )
+    exec_parser.add_argument("cmd", help="Command line to run, e.g. 'ls -l /data'")
+    exec_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=10.0,
+        help="Seconds to wait for the command to finish (default: 10). The "
+        "device does not stop a running command; avoid commands that block.",
+    )
+
     # mem-dump command (requires device)
     memdump_parser = subparsers.add_parser(
         "mem-dump", help="Dump memory region to file (requires device)"

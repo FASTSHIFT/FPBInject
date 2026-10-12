@@ -128,6 +128,7 @@ class Client:
 | **内存** | `mem_read(addr, length, fmt="hex")` | `mem-read` | 代理·直连 |
 | | `mem_write(addr, hexdata)` | `mem-write` | 代理·直连 |
 | | `mem_dump(addr, length, out_path)` | `mem-dump` | 代理·直连 |
+| **命令执行** | `exec_cmd(cmd, *, timeout=10.0, ack_timeout=1.0, max_retries=None)` | `exec` | 代理·直连 |
 | **串口** | `serial_send(data)` | `serial-send` | 代理·直连 |
 | | `serial_read(since=0)` | `serial-read` | 代理·直连 |
 | **文件** | `file_list(path="/")` | `file-list` | 代理·直连 |

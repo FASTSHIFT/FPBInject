@@ -17,6 +17,7 @@ from typing import Dict, Optional, Tuple
 
 from fpbinject.core import elf_utils
 from fpbinject.core import compiler as compiler_utils
+from fpbinject.core.exec_client import ExecClient
 from fpbinject.core.serial_protocol import FPBProtocol, FPBProtocolError, Platform
 from fpbinject.utils.serial import scan_serial_ports, serial_open
 
@@ -172,6 +173,24 @@ class FPBInject:
     def ping(self) -> Tuple[bool, str]:
         """Ping device."""
         return self._protocol.ping()
+
+    def exec_cmd(
+        self,
+        cmd: str,
+        timeout: float = 10.0,
+        ack_timeout: float = 1.0,
+        max_retries: Optional[int] = None,
+    ) -> Dict:
+        """Run a shell command on the device through the fl exec command.
+
+        See core/exec_client.py. Returns a result dict (success, ret, output,
+        replayed, started, output_truncated, elapsed_ms, error_code, error).
+        ``max_retries`` defaults to the transfer_max_retries setting.
+        Raises ExecArgumentError for invalid arguments.
+        """
+        return ExecClient(self._protocol).run(
+            cmd, timeout=timeout, ack_timeout=ack_timeout, max_retries=max_retries
+        )
 
     def test_serial_throughput(
         self,

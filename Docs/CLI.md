@@ -332,6 +332,36 @@ fpb_cli.py mem-write <addr> <hex_data>
 fpb_cli.py mem-dump <addr> <length> <output_file>
 ```
 
+### Command Execution
+
+#### `exec` - Run a shell command on the device
+
+```bash
+fpb_cli.py exec "<command line>" [--timeout 10]
+```
+
+The command line is sent Base64-encoded with a CRC, so quotes, spaces and shell metacharacters reach the device unchanged. A request that is damaged or lost is resent (the retry budget is the same `--transfer-max-retries` used by file transfer); once the device has started the command it is never sent again, so non-idempotent commands (`rm`, `reboot`, ...) do not run twice.
+
+```json
+{
+  "success": true,
+  "ret": 0,
+  "output": "total 0\n",
+  "replayed": false,
+  "started": true,
+  "output_truncated": false,
+  "elapsed_ms": 123.4,
+  "error_code": "",
+  "error": ""
+}
+```
+
+- `success` means the command ran and its result was verified; the command's own exit status is `ret`. When `success` is `false`, `error_code` says why (`unknown_state`, `device_suspect`, `too_long`, `request_failed`, `not_supported`, `exec_disabled`, `spawn_failed`, `device_error`, `busy`).
+- The process exit code is `0` when `success` is `true`, otherwise `1`.
+- `--timeout` is how many seconds to wait for the command to finish. The device does **not** stop a running command, so avoid commands that block (reading stdin, long-running apps). If the wait expires the result is `unknown_state` and further `exec` calls are refused (`device_suspect`) until the device answers a ping again.
+- The command length is limited by the line buffer (it follows the calibrated upload chunk size, see `test-serial`). Upload a script with `file-upload` and run it instead of passing long commands.
+- Through a WebServer the feature must be enabled with the **Allow Exec** setting (`exec_enabled`, off by default). The device firmware needs exec support (NuttX: `CONFIG_SYSTEM_SYSTEM=y`); `info` reports `Exec: enabled|disabled`.
+
 ### File Transfer Commands
 
 #### `file-list` - List device directory

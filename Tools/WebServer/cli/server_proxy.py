@@ -546,6 +546,41 @@ class ServerProxy:
             {"addr": addr, "data": data_hex},
         )
 
+    def exec_cmd(
+        self,
+        cmd: str,
+        timeout: float = 10.0,
+        ack_timeout: float = 1.0,
+        max_retries: Optional[int] = None,
+    ) -> dict:
+        """Run a shell command on the device via WebServer (fl exec).
+
+        ``max_retries=None`` lets the server use its transfer_max_retries
+        setting. The HTTP timeout covers the server's worst case for this
+        call (the default 30 s would cut a long-running command short).
+        """
+        # Imported lazily: keeps the proxy module light for plain CLI use
+        from fpbinject.core.exec_client import MAX_RETRIES_LIMIT, worst_case_seconds
+
+        payload = {"cmd": cmd, "timeout": timeout, "ack_timeout": ack_timeout}
+        if max_retries is not None:
+            payload["max_retries"] = max_retries
+        http_timeout = worst_case_seconds(
+            timeout,
+            ack_timeout,
+            MAX_RETRIES_LIMIT if max_retries is None else max_retries,
+        )
+        try:
+            return self._post("/api/fpb/exec", payload, timeout=http_timeout)
+        except HTTPError as e:
+            # 400/415 carry a JSON body describing the bad request
+            if e.code in (400, 415):
+                try:
+                    return json.loads(e.read().decode())
+                except Exception:
+                    pass
+            raise
+
     def test_serial(
         self,
         start_size: int = 16,

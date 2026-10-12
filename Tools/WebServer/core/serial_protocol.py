@@ -68,6 +68,10 @@ class FPBProtocol:
         self.device = device_state
         self._in_fl_mode = False
         self._platform = Platform.UNKNOWN
+        # Serial object on which an exec command ended in an unknown state
+        # (see core/exec_client.py). Tied to the port object so reconnecting
+        # (a new serial object) clears it automatically.
+        self.exec_suspect_ser = None
 
     def get_platform(self) -> Platform:
         """Get detected platform type."""
@@ -296,6 +300,28 @@ class FPBProtocol:
         logger.warning("exit_fl_mode: could not confirm exit from fl mode")
         return False
 
+    def _write_line(self, line: str) -> None:
+        """Write one command line (plus newline) to the serial port.
+
+        Honours the configured TX fragmentation (serial_tx_fragment_size /
+        serial_tx_fragment_delay). Shared by send_cmd and the exec client so
+        both put bytes on the wire exactly the same way.
+        """
+        ser = self.device.ser
+        data_bytes = (line + "\n").encode()
+        tx_fragment_size = getattr(self.device, "serial_tx_fragment_size", 0)
+        tx_fragment_delay = getattr(self.device, "serial_tx_fragment_delay", 0.002)
+        if tx_fragment_size > 0 and len(data_bytes) > tx_fragment_size:
+            for i in range(0, len(data_bytes), tx_fragment_size):
+                chunk = data_bytes[i : i + tx_fragment_size]
+                ser.write(chunk)
+                ser.flush()
+                if i + tx_fragment_size < len(data_bytes):
+                    time.sleep(tx_fragment_delay)
+        else:
+            ser.write(data_bytes)
+        ser.flush()
+
     def send_cmd(
         self,
         cmd: str,
@@ -330,19 +356,7 @@ class FPBProtocol:
 
             ser.reset_input_buffer()
 
-            data_bytes = (full_cmd + "\n").encode()
-            tx_fragment_size = getattr(self.device, "serial_tx_fragment_size", 0)
-            tx_fragment_delay = getattr(self.device, "serial_tx_fragment_delay", 0.002)
-            if tx_fragment_size > 0 and len(data_bytes) > tx_fragment_size:
-                for i in range(0, len(data_bytes), tx_fragment_size):
-                    chunk = data_bytes[i : i + tx_fragment_size]
-                    ser.write(chunk)
-                    ser.flush()
-                    if i + tx_fragment_size < len(data_bytes):
-                        time.sleep(tx_fragment_delay)
-            else:
-                ser.write(data_bytes)
-            ser.flush()
+            self._write_line(full_cmd)
 
             response = ""
             start = time.time()
@@ -524,6 +538,8 @@ class FPBProtocol:
                             info["fpb_version"] = 2
                     elif line.startswith("FileTransfer:"):
                         info["file_transfer"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Exec:"):
+                        info["exec"] = line.split(":", 1)[1].strip()
                     elif line.startswith("Used:"):
                         try:
                             info["used"] = int(line.split(":")[1].strip())

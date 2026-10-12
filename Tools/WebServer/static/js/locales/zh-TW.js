@@ -46,6 +46,7 @@ window.i18nResources['zh-TW'] = {
         external_gdb_port: '外部 GDB 連接埠',
         ghidra_path: 'Ghidra 路徑',
         enable_decompile: '啟用反編譯',
+        exec_enabled: '允許執行命令',
         ui_theme: '主題',
         ui_language: '語言',
       },
@@ -496,7 +497,8 @@ window.i18nResources['zh-TW'] = {
         '串列埠命令的傳送分片大小（位元組）。0 = 停用。用於解決慢速串列埠驅動問題。',
       serial_tx_fragment_delay:
         '傳送分片之間的延遲。僅在傳送分片大小 > 0 時使用。',
-      transfer_max_retries: 'CRC 驗證失敗時的最大重試次數。',
+      transfer_max_retries:
+        '檔案傳輸和 exec 在請求損壞或遺失（CRC 驗證失敗、無回應）時的最大重試次數。',
       wakeup_shell_cnt: '進入 fl 模式前傳送換行符的次數，用於喚醒 shell。',
       log_file_path: '串列埠日誌儲存路徑',
       log_file_enabled: '將串列埠通訊日誌記錄到檔案',
@@ -505,6 +507,8 @@ window.i18nResources['zh-TW'] = {
       serial_echo_enabled: '在串列埠面板回顯傳送的命令（用於除錯）',
       ghidra_path: 'Ghidra 安裝目錄路徑（包含 support/analyzeHeadless）',
       enable_decompile: '建立補丁範本時啟用反編譯（需要 Ghidra）',
+      exec_enabled:
+        '允許透過 exec 介面在裝置上執行 shell 命令。這相當於遠端命令執行，不需要時請保持關閉',
       ui_theme: '介面顏色主題',
       ui_language: '介面顯示語言',
     },

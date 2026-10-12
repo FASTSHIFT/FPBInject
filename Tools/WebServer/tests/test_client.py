@@ -457,6 +457,7 @@ class TestCapabilityParity(unittest.TestCase):
             "mem-read": "mem_read",
             "mem-write": "mem_write",
             "mem-dump": "mem_dump",
+            "exec": "exec_cmd",
             "serial-send": "serial_send",
             "serial-read": "serial_read",
             "file-list": "file_list",

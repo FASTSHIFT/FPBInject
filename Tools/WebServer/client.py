@@ -528,6 +528,54 @@ class Client:
             raise FPBError(f"Memory write failed: {error}")
         return {"success": True, "addr": hex(addr), "length": len(data)}
 
+    def exec_cmd(
+        self,
+        cmd: str,
+        *,
+        timeout: float = 10.0,
+        ack_timeout: float = 1.0,
+        max_retries: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Run a shell command on the device through the fl ``exec`` command.
+
+        The command travels Base64-encoded with a CRC, so quoting and serial
+        glitches cannot alter it. A request that is damaged or lost is resent
+        (``max_retries``, default: the ``transfer_max_retries`` setting shared
+        with file transfer); once the device has started the command it is
+        never resent.
+
+        ``timeout`` is how many seconds to wait for the command to finish. The
+        device does not stop a running command, so avoid commands that block.
+
+        Returns the result dict: ``success``, ``ret`` (the command's status),
+        ``output``, ``replayed``, ``started``, ``output_truncated``,
+        ``elapsed_ms``, ``error_code`` and ``error``. ``success`` is False
+        (with an ``error_code``) for protocol-level outcomes such as
+        ``unknown_state`` or ``device_suspect`` instead of raising. Raises
+        ``FPBError`` for invalid arguments, ``DeviceNotConnected`` when there
+        is no device (including offline mode).
+
+        Proxy mode needs ``exec_enabled`` turned on in the WebServer config.
+        """
+        from fpbinject.core.exec_client import ExecArgumentError, validate_args
+
+        try:
+            validate_args(
+                cmd, timeout, ack_timeout, 0 if max_retries is None else max_retries
+            )
+        except ExecArgumentError as e:
+            raise FPBError(str(e)) from e
+
+        if self._proxy is not None:
+            return self._call(
+                self._proxy.exec_cmd, cmd, timeout, ack_timeout, max_retries
+            )
+        self._require_device()
+        with self._fpb.fl_session():
+            return self._fpb.exec_cmd(
+                cmd, timeout=timeout, ack_timeout=ack_timeout, max_retries=max_retries
+            )
+
     def _direct_read_memory(self, addr: int, length: int) -> bytes:
         """Direct-mode raw memory read (FL-mode wrapped)."""
         self._require_device()

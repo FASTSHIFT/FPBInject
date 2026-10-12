@@ -21,6 +21,16 @@ from flask import Blueprint, jsonify, request
 from fpbinject.app.utils.device_op import with_fl_exit
 from fpbinject.app.utils.sse import sse_response
 from fpbinject.core.config_schema import DEFAULT_DOWNLOAD_CHUNK_SIZE
+from fpbinject.core.exec_client import (
+    ERR_BUSY,
+    ERR_EXEC_DISABLED,
+    ERR_REQUEST_FAILED,
+    ExecArgumentError,
+    default_max_retries as exec_default_max_retries,
+    validate_args as validate_exec_args,
+    worst_case_seconds as exec_worst_case_seconds,
+)
+from fpbinject.core.file_txn import TransferBusy, file_transaction
 from fpbinject.core.state import state
 from fpbinject.services.device_worker import run_in_device_worker
 
@@ -535,6 +545,90 @@ def api_fpb_mem_write():
 
     if "error" in result and result.get("error"):
         return jsonify({"success": False, "error": result["error"]})
+
+    return jsonify(result)
+
+
+def _exec_error(error_code, message, status=200, **extra):
+    """Build an exec error response.
+
+    Protocol-level outcomes use HTTP 200 on purpose: the SDK's ServerProxy maps
+    401/403 to AuthError ("check your token"), which would be misleading for
+    e.g. "exec disabled". Only malformed requests get 4xx.
+    """
+    body = {"success": False, "error": message, "error_code": error_code}
+    body.update(extra)
+    return jsonify(body), status
+
+
+@bp.route("/fpb/exec", methods=["POST"])
+def api_fpb_exec():
+    """Run a shell command on the device through the fl exec command.
+
+    JSON body:
+        cmd: Command line (str)
+        timeout: Seconds to wait for the command to finish (default 10).
+            Forwarded to the device but not enforced there.
+        ack_timeout: Seconds to wait for the device to acknowledge (default 1)
+        max_retries: Resends when the request is damaged or lost (default:
+            the transfer_max_retries setting, shared with file transfer)
+
+    Response: success, ret, output, replayed, started, output_truncated,
+    elapsed_ms, error_code, error. ``success`` means the command ran and its
+    result was verified; the command's own exit status is ``ret``.
+    """
+    # Require a real JSON body: a cross-site form or text/plain POST cannot set
+    # this content type without a CORS preflight, so a web page cannot use the
+    # (unauthenticated) localhost access to run commands.
+    if not request.is_json:
+        return _exec_error(
+            "bad_request", "Content-Type must be application/json", status=415
+        )
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _exec_error("bad_request", "Request body must be a JSON object", 400)
+
+    cmd = data.get("cmd")
+    timeout = data.get("timeout", 10.0)
+    ack_timeout = data.get("ack_timeout", 1.0)
+    max_retries = data.get("max_retries")
+    if max_retries is None:
+        max_retries = exec_default_max_retries(state.device)
+
+    try:
+        validate_exec_args(cmd, timeout, ack_timeout, max_retries)
+    except ExecArgumentError as e:
+        return _exec_error("bad_request", str(e), status=400)
+
+    if not getattr(state.device, "exec_enabled", False):
+        return _exec_error(
+            ERR_EXEC_DISABLED,
+            "Exec is disabled. Turn on 'Allow Exec' in the configuration to use it.",
+        )
+
+    _, _, _, _, get_fpb_inject, _ = _get_helpers()
+    fpb = get_fpb_inject()
+
+    def do_exec():
+        return fpb.exec_cmd(
+            cmd, timeout=timeout, ack_timeout=ack_timeout, max_retries=max_retries
+        )
+
+    try:
+        with file_transaction(state.device, "exec", cmd[:64]):
+            result = _run_serial_op(
+                do_exec,
+                timeout=exec_worst_case_seconds(timeout, ack_timeout, max_retries),
+                fpb=fpb,
+            )
+    except TransferBusy as e:
+        return _exec_error(ERR_BUSY, str(e), busy=True)
+
+    # _run_serial_op reports its own failures as {"error": ...} with no
+    # "success" key; an exec result always carries one.
+    if "success" not in result:
+        return _exec_error(ERR_REQUEST_FAILED, result.get("error", "exec failed"))
 
     return jsonify(result)
 

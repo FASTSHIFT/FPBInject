@@ -81,6 +81,7 @@ from fpbinject.cli.connection_resolver import (  # noqa: E402,F401
 # Argparse construction lives in cli.arg_parser (extracted for file size).
 from fpbinject.cli.arg_parser import build_parser  # noqa: E402,F401
 from fpbinject.cli.commands_file_mem import FileMemCommandsMixin  # noqa: E402
+from fpbinject.cli.commands_exec import ExecCommandsMixin  # noqa: E402
 
 
 class DeviceState(DeviceStateBase):
@@ -112,7 +113,7 @@ class DeviceState(DeviceStateBase):
         self.connected = False
 
 
-class FPBCLI(FileMemCommandsMixin):
+class FPBCLI(FileMemCommandsMixin, ExecCommandsMixin):
     """Lightweight CLI wrapper for FPBInject.
 
     Operates in proxy mode whenever a WebServer is reachable: device
@@ -1434,6 +1435,9 @@ def main():
             cli.mem_read(args.addr, args.length, args.fmt)
         elif args.command == "mem-write":
             cli.mem_write(args.addr, args.data)
+        elif args.command == "exec":
+            if not cli.exec_cmd(args.cmd, args.timeout):
+                sys.exit(1)
         elif args.command == "mem-dump":
             cli.mem_dump(args.addr, args.length, args.output)
         elif args.command == "serial-send":

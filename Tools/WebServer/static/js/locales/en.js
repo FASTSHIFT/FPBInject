@@ -46,6 +46,7 @@ window.i18nResources['en'] = {
         external_gdb_port: 'External GDB Port',
         ghidra_path: 'Ghidra Path',
         enable_decompile: 'Enable Decompilation',
+        exec_enabled: 'Allow Exec',
         ui_theme: 'Theme',
         ui_language: 'Language',
       },
@@ -507,7 +508,7 @@ window.i18nResources['en'] = {
       serial_tx_fragment_delay:
         'Delay between TX fragments. Only used when TX Fragment > 0.',
       transfer_max_retries:
-        'Maximum retry attempts for file transfer when CRC mismatch occurs.',
+        'Maximum retry attempts for file transfer and exec when a request is damaged or lost (CRC mismatch, no response).',
       wakeup_shell_cnt:
         'Number of newlines to send before entering fl mode to wake up shell.',
       log_file_path: 'Path to save serial logs',
@@ -519,6 +520,8 @@ window.i18nResources['en'] = {
         'Path to Ghidra installation directory (containing support/analyzeHeadless)',
       enable_decompile:
         'Enable decompilation when creating patch templates (requires Ghidra)',
+      exec_enabled:
+        'Allow running shell commands on the device through the exec API. This is remote command execution; keep it off unless needed.',
       ui_theme: 'UI color theme',
       ui_language: 'UI display language',
     },

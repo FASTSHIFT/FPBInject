@@ -369,7 +369,8 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         group=ConfigGroup.TRANSFER,
         config_type=ConfigType.NUMBER,
         default=DEFAULT_TRANSFER_MAX_RETRIES,
-        tooltip="Maximum retry attempts for file transfer when CRC mismatch occurs.",
+        tooltip="Maximum retry attempts for file transfer and exec when a request is "
+        "damaged or lost (CRC mismatch, no response).",
         min_value=0,
         max_value=20,
         step=1,
@@ -492,6 +493,16 @@ CONFIG_SCHEMA: List[ConfigItem] = [
         default=False,
         tooltip="Enable decompilation when creating patch templates (requires Ghidra)",
         order=20,
+    ),
+    ConfigItem(
+        key="exec_enabled",
+        label="Allow Exec",
+        group=ConfigGroup.TOOLS,
+        config_type=ConfigType.BOOLEAN,
+        default=False,
+        tooltip="Allow running shell commands on the device through the exec API. "
+        "This is remote command execution; keep it off unless needed.",
+        order=30,
     ),
     # === User Interface ===
     ConfigItem(

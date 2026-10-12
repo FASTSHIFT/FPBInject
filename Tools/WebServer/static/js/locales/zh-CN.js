@@ -46,6 +46,7 @@ window.i18nResources['zh-CN'] = {
         external_gdb_port: '外部 GDB 端口',
         ghidra_path: 'Ghidra 路径',
         enable_decompile: '启用反编译',
+        exec_enabled: '允许执行命令',
         ui_theme: '主题',
         ui_language: '语言',
       },
@@ -495,7 +496,8 @@ window.i18nResources['zh-CN'] = {
         '串口命令的发送分片大小（字节）。0 = 禁用。用于解决慢速串口驱动问题。',
       serial_tx_fragment_delay:
         '发送分片之间的延迟。仅在发送分片大小 > 0 时使用。',
-      transfer_max_retries: 'CRC 校验失败时的最大重试次数。',
+      transfer_max_retries:
+        '文件传输和 exec 在请求损坏或丢失（CRC 校验失败、无响应）时的最大重试次数。',
       wakeup_shell_cnt: '进入 fl 模式前发送换行符的次数，用于唤醒 shell。',
       log_file_path: '串口日志保存路径',
       log_file_enabled: '将串口通信日志记录到文件',
@@ -504,6 +506,8 @@ window.i18nResources['zh-CN'] = {
       serial_echo_enabled: '在串口面板回显发送的命令（用于调试）',
       ghidra_path: 'Ghidra 安装目录路径（包含 support/analyzeHeadless）',
       enable_decompile: '创建补丁模板时启用反编译（需要 Ghidra）',
+      exec_enabled:
+        '允许通过 exec 接口在设备上执行 shell 命令。这相当于远程命令执行，不需要时请保持关闭',
       ui_theme: '界面颜色主题',
       ui_language: '界面显示语言',
     },
