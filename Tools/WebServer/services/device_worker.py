@@ -71,6 +71,26 @@ class DeviceWorker:
             and self._worker_thread.is_alive()
         )
 
+    def is_worker_thread(self):
+        """True when called from the worker thread itself."""
+        return (
+            self._worker_thread is not None
+            and threading.current_thread() is self._worker_thread
+        )
+
+    def pump_rx(self):
+        """Read and log pending serial data right now.
+
+        For a task running ON the worker thread that has to wait for a device
+        response (e.g. exec). While such a task runs the loop is blocked and
+        does not poll the port; calling this performs the loop's own RX step,
+        so the data reaches the SERIAL log, the log file, the SSE listeners and
+        the virtual serial exactly as if the loop were running, and the task
+        can read the response back from that log instead of reading the port
+        behind everyone's back. Only call it from the worker thread.
+        """
+        self._process_serial_rx()
+
     def enqueue(self, cmd_type, cmd_data, done_event=None):
         """Add a command to the worker queue."""
         if self._cmd_queue is None:

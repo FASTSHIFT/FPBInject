@@ -342,6 +342,76 @@ class ExecResponseParser:
 
 
 # ---------------------------------------------------------------------------
+# Receive side
+#
+# exec only adds to what is SENT. What comes back is never taken away from
+# the normal receive path: nothing is flushed with reset_input_buffer() and
+# nothing is logged in a different shape than the rest of the traffic.
+# ---------------------------------------------------------------------------
+class _SerialRx:
+    """Receive side when nothing else reads the port (CLI / SDK direct mode)."""
+
+    def __init__(self, protocol):
+        self._protocol = protocol
+        self._ser = protocol.device.ser
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+    def mark(self) -> None:
+        """Set aside whatever is pending: it belongs to earlier traffic.
+
+        It is still written to the raw log, just not parsed as our response.
+        """
+        self.poll()
+
+    def poll(self) -> str:
+        n = self._ser.in_waiting
+        if not n:
+            return ""
+        text = self._decoder.decode(self._ser.read(n))
+        if text:
+            # Exactly as received: no strip(), so line breaks and indentation
+            # in the log are the device's own.
+            self._protocol._log_raw(LogDirection.RX, text)
+        return text
+
+
+class _WorkerLogRx:
+    """Receive side when the DeviceWorker owns the port (WebServer routes).
+
+    The exec task occupies the worker thread, so the worker cannot run its
+    normal RX polling. Reading the port here would bypass it (SERIAL panel,
+    log file, virtual serial) and would need a flush to avoid stale bytes.
+    Instead ask the worker to do its usual read-and-log step (pump_rx) and
+    read the new entries back from the raw serial log.
+    """
+
+    def __init__(self, device, worker):
+        self._device = device
+        self._worker = worker
+        self._cursor = device.raw_log_next_id
+
+    def mark(self) -> None:
+        """Start after everything already received."""
+        self._worker.pump_rx()  # pending bytes go to the log as usual
+        self._cursor = self._device.raw_log_next_id
+
+    def poll(self) -> str:
+        self._worker.pump_rx()
+        fresh = []
+        last_id = None
+        for entry in reversed(self._device.raw_serial_log):
+            if entry["id"] < self._cursor:
+                break
+            if last_id is None:
+                last_id = entry["id"]
+            fresh.append(entry["data"])
+        if last_id is None:
+            return ""
+        self._cursor = last_id + 1
+        return "".join(reversed(fresh))
+
+
+# ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
 class ExecClient:
@@ -351,6 +421,7 @@ class ExecClient:
         self.protocol = protocol
         self.device = protocol.device
         self._max_output = DEFAULT_MAX_OUTPUT
+        self._rx = None
 
     # -- public -----------------------------------------------------------
     def run(
@@ -401,6 +472,7 @@ class ExecClient:
             )
         self.protocol.exec_suspect_ser = None
 
+        self._rx = self._make_rx()
         tool_log(self.device, "INFO", f"exec seq={seq}: {cmd}")
         outcome = self._execute(
             t0, ser, seq, cmd_bytes, timeout, timeout_ms, ack_timeout, max_retries
@@ -424,8 +496,8 @@ class ExecClient:
                 logger.warning(f"exec seq={seq}: resend {attempt}/{max_retries}")
             parser = ExecResponseParser(seq, self._max_output)
             self.protocol.try_enter_fl_mode()
-            self._send(ser, line)
-            self._collect(ser, parser, ack_timeout, timeout)
+            self._send(line)
+            self._collect(parser, ack_timeout, timeout)
 
             result = parser.result
             if result is not None and result.crc_ok:
@@ -469,8 +541,8 @@ class ExecClient:
 
         for _ in range(max_retries + 1):
             q = ExecResponseParser(seq)
-            self._send(ser, query)
-            self._collect(ser, q, wait, wait)
+            self._send(query)
+            self._collect(q, wait, wait)
             if q.result is not None and q.result.crc_ok:
                 return self._done(t0, parser, q.result, replayed=True)
             if q.no_record:
@@ -485,32 +557,40 @@ class ExecClient:
         )
 
     # -- serial I/O ---------------------------------------------------------
-    def _send(self, ser, line: str) -> None:
-        ser.reset_input_buffer()
+    def _make_rx(self):
+        worker = getattr(self.device, "worker", None)
+        if (
+            worker is not None
+            and callable(getattr(worker, "pump_rx", None))
+            and worker.is_worker_thread() is True
+        ):
+            return _WorkerLogRx(self.device, worker)
+        return _SerialRx(self.protocol)
+
+    def _send(self, line: str) -> None:
+        """Send one request line. This is the only thing exec adds to the port."""
+        # Log first: the echo is an entry of its own and must stay before the
+        # point where the response starts.
         self.protocol._log_raw(LogDirection.TX, line)
+        self._rx.mark()
         self.protocol._write_line(line)
 
-    def _collect(self, ser, parser, ack_timeout: float, run_timeout: float) -> None:
+    def _collect(self, parser, ack_timeout: float, run_timeout: float) -> None:
         """Read until the response is complete or a deadline passes.
 
         Phase one waits ``ack_timeout`` for the device to answer. As soon as a
         start line shows up the deadline moves to ``run_timeout`` from then on.
         """
-        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         deadline = time.monotonic() + ack_timeout
         running = False
         grace = False
 
         while time.monotonic() < deadline:
-            n = ser.in_waiting
-            if not n:
+            text = self._rx.poll()
+            if not text:
                 time.sleep(POLL_INTERVAL_S)
                 continue
 
-            text = decoder.decode(ser.read(n))
-            if not text:
-                continue
-            self.protocol._log_raw(LogDirection.RX, text.strip())
             parser.feed(text)
             if parser.complete:
                 return

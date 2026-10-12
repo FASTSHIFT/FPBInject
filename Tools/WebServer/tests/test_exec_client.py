@@ -12,6 +12,7 @@ lost start line, lost response, damaged result line, blocking command.
 import base64
 import os
 import sys
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -31,6 +32,7 @@ from fpbinject.core.exec_client import (  # noqa: E402
     worst_case_seconds,
 )
 from fpbinject.core.serial_protocol import FPBProtocol, FPBProtocolError  # noqa: E402
+from fpbinject.services.device_worker import DeviceWorker  # noqa: E402
 
 # Small timeouts keep the suite fast
 ACK = 0.05
@@ -152,12 +154,22 @@ class FakeSerial:
         self._tx = bytearray()
         self.lines = []
         self.write_calls = []
+        self.emitted = bytearray()  # every byte the device put on the wire
+        self.resets = 0  # reset_input_buffer() calls
+        self.guard = False  # worker mode: only the worker may read the port
+        self.in_pump = False
+        self.stray_reads = 0  # reads made outside the worker's own RX step
 
     @property
     def in_waiting(self):
         return len(self._rx)
 
+    def isOpen(self):
+        return True
+
     def read(self, n=1):
+        if self.guard and not self.in_pump:
+            self.stray_reads += 1
         if self.chunk:
             n = min(n, self.chunk)
         data = bytes(self._rx[:n])
@@ -175,11 +187,13 @@ class FakeSerial:
             reply = self.handler(text)
             if reply:
                 self._rx += reply
+                self.emitted += reply
 
     def flush(self):
         pass
 
     def reset_input_buffer(self):
+        self.resets += 1
         self._rx.clear()
 
     def exec_lines(self):
@@ -197,6 +211,7 @@ def make_client(sim=None, chunk=0, **device_attrs):
     device.serial_tx_fragment_size = 0
     device.upload_chunk_size = 1024
     device.transfer_max_retries = 3
+    device.worker = None  # direct mode: nothing else reads the port
     for key, value in device_attrs.items():
         setattr(device, key, value)
     protocol = FPBProtocol(device)
@@ -928,6 +943,256 @@ class TestConfigSchema(unittest.TestCase):
         from fpbinject.core.config_schema import get_schema_by_key
 
         self.assertIn("exec", get_schema_by_key("transfer_max_retries").tooltip)
+
+
+class FakeWorker:
+    """Stands in for DeviceWorker while an exec task occupies its thread.
+
+    pump_rx() is the worker's normal RX step: read the port, append one entry
+    to the raw serial log.
+    """
+
+    def __init__(self, device, on_thread=True):
+        self.device = device
+        self.on_thread = on_thread
+        self.pumps = 0
+
+    def is_worker_thread(self):
+        return self.on_thread
+
+    def pump_rx(self):
+        self.pumps += 1
+        ser = self.device.ser
+        ser.in_pump = True
+        try:
+            n = ser.in_waiting
+            if n:
+                data = ser.read(n).decode(errors="replace")
+                entry_id = self.device.raw_log_next_id
+                self.device.raw_log_next_id += 1
+                self.device.raw_serial_log.append({"id": entry_id, "data": data})
+        finally:
+            ser.in_pump = False
+
+
+def make_worker_client(sim=None, chunk=0, **device_attrs):
+    sim, device, protocol, client = make_client(sim, chunk, **device_attrs)
+    device.ser.guard = True
+    device.worker = FakeWorker(device)
+    return sim, device, protocol, client
+
+
+def panel_text(device):
+    return "".join(entry["data"] for entry in device.raw_serial_log)
+
+
+MULTILINE = "line one\nline two\n  indented three\nline four\n"
+
+
+class TestReceiveSideIsUntouched(unittest.TestCase):
+    """exec only adds to what is sent: the receive path and its log stay as
+    they are, with or without a DeviceWorker."""
+
+    def test_direct_mode_log_is_exactly_what_the_device_sent(self):
+        sim, dev, _, client = make_client(chunk=7)
+        sim.output = MULTILINE
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertEqual(panel_text(dev), dev.ser.emitted.decode())
+
+    def test_direct_mode_never_flushes_the_receive_buffer(self):
+        sim, dev, _, client = make_client()
+        run(client)
+        self.assertEqual(dev.ser.resets, 0)
+
+    def test_direct_mode_pending_bytes_are_logged_not_lost(self):
+        sim, dev, _, client = make_client()
+        dev.ser._rx += b"late log line\n"
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertIn("late log line\n", panel_text(dev))
+
+    def test_worker_mode_log_is_exactly_what_the_device_sent(self):
+        sim, dev, _, client = make_worker_client(chunk=7)
+        sim.output = MULTILINE
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["output"], MULTILINE)
+        self.assertEqual(panel_text(dev), dev.ser.emitted.decode())
+
+    def test_worker_mode_exec_never_reads_the_port_itself(self):
+        sim, dev, _, client = make_worker_client(chunk=7)
+        sim.output = MULTILINE
+        run(client)
+        self.assertEqual(dev.ser.stray_reads, 0)
+        self.assertGreater(dev.worker.pumps, 0)
+
+    def test_worker_mode_never_flushes_the_receive_buffer(self):
+        sim, dev, _, client = make_worker_client()
+        sim.damage_results = 1  # also covers the recovery query
+        run(client)
+        self.assertEqual(dev.ser.resets, 0)
+
+    def test_worker_mode_pending_bytes_reach_the_log_and_are_not_parsed(self):
+        sim, dev, _, client = make_worker_client()
+        # a complete frame from earlier traffic is already waiting on the wire
+        dev.ser._rx += b"late log line\n[FLOK] PONG\n[FLEND]\n"
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["output"], "out\n")
+        self.assertIn("late log line\n", panel_text(dev))
+
+    def test_worker_mode_older_log_entries_are_ignored(self):
+        sim, dev, _, client = make_worker_client()
+        dev.raw_serial_log.append(
+            {"id": dev.raw_log_next_id, "data": "[FLERR] CRC mismatch: 1\n[FLEND]\n"}
+        )
+        dev.raw_log_next_id += 1
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertEqual(len(sim.calls), 1)
+
+    def test_worker_mode_own_tx_echo_is_not_taken_for_a_response(self):
+        sim, dev, _, client = make_worker_client(serial_echo_enabled=True)
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["output"], "out\n")
+        self.assertIn("fl -c exec", panel_text(dev))  # the echo is still logged
+
+    def test_worker_mode_recovers_a_damaged_result(self):
+        sim, dev, _, client = make_worker_client(chunk=5)
+        sim.damage_results = 1
+        sim.ret = 7
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["ret"], 7)
+        self.assertTrue(r["replayed"])
+        self.assertEqual(len(sim.calls), 1)
+        self.assertEqual(panel_text(dev), dev.ser.emitted.decode())
+
+    def test_worker_mode_blocking_command_is_unknown(self):
+        sim, dev, proto, client = make_worker_client()
+        sim.hang = True
+        r = run(client, timeout=0.15)
+        self.assertEqual(r["error_code"], "unknown_state")
+        self.assertEqual(dev.ser.stray_reads, 0)
+
+    def test_worker_mode_retries_a_lost_request(self):
+        sim, dev, _, client = make_worker_client()
+        sim.lose_requests = 1
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertEqual(len(sim.calls), 1)
+
+    def test_not_on_the_worker_thread_falls_back_to_reading_the_port(self):
+        sim, dev, _, client = make_client()
+        dev.worker = FakeWorker(dev, on_thread=False)
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertIsInstance(client._rx, exec_client._SerialRx)
+        self.assertEqual(dev.worker.pumps, 0)
+
+    def test_worker_without_pump_rx_falls_back(self):
+        sim, dev, _, client = make_client()
+        dev.worker = object()
+        r = run(client)
+        self.assertTrue(r["success"])
+        self.assertIsInstance(client._rx, exec_client._SerialRx)
+
+    def test_cursor_tolerates_the_log_being_cleared(self):
+        sim, dev, _, client = make_worker_client()
+        original = dev.worker.pump_rx
+
+        def clearing_pump():
+            original()
+            if dev.worker.pumps == 3:
+                dev.raw_serial_log = []  # the user cleared the SERIAL panel
+
+        dev.worker.pump_rx = clearing_pump
+        sim.output = "a\nb\n"
+        r = run(client)
+        self.assertIn(r["error_code"], ("", "unknown_state", "request_failed"))
+
+
+class TestWithRealDeviceWorker(unittest.TestCase):
+    """The real DeviceWorker running an exec task on its own thread."""
+
+    def setUp(self):
+        self.sim = FirmwareSim()
+        self.device = MagicMock()
+        self.device.ser = FakeSerial(self.sim, chunk=5)
+        self.device.raw_serial_log = []
+        self.device.raw_log_next_id = 0
+        self.device.raw_log_max_size = 5000
+        self.device.serial_log = []
+        self.device.log_next_id = 0
+        self.device.log_max_size = 1000
+        self.device.log_file_enabled = False
+        self.device.vserial = None
+        self.device.serial_echo_enabled = False
+        self.device.serial_tx_fragment_size = 0
+        self.device.upload_chunk_size = 1024
+        self.device.transfer_max_retries = 3
+        self.worker = DeviceWorker(self.device)
+        self.device.worker = self.worker
+        self.worker.start()
+        self.addCleanup(self.worker.stop)
+        self.protocol = FPBProtocol(self.device)
+        self.protocol._in_fl_mode = True
+
+    def run_exec(self, cmd="ls", **kw):
+        box = {}
+
+        def task():
+            kw.setdefault("timeout", RUN)
+            kw.setdefault("ack_timeout", ACK)
+            box["r"] = ExecClient(self.protocol).run(cmd, **kw)
+
+        self.assertTrue(self.worker.run_in_worker(task, timeout=15))
+        return box["r"]
+
+    def test_is_worker_thread(self):
+        seen = {}
+        self.assertFalse(self.worker.is_worker_thread())
+        self.worker.run_in_worker(
+            lambda: seen.setdefault("v", self.worker.is_worker_thread()), timeout=5
+        )
+        self.assertTrue(seen["v"])
+
+    def test_pump_rx_logs_like_the_normal_loop(self):
+        self.device.ser._rx += b"hello\n"
+        self.worker.run_in_worker(self.worker.pump_rx, timeout=5)
+        self.assertEqual(panel_text(self.device), "hello\n")
+        self.assertTrue(any(e["dir"] == "RX" for e in self.device.serial_log))
+
+    def test_exec_through_the_worker_keeps_the_normal_log(self):
+        self.sim.output = MULTILINE
+        r = self.run_exec()
+        self.assertTrue(r["success"])
+        self.assertEqual(r["output"], MULTILINE)
+        # SERIAL panel text == bytes on the wire, and the worker's own
+        # formatted log (serial_log) saw the response lines too
+        self.assertEqual(panel_text(self.device), self.device.ser.emitted.decode())
+        rx_lines = "".join(
+            e["data"] for e in self.device.serial_log if e["dir"] == "RX"
+        )
+        self.assertIn("line two", rx_lines)
+        self.assertIn("  indented three", rx_lines)
+
+    def test_sse_listeners_are_notified(self):
+        self.worker._data_event.clear()
+        self.run_exec()
+        self.assertTrue(self.worker._data_event.is_set())
+
+    def test_the_loop_resumes_polling_after_the_task(self):
+        self.run_exec()
+        self.device.ser._rx += b"async device log\n"
+        deadline = time.time() + 2
+        while time.time() < deadline and "async device log" not in panel_text(
+            self.device
+        ):
+            time.sleep(0.02)
+        self.assertIn("async device log\n", panel_text(self.device))
 
 
 if __name__ == "__main__":

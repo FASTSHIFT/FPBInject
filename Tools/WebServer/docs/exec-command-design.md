@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |------|------|
-| 状态 | 已实现，第 6 版 |
+| 状态 | 已实现，第 7 版 |
 | 范围 | 下位机 `App/func_loader`、上位机 `Tools/WebServer`（core / app / cli） |
 | 目标平台 | NuttX（通过 `system()` 对接 NSH） |
 | 相关文档 | `file-transfer-design.md`、`crc-integrity-audit-v2.md`、`security-token-design.md`、`tx-fragment-auto-adapt-design.md` |
@@ -25,6 +25,8 @@
   - 新增错误码 `device_error`（设备以非“请求损坏”类原因拒绝了请求，例如 `Invalid command`）。
 
 - 第 6 版：**删除上位机的 `exec_enabled`（Allow Exec）开关**，WebServer 不再有 exec 的开关，也没有 `exec_disabled` 错误码；设备信息弹窗增加一行 `Exec: enabled|disabled`（来自固件 `info`）。第 8 节同步修正：此前文档称 JSON 请求头能挡住网页的跨站请求，这并不成立，因为 WebServer 对所有来源开启了 CORS。
+
+- 第 7 版：**exec 只影响发送，不影响接收**。上位机不再为 exec 另开旁路读串口、不再清空接收缓冲区，串口日志与不跑 exec 时完全一致，见 6.3.1。
 
 ## 1. 背景与目标
 
@@ -404,7 +406,7 @@ Exec: enabled | disabled
 `send_cmd` 的重试逻辑是“没收到有效标记就重发整条命令”。对 `ping`、`read` 这类幂等的命令没问题，对 exec 不行：
 
 - 命令已经开始执行、只是耗时较长，超过了 `timeout`，`send_cmd` 会认为没响应并重发，命令被执行第二次。
-- 每次重试前会 `reset_input_buffer()`，第一次执行已经输出的内容会被丢弃。
+- 每次重试前会 `reset_input_buffer()`，第一次执行已经输出的内容会被丢弃，同时也会吃掉与 exec 无关的日志。
 - 固定的单一超时无法同时满足“尽快发现请求丢失”和“容忍命令执行很久”两种需求。
 - 它不认识 exec 的开始行和结果行 CRC，也没有“查询”这条恢复路径。
 
@@ -450,6 +452,22 @@ stateDiagram-v2
 - **结果行损坏走查询，不走重发。** 收到结果行的 `[FLEND]` 说明设备在命令结束时仍然在线，命令已经执行完了；此时发送“同 `seq`、不带 `-d`”的查询请求取回结果。查询按设计不会执行任何命令，所以即使设备缓存已丢也不会造成重复执行，最坏是 `no record`。
 - 重发整条命令时**复用同一个 seq 和同一个 timeout**；每个新命令使用新的随机 seq。
 - 可重发整条命令的 `[FLERR]` 仅限第 4.5 节标记为“请求损坏，可重发”的几类。
+
+### 6.3.1 接收路径：只加发送，不动接收
+
+exec 在发送侧新增一条命令，但接收侧保持原样：串口里的每个字节仍按原有路径进入串口日志，exec 只是“看”这些日志来解析结果，不截流、不改写、不丢弃。
+
+| 场景 | 做法 |
+|------|------|
+| WebServer（命令在 `DeviceWorker` 线程里执行） | 不直接读串口。调用 `DeviceWorker.pump_rx()` 让 worker 自己的接收步骤读一轮，字节照常写入原始串口日志、串口面板、日志文件、SSE 和虚拟串口；`ExecClient` 再按日志条目 id 游标读取新增内容来解析 |
+| CLI / SDK 直连（没有 worker） | 直接读串口，用增量 UTF-8 解码，按原样写日志，不做 `strip()`，避免相邻行被粘在一起 |
+
+要点：
+
+- 发送前不调用 `reset_input_buffer()`。发送前已在缓冲区的字节会被记入日志，而不是丢掉；解析只从发送点之后开始。
+- 选择 worker 路径的条件是：设备有 worker，且当前线程正是 worker 线程。串口只允许 worker 线程读写（`ThreadCheckedSerial`），所以 exec 不能挪到别的线程，否则别的任务会抢走字节。
+- exec 执行期间 worker 线程被占用，定时器、虚拟串口发送、其他 API 需要等待，这与文件下载一致。
+- 存活探测 `_probe_alive` 走 `send_cmd`，仍有 `reset_input_buffer()`；它只在 exec 超时之后才会发生。
 
 ### 6.4 seq 的生成
 
