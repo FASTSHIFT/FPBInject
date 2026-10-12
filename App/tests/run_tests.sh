@@ -54,50 +54,50 @@ clean_build() {
 # Build tests
 build_tests() {
     print_header "Building tests"
-    
+
     mkdir -p "${BUILD_DIR}"
     cd "${BUILD_DIR}"
-    
+
     print_info "Configuring CMake..."
     cmake -DCOVERAGE=ON ..
-    
+
     print_info "Building..."
     make -j$(nproc)
-    
+
     print_success "Build complete"
 }
 
 # Run tests
 run_tests() {
     print_header "Running tests"
-    
+
     cd "${BUILD_DIR}"
-    
+
     # Run main test runner
     print_info "Running main tests..."
     ./test_runner
     MAIN_EXIT_CODE=$?
-    
+
     # Run NuttX debugmon tests
     print_info "Running NuttX debugmon tests..."
     ./test_runner_nuttx
     NUTTX_EXIT_CODE=$?
-    
+
     # Run FatFS backend tests
     print_info "Running FatFS backend tests..."
     ./test_runner_fatfs
     FATFS_EXIT_CODE=$?
-    
+
     # Run NuttX compat tests
     print_info "Running NuttX compat tests..."
     ./test_runner_nuttx_compat
     COMPAT_EXIT_CODE=$?
-    
+
     # Run FL_NO_FPB tests
     print_info "Running FL_NO_FPB tests..."
     ./test_runner_no_fpb
     NO_FPB_EXIT_CODE=$?
-    
+
     # Check results
     if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ] && [ $COMPAT_EXIT_CODE -eq 0 ] && [ $NO_FPB_EXIT_CODE -eq 0 ]; then
         print_success "All tests passed"
@@ -124,31 +124,31 @@ run_tests() {
 # Generate coverage report and check threshold
 generate_coverage() {
     print_header "Generating coverage report"
-    
+
     cd "${BUILD_DIR}"
-    
+
     # Check for lcov
-    if ! command -v lcov &> /dev/null; then
+    if ! command -v lcov &>/dev/null; then
         print_error "lcov not found. Install with: sudo apt-get install lcov"
         exit 1
     fi
-    
+
     # Create coverage directory
     mkdir -p coverage
-    
+
     # Detect gcov version to match compiler
     # gcc-12 needs gcov-12, etc.
     GCOV_TOOL="gcov"
     CC_VERSION=$(cc --version | head -1 | grep -oP '\d+' | head -1)
-    if command -v gcov-${CC_VERSION} &> /dev/null; then
+    if command -v gcov-${CC_VERSION} &>/dev/null; then
         GCOV_TOOL="gcov-${CC_VERSION}"
     fi
     print_info "Using ${GCOV_TOOL}"
-    
+
     # Capture coverage data
     print_info "Capturing coverage data..."
     lcov --capture --directory . --output-file coverage/coverage.info --gcov-tool ${GCOV_TOOL} 2>/dev/null || true
-    
+
     # Remove test files and argparse library from coverage
     print_info "Filtering coverage data..."
     lcov --remove coverage/coverage.info \
@@ -157,37 +157,37 @@ generate_coverage() {
         '*/mock_*' \
         '*/argparse/*' \
         --output-file coverage/coverage.info --gcov-tool ${GCOV_TOOL} 2>/dev/null || true
-    
+
     # Check for genhtml
-    if command -v genhtml &> /dev/null; then
+    if command -v genhtml &>/dev/null; then
         print_info "Generating HTML report..."
         genhtml coverage/coverage.info --output-directory coverage/html 2>/dev/null || true
-        
+
         print_success "Coverage report generated: ${BUILD_DIR}/coverage/html/index.html"
     fi
-    
+
     # Extract coverage percentages
     print_info "Coverage summary:"
     COVERAGE_OUTPUT=$(lcov --summary coverage/coverage.info 2>&1)
     echo "$COVERAGE_OUTPUT"
-    
+
     # Parse line and function coverage
     LINE_COV=$(echo "$COVERAGE_OUTPUT" | grep "lines" | sed 's/.*: \([0-9.]*\)%.*/\1/' | head -1)
     FUNC_COV=$(echo "$COVERAGE_OUTPUT" | grep "functions" | sed 's/.*: \([0-9.]*\)%.*/\1/' | head -1)
-    
+
     # Default to 0 if parsing failed
     LINE_COV=${LINE_COV:-0}
     FUNC_COV=${FUNC_COV:-0}
-    
+
     echo ""
     print_info "Line coverage: ${LINE_COV}% (threshold: ${LINE_THRESHOLD}%)"
     print_info "Function coverage: ${FUNC_COV}% (threshold: ${FUNC_THRESHOLD}%)"
     echo ""
-    
+
     # Check thresholds (using bc for float comparison)
     LINE_OK=$(echo "$LINE_COV >= $LINE_THRESHOLD" | bc -l 2>/dev/null || echo "1")
     FUNC_OK=$(echo "$FUNC_COV >= $FUNC_THRESHOLD" | bc -l 2>/dev/null || echo "1")
-    
+
     if [ "$LINE_OK" = "1" ] && [ "$FUNC_OK" = "1" ]; then
         print_success "Coverage thresholds met!"
         return 0
@@ -236,7 +236,7 @@ while [[ $# -gt 0 ]]; do
             # CI mode - stricter output
             shift
             ;;
-        -h|--help)
+        -h | --help)
             echo "Usage: $0 [action] [options]"
             echo ""
             echo "Actions:"
