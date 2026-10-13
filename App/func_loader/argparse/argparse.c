@@ -84,7 +84,7 @@ static int argparse_getvalue(struct argparse* self, const struct argparse_option
         }
         if (errno == ERANGE)
             argparse_error(self, opt, "numerical result out of range", flags);
-        if (s[0] != '\0') // no digits or contains invalid characters
+        if (s && s[0] != '\0') // no digits or contains invalid characters
             argparse_error(self, opt, "expects an integer value", flags);
         break;
     case ARGPARSE_OPT_POINTER:
@@ -100,7 +100,7 @@ static int argparse_getvalue(struct argparse* self, const struct argparse_option
         }
         if (errno == ERANGE)
             argparse_error(self, opt, "numerical result out of range", flags);
-        if (s[0] != '\0')
+        if (s && s[0] != '\0')
             argparse_error(self, opt, "expects an address value", flags);
         break;
     case ARGPARSE_OPT_FLOAT:
@@ -116,7 +116,7 @@ static int argparse_getvalue(struct argparse* self, const struct argparse_option
         }
         if (errno == ERANGE)
             argparse_error(self, opt, "numerical result out of range", flags);
-        if (s[0] != '\0') // no digits or contains invalid characters
+        if (s && s[0] != '\0') // no digits or contains invalid characters
             argparse_error(self, opt, "expects a numerical value", flags);
         break;
     default:

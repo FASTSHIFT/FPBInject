@@ -2342,6 +2342,22 @@ static bool exec_output_has_result(int seq, int ret, bool replay) {
     return mock_output_contains(expect);
 }
 
+/* A request cut off right after an option name (e.g. a damaged line ending in
+ * "-r") must be rejected without touching a NULL end pointer in the parser. */
+void test_exec_option_without_value_is_rejected(void) {
+    const char* tails[][8] = {
+        {"fl", "-c", "exec", "-d", "bHM=", "--seq", "1", "-r"},
+        {"fl", "-c", "exec", "-d", "bHM=", "--seq", "1", "--timeout"},
+        {"fl", "-c", "exec", "-d", "bHM=", "--seq"},
+        {"fl", "-c", "exec", "--seq", "1", "-d"},
+    };
+    const int counts[] = {8, 8, 6, 6};
+    for (size_t i = 0; i < sizeof(counts) / sizeof(counts[0]); i++) {
+        setup_exec();
+        (void)fl_exec_cmd(&test_ctx, counts[i], tails[i]);
+        TEST_ASSERT_EQUAL(0, g_exec_calls);
+    }
+}
 void test_exec_no_callback(void) {
     setup_exec();
     test_ctx.exec_cb = NULL;
@@ -2873,6 +2889,7 @@ void run_loader_tests(void) {
     TEST_SUITE_BEGIN("func_loader - Exec Command");
     RUN_TEST(test_exec_no_callback);
     RUN_TEST(test_exec_basic);
+    RUN_TEST(test_exec_option_without_value_is_rejected);
     RUN_TEST(test_exec_frame_layout);
     RUN_TEST(test_exec_start_line_before_callback);
     RUN_TEST(test_exec_special_characters);
