@@ -5,6 +5,8 @@ method is mixed into :class:`FPBCLI` and relies on its attributes (``_proxy``,
 ``_fpb``) and helpers (``output_json``, ``output_error``, ``_require_device``).
 """
 
+from typing import Optional
+
 from fpbinject.cli.errors import FPBCLIError
 from fpbinject.core.exec_client import ExecArgumentError
 
@@ -12,7 +14,7 @@ from fpbinject.core.exec_client import ExecArgumentError
 class ExecCommandsMixin:
     """Run a shell command on the device through the fl exec command."""
 
-    def exec_cmd(self, cmd: str, timeout: float = 10.0) -> bool:
+    def exec_cmd(self, cmd: str, timeout: Optional[float] = None) -> bool:
         """Run ``cmd`` on the device and print the result as JSON.
 
         Retries follow the shared ``--transfer-max-retries`` setting.

@@ -549,7 +549,7 @@ class ServerProxy:
     def exec_cmd(
         self,
         cmd: str,
-        timeout: float = 10.0,
+        timeout: Optional[float] = None,
         ack_timeout: float = 1.0,
         max_retries: Optional[int] = None,
     ) -> dict:
@@ -562,7 +562,9 @@ class ServerProxy:
         # Imported lazily: keeps the proxy module light for plain CLI use
         from fpbinject.core.exec_client import MAX_RETRIES_LIMIT, worst_case_seconds
 
-        payload = {"cmd": cmd, "timeout": timeout, "ack_timeout": ack_timeout}
+        payload = {"cmd": cmd, "ack_timeout": ack_timeout}
+        if timeout is not None:
+            payload["timeout"] = timeout
         if max_retries is not None:
             payload["max_retries"] = max_retries
         http_timeout = worst_case_seconds(

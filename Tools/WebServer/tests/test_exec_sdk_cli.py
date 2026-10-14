@@ -103,6 +103,10 @@ class TestServerProxyExec(ServerCase):
         ServerProxy(self.url).exec_cmd("ls")
         self.assertNotIn("max_retries", _RecordingHandler.last["json"])
 
+    def test_timeout_omitted_when_not_given(self):
+        ServerProxy(self.url).exec_cmd("ls")
+        self.assertNotIn("timeout", _RecordingHandler.last["json"])
+
     def test_http_timeout_covers_long_commands(self):
         proxy = ServerProxy(self.url)
         with patch.object(proxy, "_post", return_value=OK) as post:
@@ -112,6 +116,12 @@ class TestServerProxyExec(ServerCase):
             exec_client.worst_case_seconds(100, 1, 3),
         )
         self.assertGreater(post.call_args.kwargs["timeout"], 100)
+
+    def test_http_timeout_covers_default_wait(self):
+        proxy = ServerProxy(self.url)
+        with patch.object(proxy, "_post", return_value=OK) as post:
+            proxy.exec_cmd("ls")
+        self.assertGreater(post.call_args.kwargs["timeout"], exec_client.DEFAULT_WAIT_S)
 
     def test_http_timeout_assumes_max_retries_when_server_decides(self):
         proxy = ServerProxy(self.url)
@@ -167,7 +177,7 @@ class TestClientExecProxyMode(unittest.TestCase):
         c = Client("http://127.0.0.1:1")
         with patch.object(c._proxy, "exec_cmd", return_value=OK) as m:
             c.exec_cmd("ls")
-        m.assert_called_once_with("ls", 10.0, 1.0, None)
+        m.assert_called_once_with("ls", None, 1.0, None)
 
     def test_protocol_failure_returned_not_raised(self):
         c = Client("http://127.0.0.1:1")
@@ -379,7 +389,7 @@ class TestCliMainExec(unittest.TestCase):
 
     def test_dispatch_with_default_timeout(self):
         cli, code = self._run_main(["exec", "ls -l /data"], True)
-        cli.exec_cmd.assert_called_once_with("ls -l /data", 10.0)
+        cli.exec_cmd.assert_called_once_with("ls -l /data", None)
         self.assertEqual(code, 0)
 
     def test_dispatch_with_timeout_option(self):

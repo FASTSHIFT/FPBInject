@@ -566,8 +566,9 @@ def api_fpb_exec():
 
     JSON body:
         cmd: Command line (str)
-        timeout: Seconds to wait for the command to finish (default 10).
-            Forwarded to the device but not enforced there.
+        timeout: Seconds to wait for the command to finish. Optional: when
+            omitted the wait is 10 s and no timeout is sent to the device.
+            When given it is forwarded to the device but not enforced there.
         ack_timeout: Seconds to wait for the device to acknowledge (default 1)
         max_retries: Resends when the request is damaged or lost (default:
             the transfer_max_retries setting, shared with file transfer)
@@ -589,7 +590,7 @@ def api_fpb_exec():
         return _exec_error("bad_request", "Request body must be a JSON object", 400)
 
     cmd = data.get("cmd")
-    timeout = data.get("timeout", 10.0)
+    timeout = data.get("timeout")
     ack_timeout = data.get("ack_timeout", 1.0)
     max_retries = data.get("max_retries")
     if max_retries is None:

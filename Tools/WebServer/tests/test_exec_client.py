@@ -24,7 +24,6 @@ from fpbinject.core.exec_client import (  # noqa: E402
     ExecClient,
     ExecResponseParser,
     default_max_retries,
-    max_command_bytes,
     request_crc,
     result_crc,
     start_crc,
@@ -66,6 +65,7 @@ class FirmwareSim:
         self.fatal_error = None  # device rejects the request with this message
         self.prefix = ""  # stale text arriving before the response
         self.unterminated = False  # command output has no trailing newline
+        self.collide_all = False  # every id looks like the cached one (replay)
 
     def _result(self, seq, ret, replay):
         ok = ret >= 0
@@ -99,7 +99,7 @@ class FirmwareSim:
             return frame_err("No exec_cb")
 
         opts = dict(zip(toks[3::2], toks[4::2]))
-        seq = int(opts.get("--seq", -1))
+        seq = int(opts.get("--seq", "-1"), 0)  # sent as 0x%04X
         timeout = int(opts.get("--timeout", 0))
         crc = int(opts["-r"], 16)
 
@@ -114,6 +114,8 @@ class FirmwareSim:
         if crc != request_crc(seq, timeout, cmd):
             return frame_err("CRC mismatch: 0x0000 != 0x0001")
 
+        if seq >= 0 and self.collide_all:
+            return self._wrap(self._result(seq, 9, True).encode())
         if seq >= 0 and self.last and self.last[0] == seq:
             return self._wrap(self._result(seq, self.last[1], True).encode())
 
@@ -251,28 +253,6 @@ class TestCrcVectors(unittest.TestCase):
         self.assertNotEqual(request_crc(5, 0, b""), request_crc(6, 0, b""))
 
 
-class TestBudget(unittest.TestCase):
-    def test_default_chunk(self):
-        # upload_chunk_size 64, 10-digit seq, 5-digit timeout -> 42 bytes
-        self.assertEqual(max_command_bytes(64, 2147483647, 10000), 42)
-
-    def test_grows_with_chunk_size(self):
-        self.assertGreater(
-            max_command_bytes(512, 1, 1000), max_command_bytes(64, 1, 1000)
-        )
-
-    def test_overhead_uses_actual_digits(self):
-        self.assertGreaterEqual(
-            max_command_bytes(64, 1, 1000), max_command_bytes(64, 2147483647, 900000)
-        )
-
-    def test_tiny_chunk_gives_zero(self):
-        self.assertEqual(max_command_bytes(1, 2147483647, 900000), 0)
-
-    def test_unset_chunk_falls_back_to_default(self):
-        self.assertEqual(max_command_bytes(0, 1, 1000), max_command_bytes(64, 1, 1000))
-
-
 class TestValidation(unittest.TestCase):
     def test_valid(self):
         data, ms = validate_args("ls -l", 2.5, 1.0, 3)
@@ -293,11 +273,15 @@ class TestValidation(unittest.TestCase):
             validate_args("a\x00b", 1, 1, 0)
 
     def test_bad_timeouts(self):
-        for bad in (0, -1, "5", None, True, 0.0004):
+        for bad in (0, -1, "5", True, 0.0004):
             with self.assertRaises(ExecArgumentError):
                 validate_args("ls", bad, 1, 0)
         with self.assertRaises(ExecArgumentError):
             validate_args("ls", 1, 0, 0)
+
+    def test_timeout_is_optional(self):
+        _, ms = validate_args("ls", None, 1, 0)
+        self.assertEqual(ms, 0)  # 0 = not sent
 
     def test_timeout_has_no_artificial_cap(self):
         _, ms = validate_args("ls", 86400, 1, 0)
@@ -317,6 +301,12 @@ class TestValidation(unittest.TestCase):
     def test_worst_case_seconds_grows(self):
         self.assertGreater(worst_case_seconds(10, 1, 20), worst_case_seconds(10, 1, 3))
         self.assertGreater(worst_case_seconds(100, 1, 3), 100)
+
+    def test_worst_case_seconds_without_timeout_uses_default_wait(self):
+        self.assertEqual(
+            worst_case_seconds(None, 1, 3),
+            worst_case_seconds(exec_client.DEFAULT_WAIT_S, 1, 3),
+        )
 
 
 class TestDefaultRetries(unittest.TestCase):
@@ -552,6 +542,36 @@ class TestRunBasics(unittest.TestCase):
         run(client, "ls", timeout=2.5)
         self.assertEqual(sim.calls[0][1], 2500)
 
+    def test_timeout_not_sent_when_not_given(self):
+        sim, dev, _, client = make_client()
+        r = client.run("ls", ack_timeout=ACK)
+        self.assertTrue(r["success"])
+        self.assertNotIn("--timeout", dev.ser.exec_lines()[0])
+        self.assertEqual(sim.calls[0][1], 0)
+
+    def test_timeout_not_sent_in_the_query_either(self):
+        sim, dev, _, client = make_client()
+        sim.drop_responses = 1
+        client.run("ls", ack_timeout=ACK)
+        self.assertTrue(all("--timeout" not in ln for ln in dev.ser.exec_lines()))
+
+    def test_default_wait_is_used_locally_when_no_timeout(self):
+        sim, *_rest, client = make_client()
+        sim.hang = True
+        with patch.object(exec_client, "DEFAULT_WAIT_S", 0.15):
+            r = client.run("ls", ack_timeout=ACK)
+        self.assertEqual(r["error_code"], "unknown_state")
+        self.assertIn("0.15", r["error"])
+
+    def test_seq_is_16_bit_hex(self):
+        _, dev, _, client = make_client()
+        for _ in range(20):
+            run(client)
+        for ln in dev.ser.exec_lines():
+            seq = ln.split("--seq ")[1].split()[0]
+            self.assertRegex(seq, r"^0x[0-9A-F]{4}$")
+            self.assertLess(int(seq, 16), 65536)
+
     def test_nonzero_ret_is_still_success(self):
         sim, _, _, client = make_client()
         sim.ret = 3
@@ -603,12 +623,14 @@ class TestRunBasics(unittest.TestCase):
             client.run("")
         self.assertEqual(dev.ser.lines, [])
 
-    def test_too_long_not_sent(self):
+    def test_long_command_is_not_prechecked(self):
+        # Like the --path commands: the host does not second-guess the line
+        # length; a line the device cannot take fails its CRC and is resent.
         sim, dev, _, client = make_client(upload_chunk_size=64)
-        r = run(client, "x" * 200)
-        self.assertFalse(r["success"])
-        self.assertEqual(r["error_code"], "too_long")
-        self.assertEqual(dev.ser.lines, [])
+        cmd = "echo " + "x" * 195
+        r = run(client, cmd)
+        self.assertTrue(r["success"])
+        self.assertEqual(sim.calls[0][0], cmd)
 
     def test_fragmented_tx_is_reassembled(self):
         sim, dev, _, client = make_client(
@@ -650,6 +672,63 @@ class TestRunBasics(unittest.TestCase):
         seqs = {ln.split("--seq ")[1].split()[0] for ln in dev.ser.exec_lines()}
         self.assertEqual(len(sim.calls), 2)
         self.assertEqual(len(seqs), 2)
+
+    def test_new_request_never_reuses_the_previous_id(self):
+        sim, dev, _, client = make_client()
+        with patch.object(exec_client.secrets, "randbelow", side_effect=[5, 5, 5, 6]):
+            run(client)
+            run(client)
+        ids = [ln.split("--seq ")[1].split()[0] for ln in dev.ser.exec_lines()]
+        self.assertEqual(ids, ["0x0005", "0x0006"])
+        self.assertEqual(len(sim.calls), 2)
+
+    def test_id_collision_with_the_cached_one_is_rerolled(self):
+        # The device still holds the id of an earlier session: it answers a
+        # fresh request with that cached result and runs nothing.
+        sim, dev, _, client = make_client()
+        sim.last = (0x1234, 7)
+        with patch.object(
+            exec_client.secrets, "randbelow", side_effect=[0x1234, 0x4321]
+        ):
+            r = run(client, max_retries=0)
+        self.assertTrue(r["success"])
+        self.assertFalse(r["replayed"])
+        self.assertEqual(r["ret"], 0)  # our command's status, not the cached 7
+        self.assertEqual(len(sim.calls), 1)
+        ids = [ln.split("--seq ")[1].split()[0] for ln in dev.ser.exec_lines()]
+        self.assertEqual(ids, ["0x1234", "0x4321"])
+
+    def test_collision_after_a_damaged_request_is_rerolled_too(self):
+        # The first transmission was refused (nothing ran), so the replay on
+        # the resend can only be a collision.
+        sim, dev, _, client = make_client()
+        sim.last = (0x1234, 7)
+        sim.damage_requests = 1
+        with patch.object(
+            exec_client.secrets, "randbelow", side_effect=[0x1234, 0x4321]
+        ):
+            r = run(client)
+        self.assertTrue(r["success"])
+        self.assertFalse(r["replayed"])
+        self.assertEqual(len(sim.calls), 1)
+
+    def test_replay_after_a_lost_response_is_not_rerolled(self):
+        # Here the first transmission may well have run: the replay is real.
+        sim, dev, _, client = make_client()
+        sim.drop_responses = 1
+        r = run(client)
+        self.assertTrue(r["replayed"])
+        ids = {ln.split("--seq ")[1].split()[0] for ln in dev.ser.exec_lines()}
+        self.assertEqual(len(ids), 1)
+        self.assertEqual(len(sim.calls), 1)
+
+    def test_reroll_gives_up_after_the_limit(self):
+        sim, dev, _, client = make_client()
+        sim.collide_all = True
+        r = run(client, max_retries=0)
+        self.assertEqual(len(dev.ser.exec_lines()), exec_client.MAX_SEQ_REROLLS + 1)
+        self.assertEqual(sim.calls, [])
+        self.assertTrue(r["replayed"])
 
     def test_tool_log_written(self):
         _, dev, _, client = make_client()
@@ -896,7 +975,7 @@ class TestFpbInjectIntegration(unittest.TestCase):
         with patch("fpbinject.fpb_inject.ExecClient") as cls:
             fpb.exec_cmd("ls")
         kwargs = cls.return_value.run.call_args.kwargs
-        self.assertEqual(kwargs["timeout"], 10.0)
+        self.assertIsNone(kwargs["timeout"])
         self.assertIsNone(kwargs["max_retries"])
 
 

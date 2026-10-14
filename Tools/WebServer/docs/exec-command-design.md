@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |------|------|
-| 状态 | 已实现，第 8 版 |
+| 状态 | 已实现，第 9 版 |
 | 范围 | 下位机 `App/func_loader`、上位机 `Tools/WebServer`（core / app / cli） |
 | 目标平台 | NuttX（通过 `system()` 对接 NSH） |
 | 相关文档 | `file-transfer-design.md`、`crc-integrity-audit-v2.md`、`security-token-design.md`、`tx-fragment-auto-adapt-design.md` |
@@ -30,6 +30,12 @@
 
 - 第 8 版：新增第 14 节**实测数据反馈**（两次长时间运行的设备侧串口日志分析），用数据验证第 7 节的防线。**协议和实现均无变化。**
 
+- 第 9 版：**缩短请求行，只改上位机，下位机不变。**
+  - `--seq` 改为 16 位随机数，按 `0x%04X` 发送（4 位十六进制）。设备端解析整数选项用 `strtol(..., 0)`，十六进制本来就能识别；CRC 里的 `seq` 仍按 4 字节计算，线协议的校验部分没有变化。
+  - `--timeout` **用户没传就不发**。上位机本地等待时间仍默认 10 秒，但不再作为 `--timeout` 透传；设备端缺省为 0，CRC 里也按 0 计算。
+  - **去掉上位机的长度预检查**（原 6.5 的预算算法和 `too_long` 错误码），行为与带 `--path` 的文件命令一致：上位机不预判，行太长被设备截断时 CRC 不符，走重发。设备端的硬上限仍是行缓冲（NuttX port 默认 1024 字符）和解码缓冲（1023 字节）。
+  - 因为 `seq` 只有 16 位，新增防碰撞处理，见 6.4。
+
 ## 1. 背景与目标
 
 ### 1.1 问题
@@ -55,7 +61,7 @@
 ### 1.3 非目标（v1 不做）
 
 - 不做交互式会话（命令读取 stdin、`top` 一类持续刷新的程序）。
-- 不做超过单行长度预算的长命令分片传输。长脚本走“文件传输 + 执行脚本”的路径。
+- 不做超过设备单行长度的长命令分片传输。长脚本走“文件传输 + 执行脚本”的路径。
 - 不做命令输出（stdout / stderr）的 CRC 保护（见 7.5）。
 - **不做超时终止，也不做主动取消。** 命令一旦启动，只能等它自己结束。
 - 不做阻塞命令的设备端保护，由用户自行避免执行会长时间阻塞的命令。
@@ -73,7 +79,7 @@
 | `fl_response` 内部 `log_buf` 仅 256 字节且全局共享 | `fl_log.c` | 回调内不能再调用 `fl_print*` |
 | `fl_exec_cmd` 返回非 `FL_OK` 时，交互循环会打印 `fl_error` | `fl_port_nuttx.c` | “命令执行了但返回非 0”不能映射成 fl 错误码 |
 | 上位机 `send_cmd` 超时后会**自动重发**整条命令，且每次重试前会清空输入缓冲 | `serial_protocol.py` | 重发对非幂等命令有风险，所以 exec 必须用独立的收发循环 |
-| 上位机单行长度由 `upload_chunk_size` 校准间接约束 | `serial_protocol.py: write_memory` | exec 需沿用同一套预算算法 |
+| 上位机对单行长度没有硬性检查（`--path` 等命令同样不检查） | `file_transfer.py` | exec 与之保持一致，见 6.5 |
 | `serial_protocol.py` 已 1435 行，限制 1500 行 | `Tools/check_file_lines.py` | 上位机新增代码必须放新模块 |
 | 文件传输已有事务锁（`begin_transaction` / `file_transaction`，冲突抛 `TransferBusy`） | `core/file_txn.py` | exec 需要与它互斥，具体复用方式实现时核对 |
 
@@ -145,21 +151,21 @@ flowchart LR
 执行命令：
 
 ```
-fl -c exec -d <base64(cmdline)> --seq <id> --timeout <ms> -r 0x<crc16>
+fl -c exec -d <base64(cmdline)> --seq 0x<id16> [--timeout <ms>] -r 0x<crc16>
 ```
 
 查询已执行命令的结果（不带 `-d`，绝不会执行任何东西）：
 
 ```
-fl -c exec --seq <id> -r 0x<crc16>
+fl -c exec --seq 0x<id16> -r 0x<crc16>
 ```
 
 | 参数 | 类型 | 必需 | 说明 |
 |------|------|------|------|
 | `-c exec` | 字符串 | 是 | 命令名 |
 | `-d` | Base64 | 执行时必需 | 命令行文本（UTF-8，不含 NUL）。省略且 `seq >= 0` 即为查询 |
-| `--seq` | 整数 | 否 | 请求 ID，范围 0 到 2^31-1，缺省 -1 表示不去重。上位机总是携带 |
-| `--timeout` | 整数 | 否 | 毫秒，缺省 0。**原样透传给 `exec_cb`，v1 的 NuttX port 不处理**。负数被拒绝 |
+| `--seq` | 整数 | 否 | 请求 ID，缺省 -1 表示不去重。上位机总是携带，取 0 到 65535 的随机数并按 `0x%04X` 发送（设备端以 `strtol` base 0 解析，十进制也能识别） |
+| `--timeout` | 整数 | 否 | 毫秒，缺省 0。**用户没指定就不发。**原样透传给 `exec_cb`，v1 的 NuttX port 不处理。负数被拒绝 |
 | `-r` | CRC-16 | 是 | 见 4.1。查询时 `len` 取 0，`timeout` 取解析到的值（上位机不带，即 0） |
 | `--force` | 布尔 | 否 | 仅供手工调试，允许省略 `-r` |
 
@@ -396,7 +402,7 @@ Exec: enabled | disabled
 
 | 模块 | 职责 | 备注 |
 |------|------|------|
-| `core/exec_client.py`（新增） | 编码、算预算、两阶段等待、重发判定、结果校验与查询、输出切分、会话可疑状态 | 不改动 `serial_protocol.py` 的行数预算 |
+| `core/exec_client.py`（新增） | 编码、两阶段等待、重发判定、结果校验与查询、输出切分、会话可疑状态 | 不改动 `serial_protocol.py` 的行数预算 |
 | `core/serial_protocol.py` | 抽出 `_write_line()`（带分片发送的写行逻辑），供 `send_cmd` 和 `ExecClient` 共用 | 仅小幅重构 |
 | `fpb_inject.py` | 暴露 `exec_cmd()` 门面 | 与 `ping()` / `info()` 同层 |
 | `app/routes/fpb.py` | 新增 `POST /api/fpb/exec` | 767 行，增量很小 |
@@ -448,7 +454,7 @@ stateDiagram-v2
 规则：
 
 - **阶段一（ack）**：发出后等待开始行或终态响应，时间很短（默认 1 秒，可调）。超时说明请求大概率丢了。
-- **阶段二（完成）**：看到开始行后，等结果行的时间为调用方指定的 `timeout`（默认 10 秒）。设备端 v1 不会终止命令，所以这个时间只是**上位机愿意等多久**。
+- **阶段二（完成）**：看到开始行后，等结果行的时间为调用方指定的 `timeout`（没指定则 10 秒，且不会发给设备）。设备端 v1 不会终止命令，所以这个时间只是**上位机愿意等多久**。
 - **看到开始行后绝不重发整条命令。** 等满 `timeout` 仍没有结果行，返回 `Unknown`，明确告诉调用方“命令可能仍在运行，设备端没有超时终止，也可能已经结束”。开始行的三种判定见 4.4。
 - **结果行必须同时通过三项校验才算有效**：格式匹配、`seq` 等于本次请求的 `seq`、`crc` 等于本地重算值。`seq` 不符的结果行视为上一次请求的残留，直接忽略。
 - **结果行损坏走查询，不走重发。** 收到结果行的 `[FLEND]` 说明设备在命令结束时仍然在线，命令已经执行完了；此时发送“同 `seq`、不带 `-d`”的查询请求取回结果。查询按设计不会执行任何命令，所以即使设备缓存已丢也不会造成重复执行，最坏是 `no record`。
@@ -471,36 +477,31 @@ exec 在发送侧新增一条命令，但接收侧保持原样：串口里的每
 - exec 执行期间 worker 线程被占用，定时器、虚拟串口发送、其他 API 需要等待，这与文件下载一致。
 - 存活探测 `_probe_alive` 走 `send_cmd`，仍有 `reset_input_buffer()`；它只在 exec 超时之后才会发生。
 
-### 6.4 seq 的生成
+### 6.4 seq 的生成与碰撞处理
 
-seq 取 `secrets.randbelow(2**31)`，每个新命令一个，重发与查询时沿用。
+seq 取 `secrets.randbelow(2**16)`，每个新命令一个，重发与查询时沿用；发送时写成 `--seq 0x1A2B`。
 
-不使用从 1 开始递增的计数器。原因：设备端缓存了上一次 seq，如果上位机进程重启后又从 1 开始，会和设备缓存里上一个会话的 seq 碰撞，导致新命令被当成“重发”而**不执行**。31 位随机数的碰撞概率可以忽略。
+不使用从 1 开始递增的计数器。设备端只缓存**最近一次**的 seq，如果新命令的 seq 恰好等于缓存值，设备会把它当成“重发”，直接回放上一次的结果而**不执行**。上位机进程重启后从 1 开始，几乎必然碰撞，所以用随机数。
 
-### 6.5 单行长度预算
+16 位随机数让碰撞概率从可忽略变成每条命令 1/65536，所以上位机多做两层处理：
 
-沿用 `write_memory` 的算法：以已校准的 `upload_chunk_size` 推出整行预算，再扣掉 exec 的固定开销。
+1. **不复用自己的上一个 id。** `FPBProtocol.exec_last_seq` 记录最近一次发出的 id，`_new_seq()` 保证新 id 与它不同，消除同一会话内的碰撞。CLI 直连每次是新进程，这一层不起作用，靠第二层。
+2. **首次发送就收到回放，则换 id 重发。** 如果我们对当前 id 的所有发送都**不可能已被执行**（还没发过，或设备已回复“请求损坏”类错误），却收到了 `replay=1` 的结果，说明碰上了更早会话留下的缓存，设备没有执行任何东西。此时换一个新 id 再发，不占用重发次数，最多换 4 次（`MAX_SEQ_REROLLS`）。如果此前某次发送**可能**已被执行（例如响应丢失、超时），回放就是真的，不换 id。
 
-```
-overhead = len(f"fl -c exec -d  --seq {seq} --timeout {timeout_ms} -r 0xFFFF")
-budget   = b64_len(upload_chunk_size) + len("fl -c fwrite -d  -r 65535")
-max_cmd  = ((budget - overhead) // 4) * 3                                    # 命令最大字节数
-```
+残余风险：首次发送恰好碰撞，而且这次回放的响应也丢了，随后的重发才收到回放，此时会被当成真回放。概率约为 1/65536 乘以响应丢失率，远低于一般的串口误码，接受。
 
-`seq` 在计算时已知，`timeout_ms` 也是，所以开销按**实际位数**计算，不需要为 `timeout` 预留最坏情况。`timeout` 不设人为上限，由协议决定的上界是 `--timeout` 为 `int`（毫秒）可表示的最大值，即 `2147483647` 毫秒，约 2147483 秒。
+### 6.5 单行长度
 
-示例（按公式估算，非实测；取 `seq` 为 10 位、`timeout` 为默认 10 秒即 5 位数 `10000`，此时 `overhead` 为 57）：
+上位机**不做长度预检查**，与带 `--path` 的文件命令一致：命令经 Base64 编码后拼进请求行直接发出。
 
-| 场景 | 行预算 | 命令最大长度 |
-|------|--------|--------------|
-| 默认 `upload_chunk_size=64` | 113 | 约 42 字节 |
-| 设备行缓冲 1024，上位机已校准到上限 | 约 1022 | 约 723 字节 |
+限制来自设备端：
 
-`timeout` 每多一位，命令最大长度大约少 0 到 3 个字节（取整到 4 个 Base64 字符一组），影响很小。
+- 行缓冲：NuttX port 的 `FL_NUTTX_LINE_SIZE`（默认 1024），`fl_stream` 同理，超出的字节被丢弃。
+- 解码缓冲：命令解码后最多 `FL_BUF_SIZE - 1`（1023）字节，超出返回 `Invalid base64 data`。
 
-查询请求不带 `-d` 和 `--timeout`，行很短，不受预算限制。
+行被截断时请求 CRC 不符，设备回 `CRC mismatch`，上位机按“请求损坏”重发。重发不会让命令被执行，所以不会有副作用，但行太长是确定性的，重发次数用尽后返回 `request_failed`。需要执行更长的内容时，用文件传输把脚本写到设备上，再 exec 一条短命令去运行它。
 
-超出预算时 `ExecClient` 直接返回明确错误，**不静默截断**。需要执行更长的内容时，用文件传输把脚本写到设备上，再 exec 一条短命令去运行它（可用的脚本命令取决于 NSH 配置，实现时核对）。
+缩短后每条请求的固定开销是 `fl -c exec -d  --seq 0x1A2B -r 0xABCD` 的 37 个字符，原来（10 位十进制 seq 加 5 位 `--timeout 10000`）是 57 个，每条请求少 20 个字符；用户指定 `--timeout` 时再加 `--timeout <ms>` 的长度。
 
 ### 6.6 HTTP API
 
@@ -508,13 +509,13 @@ max_cmd  = ((budget - overhead) // 4) * 3                                    # �
 POST /api/fpb/exec
 Content-Type: application/json
 
-{ "cmd": "ls -l /data", "timeout": 10.0, "ack_timeout": 1.0 }
+{ "cmd": "ls -l /data", "ack_timeout": 1.0 }
 ```
 
 | 字段 | 含义 | 默认 | 范围 |
 |------|------|------|------|
-| `cmd` | 命令行文本 | 无 | 受 6.5 的长度预算限制 |
-| `timeout` | 上位机等待命令完成的时间（秒）；同时以毫秒作为 `--timeout` 透传给设备，**设备端 v1 不处理** | 10 | 大于 0，不设人为上限（协议上界约 2147483 秒） |
+| `cmd` | 命令行文本 | 无 | 非空，不含 NUL；长度见 6.5 |
+| `timeout` | 上位机等待命令完成的时间（秒）。**可选**：不传则等 10 秒，且不给设备发 `--timeout`；传了才以毫秒作为 `--timeout` 透传给设备，**设备端 v1 不处理** | 不传 | 大于 0，不设人为上限（协议上界约 2147483 秒） |
 | `ack_timeout` | 等待开始行的时间（秒） | 1 | 大于 0 |
 | `max_retries` | 请求损坏或丢失时重发整条命令的次数 | 设备连接的 `transfer_max_retries`（与文件传输共用） | 0 到 20 |
 
@@ -541,7 +542,6 @@ Content-Type: application/json
 | `error_code` | 含义 |
 |--------------|------|
 | `not_supported` | 设备 `info` 报告 `Exec: disabled`（未挂载 `exec_cb`） |
-| `too_long` | 命令超出 6.5 的长度预算 |
 | `device_suspect` | 会话处于可疑状态，且 `ping` 未通（6.8） |
 | `request_failed` | 请求损坏或丢失，重发次数用尽 |
 | `unknown_state` | 状态机进入 `Unknown`，无法确认命令是否已执行或仍在运行 |
@@ -554,7 +554,7 @@ Content-Type: application/json
 ### 6.7 CLI
 
 ```
-fpbinject exec "ls -l /data" [--timeout 10]
+fpbinject exec "ls -l /data" [--timeout 10]   # --timeout 可省，省略则等 10 秒且不发给设备
 ```
 
 输出沿用现有 CLI 约定（`output_json`）。是否额外提供 `--raw`（直接打印 stdout 并以命令退出码结束进程）作为 v1.1 的可选项，见第 13 节。
@@ -622,7 +622,7 @@ SDK 现有约定是“返回原始 JSON `dict`；传输、鉴权、设备未连�
 | 情形 | 表现 |
 |------|------|
 | 命令执行完成（含 `ret` 非 0） | 返回 `success=True` |
-| `unknown_state`、`device_suspect`、`too_long`、`request_failed`、`spawn_failed`、`busy`、`not_supported` | 返回 `success=False` 和对应的 `error_code`，**不抛异常** |
+| `unknown_state`、`device_suspect`、`request_failed`、`spawn_failed`、`busy`、`not_supported` | 返回 `success=False` 和对应的 `error_code`，**不抛异常** |
 | 参数非法（`cmd` 为空、`timeout` 不大于 0 或超出协议上界、`max_retries` 越界） | 抛 `FPBError`，客户端先行校验，不发请求 |
 | 代理模式下 WebServer 不可达 / 需要 token | 抛 `ServerUnavailable` / `AuthError` |
 | 没有连接设备 | 抛 `DeviceNotConnected` |
@@ -659,7 +659,7 @@ sequenceDiagram
     participant D as 下位机 fl
     participant S as nsh_system 任务
 
-    H->>D: fl -c exec -d b64 --seq 7 --timeout 10000 -r 0xCRC
+    H->>D: fl -c exec -d b64 --seq 0x0007 -r 0xCRC
     D->>D: 解码，校验 CRC，检查 seq
     D-->>H: [FLEXEC] seq=7 crc=0x1A2B
     D->>S: exec_cb(cmdline, 10000)
@@ -843,7 +843,8 @@ exec 能在设备上执行任意 shell 命令，但它**没有带来新的访问
 ### 11.2 上位机单元测试
 
 - Base64 与 CRC 与设备端算法一致（可对拍 `read` / `write` 已有测试向量；开始行与结果行 CRC 用同一向量）
-- 预算计算的边界值（`timeout` 位数从 1 位到 10 位时，开销按实际位数变化）
+- 请求行：`--seq` 为 `0x` 加 4 位十六进制；用户没传 `timeout` 时不带 `--timeout`；长命令不被预检查拒绝
+- seq 防碰撞：不复用上一个 id；首次发送收到回放则换 id，响应丢失后的回放不换
 - **按行解析响应**：开始行、输出、结果行三段的切分；各段分多个小块到达、`\r\n` 混入、开始行只收到一半
 - 状态机：各场景下是否重发、是否复用 seq 与 timeout、`Unknown` 的触发条件
 - **开始行判定**：合法且 seq 匹配、seq 不符（忽略）、前缀对但 CRC 或格式错（按已开始处理）、只收到半个开始行（按已开始处理）

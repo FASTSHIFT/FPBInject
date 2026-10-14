@@ -8,13 +8,16 @@ Reliable remote command execution over the fl protocol (the ``exec`` command).
 
 Wire format (see docs/exec-command-design.md)::
 
-    request : fl -c exec -d <base64(cmd)> --seq <id> --timeout <ms> -r 0x<crc>
-    query   : fl -c exec --seq <id> -r 0x<crc>              (never executes)
+    request : fl -c exec -d <base64(cmd)> --seq 0x<id16> [--timeout <ms>] -r 0x<crc>
+    query   : fl -c exec --seq 0x<id16> -r 0x<crc>          (never executes)
     response:
         [FLEXEC] seq=<id> crc=0x<crc>                       (command starting)
         <command stdout / stderr>
         [FLOK] EXEC seq=<id> ret=<n> crc=0x<crc>
         [FLEND]
+
+``--timeout`` is only sent when the caller asked for one; the device treats a
+missing value as 0 (no limit requested), which is also what the CRC covers.
 
 CRC-16 (little-endian integers, init 0xFFFF):
 
@@ -39,10 +42,7 @@ import struct
 import time
 from typing import List, Optional
 
-from fpbinject.core.config_schema import (
-    DEFAULT_TRANSFER_MAX_RETRIES,
-    DEFAULT_UPLOAD_CHUNK_SIZE,
-)
+from fpbinject.core.config_schema import DEFAULT_TRANSFER_MAX_RETRIES
 from fpbinject.core.serial_protocol import FPBProtocolError, LogDirection
 from fpbinject.core.state import tool_log
 from fpbinject.utils.crc import crc16_update
@@ -54,9 +54,15 @@ FRAME_END = "[FLEND]"
 
 # Largest --timeout the device accepts (C int, milliseconds)
 MAX_TIMEOUT_MS = 2**31 - 1
-# seq is a C int; random values avoid colliding with the device's cached seq
-# from a previous host session.
-SEQ_SPACE = 2**31
+# seq is a 16-bit id sent as 0x%04X to keep the request line short. The device
+# only remembers the last one, so a new request must not reuse it: see
+# _new_seq() and the re-roll in _execute().
+SEQ_SPACE = 2**16
+# Seconds to wait for a command when the caller gives no timeout. Not sent to
+# the device.
+DEFAULT_WAIT_S = 10.0
+# New ids tried when the device answers a first transmission with a replay
+MAX_SEQ_REROLLS = 4
 
 # Same ceiling as the transfer_max_retries config item
 MAX_RETRIES_LIMIT = 20
@@ -70,7 +76,6 @@ POLL_INTERVAL_S = 0.002
 
 # error_code values reported to callers
 ERR_NOT_SUPPORTED = "not_supported"
-ERR_TOO_LONG = "too_long"
 ERR_DEVICE_SUSPECT = "device_suspect"
 ERR_REQUEST_FAILED = "request_failed"
 ERR_UNKNOWN_STATE = "unknown_state"
@@ -114,26 +119,6 @@ def result_crc(seq: int, ret: int) -> int:
     return crc16_update(0xFFFF, struct.pack("<ii", seq, ret))
 
 
-def _b64_len(n: int) -> int:
-    return ((n + 2) // 3) * 4
-
-
-def max_command_bytes(upload_chunk_size: int, seq: int, timeout_ms: int) -> int:
-    """Longest command that still fits the device's line buffer.
-
-    Same approach as ``write_memory``: take the line length of a proven-safe
-    fwrite (derived from the calibrated upload chunk size) as the budget and
-    subtract the fixed overhead of the exec request. The overhead uses the
-    actual digits of ``seq`` and ``timeout_ms``.
-    """
-    chunk = upload_chunk_size if upload_chunk_size and upload_chunk_size > 0 else 0
-    if not chunk:
-        chunk = DEFAULT_UPLOAD_CHUNK_SIZE
-    budget = _b64_len(chunk) + len("fl -c fwrite -d  -r 65535")
-    overhead = len(f"fl -c exec -d  --seq {seq} --timeout {timeout_ms} -r 0xFFFF")
-    return max(0, ((budget - overhead) // 4) * 3)
-
-
 def default_max_retries(device) -> int:
     """Resend budget used when the caller does not give one.
 
@@ -147,7 +132,9 @@ def default_max_retries(device) -> int:
     return max(0, min(value, MAX_RETRIES_LIMIT))
 
 
-def worst_case_seconds(timeout: float, ack_timeout: float, max_retries: int) -> float:
+def worst_case_seconds(
+    timeout: Optional[float], ack_timeout: float, max_retries: int
+) -> float:
     """Upper bound on how long one exec call can take.
 
     Callers that put a time limit around the call (the HTTP route's worker
@@ -157,14 +144,18 @@ def worst_case_seconds(timeout: float, ack_timeout: float, max_retries: int) -> 
     recovery queries.
     """
     attempts = max_retries + 1
-    return timeout + 2.0 * (ack_timeout + 0.5) * attempts + 15.0
+    wait = DEFAULT_WAIT_S if timeout is None else timeout
+    return wait + 2.0 * (ack_timeout + 0.5) * attempts + 15.0
 
 
 def validate_args(cmd, timeout, ack_timeout, max_retries):
     """Validate user supplied arguments.
 
+    ``timeout`` may be None (not given): nothing is sent to the device for it
+    and the caller waits DEFAULT_WAIT_S.
+
     Returns:
-        (command bytes, timeout in milliseconds)
+        (command bytes, timeout in milliseconds, 0 when not given)
 
     Raises:
         ExecArgumentError: if anything is out of range.
@@ -174,17 +165,22 @@ def validate_args(cmd, timeout, ack_timeout, max_retries):
     if "\x00" in cmd:
         raise ExecArgumentError("cmd must not contain NUL characters")
 
-    for name, value in (("timeout", timeout), ("ack_timeout", ack_timeout)):
+    checked = [("ack_timeout", ack_timeout)]
+    if timeout is not None:
+        checked.insert(0, ("timeout", timeout))
+    for name, value in checked:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ExecArgumentError(f"{name} must be a number")
         if not value > 0:
             raise ExecArgumentError(f"{name} must be greater than 0")
 
-    timeout_ms = int(round(timeout * 1000))
-    if timeout_ms < 1 or timeout_ms > MAX_TIMEOUT_MS:
-        raise ExecArgumentError(
-            f"timeout out of range (max {MAX_TIMEOUT_MS // 1000} seconds)"
-        )
+    timeout_ms = 0
+    if timeout is not None:
+        timeout_ms = int(round(timeout * 1000))
+        if timeout_ms < 1 or timeout_ms > MAX_TIMEOUT_MS:
+            raise ExecArgumentError(
+                f"timeout out of range (max {MAX_TIMEOUT_MS // 1000} seconds)"
+            )
 
     if (
         isinstance(max_retries, bool)
@@ -422,17 +418,21 @@ class ExecClient:
         self.device = protocol.device
         self._max_output = DEFAULT_MAX_OUTPUT
         self._rx = None
+        self._seq = 0  # id of the request currently being worked on
 
     # -- public -----------------------------------------------------------
     def run(
         self,
         cmd: str,
-        timeout: float = 10.0,
+        timeout: Optional[float] = None,
         ack_timeout: float = 1.0,
         max_retries: Optional[int] = None,
         max_output: int = DEFAULT_MAX_OUTPUT,
     ) -> dict:
         """Execute ``cmd`` on the device and return a result dict.
+
+        ``timeout`` is how long to wait for the command. When it is None the
+        wait is DEFAULT_WAIT_S and no ``--timeout`` is sent to the device.
 
         Keys: success, ret, output, replayed, started, output_truncated,
         elapsed_ms, error_code, error. Protocol-level outcomes (unknown state,
@@ -450,17 +450,7 @@ class ExecClient:
         if not ser:
             raise FPBProtocolError("Serial port not connected")
 
-        seq = secrets.randbelow(SEQ_SPACE)
-        limit = max_command_bytes(
-            getattr(self.device, "upload_chunk_size", 0), seq, timeout_ms
-        )
-        if len(cmd_bytes) > limit:
-            return self._fail(
-                t0,
-                ERR_TOO_LONG,
-                f"Command is {len(cmd_bytes)} bytes, the current serial settings "
-                f"allow {limit}. Upload a script and run it instead.",
-            )
+        wait = DEFAULT_WAIT_S if timeout is None else timeout
 
         if self.protocol.exec_suspect_ser is ser and not self._probe_alive(ack_timeout):
             return self._fail(
@@ -473,33 +463,80 @@ class ExecClient:
         self.protocol.exec_suspect_ser = None
 
         self._rx = self._make_rx()
-        tool_log(self.device, "INFO", f"exec seq={seq}: {cmd}")
+        tool_log(self.device, "INFO", f"exec: {cmd}")
         outcome = self._execute(
-            t0, ser, seq, cmd_bytes, timeout, timeout_ms, ack_timeout, max_retries
+            t0, ser, cmd_bytes, wait, timeout_ms, ack_timeout, max_retries
         )
         level = "SUCCESS" if outcome["success"] else "ERROR"
         detail = f"ret={outcome['ret']}" if outcome["success"] else outcome["error"]
-        tool_log(self.device, level, f"exec seq={seq} done: {detail}")
+        tool_log(self.device, level, f"exec seq=0x{self._seq:04X} done: {detail}")
         return outcome
 
     # -- request / retry loop ----------------------------------------------
-    def _execute(
-        self, t0, ser, seq, cmd_bytes, timeout, timeout_ms, ack_timeout, max_retries
-    ) -> dict:
+    def _new_seq(self) -> int:
+        """Random 16-bit request id that differs from the one used last.
+
+        The device caches only its last seq and answers a repeated seq with the
+        cached result instead of running the command. Skipping our own last
+        id removes the collision within a session; a collision with an id from
+        an earlier session is caught in _execute().
+        """
+        last = getattr(self.protocol, "exec_last_seq", None)
+        seq = secrets.randbelow(SEQ_SPACE)
+        while seq == last:
+            seq = secrets.randbelow(SEQ_SPACE)
+        return seq
+
+    @staticmethod
+    def _request_line(seq, cmd_bytes, timeout_ms) -> str:
         crc = request_crc(seq, timeout_ms, cmd_bytes)
         b64 = base64.b64encode(cmd_bytes).decode("ascii")
-        line = f"fl -c exec -d {b64} --seq {seq} --timeout {timeout_ms} -r 0x{crc:04X}"
-        last_note = "no response from the device"
+        timeout = f" --timeout {timeout_ms}" if timeout_ms else ""
+        return f"fl -c exec -d {b64} --seq 0x{seq:04X}{timeout} -r 0x{crc:04X}"
 
-        for attempt in range(max_retries + 1):
+    def _execute(
+        self, t0, ser, cmd_bytes, wait, timeout_ms, ack_timeout, max_retries
+    ) -> dict:
+        seq = self._new_seq()
+        line = self._request_line(seq, cmd_bytes, timeout_ms)
+        self._seq = seq
+        last_note = "no response from the device"
+        # True once a transmission of the current id may have been executed
+        # (no definite answer came back), so a later replay is genuine.
+        may_have_run = False
+        rerolls = 0
+        attempt = 0
+
+        while attempt <= max_retries:
             if attempt:
-                logger.warning(f"exec seq={seq}: resend {attempt}/{max_retries}")
+                logger.warning(f"exec seq=0x{seq:04X}: resend {attempt}/{max_retries}")
             parser = ExecResponseParser(seq, self._max_output)
             self.protocol.try_enter_fl_mode()
+            self.protocol.exec_last_seq = seq
             self._send(line)
-            self._collect(parser, ack_timeout, timeout)
+            self._collect(parser, ack_timeout, wait)
 
             result = parser.result
+            if (
+                result is not None
+                and result.crc_ok
+                and result.replay
+                and not may_have_run
+                and not parser.started
+                and rerolls < MAX_SEQ_REROLLS
+            ):
+                # The device already ran a request with this id although none
+                # of our transmissions can have been executed: the new id
+                # collided with the one cached from an earlier session and
+                # nothing was run. Pick another id; this does not use up a
+                # resend.
+                rerolls += 1
+                logger.info(f"exec seq=0x{seq:04X}: id already used, picking a new one")
+                seq = self._new_seq()
+                line = self._request_line(seq, cmd_bytes, timeout_ms)
+                self._seq = seq
+                continue
+
             if result is not None and result.crc_ok:
                 return self._done(t0, parser, result)
 
@@ -519,13 +556,16 @@ class ExecClient:
                     )
                 if any(text in msg for text in _RETRIABLE_ERRORS):
                     last_note = msg
+                    attempt += 1
                     continue  # damaged in transit, nothing was executed
                 return self._fail(t0, ERR_DEVICE_ERROR, msg)
 
             if parser.maybe_started:
-                return self._unknown(t0, ser, parser, timeout)
+                return self._unknown(t0, ser, parser, wait)
 
             last_note = "no response from the device"
+            may_have_run = True
+            attempt += 1
 
         return self._fail(
             t0,
@@ -536,7 +576,7 @@ class ExecClient:
     def _recover(self, t0, ser, seq, parser, ack_timeout, max_retries) -> dict:
         """Fetch the cached result of an executed request with a query."""
         q_crc = request_crc(seq, 0, b"")
-        query = f"fl -c exec --seq {seq} -r 0x{q_crc:04X}"
+        query = f"fl -c exec --seq 0x{seq:04X} -r 0x{q_crc:04X}"
         wait = max(ack_timeout, 0.5)
 
         for _ in range(max_retries + 1):

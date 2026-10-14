@@ -298,9 +298,9 @@ Notes:
     exec_parser.add_argument(
         "--timeout",
         type=float,
-        default=10.0,
-        help="Seconds to wait (default: 10). The device cannot stop a "
-        "running command.",
+        default=None,
+        help="Seconds to wait (default: 10, not sent to the device). The "
+        "device cannot stop a running command.",
     )
 
     # mem-dump command (requires device)

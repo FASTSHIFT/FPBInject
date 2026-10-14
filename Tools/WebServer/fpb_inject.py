@@ -177,11 +177,14 @@ class FPBInject:
     def exec_cmd(
         self,
         cmd: str,
-        timeout: float = 10.0,
+        timeout: Optional[float] = None,
         ack_timeout: float = 1.0,
         max_retries: Optional[int] = None,
     ) -> Dict:
         """Run a shell command on the device through the fl exec command.
+
+        ``timeout`` (seconds) is how long to wait; when None the wait is 10 s
+        and no ``--timeout`` is sent to the device.
 
         See core/exec_client.py. Returns a result dict (success, ret, output,
         replayed, started, output_truncated, elapsed_ms, error_code, error).

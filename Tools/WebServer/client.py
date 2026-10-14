@@ -532,7 +532,7 @@ class Client:
         self,
         cmd: str,
         *,
-        timeout: float = 10.0,
+        timeout: Optional[float] = None,
         ack_timeout: float = 1.0,
         max_retries: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -544,8 +544,9 @@ class Client:
         with file transfer); once the device has started the command it is
         never resent.
 
-        ``timeout`` is how many seconds to wait for the command to finish. The
-        device does not stop a running command, so avoid commands that block.
+        ``timeout`` is how many seconds to wait for the command to finish
+        (default: 10, not sent to the device unless you pass it). The device
+        does not stop a running command, so avoid commands that block.
 
         Returns the result dict: ``success``, ``ret`` (the command's status),
         ``output``, ``replayed``, ``started``, ``output_truncated``,

@@ -14,7 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask  # noqa: E402
 from fpbinject.app.routes import fpb  # noqa: E402
-from fpbinject.core.exec_client import worst_case_seconds  # noqa: E402
+from fpbinject.core.exec_client import (  # noqa: E402
+    DEFAULT_WAIT_S,
+    worst_case_seconds,
+)
 from fpbinject.core.serial_protocol import FPBProtocolError  # noqa: E402
 from fpbinject.core.state import DeviceState, state  # noqa: E402
 
@@ -85,8 +88,16 @@ class TestExecRoute(ExecRouteBase):
         state.device.transfer_max_retries = 6
         self.post({"cmd": "ls"})
         self.fpb.exec_cmd.assert_called_once_with(
-            "ls", timeout=10.0, ack_timeout=1.0, max_retries=6
+            "ls", timeout=None, ack_timeout=1.0, max_retries=6
         )
+
+    def test_timeout_omitted_is_none_and_window_uses_default_wait(self):
+        self.post({"cmd": "ls"})
+        self.assertIsNone(self.fpb.exec_cmd.call_args.kwargs["timeout"])
+        window = self.mock_worker.call_args.kwargs.get("timeout")
+        if window is None:
+            window = self.mock_worker.call_args.args[2]
+        self.assertGreaterEqual(window, DEFAULT_WAIT_S)
 
     def test_default_retries_follow_transfer_setting(self):
         state.device.transfer_max_retries = 1

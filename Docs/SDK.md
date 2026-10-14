@@ -205,13 +205,13 @@ else:
     print(r["error_code"], r["error"])
 ```
 
-Signature: `exec_cmd(cmd, *, timeout=10.0, ack_timeout=1.0, max_retries=None)`.
+Signature: `exec_cmd(cmd, *, timeout=None, ack_timeout=1.0, max_retries=None)`.
 
-- `timeout` — seconds to wait for the command to finish. The device does **not** stop a running command; avoid commands that block.
+- `timeout` — seconds to wait for the command to finish (`None` waits 10 s and sends no timeout to the device). The device does **not** stop a running command; avoid commands that block.
 - `max_retries` — resends of a request that was damaged or lost. `None` (default) uses the `transfer_max_retries` setting shared with file transfer. Once the device has started the command it is never resent, so non-idempotent commands run at most once.
 - Result keys: `success`, `ret` (the command's status), `output`, `replayed` (the status came from the device's cache, `output` may be incomplete), `started`, `output_truncated`, `elapsed_ms`, `error_code`, `error`.
 
-Protocol-level outcomes are returned, not raised: `success` is `False` with an `error_code` — `unknown_state` (did not finish in time; it may still be running), `device_suspect` (a previous exec is still unresolved), `too_long`, `request_failed`, `not_supported`, `spawn_failed`, `device_error`, `busy`. Exceptions are raised for invalid arguments (`FPBError`), a missing device (`DeviceNotConnected`, also in offline mode), and transport/auth problems (`ServerUnavailable`, `AuthError`).
+Protocol-level outcomes are returned, not raised: `success` is `False` with an `error_code` — `unknown_state` (did not finish in time; it may still be running), `device_suspect` (a previous exec is still unresolved), `request_failed`, `not_supported`, `spawn_failed`, `device_error`, `busy`. Exceptions are raised for invalid arguments (`FPBError`), a missing device (`DeviceNotConnected`, also in offline mode), and transport/auth problems (`ServerUnavailable`, `AuthError`).
 
 ## Serial
 
@@ -412,7 +412,7 @@ for _ in range(50):                          # bounded loop
 | `mem_read(addr, length, fmt="hex")` | proxy, direct | Read memory |
 | `mem_write(addr, hexdata)` | proxy, direct | Write memory |
 | `mem_dump(addr, length, out_path)` | proxy, direct | Dump region to file |
-| `exec_cmd(cmd, *, timeout=10.0, ack_timeout=1.0, max_retries=None)` | proxy, direct | Run a shell command on the device |
+| `exec_cmd(cmd, *, timeout=None, ack_timeout=1.0, max_retries=None)` | proxy, direct | Run a shell command on the device |
 | `serial_send(data)` | proxy, direct | Send serial data |
 | `serial_read(since=0)` | proxy, direct | Read serial log |
 | `wake()` | proxy, direct | Wake a sleeping device |

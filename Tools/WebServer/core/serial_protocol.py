@@ -72,6 +72,8 @@ class FPBProtocol:
         # (see core/exec_client.py). Tied to the port object so reconnecting
         # (a new serial object) clears it automatically.
         self.exec_suspect_ser = None
+        # Last exec request id put on the wire; the next one must differ from it
+        self.exec_last_seq = None
 
     def get_platform(self) -> Platform:
         """Get detected platform type."""

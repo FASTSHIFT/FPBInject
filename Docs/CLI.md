@@ -356,10 +356,10 @@ The command line is sent Base64-encoded with a CRC, so quotes, spaces and shell 
 }
 ```
 
-- `success` means the command ran and its result was verified; the command's own exit status is `ret`. When `success` is `false`, `error_code` says why (`unknown_state`, `device_suspect`, `too_long`, `request_failed`, `not_supported`, `spawn_failed`, `device_error`, `busy`).
+- `success` means the command ran and its result was verified; the command's own exit status is `ret`. When `success` is `false`, `error_code` says why (`unknown_state`, `device_suspect`, `request_failed`, `not_supported`, `spawn_failed`, `device_error`, `busy`).
 - The process exit code is `0` when `success` is `true`, otherwise `1`.
-- `--timeout` is how many seconds to wait for the command to finish. The device does **not** stop a running command, so avoid commands that block (reading stdin, long-running apps). If the wait expires the result is `unknown_state` and further `exec` calls are refused (`device_suspect`) until the device answers a ping again.
-- The command length is limited by the line buffer (it follows the calibrated upload chunk size, see `test-serial`). Upload a script with `file-upload` and run it instead of passing long commands.
+- `--timeout` is optional: it is how many seconds to wait for the command to finish (default 10, and the value is only sent to the device when you pass it). The device does **not** stop a running command, so avoid commands that block (reading stdin, long-running apps). If the wait expires the result is `unknown_state` and further `exec` calls are refused (`device_suspect`) until the device answers a ping again.
+- The host does not check the command length (same as the `--path` commands); the limit is the device line buffer (1024 characters on the NuttX port). Upload a script with `file-upload` and run it instead of passing long commands.
 - The device firmware needs exec support (NuttX: `CONFIG_SYSTEM_SYSTEM=y`); `info` reports `Exec: enabled|disabled`, and so does the device-info popup of the web UI. There is no separate switch on the WebServer: whoever can reach it can already type into the device shell with `serial-send`, so `exec` adds reliability (CRC, no double execution, exit status), not new access.
 
 ### File Transfer Commands
