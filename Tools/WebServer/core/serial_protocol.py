@@ -27,14 +27,6 @@ from fpbinject.core.state import tool_log
 logger = logging.getLogger(__name__)
 
 
-class Platform(Enum):
-    """Platform types for FPB communication."""
-
-    UNKNOWN = "unknown"
-    NUTTX = "nuttx"
-    BARE_METAL = "bare-metal"
-
-
 class LogDirection(Enum):
     """Direction for serial log entries."""
 
@@ -42,16 +34,53 @@ class LogDirection(Enum):
     RX = "RX"
 
 
-# Unique banner the firmware prints on entering fl interactive mode
-# (see App/func_loader/fl_port_nuttx.c: "FPBInject Function Loader (NuttX)").
-# Used as the enter-success signal instead of the bare "fl>" prompt: "fl>" is a
-# 3-char token that can appear in unrelated shell output/logs and cause a false
-# "already in fl mode" verdict, whereas this full string is effectively unique.
-FL_MODE_BANNER = "FPBInject Function Loader"
-
-# Marker the firmware prints on leaving the fl loop (see fl_port_nuttx.c).
-# Part of the [FLxxx] protocol family; preferred exit-confirmation signal.
+# Marker the firmware prints when it leaves the fl loop (see fl_port_nuttx.c).
+# Part of the [FLxxx] protocol family; the only exit confirmation we rely on.
 FL_MODE_EXIT_MARKER = "[FLEXIT]"
+
+# Attempts to leave the fl loop. Every attempt sends a single "q"; a second or
+# third one only covers a lost "q" or a lost marker.
+EXIT_ATTEMPTS = 3
+
+
+def note_fl_markers(device, text: str) -> None:
+    """Count ``[FLEXIT]`` markers seen on the wire (passive state sync).
+
+    Everything that reads the port feeds its text through here (the protocol's
+    own reads via ``_log_raw``, the DeviceWorker's background reads), so a
+    device that left the fl loop without our asking (the user typed ``q`` in
+    the terminal) is noticed: ``FPBProtocol`` compares the counter with the
+    value it saw when it last put the device into the loop.
+    """
+    if FL_MODE_EXIT_MARKER not in text:
+        return
+    seen = getattr(device, "fl_exit_seen", 0)
+    if not isinstance(seen, int):
+        seen = 0
+    try:
+        device.fl_exit_seen = seen + text.count(FL_MODE_EXIT_MARKER)
+    except Exception:
+        pass
+
+
+# A shell prompt as it shows up at the end of a reply: one short token without
+# blanks that ends in a prompt character ("ap>", "nsh>", "fl>", "user@dev:~$",
+# "#"). Shell prompts are not fixed, so no names are listed here.
+_PROMPT_RE = re.compile(r"[^\s\[\]]{0,40}[>#$%]")
+
+
+def strip_trailing_prompt(text: str) -> str:
+    """Drop a shell prompt left at the end of ``text``.
+
+    Only the last line is considered, and only when it consists of nothing but
+    a prompt token, so ordinary output that merely ends in ``>`` (``a -> b``)
+    is left alone. Used for the fallback path of ``parse_response``; replies
+    that carry ``[FLOK]``/``[FLERR]`` never depend on it.
+    """
+    head, _, last = text.rpartition("\n")
+    if _PROMPT_RE.fullmatch(last.strip()):
+        return head
+    return text
 
 
 class FPBProtocolError(Exception):
@@ -61,13 +90,30 @@ class FPBProtocolError(Exception):
 
 
 class FPBProtocol:
-    """FPB serial protocol handler."""
+    """FPB serial protocol handler.
+
+    fl mode: a device whose ``info`` reports ``Mode: interactive`` (a port that
+    runs ``fl`` as a program from a shell, e.g. NuttX) keeps running the
+    ``fl>`` loop after any ``fl ...`` command, so there is
+    nothing to "enter": the command line itself does it. The host only has to
+    leave the loop when it is done (``exit_fl_mode``, confirmed by the
+    ``[FLEXIT]`` marker). A ``oneshot`` device has no loop at all and
+    ``exit_fl_mode`` does nothing.
+    """
 
     def __init__(self, device_state):
         """Initialize FPB protocol handler."""
         self.device = device_state
+        # What the device said about itself in ``info`` ("Mode:", "Platform:").
+        # Learned once per serial object (see ensure_mode), so a reconnect
+        # starts from scratch.
+        self._mode_ser = None
+        self._interactive = False
+        self.platform_desc = ""
+        # The host believes the device sits in the fl loop. Only ever set for
+        # an interactive device.
         self._in_fl_mode = False
-        self._platform = Platform.UNKNOWN
+        self._exit_mark = 0  # device.fl_exit_seen when the flag was set
         # Serial object on which an exec command ended in an unknown state
         # (see core/exec_client.py). Tied to the port object so reconnecting
         # (a new serial object) clears it automatically.
@@ -75,116 +121,77 @@ class FPBProtocol:
         # Last exec request id put on the wire; the next one must differ from it
         self.exec_last_seq = None
 
-    def get_platform(self) -> Platform:
-        """Get detected platform type."""
-        return self._platform
-
-    def try_enter_fl_mode(self, timeout: float = 0.5) -> bool:
-        """Try to enter fl interactive mode if not already in it."""
-        if self._in_fl_mode:
-            logger.debug("Already in fl mode, skipping enter_fl_mode")
-            return True
-
-        if self._platform == Platform.BARE_METAL:
-            logger.debug("Bare Metal platform, skipping enter_fl_mode")
-            return True
-
-        return self.enter_fl_mode(timeout)
+    @property
+    def interactive(self) -> bool:
+        """True if the device runs the interactive fl loop (valid after ensure_mode)."""
+        return self._interactive
 
     def wakeup_shell(self, cnt: int):
-        """Wake up shell by sending newlines to trigger any pending output."""
-        newline = b"\n"
+        """Send ``cnt`` newlines so a half-typed shell line cannot spoil the next command."""
         for _ in range(cnt):
-            self.device.ser.write(newline)
+            self.device.ser.write(b"\n")
             self.device.ser.flush()
             time.sleep(0.05)
 
-    def enter_fl_mode(self, timeout: float = 0.5) -> bool:
-        """Enter fl interactive mode by sending 'fl' command."""
+    def _learn_mode(self, raw: str) -> bool:
+        """Record Mode:/Platform: from an ``info`` reply. False if it is not one."""
+        if "[FLOK]" not in raw:
+            return False
+        mode = ""
+        self.platform_desc = ""
+        for line in raw.splitlines():
+            line = line.strip()
+            if line.startswith("Mode:"):
+                mode = line.split(":", 1)[1].strip()
+            elif line.startswith("Platform:"):
+                self.platform_desc = line.split(":", 1)[1].strip()
+        if not mode:
+            logger.warning("Device 'info' has no Mode: line, treating it as oneshot")
+        self._interactive = mode == "interactive"
+        self._mode_ser = self.device.ser
+        logger.info(
+            f"Device mode: {mode or 'unknown'}"
+            f"{' (' + self.platform_desc + ')' if self.platform_desc else ''}"
+        )
+        return True
+
+    def ensure_mode(self) -> None:
+        """Ask the device once per serial port whether it runs the fl loop.
+
+        The first command on a port is ``fl -c info``. The reply carries
+        ``Mode:`` (and ``Platform:``), nothing else about the shell is
+        guessed. From a shell prompt this command also starts the loop, which is
+        why the device is marked as inside it afterwards.
+        """
         ser = self.device.ser
-        if not ser:
+        if not ser or self._mode_ser is ser:
+            return
+        # A new port: forget what we knew about the previous one
+        self._interactive = False
+        self._in_fl_mode = False
+        wake = getattr(self.device, "wakeup_shell_cnt", 0)
+        self.wakeup_shell(wake if isinstance(wake, int) else 0)
+        resp = self._transact("fl -c info", timeout=0.8, max_retries=1)
+        if self._learn_mode(resp):
+            self.mark_in_fl()
+        else:
+            logger.warning("Device did not answer the mode probe (fl -c info)")
+
+    def mark_in_fl(self) -> None:
+        """An fl command was just sent: an interactive device is now in the loop."""
+        if self._interactive:
+            self._in_fl_mode = True
+            seen = getattr(self.device, "fl_exit_seen", 0)
+            self._exit_mark = seen if isinstance(seen, int) else 0
+
+    def _sync_exit_marker(self) -> None:
+        """Drop the flag if a [FLEXIT] we did not ask for went by."""
+        if not self._in_fl_mode:
+            return
+        seen = getattr(self.device, "fl_exit_seen", 0)
+        if isinstance(seen, int) and seen != self._exit_mark:
+            logger.debug("[FLEXIT] seen on the wire, device left fl mode")
             self._in_fl_mode = False
-            self._platform = Platform.UNKNOWN
-            return False
-
-        # If already in fl mode, just return
-        if self._in_fl_mode:
-            return True
-
-        try:
-            self._log_raw(LogDirection.TX, "fl")
-            ser.reset_input_buffer()
-
-            self.wakeup_shell(getattr(self.device, "wakeup_shell_cnt", 0))
-
-            # Send 'fl' command to enter interactive mode
-            ser.write(b"fl\n")
-            ser.flush()
-
-            start = time.time()
-            response = ""
-            while time.time() - start < timeout:
-                time.sleep(0.05)
-                if ser.in_waiting:
-                    chunk = ser.read(ser.in_waiting).decode("utf-8", errors="replace")
-                    response += chunk
-                    if (
-                        FL_MODE_BANNER in response
-                        or "[FLOK]" in response
-                        or "[FLERR]" in response
-                        or "fl_error" in response
-                    ):
-                        break
-
-            self._log_raw(LogDirection.RX, response.strip())
-            logger.debug(f"Entered fl mode: {response.strip()}")
-
-            # Success signal is the unique entry banner, not the bare "fl>"
-            # prompt (which can appear in unrelated shell output).
-            if FL_MODE_BANNER in response:
-                self._in_fl_mode = True
-                self._platform = Platform.NUTTX
-                logger.info("Detected NuttX platform (fl interactive mode)")
-                return True
-            elif "fl_error" in response:
-                # Device is ALREADY inside the fl loop -- our 'fl' line was
-                # treated as an unknown command and rejected. Correct verdict
-                # is "in fl mode" (not bare-metal). This closes a state-lock:
-                # previously this response fell into the else branch and
-                # permanently pinned _platform = BARE_METAL, after which every
-                # subsequent try_enter_fl_mode short-circuited.
-                self._in_fl_mode = True
-                self._platform = Platform.NUTTX
-                logger.info("Detected NuttX platform (already in fl loop)")
-                return True
-            elif "Enter" in response and "interactive mode" in response:
-                self._platform = Platform.NUTTX
-                logger.info("Detected NuttX platform (requires interactive mode)")
-                start = time.time()
-                while time.time() - start < timeout:
-                    if ser.in_waiting:
-                        chunk = ser.read(ser.in_waiting).decode(
-                            "utf-8", errors="replace"
-                        )
-                        response += chunk
-                        if FL_MODE_BANNER in response:
-                            self._in_fl_mode = True
-                            return True
-                    time.sleep(0.01)
-                self._in_fl_mode = False
-                return False
-            else:
-                # No positive evidence either way (empty/unrecognizable reply).
-                # DO NOT pin BARE_METAL here -- that permanently disabled every
-                # future fl attempt. Stay UNKNOWN so the next call can retry.
-                self._in_fl_mode = False
-                self._platform = Platform.UNKNOWN
-                return False
-        except Exception as e:
-            logger.error(f"Error entering fl mode: {e}")
-            self._in_fl_mode = False
-            self._platform = Platform.UNKNOWN
-            return False
 
     def _read_pending(self, ser, max_wait: float = 0.05) -> str:
         """Drain whatever is already buffered, returning once it empties.
@@ -229,20 +236,22 @@ class FPBProtocol:
         return buf
 
     def exit_fl_mode(self, timeout: float = 0.3) -> bool:
-        """Exit fl mode, verifying via ``[FLEXIT]`` marker + bogus-command probe.
+        """Leave the fl loop with ``q`` and wait for the ``[FLEXIT]`` marker.
 
-        Sends ``q`` then a bogus command ``fldet``; decides from reply content
-        (not serial echo, which bounces the token back in both modes):
+        Nothing to do (returns True) for a oneshot device, when the host does
+        not believe the device is in the loop, or when a ``[FLEXIT]`` already
+        went by. Otherwise ``q`` is sent and the reply is read until it goes
+        quiet: ``[FLEXIT]`` confirms. ``command not found`` means the device
+        was already at the shell prompt (host and device had drifted apart).
+        Anything else is unconfirmed: the flag stays set so a later call tries
+        again, and the call returns False.
 
-        - ``[FLEXIT]`` -> confirmed (firmware's explicit exit marker; primary);
-        - ``fl_error`` -> still in the fl loop (rejected the bogus command);
-        - ``command not found`` -> fallback for firmware without the marker;
-        - empty/unrecognizable -> unconfirmed, retry, never assume success.
-
-        Reads are idle-based and every byte is forwarded to the terminal log,
-        so no device output is swallowed. Keeps ``_in_fl_mode`` set and returns
-        False if it can't positively confirm the exit.
+        Reads are idle-based and every byte is forwarded to the terminal log.
+        If a previous exec ended in an unknown state the device is busy running
+        the command and cannot read ``q``: one attempt only, so no pile of
+        ``q`` lines is left for the shell to chew on later.
         """
+        self._sync_exit_marker()
         if not self._in_fl_mode:
             logger.debug("Not in fl mode, skipping exit")
             return True
@@ -252,18 +261,17 @@ class FPBProtocol:
             self._in_fl_mode = False
             return False
 
+        attempts = 1 if self.exec_suspect_ser is ser else EXIT_ATTEMPTS
         try:
-            # Flush the stale prompt so only fresh probe output is inspected.
+            # Flush the stale prompt so only fresh output is inspected.
             self._log_raw(LogDirection.RX, self._read_pending(ser))
+            self._sync_exit_marker()
+            if not self._in_fl_mode:
+                return True
 
-            for attempt in range(5):
+            for attempt in range(attempts):
                 self._log_raw(LogDirection.TX, "q")
                 ser.write(b"q\n")
-                ser.flush()
-                # Probe with a bogus command: fl -> fl_error, nsh -> "command
-                # not found". The token echo itself is ignored (see docstring).
-                self._log_raw(LogDirection.TX, "fldet")
-                ser.write(b"fldet\n")
                 ser.flush()
 
                 response = self._drain_serial(ser, idle=0.03, max_wait=timeout)
@@ -275,25 +283,14 @@ class FPBProtocol:
                     logger.debug("Exited fl mode ([FLEXIT] confirmed)")
                     return True
 
-                if "fl_error" in response:
-                    # Bogus command hit the fl loop; shell never prints this.
-                    logger.warning(
-                        f"exit_fl_mode: still in fl (fl_error seen, "
-                        f"attempt {attempt + 1}/5)"
-                    )
-                    continue
-
                 if "command not found" in response:
-                    # Fallback for firmware without the [FLEXIT] marker.
                     self._in_fl_mode = False
-                    logger.debug("Exited fl mode (shell probe confirmed)")
+                    logger.debug("Already at the shell prompt, nothing to exit")
                     return True
 
-                # Empty or unrecognizable reply: cannot confirm the exit. This
-                # is the dangerous case (heavy loss) -- never assume success.
                 logger.warning(
-                    f"exit_fl_mode: exit unconfirmed, no shell response "
-                    f"(attempt {attempt + 1}/5): {response[:80]!r}"
+                    f"exit_fl_mode: [FLEXIT] not seen "
+                    f"(attempt {attempt + 1}/{attempts}): {response[:80]!r}"
                 )
         except Exception as e:
             logger.error(f"Error exiting fl mode: {e}")
@@ -328,23 +325,28 @@ class FPBProtocol:
         self,
         cmd: str,
         timeout: float = 0.5,
-        retry_on_missing_cmd: bool = True,
         max_retries: int = 3,
     ) -> str:
         """Send command and get response with automatic retry."""
+        if not self.device.ser:
+            raise FPBProtocolError("Serial port not connected")
+
+        self.ensure_mode()
+
+        full_cmd = f"fl {cmd}" if not cmd.strip().startswith("fl ") else cmd
+        return self._transact(full_cmd, timeout, max_retries)
+
+    def _transact(self, full_cmd: str, timeout: float, max_retries: int) -> str:
+        """Send one ``fl ...`` line and read the reply, resending on failure."""
         ser = self.device.ser
         if not ser:
             raise FPBProtocolError("Serial port not connected")
-
-        self.try_enter_fl_mode()
-
-        full_cmd = f"fl {cmd}" if not cmd.strip().startswith("fl ") else cmd
 
         last_response = ""
         for attempt in range(max_retries + 1):
             if attempt > 0:
                 logger.warning(
-                    f"Retry {attempt}/{max_retries} for command: {cmd[:50]}..."
+                    f"Retry {attempt}/{max_retries} for command: {full_cmd[:50]}..."
                 )
                 tool_log(
                     self.device,
@@ -383,36 +385,19 @@ class FPBProtocol:
             last_response = response
 
             if "[FLOK]" in response or "[FLERR]" in response:
-                if "Enter" in response and "interactive mode" in response:
-                    break
-                if self._is_response_complete(response, cmd):
+                if self._is_response_complete(response, full_cmd):
                     break
                 else:
                     logger.warning("Response appears incomplete")
                     tool_log(self.device, "WARN", "Response incomplete, retrying...")
                     continue
-            elif "Missing --cmd" in response:
-                break
             else:
                 logger.warning("No valid response marker ([FLOK]/[FLERR]), retrying...")
                 tool_log(self.device, "WARN", "No response marker, retrying...")
                 continue
 
-        need_fl_mode = False
-        if "Enter" in last_response and "interactive mode" in last_response:
-            self._platform = Platform.NUTTX
-            need_fl_mode = True
-            logger.info("Detected NuttX platform (requires fl interactive mode)")
-        elif "Missing --cmd" in last_response:
-            need_fl_mode = True
-
-        if retry_on_missing_cmd and need_fl_mode:
-            tool_log(self.device, "INFO", "Entering fl interactive mode...")
-            if self.enter_fl_mode():
-                return self.send_cmd(
-                    cmd, timeout, retry_on_missing_cmd=False, max_retries=max_retries
-                )
-
+        if "[FLOK]" in last_response or "[FLERR]" in last_response:
+            self.mark_in_fl()
         return last_response
 
     def _is_response_complete(self, response: str, cmd: str) -> bool:
@@ -450,6 +435,9 @@ class FPBProtocol:
         if not data:
             return
 
+        if direction == LogDirection.RX:
+            note_fl_markers(self.device, data)
+
         # TX logs only when serial echo is enabled
         if direction == LogDirection.TX:
             if not getattr(self.device, "serial_echo_enabled", False):
@@ -475,7 +463,7 @@ class FPBProtocol:
 
         clean_resp = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", resp)
         clean_resp = re.sub(r"\[([0-9;]*[A-NP-Za-df-z])\b", "", clean_resp)
-        clean_resp = re.sub(r"(ap|nsh|fl)>\s*$", "", clean_resp, flags=re.MULTILINE)
+        clean_resp = strip_trailing_prompt(clean_resp)
         clean_resp = clean_resp.strip()
 
         lines = resp.split("\n")
@@ -542,6 +530,10 @@ class FPBProtocol:
                         info["file_transfer"] = line.split(":", 1)[1].strip()
                     elif line.startswith("Exec:"):
                         info["exec"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Mode:"):
+                        info["mode"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Platform:"):
+                        info["platform"] = line.split(":", 1)[1].strip()
                     elif line.startswith("Used:"):
                         try:
                             info["used"] = int(line.split(":")[1].strip())

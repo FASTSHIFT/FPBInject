@@ -510,7 +510,7 @@ window.i18nResources['en'] = {
       transfer_max_retries:
         'Maximum retry attempts for file transfer and exec when a request is damaged or lost (CRC mismatch, no response).',
       wakeup_shell_cnt:
-        'Number of newlines to send before entering fl mode to wake up shell.',
+        'Number of newlines to send before the first fl command on a connection to wake up shell.',
       log_file_path: 'Path to save serial logs',
       log_file_enabled: 'Record serial communication logs to file',
       log_file_append: 'Append to existing log file instead of truncating',

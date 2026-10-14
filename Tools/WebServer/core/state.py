@@ -79,6 +79,8 @@ class DeviceStateBase:
         self.ram_size = 0x10000  # 64KB default
         self.inject_base = 0x20001000
         self.cached_slots = None
+        # [FLEXIT] markers seen on the wire (see serial_protocol.note_fl_markers)
+        self.fl_exit_seen = 0
         self.slot_update_id = 0
         self.upload_chunk_size = DEFAULT_UPLOAD_CHUNK_SIZE
         self.download_chunk_size = DEFAULT_DOWNLOAD_CHUNK_SIZE

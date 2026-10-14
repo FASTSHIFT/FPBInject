@@ -11,8 +11,10 @@ thread (the DeviceWorker). This module centralizes the one cross-cutting
 concern that was previously hand-written (and forgotten) at each call site:
 returning the device to the shell after an operation.
 
-On NuttX a command implicitly enters ``fl`` interactive mode; leaving the
-device stuck in ``fl>`` breaks the next tool (or a human on the console).
+On an interactive device (``info`` reports ``Mode: interactive``, e.g. NuttX)
+a command implicitly enters the ``fl`` loop; leaving the device stuck in
+``fl>`` breaks the next tool (or a human on the console). For a ``oneshot``
+device ``exit_fl_mode`` does nothing, so the wrapper is free there.
 Because entering fl mode is idempotent, a whole multi-command operation
 (e.g. a file download: fopen -> fread*N -> fcrc -> fclose) enters fl once and,
 thanks to a single exit here, leaves once -- no per-chunk enter/exit churn.

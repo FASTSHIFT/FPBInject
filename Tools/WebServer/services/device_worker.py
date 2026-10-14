@@ -15,6 +15,7 @@ import queue
 import threading
 import time
 
+from fpbinject.core.serial_protocol import note_fl_markers
 from fpbinject.services.timer import TimerManager
 
 
@@ -216,6 +217,7 @@ class DeviceWorker:
                 raw_data = ser.read(available)
                 if raw_data:
                     data_str = raw_data.decode(errors="replace")
+                    note_fl_markers(self.device, data_str)
                     # Add to raw serial log for terminal display.
                     # Note: virtual-serial passthrough is fed by the tee on
                     # ThreadCheckedSerial (see VirtualSerialService), which

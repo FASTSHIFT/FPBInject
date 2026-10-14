@@ -376,7 +376,7 @@ def _trigger_auto_inject(file_path):
                 fpb = get_fpb_inject()
 
                 device.auto_inject_status = "compiling"
-                device.auto_inject_message = "Entering fl interactive mode..."
+                device.auto_inject_message = "Starting device session..."
                 device.auto_inject_progress = 55
                 device.auto_inject_last_update = time.time()
 

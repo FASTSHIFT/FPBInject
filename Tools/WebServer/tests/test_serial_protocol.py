@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch, call
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fpbinject.core.serial_protocol import FPBProtocol, Platform
+from fpbinject.core.serial_protocol import FPBProtocol
 
 
 class TestFPBProtocolWakeupShell(unittest.TestCase):
@@ -56,95 +56,20 @@ class TestFPBProtocolWakeupShell(unittest.TestCase):
 
         self.assertEqual(self.device.ser.write.call_count, 2)
 
-    def test_enter_fl_mode_calls_wakeup_shell(self):
-        """Test that enter_fl_mode calls wakeup_shell"""
-        self.device.wakeup_shell_cnt = 3
+    def test_wakeup_shell_uses_configured_count_in_mode_probe(self):
+        """The one-time mode probe sends wakeup_shell_cnt newlines first."""
+        self.device.wakeup_shell_cnt = 2
         self.device.serial_echo_enabled = False
         self.device.ser.in_waiting = 0
-        self.device.ser.read.return_value = b"fl>"
-
-        # Mock in_waiting to return data after some iterations
-        in_waiting_values = [0, 0, 3]
-        self.device.ser.in_waiting = 0
-
-        def in_waiting_side_effect():
-            if in_waiting_values:
-                return in_waiting_values.pop(0)
-            return 3
-
-        type(self.device.ser).in_waiting = property(
-            lambda self: in_waiting_side_effect()
-        )
-        self.device.ser.read.return_value = b"fl>"
+        self.protocol._transact = MagicMock(return_value="")
 
         with patch("time.sleep"):
-            with patch("time.time") as mock_time:
-                # Simulate time progression
-                mock_time.side_effect = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-                self.protocol.enter_fl_mode(timeout=0.5)
+            self.protocol.ensure_mode()
 
-        # Check that newlines were sent (wakeup_shell)
-        write_calls = self.device.ser.write.call_args_list
-        newline_calls = [c for c in write_calls if c == call(b"\n")]
-        self.assertEqual(len(newline_calls), 3)
-
-
-class TestFPBProtocolPlatform(unittest.TestCase):
-    """Test platform detection"""
-
-    def setUp(self):
-        """Set up test fixtures"""
-        self.device = MagicMock()
-        self.device.ser = MagicMock()
-        self.device.raw_serial_log = []
-        self.device.raw_log_next_id = 0
-        self.device.raw_log_max_size = 5000
-        self.device.serial_echo_enabled = False
-        self.device.wakeup_shell_cnt = 3
-        self.protocol = FPBProtocol(self.device)
-
-    def test_initial_platform_unknown(self):
-        """Test initial platform is unknown"""
-        self.assertEqual(self.protocol.get_platform(), Platform.UNKNOWN)
-
-    def test_platform_nuttx_detected(self):
-        """Test NuttX platform detection (via the unique entry banner)"""
-        self.device.ser.in_waiting = 33
-        self.device.ser.read.return_value = b"FPBInject Function Loader (NuttX)\nfl> "
-
-        call_count = 0
-
-        def fake_time():
-            nonlocal call_count
-            call_count += 1
-            return call_count * 0.05
-
-        with patch("time.sleep"):
-            with patch("time.time", side_effect=fake_time):
-                self.protocol.enter_fl_mode(timeout=0.5)
-
-        self.assertEqual(self.protocol.get_platform(), Platform.NUTTX)
-
-    def test_platform_unknown_on_ambiguous_reply(self):
-        """An enter reply with no positive fl evidence (banner / fl_error)
-        must stay UNKNOWN, not pin BARE_METAL. Pinning BARE_METAL used to
-        deadlock: try_enter_fl_mode then short-circuited forever and no
-        future command ever sent 'fl' again."""
-        self.device.ser.in_waiting = 3
-        self.device.ser.read.return_value = b"[FLOK] pong"
-
-        call_count = 0
-
-        def fake_time():
-            nonlocal call_count
-            call_count += 1
-            return call_count * 0.05
-
-        with patch("time.sleep"):
-            with patch("time.time", side_effect=fake_time):
-                self.protocol.enter_fl_mode(timeout=0.5)
-
-        self.assertEqual(self.protocol.get_platform(), Platform.UNKNOWN)
+        newline_calls = [
+            c for c in self.device.ser.write.call_args_list if c == call(b"\n")
+        ]
+        self.assertEqual(len(newline_calls), 2)
 
 
 class TestFPBProtocolParseResponse(unittest.TestCase):
@@ -185,6 +110,35 @@ class TestFPBProtocolParseResponse(unittest.TestCase):
         result = self.protocol.parse_response(resp)
 
         self.assertTrue(result["ok"])
+
+    def test_trailing_prompt_is_dropped_whatever_it_is_called(self):
+        """No prompt names are known: any short token ending in a prompt
+        character is taken off the end of a reply without markers."""
+        for prompt in ("ap> ", "nsh> ", "fl> ", "board-7> ", "root@dev:~# ", "$ "):
+            with self.subTest(prompt=prompt):
+                result = self.protocol.parse_response(
+                    f"bad thing happened here\r\n{prompt}"
+                )
+                self.assertEqual(result["msg"], "bad thing happened here")
+
+    def test_prompt_only_reply_is_empty(self):
+        for prompt in ("ap> ", "myboard> "):
+            result = self.protocol.parse_response(prompt)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["msg"], "")
+
+    def test_prompt_with_ansi_erase_is_dropped(self):
+        result = self.protocol.parse_response("something odd\r\nap> \x1b[K")
+        self.assertEqual(result["msg"], "something odd")
+
+    def test_ordinary_text_ending_in_an_angle_bracket_is_kept(self):
+        result = self.protocol.parse_response("usage: fl -c <cmd> -> <")
+        self.assertEqual(result["msg"], "usage: fl -c <cmd> -> <")
+
+    def test_markers_win_over_a_trailing_prompt(self):
+        result = self.protocol.parse_response("[FLOK] done\r\nsome-prompt> ")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["msg"], "done")
 
 
 class TestParseReadResponse(unittest.TestCase):

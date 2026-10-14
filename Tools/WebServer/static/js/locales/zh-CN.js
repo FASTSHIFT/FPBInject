@@ -498,7 +498,8 @@ window.i18nResources['zh-CN'] = {
         '发送分片之间的延迟。仅在发送分片大小 > 0 时使用。',
       transfer_max_retries:
         '文件传输和 exec 在请求损坏或丢失（CRC 校验失败、无响应）时的最大重试次数。',
-      wakeup_shell_cnt: '进入 fl 模式前发送换行符的次数，用于唤醒 shell。',
+      wakeup_shell_cnt:
+        '连接后发送第一条 fl 命令前发送换行符的次数，用于唤醒 shell。',
       log_file_path: '串口日志保存路径',
       log_file_enabled: '将串口通信日志记录到文件',
       log_file_append: '追加到已有日志文件，关闭则截断文件重新写入',

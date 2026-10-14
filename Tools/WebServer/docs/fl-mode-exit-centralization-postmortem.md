@@ -186,3 +186,33 @@ CLI 各命令（inject / unpatch / info / test_serial / read / write / dump）�
 - 修复了 GDB 内存访问后卡 `fl>` 的真实 bug。
 - 多命令操作保持"一次进、一次出"，无进出抖动。
 - 线程模型未变，无并发风险。
+
+## 后续更新：用 `info` 的 `Mode:` 和 `[FLEXIT]` 简化 fl 模式管理
+
+上面描述的是当时的设计。固件后来提供了两个明确信号，上位机据此删掉了大部分猜测逻辑。
+
+固件信号：
+
+- `info` 输出 `Mode: interactive|oneshot` 和 `Platform: <描述>`。`interactive` 表示命令执行后设备停在 `fl>` 循环里（NuttX），`oneshot` 表示没有循环。
+- 离开循环时固件一定打印 `[FLEXIT]`（所有退出路径）。
+
+上位机的现在的做法（`core/serial_protocol.py`）：
+
+| 项目 | 以前 | 现在 |
+|------|------|------|
+| 进入 | `enter_fl_mode`：清缓冲、发换行唤醒、发 `fl\n`、等横幅 `FPBInject Function Loader` | 没有显式进入。NuttX 上任何 `fl ...` 命令本身就会启动循环 |
+| 能力判断 | 靠进入握手的副作用推断，`BARE_METAL` 从未被赋值，裸机每条命令都白走一遍握手 | 每个串口对象第一次通信时发 `fl -c info`，读 `Mode:` / `Platform:`，之后缓存（`ensure_mode`）；换串口对象自动重新探测 |
+| oneshot 设备 | 同上 | 不进入也不退出，`exit_fl_mode` 直接返回 True，`with_fl_exit`、`fl_session`、GDB 空闲退出自动变成空操作 |
+| 退出 | 每轮连发 `q` 和假命令 `fldet`，最多 5 轮，靠 `[FLEXIT]` / `fl_error` / `command not found` 判断 | 发一个 `q`，等 `[FLEXIT]`；最多 3 次。没有 `fldet`，也不再往 nsh 里多打一行 `command not found` |
+| 状态同步 | `_in_fl_mode` 只是宿主的猜测 | 所有读串口的地方（协议自己的读、`DeviceWorker` 的后台读）把 `[FLEXIT]` 计数到 `device.fl_exit_seen`；用户在终端自己敲了 `q`，下次退出直接跳过 |
+| exec 卡死之后 | 退出照常连发多轮 | 只发一次 `q`，设备正忙于执行命令读不到，不留一堆 `q` 在 shell 里 |
+
+`wakeup_shell_cnt` 保留，含义改为“连接后发送第一条 `fl` 命令（模式探测）之前发多少个换行”。
+
+删除的东西：`enter_fl_mode`、`try_enter_fl_mode`、`Platform` 枚举和 `get_platform()`、横幅依赖、`send_cmd` 里的 “Enter … interactive mode / Missing --cmd 再进入” 分支、`send_cmd` 的 `retry_on_missing_cmd` 参数。
+
+漂移处理：宿主以为在循环里、设备其实已经在 shell（复位、用户手敲 `q`）时，下一次 `exit_fl_mode` 发出的 `q` 会收到 `command not found`，据此清掉标志。反方向（设备在循环里、宿主以为不在）无害：下一条 `fl ...` 命令照常执行，执行成功后标志重新置位，退出时正常离开。
+
+局限：`[FLEXIT]` 被串口驱动拆成两段到达时，被动计数会漏掉一次，这时退回到“发 `q`、读回复”的路径，结果仍然正确，只是多一次往返。
+
+实机验证（NuttX 设备，921600 波特，串口上有大量其他日志输出）：`info`、`exec`、文件列表/下载、重连、手动 `fl -c ping` 把设备留在循环里后再发 `info`、exec 超时后的恢复，每次操作后控制台都回到 nsh，没有多余的 `q` 或 `fldet` 行。

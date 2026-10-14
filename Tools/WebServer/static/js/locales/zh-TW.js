@@ -499,7 +499,8 @@ window.i18nResources['zh-TW'] = {
         '傳送分片之間的延遲。僅在傳送分片大小 > 0 時使用。',
       transfer_max_retries:
         '檔案傳輸和 exec 在請求損壞或遺失（CRC 驗證失敗、無回應）時的最大重試次數。',
-      wakeup_shell_cnt: '進入 fl 模式前傳送換行符的次數，用於喚醒 shell。',
+      wakeup_shell_cnt:
+        '連線後傳送第一條 fl 命令前傳送換行符的次數，用於喚醒 shell。',
       log_file_path: '串列埠日誌儲存路徑',
       log_file_enabled: '將串列埠通訊日誌記錄到檔案',
       log_file_append: '追加到已有日誌檔案，關閉則截斷檔案重新寫入',

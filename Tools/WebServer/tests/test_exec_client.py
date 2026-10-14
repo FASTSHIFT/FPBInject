@@ -217,7 +217,9 @@ def make_client(sim=None, chunk=0, **device_attrs):
     for key, value in device_attrs.items():
         setattr(device, key, value)
     protocol = FPBProtocol(device)
-    protocol._in_fl_mode = True
+    # The mode probe has its own tests (test_fl_mode.py): pretend it ran
+    protocol._mode_ser = device.ser
+    protocol._interactive = True
     return sim, device, protocol, ExecClient(protocol)
 
 
@@ -1217,7 +1219,8 @@ class TestWithRealDeviceWorker(unittest.TestCase):
         self.worker.start()
         self.addCleanup(self.worker.stop)
         self.protocol = FPBProtocol(self.device)
-        self.protocol._in_fl_mode = True
+        self.protocol._mode_ser = self.device.ser
+        self.protocol._interactive = True
 
     def run_exec(self, cmd="ls", **kw):
         box = {}

@@ -452,6 +452,9 @@ class ExecClient:
 
         wait = DEFAULT_WAIT_S if timeout is None else timeout
 
+        # Learn once whether the device runs the fl loop (a no-op afterwards)
+        self.protocol.ensure_mode()
+
         if self.protocol.exec_suspect_ser is ser and not self._probe_alive(ack_timeout):
             return self._fail(
                 t0,
@@ -511,7 +514,6 @@ class ExecClient:
             if attempt:
                 logger.warning(f"exec seq=0x{seq:04X}: resend {attempt}/{max_retries}")
             parser = ExecResponseParser(seq, self._max_output)
-            self.protocol.try_enter_fl_mode()
             self.protocol.exec_last_seq = seq
             self._send(line)
             self._collect(parser, ack_timeout, wait)
@@ -614,6 +616,7 @@ class ExecClient:
         self.protocol._log_raw(LogDirection.TX, line)
         self._rx.mark()
         self.protocol._write_line(line)
+        self.protocol.mark_in_fl()
 
     def _collect(self, parser, ack_timeout: float, run_timeout: float) -> None:
         """Read until the response is complete or a deadline passes.
@@ -654,7 +657,6 @@ class ExecClient:
             resp = self.protocol.send_cmd(
                 "-c ping",
                 timeout=max(wait, 0.5),
-                retry_on_missing_cmd=False,
                 max_retries=0,
             )
         except Exception as e:

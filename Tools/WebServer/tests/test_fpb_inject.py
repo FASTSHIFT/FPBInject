@@ -18,7 +18,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fpbinject.fpb_inject import (  # noqa: E402
     FPBInject,
     FPBInjectError,
-    Platform,
     scan_serial_ports,
     serial_open,
 )
@@ -357,86 +356,8 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.in_waiting = 0
         self.device.ser.isOpen.return_value = True
         self.fpb = FPBInject(self.device)
-
-    def test_enter_fl_mode(self):
-        """Entry is confirmed by the unique banner, not the bare 'fl>' prompt."""
-        self.device.ser.read.return_value = b"FPBInject Function Loader (NuttX)\nfl> "
-        self.device.ser.in_waiting = 33
-
-        result = self.fpb.enter_fl_mode(timeout=0.1)
-
-        self.assertTrue(result)
-        self.assertEqual(self.fpb.get_platform(), Platform.NUTTX)
-        self.device.ser.write.assert_called()
-
-    def test_enter_fl_mode_bare_fl_prompt_not_enough(self):
-        """A stray 'fl>' substring without the banner must NOT be taken as
-        entering fl mode (that false positive is the bug this guards)."""
-        self.device.ser.read.return_value = b"nsh> cat /etc/fl>config\nnsh> "
-        self.device.ser.in_waiting = 28
-
-        result = self.fpb.enter_fl_mode(timeout=0.1)
-
-        self.assertFalse(result)
-        self.assertFalse(self.fpb._protocol._in_fl_mode)
-
-    def test_enter_fl_mode_unknown_on_ambiguous_reply(self):
-        """No positive fl evidence -> platform stays UNKNOWN (not BARE_METAL).
-        UNKNOWN lets the next try_enter_fl_mode retry; BARE_METAL used to
-        latch, deadlocking every future command."""
-        self.device.ser.read.return_value = b"[FLOK] some response"
-        self.device.ser.in_waiting = 18
-
-        result = self.fpb.enter_fl_mode(timeout=0.1)
-
-        self.assertFalse(result)
-        self.assertEqual(self.fpb.get_platform(), Platform.UNKNOWN)
-
-    def test_enter_fl_mode_already_in_fl_loop(self):
-        """When the device is already inside the fl loop, sending 'fl' again
-        gets rejected with 'fl_error: -3'. Old code fell into the else branch
-        and latched BARE_METAL; now we recognize this as NUTTX + in-fl."""
-        self.device.ser.read.return_value = b"fl_error: -3. Type 'q' to exit\r\nfl> "
-        self.device.ser.in_waiting = 32
-
-        result = self.fpb.enter_fl_mode(timeout=0.1)
-
-        self.assertTrue(result)
-        self.assertEqual(self.fpb.get_platform(), Platform.NUTTX)
-        self.assertTrue(self.fpb._protocol._in_fl_mode)
-
-    def test_enter_fl_mode_nuttx_hint(self):
-        """Test detecting NuttX platform via hint message"""
-        # Simulate NuttX returning the hint message, then the banner.
-        responses = [
-            b"[FLERR] Enter 'fl' to start interactive mode",
-            b"FPBInject Function Loader (NuttX)\nfl> ",
-        ]
-        call_count = [0]
-
-        def mock_read(n):
-            if call_count[0] < len(responses):
-                resp = responses[call_count[0]]
-                call_count[0] += 1
-                return resp
-            return b""
-
-        def mock_in_waiting():
-            if call_count[0] < len(responses):
-                return len(responses[call_count[0]])
-            return 0
-
-        self.device.ser.read.side_effect = mock_read
-        type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
-
-        result = self.fpb.enter_fl_mode(timeout=0.2)
-
-        self.assertTrue(result)
-        self.assertEqual(self.fpb.get_platform(), Platform.NUTTX)
-
-    def test_get_platform_default(self):
-        """Test default platform value"""
-        self.assertEqual(self.fpb.get_platform(), Platform.UNKNOWN)
+        # The mode probe has its own tests (test_fl_mode.py): pretend it ran
+        self.fpb._protocol._mode_ser = self.device.ser
 
     def test_exit_fl_mode(self):
         """Not in fl mode -> exit is a no-op success."""
@@ -454,9 +375,6 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 10
 
-        # Skip try_enter_fl_mode by setting _in_fl_mode
-        self.fpb._protocol._in_fl_mode = True
-
         # Directly call internal method
         result = self.fpb._send_cmd("--cmd ping", timeout=0.1)
 
@@ -471,9 +389,6 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 20
-
-        # Skip try_enter_fl_mode by setting _in_fl_mode
-        self.fpb._protocol._in_fl_mode = True
 
         result = self.fpb._send_cmd("--cmd ping", timeout=0.1)
 
@@ -502,9 +417,6 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.read.side_effect = mock_read
         type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
 
-        # Skip try_enter_fl_mode by setting _in_fl_mode
-        self.fpb._protocol._in_fl_mode = True
-
         result = self.fpb._send_cmd("--cmd test", timeout=0.1)
 
         self.assertIn("FLOK", result)
@@ -528,9 +440,6 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
         self.device.ser.read.side_effect = mock_read
         type(self.device.ser).in_waiting = property(lambda x: mock_in_waiting())
 
-        # Skip try_enter_fl_mode by setting _in_fl_mode
-        self.fpb._protocol._in_fl_mode = True
-
         result = self.fpb._send_cmd("--cmd test", timeout=0.1, max_retries=3)
 
         self.assertIn("FLOK", result)
@@ -545,9 +454,6 @@ class TestFPBInjectWithMockSerial(unittest.TestCase):
 
         self.device.ser.read.side_effect = mock_read
         self.device.ser.in_waiting = 24
-
-        # Skip try_enter_fl_mode by setting _in_fl_mode
-        self.fpb._protocol._in_fl_mode = True
 
         # Use -c info command which triggers incomplete check
         # With max_retries=0, it should return the incomplete response
@@ -1910,17 +1816,17 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(success)
 
     def _serve_once(self, payload: bytes):
-        """Answer the exit probe with ``payload`` once, then go idle.
+        """Answer the ``q`` with ``payload`` once, then go idle.
 
-        The reply is withheld until the ``fldet`` probe has been written, so the
-        initial stale-prompt flush (_read_pending) sees an empty buffer and only
-        the probe drain observes the payload. Mirrors a device that stays silent
+        The reply is withheld until the ``q`` has been written, so the initial
+        stale-prompt flush (_read_pending) sees an empty buffer and only the
+        exit drain observes the payload. Mirrors a device that stays silent
         until asked, then answers and falls quiet.
         """
         state = {"probed": False, "served": False}
 
         def mock_write(data, *a, **k):
-            if b"fldet" in data:
+            if b"q\n" in data:
                 state["probed"] = True
             return len(data)
 
@@ -1961,11 +1867,11 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(result)
         self.assertFalse(self.fpb._protocol._in_fl_mode)
 
-    def test_exit_fl_mode_command_not_found_confirms(self):
-        """Fallback: nsh rejecting the bogus 'fldet' command confirms we're in
-        the shell (older firmware without the exit marker)."""
+    def test_exit_fl_mode_command_not_found_means_already_at_shell(self):
+        """Host and device had drifted apart (the device was already at the
+        shell): the shell rejecting 'q' settles the flag, no failure."""
         self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"fldet\r\nnsh: fldet: command not found\r\nnsh> ")
+        self._serve_once(b"q\r\nnsh: q: command not found\r\nnsh> ")
 
         result = self.fpb.exit_fl_mode(timeout=0.1)
 
@@ -1973,27 +1879,25 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertFalse(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_echoed_token_alone_is_not_success(self):
-        """Serial echo bounces 'fldet' back in BOTH modes, so the token alone
-        must NOT be read as success -- only the shell's 'command not found'
-        (or fl's 'fl_error') decides. Here the reply is just the echo."""
+        """Serial echo bounces 'q' back, so the token alone must NOT be read
+        as success -- only [FLEXIT] (or the shell's rejection) decides."""
         self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"fldet\r\n")
+        self._serve_once(b"q\r\n")
 
         result = self.fpb.exit_fl_mode(timeout=0.05)
 
         self.assertFalse(result)
         self.assertTrue(self.fpb._protocol._in_fl_mode)
 
-    def test_exit_fl_mode_sends_q_and_probe(self):
-        """Exit sends 'q' to leave and the bogus 'fldet' command as the probe."""
+    def test_exit_fl_mode_sends_q_and_no_probe(self):
+        """Exit sends just 'q'; the old bogus 'fldet' probe is gone."""
         self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"fldet\r\nnsh: fldet: command not found\r\nnsh> ")
+        self._serve_once(b"q\r\n[FLEXIT]\r\nnsh> ")
 
         self.fpb.exit_fl_mode(timeout=0.1)
 
         writes = b"".join(c.args[0] for c in self.device.ser.write.call_args_list)
-        self.assertIn(b"q\n", writes)
-        self.assertIn(b"fldet\n", writes)
+        self.assertEqual(writes, b"q\n")
 
     def test_exit_fl_mode_error(self):
         """A write exception during exit is reported as failure."""
@@ -2003,19 +1907,6 @@ class TestFPBInjectCommands(unittest.TestCase):
         result = self.fpb.exit_fl_mode(timeout=0.1)
 
         self.assertFalse(result)
-
-    def test_exit_fl_mode_fl_error_means_still_in_fl(self):
-        """fl_error in the reply means the fl loop rejected the probe -> still
-        inside; must fail and keep the flag set."""
-        self.fpb._protocol._in_fl_mode = True
-        # Device keeps rejecting the unknown 'fldet' command with fl_error.
-        self.device.ser.in_waiting = 32
-        self.device.ser.read.return_value = b"fl_error: -3. Type 'q' to exit\r\nfl> "
-
-        result = self.fpb.exit_fl_mode(timeout=0.05)
-
-        self.assertFalse(result)
-        self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_empty_reply_is_not_success(self):
         """The core bug: a heavily-lossy link returns nothing. Absence of a
@@ -2031,8 +1922,8 @@ class TestFPBInjectCommands(unittest.TestCase):
         self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_garbage_reply_is_not_success(self):
-        """A non-empty reply that proves neither shell nor fl (no
-        'command not found' / no fl_error) is unconfirmed -> failure."""
+        """A non-empty reply with neither [FLEXIT] nor 'command not found'
+        is unconfirmed -> failure."""
         self.fpb._protocol._in_fl_mode = True
         self.device.ser.in_waiting = 16
         self.device.ser.read.return_value = b"[INFO] random log line\r\n"
@@ -2045,7 +1936,7 @@ class TestFPBInjectCommands(unittest.TestCase):
     def test_exit_fl_mode_returns_fast_on_idle(self):
         """A confirming reply that then goes idle returns before the timeout."""
         self.fpb._protocol._in_fl_mode = True
-        self._serve_once(b"fldet\r\nnsh: fldet: command not found\r\nnsh> ")
+        self._serve_once(b"q\r\n[FLEXIT]\r\nnsh> ")
 
         start = time.time()
         result = self.fpb.exit_fl_mode(timeout=5.0)
@@ -2053,20 +1944,6 @@ class TestFPBInjectCommands(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertLess(elapsed, 1.0)
-
-    def test_exit_fl_mode_fl_error_before_shell_prompt_stays_in_fl(self):
-        """fl_error anywhere in the reply wins over a later shell-looking token:
-        the fl loop is still active, so do not report success."""
-        self.fpb._protocol._in_fl_mode = True
-        self.device.ser.in_waiting = 40
-        self.device.ser.read.return_value = (
-            b"fl_error: -3. Type 'q' to exit\r\n[INFO] busy nsh> "
-        )
-
-        result = self.fpb.exit_fl_mode(timeout=0.05)
-
-        self.assertFalse(result)
-        self.assertTrue(self.fpb._protocol._in_fl_mode)
 
     def test_exit_fl_mode_not_in_mode_is_noop(self):
         """When not in fl mode, exit is a no-op success and sends nothing."""

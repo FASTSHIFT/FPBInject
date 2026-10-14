@@ -18,7 +18,7 @@ from typing import Dict, Optional, Tuple
 from fpbinject.core import elf_utils
 from fpbinject.core import compiler as compiler_utils
 from fpbinject.core.exec_client import ExecClient
-from fpbinject.core.serial_protocol import FPBProtocol, FPBProtocolError, Platform
+from fpbinject.core.serial_protocol import FPBProtocol, FPBProtocolError
 from fpbinject.utils.serial import scan_serial_ports, serial_open
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,6 @@ FPBInjectError = FPBProtocolError
 __all__ = [
     "FPBInject",
     "FPBInjectError",
-    "Platform",
     "scan_serial_ports",
     "serial_open",
 ]
@@ -78,16 +77,8 @@ class FPBInject:
 
     # ========== Protocol Delegation ==========
 
-    def enter_fl_mode(self, timeout: float = 1.0) -> bool:
-        """Enter fl interactive mode."""
-        return self._protocol.enter_fl_mode(timeout)
-
-    def get_platform(self) -> Platform:
-        """Get detected platform type."""
-        return self._protocol.get_platform()
-
     def exit_fl_mode(self, timeout: float = 0.3) -> bool:
-        """Exit fl interactive mode."""
+        """Leave the fl loop (no-op for a oneshot device or when not in it)."""
         return self._protocol.exit_fl_mode(timeout)
 
     @contextmanager
@@ -95,9 +86,10 @@ class FPBInject:
         """Scope a group of device commands, returning to the shell on exit.
 
         For callers that don't go through the routes' run_serial_op (CLI direct
-        mode, the SDK, the GDB bridge). Entering fl mode is idempotent, so the
-        commands inside share one session; on leaving the block the device is
-        returned to the shell (exit_fl_mode), even on exception. Pairing is
+        mode, the SDK, the GDB bridge). On an interactive device the first
+        command starts the fl loop and the commands inside share it; on leaving
+        the block the device is returned to the shell (exit_fl_mode), even on
+        exception. Nothing happens for a oneshot device. Pairing is
         guaranteed by the context manager instead of hand-written try/finally.
 
             with fpb.fl_session():
@@ -112,11 +104,10 @@ class FPBInject:
         self,
         cmd: str,
         timeout: float = 2.0,
-        retry_on_missing_cmd: bool = True,
         max_retries: int = 3,
     ) -> str:
         """Send command and get response."""
-        return self._protocol.send_cmd(cmd, timeout, retry_on_missing_cmd, max_retries)
+        return self._protocol.send_cmd(cmd, timeout, max_retries)
 
     def _is_response_complete(self, response: str, cmd: str) -> bool:
         """Check if response appears complete."""
