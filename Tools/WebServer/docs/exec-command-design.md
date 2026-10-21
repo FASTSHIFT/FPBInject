@@ -395,7 +395,7 @@ Kconfig 依赖在选项上声明，C 里再用一个 `#error` 兜底：
 |------|------|------|
 | `NSH_LIBRARY` | `nsh_system()` | `depends on`，C 里 `#error` |
 | `!BUILD_KERNEL` | `task_spawn()` | `depends on` |
-| `SCHED_WAITPID` | `waitpid()` | `select` |
+| `SCHED_WAITPID` | `waitpid()` | `depends on`，C 里 `#error`（不用 `select`，避免悄悄打开别人的选项） |
 | `SYSTEM_SYSTEM` | 不需要 | shell 任务的栈大小改用自己的 `FPBINJECT_EXEC_STACKSIZE`（默认 4096） |
 
 `FPBINJECT_EXEC_STACKSIZE` 只分给这个 `nsh_system` 任务，也就是解析命令行、执行 NSH 自带命令（`ls`、`ps`、`cat`、脚本里的 `if`/`for`）的那个任务。它启动的程序是独立任务，栈由各自的内置应用表项决定，与这个值无关。实测（`system()` 后端，同样的 `nsh_system` 任务，栈约 3.9 KB）：跑 `ps`、`ls -lR`、`hexdump`、`cat`、`df`、`free`、`mount` 这类命令，高水位 2180 到 2240 字节，约 55% 到 58%。交互 shell `nsh_main` 的栈是 3944 字节，高水位 2980 字节。4096 与现有 `system()` 配置相同，余量约 1.7 KB；命令行嵌套很深的脚本或递归深的 NSH 命令需要时再调大。

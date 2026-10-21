@@ -51,10 +51,10 @@
  * build time. With neither available exec_cb stays NULL ("No exec_cb").
  *   CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=y (Kconfig default)
  *                            task_spawn(nsh_system) with the priority of the
- *                            fl task. Needs CONFIG_NSH_LIBRARY and a build
- *                            that is not CONFIG_BUILD_KERNEL (task_spawn); the
- *                            Kconfig option depends on those and selects
- *                            CONFIG_SCHED_WAITPID. Not CONFIG_SYSTEM_SYSTEM.
+ *                            fl task. Needs CONFIG_NSH_LIBRARY, CONFIG_SCHED_WAITPID
+ *                            and a build that is not CONFIG_BUILD_KERNEL
+ *                            (task_spawn); the Kconfig option depends on all of
+ *                            them. Not CONFIG_SYSTEM_SYSTEM.
  *   CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=n
  *                            system(): needs CONFIG_SYSTEM_SYSTEM. Its shell
  *                            task runs at CONFIG_SYSTEM_SYSTEM_PRIORITY.
@@ -88,6 +88,9 @@
  * hand-written configuration from ending in a link error. */
 #ifndef CONFIG_NSH_LIBRARY
 #error "FPBINJECT_EXEC_INHERIT_PRIORITY needs CONFIG_NSH_LIBRARY (nsh_system)"
+#endif
+#ifndef CONFIG_SCHED_WAITPID
+#error "FPBINJECT_EXEC_INHERIT_PRIORITY needs CONFIG_SCHED_WAITPID (waitpid)"
 #endif
 #include <nshlib/nshlib.h>
 #include <sched.h>

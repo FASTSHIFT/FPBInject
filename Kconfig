@@ -38,8 +38,7 @@ config FPBINJECT_LINE_SIZE
 config FPBINJECT_EXEC_INHERIT_PRIORITY
 	bool "exec: run commands at the priority of the fl task"
 	default y
-	depends on NSH_LIBRARY && !BUILD_KERNEL
-	select SCHED_WAITPID
+	depends on NSH_LIBRARY && SCHED_WAITPID && !BUILD_KERNEL
 	---help---
 		The shell task that runs an "exec" command inherits the priority of
 		the fl task. Without it (or when its dependencies are missing)
