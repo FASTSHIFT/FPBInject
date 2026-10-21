@@ -103,8 +103,13 @@ run_tests() {
     ./test_runner_nuttx_port
     PORT_EXIT_CODE=$?
 
+    # Same port with the spawn flavour of the exec back-end
+    print_info "Running NuttX port (exec spawn) tests..."
+    ./test_runner_nuttx_port_spawn
+    PORT_SPAWN_EXIT_CODE=$?
+
     # Check results
-    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ] && [ $COMPAT_EXIT_CODE -eq 0 ] && [ $NO_FPB_EXIT_CODE -eq 0 ] && [ $PORT_EXIT_CODE -eq 0 ]; then
+    if [ $MAIN_EXIT_CODE -eq 0 ] && [ $NUTTX_EXIT_CODE -eq 0 ] && [ $FATFS_EXIT_CODE -eq 0 ] && [ $COMPAT_EXIT_CODE -eq 0 ] && [ $NO_FPB_EXIT_CODE -eq 0 ] && [ $PORT_EXIT_CODE -eq 0 ] && [ $PORT_SPAWN_EXIT_CODE -eq 0 ]; then
         print_success "All tests passed"
     else
         if [ $MAIN_EXIT_CODE -ne 0 ]; then
@@ -124,6 +129,9 @@ run_tests() {
         fi
         if [ $PORT_EXIT_CODE -ne 0 ]; then
             print_error "NuttX port tests failed (exit code: $PORT_EXIT_CODE)"
+        fi
+        if [ $PORT_SPAWN_EXIT_CODE -ne 0 ]; then
+            print_error "NuttX port (exec spawn) tests failed (exit code: $PORT_SPAWN_EXIT_CODE)"
         fi
         exit 1
     fi

@@ -46,6 +46,19 @@
  *   nsh> fl --cmd ping
  *   nsh> fl --cmd info
  *   nsh> fl   # interactive mode
+ *
+ * Exec back-end (the "exec" command runs a shell command line), chosen at
+ * build time. With neither available exec_cb stays NULL ("No exec_cb").
+ *   CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=y (Kconfig default)
+ *                            task_spawn(nsh_system) with the priority of the
+ *                            fl task. Needs CONFIG_NSH_LIBRARY and a build
+ *                            that is not CONFIG_BUILD_KERNEL (task_spawn); the
+ *                            Kconfig option depends on those and selects
+ *                            CONFIG_SCHED_WAITPID. Not CONFIG_SYSTEM_SYSTEM.
+ *   CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=n
+ *                            system(): needs CONFIG_SYSTEM_SYSTEM. Its shell
+ *                            task runs at CONFIG_SYSTEM_SYSTEM_PRIORITY.
+ * Neither back-end enforces timeout_ms.
  */
 
 #ifdef __NuttX__
@@ -59,6 +72,44 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+
+/* Exec back-end switch (Kconfig FPBINJECT_EXEC_INHERIT_PRIORITY). The macros can
+ * also be given on the command line, which is what the host tests do. */
+#ifndef FL_NUTTX_EXEC_INHERIT_PRIORITY
+#ifdef CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY
+#define FL_NUTTX_EXEC_INHERIT_PRIORITY 1
+#else
+#define FL_NUTTX_EXEC_INHERIT_PRIORITY 0
+#endif
+#endif
+
+#if FL_NUTTX_EXEC_INHERIT_PRIORITY
+/* What this back-end calls. Kconfig takes care of it; the check keeps a
+ * hand-written configuration from ending in a link error. */
+#ifndef CONFIG_NSH_LIBRARY
+#error "FPBINJECT_EXEC_INHERIT_PRIORITY needs CONFIG_NSH_LIBRARY (nsh_system)"
+#endif
+#include <nshlib/nshlib.h>
+#include <sched.h>
+#include <spawn.h>
+#include <sys/wait.h>
+
+/* Stack of the nsh_system task. The own Kconfig value, so that the back-end
+ * does not depend on CONFIG_SYSTEM_SYSTEM_STACKSIZE. */
+#ifndef FL_NUTTX_EXEC_STACKSIZE
+#ifdef CONFIG_FPBINJECT_EXEC_STACKSIZE
+#define FL_NUTTX_EXEC_STACKSIZE CONFIG_FPBINJECT_EXEC_STACKSIZE
+#else
+#define FL_NUTTX_EXEC_STACKSIZE 4096
+#endif
+#endif
+
+#define FL_NUTTX_HAVE_EXEC 1
+#elif defined(CONFIG_SYSTEM_SYSTEM)
+#define FL_NUTTX_HAVE_EXEC 1
+#else
+#define FL_NUTTX_HAVE_EXEC 0
+#endif
 
 #ifndef FL_NUTTX_BUF_SIZE
 #define FL_NUTTX_BUF_SIZE -1
@@ -90,13 +141,74 @@ static void nuttx_invalidate_icache_cb(uintptr_t start, uintptr_t end) {
     up_invalidate_icache(start, end);
 }
 
-#ifdef CONFIG_SYSTEM_SYSTEM
-/* Exec callback: run the command line through NSH via system().
+#if FL_NUTTX_EXEC_INHERIT_PRIORITY
+/**
+ * @brief Exec callback: like system(), but the shell task runs at the priority of this (fl) task
+ *
+ * system() gives its shell task the fixed CONFIG_SYSTEM_SYSTEM_PRIORITY, so a
+ * busy task between that and fl's own (higher) priority can starve the
+ * command while fl sits in waitpid(). A program that the shell starts keeps
+ * the priority registered for it, as with any NSH command.
+ *
+ * @param user       Unused
+ * @param cmdline    Command line, run by nsh_system() as "-c <cmdline>"
+ * @param timeout_ms Accepted but NOT enforced
+ * @return Raw waitpid() status as system() returns it, or a negative errno
+ *         when the command could not be started or waited for
+ * @note   stdout/stderr are inherited, i.e. the console
+ */
+static int nuttx_exec_cb(void* user, const char* cmdline, uint32_t timeout_ms) {
+    (void)user;
+    (void)timeout_ms;
+
+    struct sched_param param;
+    if (sched_getparam(0, &param) < 0) {
+        return errno > 0 ? -errno : -EIO;
+    }
+
+    posix_spawnattr_t attr;
+    int err = posix_spawnattr_init(&attr);
+    if (err != 0) {
+        return -err;
+    }
+    err = posix_spawnattr_setschedparam(&attr, &param);
+    if (err == 0) {
+        err = posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSCHEDPARAM);
+    }
+    if (err == 0) {
+        err = posix_spawnattr_setstacksize(&attr, FL_NUTTX_EXEC_STACKSIZE);
+    }
+
+    pid_t pid = -err;
+    if (err == 0) {
+        /* task_spawn() wants char *const argv[]; the strings are copied, never written */
+        char* const sh_argv[3] = {(char*)"-c", (char*)cmdline, NULL};
+        pid = task_spawn("flexec", nsh_system, NULL, &attr, sh_argv, NULL);
+    }
+    posix_spawnattr_destroy(&attr);
+    if (pid < 0) {
+        return pid; /* negative errno, as in system() */
+    }
+
+    int rc = 0;
+    if (waitpid(pid, &rc, 0) < 0) {
+        return errno > 0 ? -errno : -EIO;
+    }
+    return rc;
+}
+#elif defined(CONFIG_SYSTEM_SYSTEM)
+/**
+ * @brief Exec callback: run the command line through NSH via system()
  *
  * system() blocks (waitpid) until the command exits and has no timeout
- * support, so timeout_ms is accepted but NOT enforced here: do not run
- * commands that block for a long time. The command's stdout/stderr go
- * straight to this task's fd 1/2 (inherited), i.e. the console. */
+ * support, so do not run commands that block for a long time.
+ *
+ * @param user       Unused
+ * @param cmdline    Command line to run
+ * @param timeout_ms Accepted but NOT enforced
+ * @return system() status, or a negative errno when the shell task could not be started
+ * @note   stdout/stderr are inherited, i.e. the console
+ */
 static int nuttx_exec_cb(void* user, const char* cmdline, uint32_t timeout_ms) {
     (void)user;
     (void)timeout_ms;
@@ -220,9 +332,9 @@ int main(int argc, char** argv) {
         ctx.interactive = true;
         ctx.platform_desc = "NuttX";
 
-#ifdef CONFIG_SYSTEM_SYSTEM
-        /* exec needs system(); without it exec_cb stays NULL and the
-         * command reports "No exec_cb". */
+#if FL_NUTTX_HAVE_EXEC
+        /* exec needs an exec back-end (see the top of this file); without
+         * one exec_cb stays NULL and the command reports "No exec_cb". */
         ctx.exec_cb = nuttx_exec_cb;
 #endif
 

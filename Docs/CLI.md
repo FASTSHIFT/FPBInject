@@ -360,7 +360,7 @@ The command line is sent Base64-encoded with a CRC, so quotes, spaces and shell 
 - The process exit code is `0` when `success` is `true`, otherwise `1`.
 - `--timeout` is optional: it is how many seconds to wait for the command to finish (default 10, and the value is only sent to the device when you pass it). The device does **not** stop a running command, so avoid commands that block (reading stdin, long-running apps). If the wait expires the result is `unknown_state` and further `exec` calls are refused (`device_suspect`) until the device answers a ping again.
 - The host does not check the command length (same as the `--path` commands); the limit is the device line buffer (1024 characters on the NuttX port). Upload a script with `file-upload` and run it instead of passing long commands.
-- The device firmware needs exec support (NuttX: `CONFIG_SYSTEM_SYSTEM=y`); `info` reports `Exec: enabled|disabled`, and so does the device-info popup of the web UI. There is no separate switch on the WebServer: whoever can reach it can already type into the device shell with `serial-send`, so `exec` adds reliability (CRC, no double execution, exit status), not new access.
+- The device firmware needs exec support (NuttX: `CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=y`, the default, starts commands at the priority of the fl task; with it off, `CONFIG_SYSTEM_SYSTEM=y` is needed and `system()` runs them at `CONFIG_SYSTEM_SYSTEM_PRIORITY`); `info` reports `Exec: enabled|disabled`, and so does the device-info popup of the web UI. There is no separate switch on the WebServer: whoever can reach it can already type into the device shell with `serial-send`, so `exec` adds reliability (CRC, no double execution, exit status), not new access.
 
 ### File Transfer Commands
 

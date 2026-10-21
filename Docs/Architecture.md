@@ -506,7 +506,7 @@ CRC-16 covers `addr(4B) + len(4B) + payload` for upload/read/write commands, and
 
 ### `exec` Command
 
-`exec` runs a shell command on the device. The command line travels Base64-encoded (no quoting problems) and CRC-protected; the platform decides how to run it through the `exec_cb` callback in `fl_context_t` (NuttX: `system()`, enabled when `CONFIG_SYSTEM_SYSTEM=y`). The command's own stdout/stderr go straight to the console.
+`exec` runs a shell command on the device. The command line travels Base64-encoded (no quoting problems) and CRC-protected; the platform decides how to run it through the `exec_cb` callback in `fl_context_t` (NuttX: with `CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=y`, the default, a task spawned at the priority of the fl task; otherwise `system()`, enabled when `CONFIG_SYSTEM_SYSTEM=y`). The command's own stdout/stderr go straight to the console.
 
 ```
 host:   fl -c exec -d <base64(cmd)> --seq 0x<id16> [--timeout <ms>] -r 0x<crc>

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |------|------|
-| 状态 | 已实现，第 9 版 |
+| 状态 | 已实现，第 10 版 |
 | 范围 | 下位机 `App/func_loader`、上位机 `Tools/WebServer`（core / app / cli） |
 | 目标平台 | NuttX（通过 `system()` 对接 NSH） |
 | 相关文档 | `file-transfer-design.md`、`crc-integrity-audit-v2.md`、`security-token-design.md`、`tx-fragment-auto-adapt-design.md` |
@@ -35,6 +35,8 @@
   - `--timeout` **用户没传就不发**。上位机本地等待时间仍默认 10 秒，但不再作为 `--timeout` 透传；设备端缺省为 0，CRC 里也按 0 计算。
   - **去掉上位机的长度预检查**（原 6.5 的预算算法和 `too_long` 错误码），行为与带 `--path` 的文件命令一致：上位机不预判，行太长被设备截断时 CRC 不符，走重发。设备端的硬上限仍是行缓冲（NuttX port 默认 1024 字符）和解码缓冲（1023 字节）。
   - 因为 `seq` 只有 16 位，新增防碰撞处理，见 6.4。
+
+- 第 10 版：NuttX port 增加第二个执行后端，用 Kconfig `FPBINJECT_EXEC_INHERIT_PRIORITY` 在 `system()` 和 `task_spawn(nsh_system)` 之间切换（默认 `y`，依赖不满足时自动退回 `system()`），见 5.4.1。两个后端都不处理 `timeout_ms`。
 
 ## 1. 背景与目标
 
@@ -370,6 +372,35 @@ static int nuttx_exec_cb(void* user, const char* cmdline, uint32_t timeout_ms) {
 ```
 
 用 `CONFIG_SYSTEM_SYSTEM` 做条件，是因为 `system()` 只有在该选项打开时才会被链接进来；不打开时 `exec_cb` 保持 `NULL`，exec 返回 `No exec_cb`，不会出现链接错误，也不需要额外的 FPBInject 自己的编译开关。
+
+### 5.4.1 第二个后端：`task_spawn(nsh_system)`（Kconfig 切换）
+
+`system()` 给 shell 任务固定使用 `CONFIG_SYSTEM_SYSTEM_PRIORITY`。fl 任务的优先级比它高时，两者之间的忙任务可以饿死 fl 正在等待的命令。`FPBINJECT_EXEC_INHERIT_PRIORITY=y`（默认）时改由 fl 自己启动 shell 任务，做法与 `system()` 内部一致，只是任务继承 **fl 任务当前的优先级**：
+
+```
+sched_getparam(0)                                    取 fl 的优先级
+posix_spawnattr_{init,setschedparam,setflags,setstacksize}
+task_spawn("flexec", nsh_system, {"-c", cmdline})    同 system()
+waitpid(pid)                                         返回原始状态
+```
+
+- 所有命令行都交给 `nsh_system` 任务，由 NSH 解析（引号、管道、重定向、变量、NSH 自带命令）。没有任何自己的分词。
+- 优先级只作用于这个 shell 任务。由 shell 再启动的程序按 NSH 的做法使用它们各自登记的优先级，不继承。
+- 返回值与 `system()` 一致，都是 `waitpid` 的原始状态（`nsh_system` 把任何失败收成 255，`false` 得 65280）；启动失败返回 `-errno`。`timeout_ms` 仍然只接收不处理。
+- 与 `system()` 的差别：优先级、栈大小（用自己的 `FPBINJECT_EXEC_STACKSIZE`）、任务名（`flexec`）；不支持 `CONFIG_SYSTEM_SYSTEM_SHPATH`，也不设 `SCHED_RR`（`CONFIG_RR_INTERVAL=0` 时没有差别）。
+
+Kconfig 依赖在选项上声明，C 里再用一个 `#error` 兜底：
+
+| 依赖 | 用途 | 处理 |
+|------|------|------|
+| `NSH_LIBRARY` | `nsh_system()` | `depends on`，C 里 `#error` |
+| `!BUILD_KERNEL` | `task_spawn()` | `depends on` |
+| `SCHED_WAITPID` | `waitpid()` | `select` |
+| `SYSTEM_SYSTEM` | 不需要 | shell 任务的栈大小改用自己的 `FPBINJECT_EXEC_STACKSIZE`（默认 4096） |
+
+`FPBINJECT_EXEC_STACKSIZE` 只分给这个 `nsh_system` 任务，也就是解析命令行、执行 NSH 自带命令（`ls`、`ps`、`cat`、脚本里的 `if`/`for`）的那个任务。它启动的程序是独立任务，栈由各自的内置应用表项决定，与这个值无关。实测（`system()` 后端，同样的 `nsh_system` 任务，栈约 3.9 KB）：跑 `ps`、`ls -lR`、`hexdump`、`cat`、`df`、`free`、`mount` 这类命令，高水位 2180 到 2240 字节，约 55% 到 58%。交互 shell `nsh_main` 的栈是 3944 字节，高水位 2980 字节。4096 与现有 `system()` 配置相同，余量约 1.7 KB；命令行嵌套很深的脚本或递归深的 NSH 命令需要时再调大。
+
+C 侧直接读 `CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY` / `CONFIG_FPBINJECT_EXEC_STACKSIZE`，Makefile 和 cmake 不需要额外的 `-D`。主机测试用单独的可执行文件 `test_runner_nuttx_port_spawn`（`test_fl_port_nuttx_spawn.c`）覆盖这个后端，`system()` 后端仍由 `test_runner_nuttx_port` 覆盖。
 
 不实现超时终止的原因：终止任务（`kill` / `task_delete`）在 NuttX 上是否可靠还没有结论，而且强杀 `nsh_system` 任务可能留下孤儿子任务或泄漏内存。在没有验证之前，不引入一个看似有保护、实际不可靠的机制。
 
@@ -795,7 +826,7 @@ exec 能在设备上执行任意 shell 命令，但它**没有带来新的访问
 | `App/func_loader/fl_cmd_exec.c`（新增） | 命令实现，含执行、去重、查询、开始行与结果行 CRC |
 | `App/func_loader/fl.c` | 分发表加 `exec`；`fl_exec_cmd` 的 opts 加 `--seq`、`--timeout`；默认值 `seq = -1`、`timeout = 0` |
 | `App/func_loader/fl_cmd_core.c` | `info` 输出增加 `Exec:` 行 |
-| `App/func_loader/fl_port_nuttx.c` | 实现并挂载 `nuttx_exec_cb`，调用 `system()`，忽略 `timeout_ms`（受 `CONFIG_SYSTEM_SYSTEM` 保护） |
+| `App/func_loader/fl_port_nuttx.c` | 实现并挂载 `nuttx_exec_cb`，忽略 `timeout_ms`；后端二选一：`system()`（`CONFIG_SYSTEM_SYSTEM`）或 `task_spawn(nsh_system)`（`CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY`），见 5.4.1 |
 | `App/tests/CMakeLists.txt` | 加入 `fl_cmd_exec.c` |
 | `Docs/Architecture.md` | 命令表补一行 `exec` |
 

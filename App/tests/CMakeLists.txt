@@ -208,6 +208,21 @@ target_compile_definitions(
                                  FL_NUTTX_BUF_SIZE=1024)
 target_link_libraries(test_runner_nuttx_port m)
 
+# Same port, other exec back-end: CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY
+# (task_spawn(nsh_system) at the priority of the fl task) instead of system().
+# Its dependency CONFIG_NSH_LIBRARY is defined, CONFIG_SYSTEM_SYSTEM is left out
+# on purpose.
+add_executable(
+  test_runner_nuttx_port_spawn
+  ${SUT_SOURCES_COMMON} ${MOCK_SOURCES} ${TEST_FRAMEWORK_SOURCES}
+  test_fl_port_nuttx_spawn.c)
+target_compile_definitions(
+  test_runner_nuttx_port_spawn
+  PRIVATE FL_NO_FPB=1 __NuttX__=1 CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=1
+          CONFIG_FPBINJECT_EXEC_STACKSIZE=2048 CONFIG_NSH_LIBRARY=1
+          FL_NUTTX_BUF_SIZE=1024)
+target_link_libraries(test_runner_nuttx_port_spawn m)
+
 # ============================================================================
 # library.cmake integration tests (compile-only, verifies exported variables)
 # ============================================================================
@@ -276,8 +291,17 @@ add_custom_target(
   COMMAND ${CMAKE_COMMAND} -E echo ""
   COMMAND ${CMAKE_COMMAND} -E echo "=== Running NuttX port tests ==="
   COMMAND ./test_runner_nuttx_port
-  DEPENDS test_runner test_runner_nuttx test_runner_fatfs
-          test_runner_nuttx_compat test_runner_no_fpb test_runner_nuttx_port
+  COMMAND ${CMAKE_COMMAND} -E echo ""
+  COMMAND ${CMAKE_COMMAND} -E echo
+          "=== Running NuttX port (exec spawn) tests ==="
+  COMMAND ./test_runner_nuttx_port_spawn
+  DEPENDS test_runner
+          test_runner_nuttx
+          test_runner_fatfs
+          test_runner_nuttx_compat
+          test_runner_no_fpb
+          test_runner_nuttx_port
+          test_runner_nuttx_port_spawn
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   COMMENT "Running all unit tests...")
 
