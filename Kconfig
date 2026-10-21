@@ -15,7 +15,7 @@ if FPBINJECT
 
 config FPBINJECT_PRIORITY
 	int "FPBInject task priority"
-	default 100
+	default 110
 
 config FPBINJECT_STACKSIZE
 	int "FPBInject stack size"
