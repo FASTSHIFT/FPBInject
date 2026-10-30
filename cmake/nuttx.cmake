@@ -32,15 +32,16 @@ if(CONFIG_FPBINJECT)
   # Collect FPB sources
   file(GLOB FPB_SOURCES ${CMAKE_CURRENT_LIST_DIR}/../Source/*.c)
 
-  # Build FPB compile definitions from Kconfig options
+  # Build FPB compile definitions from Kconfig options (the options are off when
+  # their dependencies are not met, e.g. no FPB on the target)
   set(FPB_COMPILE_DEFINITIONS "")
-  if(CONFIG_FPBINJECT_NO_FPB)
+  if(NOT CONFIG_FPBINJECT_ENABLE_FPB)
     list(APPEND FPB_COMPILE_DEFINITIONS FL_NO_FPB)
   endif()
-  if(CONFIG_FPBINJECT_NO_TRAMPOLINE)
+  if(NOT CONFIG_FPBINJECT_ENABLE_TRAMPOLINE)
     list(APPEND FPB_COMPILE_DEFINITIONS FPB_NO_TRAMPOLINE)
   endif()
-  if(CONFIG_FPBINJECT_NO_DEBUGMON)
+  if(NOT CONFIG_FPBINJECT_ENABLE_DEBUGMON)
     list(APPEND FPB_COMPILE_DEFINITIONS FPB_NO_DEBUGMON)
   endif()
 

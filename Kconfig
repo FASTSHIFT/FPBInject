@@ -40,42 +40,30 @@ config FPBINJECT_EXEC_INHERIT_PRIORITY
 	default y
 	depends on NSH_LIBRARY && SCHED_WAITPID && !BUILD_KERNEL
 	---help---
-		The shell task that runs an "exec" command inherits the priority of
-		the fl task. Without it (or when its dependencies are missing)
-		system() is used, which needs CONFIG_SYSTEM_SYSTEM and runs the shell
-		task at the fixed CONFIG_SYSTEM_SYSTEM_PRIORITY.
+		Run the exec shell task at the priority of the fl task. When off,
+		exec uses system() (needs SYSTEM_SYSTEM).
 
 config FPBINJECT_EXEC_STACKSIZE
 	int "Stack size of the exec shell task"
 	default 4096
 	depends on FPBINJECT_EXEC_INHERIT_PRIORITY
-	---help---
-		Stack of the task that parses an exec command line and runs NSH
-		commands. Programs it starts get stacks of their own.
 
-config FPBINJECT_NO_FPB
-	bool "Disable FPB hardware"
-	default n
+config FPBINJECT_ENABLE_FPB
+	bool "Enable FPB hardware"
+	default y
 	depends on ARCH_ARM && (ARCH_CORTEXM3 || ARCH_CORTEXM4 || ARCH_CORTEXM7 || ARCH_CORTEXM33 || ARCH_CORTEXM55)
 	---help---
-		Disable all FPB hardware operations. Patch/tpatch/dpatch/unpatch/enable
-		commands will return FL_ERR_DISABLED. Useful for platforms without FPB
-		support or for memory-only injection scenarios.
+		Use the Cortex-M FPB. Not available, so off, on other targets.
+		When off, the patch commands return FL_ERR_DISABLED.
 
-config FPBINJECT_NO_TRAMPOLINE
-	bool "Disable trampoline mode"
-	default n
-	depends on !FPBINJECT_NO_FPB
-	---help---
-		Disable trampoline-based injection. tpatch command will return error.
-		Use when FPB can REMAP to RAM directly without trampoline intermediaries.
+config FPBINJECT_ENABLE_TRAMPOLINE
+	bool "Enable trampoline mode (tpatch)"
+	default y
+	depends on FPBINJECT_ENABLE_FPB
 
-config FPBINJECT_NO_DEBUGMON
-	bool "Disable DebugMonitor mode"
-	default n
-	depends on !FPBINJECT_NO_FPB
-	---help---
-		Disable DebugMonitor-based injection. dpatch command will return error.
-		Use on platforms without DebugMonitor exception support.
+config FPBINJECT_ENABLE_DEBUGMON
+	bool "Enable DebugMonitor mode (dpatch)"
+	default y
+	depends on FPBINJECT_ENABLE_FPB
 
 endif # FPBINJECT

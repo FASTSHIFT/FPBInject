@@ -124,6 +124,8 @@ target_compile_definitions(fl PRIVATE running_regs()=up_current_regs())
 
 ### 3.2 提议的 Kconfig 增强
 
+> 实现时改成了正向开关：`FPBINJECT_ENABLE_FPB`、`FPBINJECT_ENABLE_TRAMPOLINE`、`FPBINJECT_ENABLE_DEBUGMON`，默认都是 `y`。后两项 `depends on FPBINJECT_ENABLE_FPB`。`FPBINJECT_ENABLE_FPB` 只在 Cortex-M 上出现，其余目标（例如 sim）上三项自动为 `n`，构建文件再把 `n` 映射成 `FL_NO_FPB`、`FPB_NO_TRAMPOLINE`、`FPB_NO_DEBUGMON`。原来的 `NO_*` 写法依赖项不满足时选项被隐藏成 `n`，对应的功能反而保持开启，所以不会自动关闭。下面的代码块保留的是最初的提议。
+
 在 `Kconfig` 中新增配置项，将现有编译参数宏与 Kconfig 系统对接：
 
 ```kconfig
