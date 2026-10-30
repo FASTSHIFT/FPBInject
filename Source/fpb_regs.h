@@ -126,6 +126,9 @@ extern uint32_t mock_dfsr;
  * ============================================================================ */
 
 #ifndef FPB_HOST_TESTING
+/* dsb/isb exist on ARM only; other targets (e.g. the simulator) build this
+ * file but never drive the FPB, so they are empty there. */
+#if defined(__arm__) || defined(__thumb__)
 static inline void dsb(void) {
     __asm volatile("dsb" ::: "memory");
 }
@@ -133,6 +136,10 @@ static inline void dsb(void) {
 static inline void isb(void) {
     __asm volatile("isb" ::: "memory");
 }
+#else
+#define dsb() ((void)0)
+#define isb() ((void)0)
+#endif
 #endif /* !FPB_HOST_TESTING */
 
 #endif /* __FPB_REGS_H */
