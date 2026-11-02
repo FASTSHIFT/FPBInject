@@ -990,3 +990,79 @@ class TestSerialThroughputFragmentIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _EchoingSerial:
+    """Serial stand-in: after a ``fl -c echo`` line it answers like the firmware.
+
+    ``stale`` is device output that was already on its way (late replies of
+    earlier commands) and arrives first.
+    """
+
+    def __init__(self, stale="", answer=True):
+        self.rx = stale
+        self.answer = answer
+        self.sent = []
+
+    @property
+    def in_waiting(self):
+        return len(self.rx)
+
+    def read(self, n):
+        out, self.rx = self.rx[:n], self.rx[n:]
+        return out.encode()
+
+    def write(self, data):
+        import re
+        from fpbinject.utils.crc import crc16
+
+        line = data.decode()
+        self.sent.append(line)
+        m = re.search(r"-c echo -d (\w+)", line)
+        if m and self.answer:
+            token = m.group(1)
+            self.rx += (
+                f"fl -c echo -d {token}\r\n"
+                f"[FLOK] ECHO {len(token) // 2} Bytes, CRC 0x{crc16(token.encode()):04X}\r\n"
+                "[FLEND]\r\nfl> "
+            )
+
+    def flush(self):
+        pass
+
+
+class TestResync(unittest.TestCase):
+    """FPBProtocol.resync drops late replies with a barrier."""
+
+    def _proto(self, ser):
+        device = MagicMock()
+        device.ser = ser
+        device.serial_tx_fragment_size = 0
+        return FPBProtocol(device), device
+
+    def test_late_replies_are_swallowed(self):
+        stale = "[FLOK] FWRITE 318 bytes\r\n[FLEND]\r\nfl> [FLERR] CRC mismatch\r\n[FLEND]\r\n"
+        ser = _EchoingSerial(stale=stale)
+        proto, _ = self._proto(ser)
+        proto._log_raw = MagicMock()
+        self.assertTrue(proto.resync(total_timeout=3.0))
+        # nothing is left behind for the next command to mistake for its reply
+        self.assertEqual(ser.in_waiting, 0)
+        # the late text was forwarded to the log, not lost
+        logged = " ".join(str(c.args[1]) for c in proto._log_raw.call_args_list)
+        self.assertIn("FWRITE 318 bytes", logged)
+
+    def test_barrier_uses_a_fresh_token_each_time(self):
+        ser = _EchoingSerial()
+        proto, _ = self._proto(ser)
+        proto.resync(total_timeout=3.0)
+        proto.resync(total_timeout=3.0)
+        tokens = [s.split("-d ")[1].strip() for s in ser.sent]
+        self.assertEqual(len(tokens), 2)
+        self.assertNotEqual(tokens[0], tokens[1])
+
+    def test_returns_false_when_the_device_is_silent(self):
+        ser = _EchoingSerial(answer=False)
+        proto, _ = self._proto(ser)
+        with patch("fpbinject.core.serial_protocol.time.sleep"):
+            self.assertFalse(proto.resync(total_timeout=0.3))

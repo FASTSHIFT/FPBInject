@@ -92,7 +92,7 @@ class TestFileTransferWithSpaces(unittest.TestCase):
         expected_crc = crc16(data)
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN"),  # fopen write
-            (True, "[FLOK] FWRITE"),  # fwrite
+            (True, "[FLOK] FWRITE 5 bytes"),  # fwrite
             (True, "[FLOK] FCLOSE"),  # fclose after write
             (True, "[FLOK] FOPEN"),  # fopen read for CRC
             (True, f"[FLOK] FCRC offset=0 size=5 crc=0x{expected_crc:04X}"),  # fcrc

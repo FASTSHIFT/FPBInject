@@ -392,13 +392,34 @@ class FPBProtocol:
                     tool_log(self.device, "WARN", "Response incomplete, retrying...")
                     continue
             else:
-                logger.warning("No valid response marker ([FLOK]/[FLERR]), retrying...")
-                tool_log(self.device, "WARN", "No response marker, retrying...")
+                again = attempt < max_retries
+                logger.warning(
+                    f"No reply within {timeout:g}s ([FLOK]/[FLERR] missing)"
+                    f"{', resending' if again else ''}"
+                )
+                tool_log(
+                    self.device,
+                    "WARN",
+                    f"No reply within {timeout:g}s" f"{', resending' if again else ''}",
+                )
                 continue
 
         if "[FLOK]" in last_response or "[FLERR]" in last_response:
             self.mark_in_fl()
         return last_response
+
+    def resync(self, total_timeout: float = 10.0) -> bool:
+        """Drop late replies of earlier commands with an ``echo`` barrier.
+
+        The protocol has no request id, so after a command timed out its late
+        reply would be taken for the answer to the next command. See
+        ``core/serial_resync.py``. False if the device never answers.
+        """
+        from fpbinject.core.serial_resync import resync_barrier
+
+        if not self.device.ser:
+            raise FPBProtocolError("Serial port not connected")
+        return resync_barrier(self, total_timeout, LogDirection.TX, LogDirection.RX)
 
     def _is_response_complete(self, response: str, cmd: str) -> bool:
         """Check if response appears complete."""

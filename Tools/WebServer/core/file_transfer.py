@@ -100,6 +100,10 @@ class FileTransfer:
         self.max_retries = max_retries
         self.log_callback = log_callback
 
+        # A reply may be missing or late: see _send_cmd / FPBProtocol.resync
+        self._desync = False
+        self._resyncs = 0
+
         # Transfer statistics
         self.stats = {
             "total_chunks": 0,
@@ -137,23 +141,79 @@ class FileTransfer:
             stats["packet_loss_rate"] = 0.0
         return stats
 
+    def _resync(self) -> None:
+        """Flush late replies of earlier commands before the next command.
+
+        See ``FPBProtocol.resync``. A fake ``fpb`` without ``resync`` (or one
+        that answers something other than False) is treated as in sync.
+        """
+        fn = getattr(self.fpb, "resync", None)
+        ok = fn() if callable(fn) else True
+        self._resyncs += 1
+        if ok is False:
+            self._log("[WARN] transfer: device did not answer the resync barrier")
+            logger.warning("resync barrier got no answer")
+            return
+        self._desync = False
+        self._log(f"[WARN] transfer: resynced with the device ({self._resyncs})")
+
+    @staticmethod
+    def _reply_problem(response: str, expect: Optional[str]) -> str:
+        """Why ``response`` cannot be trusted as the answer to the last command.
+
+        Empty string if it can. A reply must carry exactly one outcome marker
+        and, when ``expect`` is given, the part after ``[FLOK]`` must match it.
+        A reply that does not look like the answer to *this* command is a late
+        reply of an earlier one (see ``FPBProtocol.resync``).
+        """
+        has_ok = "[FLOK]" in response
+        has_err = "[FLERR]" in response
+        if not has_ok and not has_err:
+            return "no reply"
+        if has_ok and has_err:
+            return "mixed replies"
+        if has_ok and expect:
+            body = response.rsplit("[FLOK]", 1)[1]
+            if not re.search(expect, body):
+                return "reply does not belong to this command"
+        return ""
+
     def _send_cmd(
-        self, cmd: str, timeout: float = 2.0, no_protocol_retry: bool = False
+        self,
+        cmd: str,
+        timeout: float = 2.0,
+        no_protocol_retry: bool = False,
+        expect: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         Send a command to device and get response.
+
+        Success needs a positive ``[FLOK]``: an empty or unrecognisable reply
+        is a failure, not a success. After a failure that leaves the reply
+        stream in doubt (no reply, mixed replies, a reply to another command)
+        the next command starts with a resync barrier.
 
         Args:
             cmd: Command string to send
             timeout: Response timeout in seconds
             no_protocol_retry: If True, disable protocol-level retry (for fread/fwrite)
+            expect: Regex the text after ``[FLOK]`` must match
 
         Returns:
             Tuple of (success, response_message)
         """
-        return self.fpb.send_fl_cmd(
+        if self._desync:
+            self._resync()
+        ok, response = self.fpb.send_fl_cmd(
             cmd, timeout=timeout, max_retries=0 if no_protocol_retry else 3
         )
+        problem = self._reply_problem(response, expect)
+        if problem:
+            self._desync = True
+            if ok:
+                ok = False
+                response = f"{problem}: {response[-120:]}"
+        return ok, response
 
     def fopen(self, path: str, mode: str = "r") -> Tuple[bool, str]:
         """
@@ -210,7 +270,11 @@ class FileTransfer:
                         logger.error(f"fseek failed during retry: {seek_msg}")
                         # Continue anyway, maybe the write will work
 
-            success, response = self._send_cmd(cmd, no_protocol_retry=True)
+            success, response = self._send_cmd(
+                cmd,
+                no_protocol_retry=True,
+                expect=rf"FWRITE\s+{data_len}\s+bytes",
+            )
             if success:
                 return True, response
 
@@ -495,7 +559,7 @@ class FileTransfer:
         """
         crc = crc16_update(0xFFFF, struct.pack("<i", offset))
         cmd = f"fl -c fseek -a {offset} -r 0x{crc:04X}"
-        return self._send_cmd(cmd)
+        return self._send_cmd(cmd, expect=rf"FSEEK\s+{offset}\b")
 
     def fstat(self, path: str) -> Tuple[bool, Dict[str, Any]]:
         """

@@ -161,6 +161,14 @@ class FPBInject:
         except Exception as e:
             return False, str(e)
 
+    def resync(self, total_timeout: float = 10.0) -> bool:
+        """Drop late replies of earlier commands (see FPBProtocol.resync)."""
+        try:
+            return self._protocol.resync(total_timeout)
+        except Exception as e:
+            logger.warning(f"resync failed: {e}")
+            return False
+
     def ping(self) -> Tuple[bool, str]:
         """Ping device."""
         return self._protocol.ping()

@@ -10,6 +10,7 @@ Tests for core/file_transfer.py (unittest format)
 
 import base64
 import os
+import re
 import sys
 import unittest
 from unittest.mock import Mock
@@ -1285,7 +1286,13 @@ class TestFileTransferSeek(unittest.TestCase):
     def setUp(self):
         """Set up mock FPB and FileTransfer."""
         self.mock_fpb = Mock()
-        self.mock_fpb.send_fl_cmd = Mock(return_value=(True, "[FLOK] FSEEK"))
+
+        # Like the firmware: the reply carries the offset it seeked to
+        def reply(cmd, **kwargs):
+            offset = re.search(r"-a (-?\d+)", cmd).group(1)
+            return True, "[FLOK] FSEEK " + offset
+
+        self.mock_fpb.send_fl_cmd = Mock(side_effect=reply)
         self.ft = FileTransfer(
             self.mock_fpb, upload_chunk_size=256, download_chunk_size=256
         )
@@ -1313,6 +1320,7 @@ class TestFileTransferSeek(unittest.TestCase):
 
     def test_fseek_failure(self):
         """Test fseek failure."""
+        self.mock_fpb.send_fl_cmd.side_effect = None
         self.mock_fpb.send_fl_cmd.return_value = (False, "[FLERR] Seek failed")
         success, msg = self.ft.fseek(100, 0)
         self.assertFalse(success)
@@ -2092,3 +2100,144 @@ class TestFileTransferVerifyRetry(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = dispatch
         success, msg = self.ft.upload(data, "/test.txt")
         self.assertTrue(success)
+
+
+class StallingDevice:
+    """Firmware model whose replies can arrive late.
+
+    A reply is queued when its command runs. ``send_fl_cmd`` hands out the
+    oldest reply that has not been read yet, like the real serial reader, or an
+    empty string when the call is marked as stalled (the reply stays queued and
+    shows up in a later call). ``resync`` drops whatever is queued.
+    """
+
+    def __init__(self, stalled_calls=(), lost_calls=()):
+        self.files = {}
+        self.path = None
+        self.data = bytearray()
+        self.pos = 0
+        self.pending = []
+        self.calls = 0
+        self.stalled = set(stalled_calls)
+        self.lost = set(lost_calls)
+        self.resyncs = 0
+
+    def _run(self, cmd):
+        name = re.search(r"-c (\w+)", cmd).group(1)
+        if name == "fopen":
+            mode = re.search(r"-m (\w+)", cmd).group(1)
+            self.path = re.search(r"--path (\S+)", cmd).group(1)
+            if "w" in mode:
+                self.data = bytearray()
+            else:
+                self.data = bytearray(self.files.get(self.path, b""))
+            self.pos = 0
+            return "[FLOK] FOPEN"
+        if name == "fclose":
+            self.files[self.path] = bytes(self.data)
+            return "[FLOK] FCLOSE"
+        if name == "fseek":
+            self.pos = int(re.search(r"-a (-?\d+)", cmd).group(1))
+            return f"[FLOK] FSEEK {self.pos}"
+        if name == "fwrite":
+            payload = base64.b64decode(re.search(r"-d (\S+)", cmd).group(1))
+            if self.pos > len(self.data):
+                self.data.extend(b"\0" * (self.pos - len(self.data)))
+            self.data[self.pos : self.pos + len(payload)] = payload
+            self.pos += len(payload)
+            return f"[FLOK] FWRITE {len(payload)} bytes"
+        if name == "fcrc":
+            off = int(re.search(r"-a (\d+)", cmd).group(1))
+            length = int(re.search(r"-l (\d+)", cmd).group(1))
+            init = re.search(r"-r (0x[0-9A-Fa-f]+)", cmd)
+            seg = bytes(self.data[off : off + length])
+            from fpbinject.utils.crc import crc16_update
+
+            crc = crc16_update(int(init.group(1), 16) if init else 0xFFFF, seg)
+            return f"[FLOK] FCRC offset={off} size={len(seg)} crc=0x{crc:04X}"
+        raise AssertionError(f"unexpected command {cmd}")
+
+    def send_fl_cmd(self, cmd, timeout=2.0, max_retries=3):
+        # the protocol layer resends a silent command max_retries times
+        for attempt in range(max_retries + 1):
+            self.calls += 1
+            if self.calls in self.lost:
+                reply = ""  # the line never reached the device
+            else:
+                self.pending.append(self._run(cmd))
+                reply = "" if self.calls in self.stalled else self.pending.pop(0)
+            if reply or attempt == max_retries:
+                # the old parse_response called an empty reply "ok"
+                return True, reply
+
+    def resync(self, total_timeout=10.0):
+        self.resyncs += 1
+        self.pending.clear()
+        return True
+
+
+class TestUploadWithLateReplies(unittest.TestCase):
+    """A reply that arrives after its timeout must not shift later replies."""
+
+    def _upload(self, device, size=2000):
+        data = bytes((i * 7 + 3) % 256 for i in range(size))
+        ft = FileTransfer(device, upload_chunk_size=100, download_chunk_size=100)
+        ok, msg = ft.upload(data, "/f.bin")
+        return ok, msg, data, device
+
+    def test_clean_link(self):
+        ok, msg, data, dev = self._upload(StallingDevice())
+        self.assertTrue(ok, msg)
+        self.assertEqual(dev.files["/f.bin"], data)
+        self.assertEqual(dev.resyncs, 0)
+
+    def test_a_stalled_reply_at_any_call_leaves_the_file_intact(self):
+        for call in range(1, 45):
+            with self.subTest(stalled_call=call):
+                ok, msg, data, dev = self._upload(StallingDevice(stalled_calls={call}))
+                self.assertTrue(ok, msg)
+                self.assertEqual(dev.files["/f.bin"], data)
+
+    def test_a_lost_command_at_any_call_leaves_the_file_intact(self):
+        for call in range(1, 45):
+            with self.subTest(lost_call=call):
+                ok, msg, data, dev = self._upload(StallingDevice(lost_calls={call}))
+                self.assertTrue(ok, msg)
+                self.assertEqual(dev.files["/f.bin"], data)
+
+    def test_several_stalls_in_a_row(self):
+        ok, msg, data, dev = self._upload(
+            StallingDevice(stalled_calls={6, 7, 8, 20, 21, 33})
+        )
+        self.assertTrue(ok, msg)
+        self.assertEqual(dev.files["/f.bin"], data)
+
+    def test_resync_runs_before_the_next_command(self):
+        dev = StallingDevice(stalled_calls={4})
+        ok, msg, data, dev = self._upload(dev)
+        self.assertTrue(ok, msg)
+        self.assertGreaterEqual(dev.resyncs, 1)
+
+    def test_empty_reply_is_a_failure_not_a_success(self):
+        mock = Mock()
+        mock.send_fl_cmd = Mock(return_value=(True, ""))
+        ft = FileTransfer(mock)
+        ok, _ = ft.fwrite(b"abc", max_retries=0)
+        self.assertFalse(ok)
+
+    def test_reply_of_another_command_is_a_failure(self):
+        mock = Mock()
+        mock.send_fl_cmd = Mock(return_value=(True, "[FLOK] FSEEK 0"))
+        ft = FileTransfer(mock)
+        ok, msg = ft.fwrite(b"abc", max_retries=0)
+        self.assertFalse(ok)
+        self.assertIn("does not belong", msg)
+
+    def test_mixed_ok_and_error_replies_are_a_failure(self):
+        mock = Mock()
+        mock.send_fl_cmd = Mock(
+            return_value=(True, "[FLERR] CRC mismatch\n[FLOK] FWRITE 3 bytes")
+        )
+        ft = FileTransfer(mock)
+        ok, _ = ft.fwrite(b"abc", max_retries=0)
+        self.assertFalse(ok)
