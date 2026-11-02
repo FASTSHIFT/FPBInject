@@ -164,6 +164,35 @@ async function renameDeviceFile(oldPath, newPath) {
 }
 
 /**
+ * Read a refusal: the server answers a transfer request it will not run (for
+ * example 409 while another transfer or the file list holds the device) with a
+ * plain JSON body instead of an event stream.
+ * @param {Response} response
+ * @returns {Promise<{success: boolean, error: string, busy: boolean}>}
+ */
+async function readTransferRefusal(response) {
+  try {
+    const data = await response.json();
+    return {
+      success: false,
+      error: data.error || `HTTP ${response.status}`,
+      busy: !!data.busy,
+    };
+  } catch (e) {
+    return { success: false, error: `HTTP ${response.status}`, busy: false };
+  }
+}
+
+/**
+ * True if the response is the SSE stream of a running transfer.
+ * @param {Response} response
+ */
+function isTransferStream(response) {
+  const type = response.headers ? response.headers.get('content-type') : '';
+  return !!type && type.includes('text/event-stream');
+}
+
+/**
  * Upload file to device with progress and cancel support
  * @param {File} file - File object to upload
  * @param {string} remotePath - Destination path on device
@@ -184,7 +213,12 @@ async function uploadFileToDevice(file, remotePath, onProgress) {
       body: formData,
       signal: transferAbortController.signal,
     })
-      .then((response) => {
+      .then(async (response) => {
+        if (!isTransferStream(response)) {
+          transferAbortController = null;
+          resolve(await readTransferRefusal(response));
+          return;
+        }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -282,7 +316,12 @@ async function downloadFileFromDevice(remotePath, onProgress) {
       body: JSON.stringify({ remote_path: remotePath }),
       signal: transferAbortController.signal,
     })
-      .then((response) => {
+      .then(async (response) => {
+        if (!isTransferStream(response)) {
+          transferAbortController = null;
+          resolve(await readTransferRefusal(response));
+          return;
+        }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -2132,7 +2171,9 @@ async function uploadDroppedFile(file) {
         : '';
       const statsStr = formatTransferStats(result.stats);
       log.success(`Upload complete: ${remotePath}${speedStr}${statsStr}`);
-      refreshDeviceFiles();
+      // Wait for the list: it holds the device, and the next file of a batch
+      // would be refused (409) if its upload started while the list runs.
+      await refreshDeviceFiles();
     } else {
       log.error(`Upload failed: ${result.error}`);
       showTransferErrorAlert('Upload', file.name, result.error, result.stats);
@@ -2453,6 +2494,8 @@ window.renameDeviceFile = renameDeviceFile;
 window.uploadFileToDevice = uploadFileToDevice;
 window.downloadFileFromDevice = downloadFileFromDevice;
 window.refreshDeviceFiles = refreshDeviceFiles;
+window.readTransferRefusal = readTransferRefusal;
+window.isTransferStream = isTransferStream;
 window.selectDeviceFile = selectDeviceFile;
 window.uploadToDevice = uploadToDevice;
 window.uploadFolderToDevice = uploadFolderToDevice;

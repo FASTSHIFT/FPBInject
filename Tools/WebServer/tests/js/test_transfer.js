@@ -322,6 +322,70 @@ module.exports = function (w) {
     it('is async function', () => {
       assertTrue(w.uploadFileToDevice.constructor.name === 'AsyncFunction');
     });
+    it('reports the refusal of a busy device, not a dead stream', async () => {
+      resetMocks();
+      setFetchResponse('/api/transfer/upload', {
+        success: false,
+        error: 'Cannot start upload: list in progress',
+        busy: true,
+        _ok: false,
+        _status: 409,
+      });
+      const result = await w.uploadFileToDevice(
+        new Blob(['x']),
+        '/data/a.bin',
+        () => {},
+      );
+      assertFalse(result.success);
+      assertTrue(result.busy);
+      assertContains(result.error, 'list in progress');
+    });
+    it('falls back to the HTTP status when the refusal has no text', async () => {
+      resetMocks();
+      setFetchResponse('/api/transfer/upload', { _ok: false, _status: 500 });
+      const result = await w.uploadFileToDevice(
+        new Blob(['x']),
+        '/data/a.bin',
+        () => {},
+      );
+      assertFalse(result.success);
+      assertContains(result.error, 'HTTP 500');
+    });
+    it('still reads a normal event stream', async () => {
+      resetMocks();
+      setFetchResponse('/api/transfer/upload', {
+        _stream: ['data: {"type":"result","success":true}\n'],
+      });
+      const result = await w.uploadFileToDevice(
+        new Blob(['x']),
+        '/data/a.bin',
+        () => {},
+      );
+      assertTrue(result.success);
+    });
+  });
+
+  describe('readTransferRefusal / isTransferStream', () => {
+    it('isTransferStream is true only for an event stream', () => {
+      const sse = {
+        headers: { get: () => 'text/event-stream; charset=utf-8' },
+      };
+      const json = { headers: { get: () => 'application/json' } };
+      assertTrue(w.isTransferStream(sse));
+      assertFalse(w.isTransferStream(json));
+      assertFalse(w.isTransferStream({}));
+    });
+    it('readTransferRefusal survives a body that is not JSON', async () => {
+      const r = await w.readTransferRefusal({
+        status: 502,
+        json: async () => {
+          throw new Error('not json');
+        },
+      });
+      assertFalse(r.success);
+      assertFalse(r.busy);
+      assertContains(r.error, 'HTTP 502');
+    });
   });
 
   describe('downloadFileFromDevice Function', () => {
@@ -1541,6 +1605,33 @@ module.exports = function (w) {
   describe('uploadDroppedFile Function', () => {
     it('is async function', () => {
       assertTrue(w.uploadDroppedFile.constructor.name === 'AsyncFunction');
+    });
+    it('returns only after the file list refresh has finished', async () => {
+      // The list holds the device. A batch starts its next upload right after
+      // this one returns, and the server refuses it (409) while the list runs.
+      resetMocks();
+      const mockFetch = global.fetch;
+      let listDone = false;
+      global.fetch = async (url, options) => {
+        const res = await mockFetch(url, options);
+        if (String(url).includes('/api/transfer/list')) {
+          await new Promise((r) => setTimeout(r, 30));
+          listDone = true;
+        }
+        return res;
+      };
+      setFetchResponse('/api/transfer/upload', {
+        _stream: ['data: {"type":"result","success":true}\n'],
+      });
+      setFetchResponse('/api/transfer/list', { success: true, entries: [] });
+      w.FPBState.isConnected = true;
+      try {
+        await w.uploadDroppedFile(new File(['x'], 'a.bin'));
+        assertTrue(listDone);
+      } finally {
+        global.fetch = mockFetch;
+        w.FPBState.isConnected = false;
+      }
     });
   });
 
