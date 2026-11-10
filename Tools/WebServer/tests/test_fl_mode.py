@@ -11,7 +11,6 @@ loop.
 
 import os
 import sys
-import time
 import unittest
 from unittest.mock import MagicMock
 

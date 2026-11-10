@@ -40,6 +40,8 @@ FIND_EXCLUDE_COMMON=(
 # ============================================================
 # Detect available prettier command (shared by JS/HTML/CSS)
 # ============================================================
+# Pinned so local runs and CI format with the same prettier release.
+PRETTIER_VERSION="3.9.10"
 detect_prettier() {
     if command -v prettier &>/dev/null; then
         echo "prettier"
@@ -51,7 +53,7 @@ detect_prettier() {
                 return 1
             fi
         fi
-        echo "npx --yes prettier"
+        echo "npx --yes prettier@$PRETTIER_VERSION"
     else
         return 1
     fi
@@ -236,6 +238,12 @@ fi
 # Run formatters in parallel
 # Python (black) and Prettier (JS/HTML/CSS) are independent
 # ============================================================
+# Fetch prettier once, before the parallel jobs. Three concurrent `npx --yes`
+# calls unpack into the same cache directory, and on a cold cache (CI) one of
+# them can load a half-written file and die with a SyntaxError.
+if PRETTIER_CMD=$(detect_prettier); then
+    $PRETTIER_CMD --version >/dev/null 2>&1
+fi
 echo -e "\n${BLUE}Running formatters in parallel...${NC}"
 
 format_python &
