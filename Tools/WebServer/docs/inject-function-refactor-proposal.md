@@ -4,7 +4,7 @@
 > - 用 `/* FPB_INJECT */` 标记函数，函数名保持不变，工具自动补 `__attribute__((section(".fpb.text"), used))`（已写了该属性则不重复添加）。
 > - 链接脚本只对 `.fpb.text` 使用 `KEEP`；`.fpb.data` / `.fpb.rodata` 没有采用，补丁用到的数据由普通的 `.rodata` / `.data` / `.bss` 段放在代码之后。
 > - 链接时 `--allow-multiple-definition` 加 `--just-symbols=<firmware.elf>`，补丁里的同名定义优先于固件符号。
-> - 用法见 [CLI](CLI.md) 和 [WebServer](WebServer.md)；实现见 `Tools/WebServer/core/patch_generator.py` 和 `core/compiler.py`。
+> - 用法见 [CLI](../../../Docs/CLI.md) 和 [WebServer](../../../Docs/WebServer.md)；实现见 `Tools/WebServer/core/patch_generator.py` 和 `core/compiler.py`。
 
 ## 1. 问题分析
 

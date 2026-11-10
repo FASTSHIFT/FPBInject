@@ -441,7 +441,7 @@ void test_fpb_get_info_comp_raw(void) {
  * - Original bug: used comp_id * 2 as index, causing SLOT1+ to fail
  * - Fix: use comp_id directly as index (Remap_Base + 4*n per ARM spec)
  *
- * See: Docs/FPB_Remap_Table_Bug_Analysis.md
+ * See: Tools/WebServer/docs/fpb-remap-table-bug-analysis.md
  * ============================================================================ */
 
 void test_fpb_remap_table_slot0_index(void) {
