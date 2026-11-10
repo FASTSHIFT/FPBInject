@@ -2090,10 +2090,8 @@ class TestFileTransferVerifyRetry(unittest.TestCase):
 class StallingDevice:
     """Firmware model whose replies can arrive late.
 
-    A reply is queued when its command runs. ``send_fl_cmd`` hands out the
-    oldest reply that has not been read yet, like the real serial reader, or an
-    empty string when the call is marked as stalled (the reply stays queued and
-    shows up in a later call). ``resync`` drops whatever is queued.
+    ``send_fl_cmd`` returns the oldest unread reply, like the serial reader, or
+    "" for a stalled call (the reply stays queued). ``resync`` drops the queue.
     """
 
     def __init__(self, stalled_calls=(), lost_calls=()):
@@ -2231,11 +2229,10 @@ class TestUploadWithLateReplies(unittest.TestCase):
 class FileDevice:
     """Firmware model of a readable file.
 
-    ``wrong_at`` is a set of fread call numbers that return the bytes of the
-    wrong place in the file (as after a damaged fseek): the chunk CRC fits the
-    bytes, only their position is wrong. ``always_wrong_at`` is a set of file
-    offsets that are wrong on every read. ``bad_seeks`` is the number of fseek
-    commands that land on offset 20 and say so.
+    ``wrong_at``: fread call numbers that return the bytes of the wrong place
+    (valid chunk CRC). ``always_wrong_at``: offsets that are wrong on every
+    read. ``bad_seeks``: how many fseek commands land on offset 20.
+    ``silent_freads``: fread call numbers that get no reply.
     """
 
     def __init__(

@@ -28,9 +28,8 @@ logger = logging.getLogger(__name__)
 # Tries to confirm a seek before a resend is given up
 SEEK_ATTEMPTS = 3
 
-# Download repair: the device is compared with the local copy in segments of
-# REPAIR_SEGMENT bytes, and a differing segment again in pieces of REPAIR_PIECE
-# bytes, so only the pieces that really differ are read again.
+# Download repair: compare per segment, then per piece of a differing segment,
+# and read again only the pieces that differ
 REPAIR_SEGMENT = 32 * 1024
 REPAIR_PIECE = 2 * 1024
 REPAIR_ROUNDS = 3
@@ -152,11 +151,7 @@ class FileTransfer:
         return stats
 
     def _resync(self) -> None:
-        """Flush late replies of earlier commands before the next command.
-
-        See ``FPBProtocol.resync``. A fake ``fpb`` without ``resync`` (or one
-        that answers something other than False) is treated as in sync.
-        """
+        """Flush late replies of earlier commands (``FPBProtocol.resync``)."""
         fn = getattr(self.fpb, "resync", None)
         ok = fn() if callable(fn) else True
         self._resyncs += 1
@@ -169,12 +164,11 @@ class FileTransfer:
 
     @staticmethod
     def _reply_problem(response: str, expect: Optional[str]) -> str:
-        """Why ``response`` cannot be trusted as the answer to the last command.
+        """Why ``response`` cannot be the answer to the last command ("" if it can).
 
-        Empty string if it can. A reply must carry exactly one outcome marker
-        and, when ``expect`` is given, the part after ``[FLOK]`` must match it.
-        A reply that does not look like the answer to *this* command is a late
-        reply of an earlier one (see ``FPBProtocol.resync``).
+        It needs exactly one outcome marker and, with ``expect``, a matching
+        text after ``[FLOK]``; anything else may be a late reply of an earlier
+        command.
         """
         has_ok = "[FLOK]" in response
         has_err = "[FLERR]" in response
@@ -198,10 +192,9 @@ class FileTransfer:
         """
         Send a command to device and get response.
 
-        Success needs a positive ``[FLOK]``: an empty or unrecognisable reply
-        is a failure, not a success. After a failure that leaves the reply
-        stream in doubt (no reply, mixed replies, a reply to another command)
-        the next command starts with a resync barrier.
+        Success needs a positive ``[FLOK]``. After a reply that leaves the
+        reply stream in doubt (none, mixed, or not for this command) the next
+        command starts with a resync barrier.
 
         Args:
             cmd: Command string to send
@@ -245,12 +238,9 @@ class FileTransfer:
     def _seek_for_retry(self, offset: int, op: str) -> bool:
         """Put the device's file position back to ``offset`` before a resend.
 
-        A seek that did not land (the line was damaged on the wire, or the reply
-        does not confirm the offset) must not be ignored: the resend would then
-        read or write at the wrong position and still look fine, its own chunk
-        CRC being correct. The seek is idempotent, so it is simply repeated.
-
-        Returns False if the position is still unconfirmed after
+        A seek that did not land must not be ignored: the resend would read or
+        write at the wrong place and still pass its chunk CRC. Seeking is
+        idempotent, so it is repeated; False if still unconfirmed after
         ``SEEK_ATTEMPTS`` tries.
         """
         reply = ""
@@ -364,8 +354,7 @@ class FileTransfer:
                         f"fread retry {attempt}/{max_retries}, seeking to offset {current_offset}"
                     )
                     if not self._seek_for_retry(current_offset, "fread"):
-                        # reading from an unknown position returns good-looking
-                        # data (its chunk CRC is right) from the wrong place
+                        # the data would come from the wrong place with a valid CRC
                         self.stats["other_errors"] += 1
                         if attempt < max_retries:
                             continue
@@ -749,9 +738,8 @@ class FileTransfer:
             remote_path: File path on device to verify
             expected_crc: Locally computed CRC-16 of the data
             expected_size: Expected byte count
-            stop_when_stable: Give up as soon as two attempts in a row see the
-                same wrong size/CRC. The device content is then not changing,
-                so asking again cannot help (a download goes on to repair).
+            stop_when_stable: Stop once two attempts in a row see the same wrong
+                size/CRC: the device content is stable, asking again is useless
 
         Returns:
             Tuple of (ok, dev_size, dev_crc, reason). On failure, reason is
@@ -935,10 +923,9 @@ class FileTransfer:
     ) -> Tuple[bool, bytes, str]:
         """Read again only the parts of a download that differ from the device.
 
-        Chunk CRCs only prove that a chunk arrived intact, not that it came from
-        the right place in the file. When the whole-file CRC then disagrees,
-        the file does not have to be fetched again: compare per segment with
-        the device and fix what differs.
+        Chunk CRCs prove a chunk arrived intact, not that it came from the right
+        place. After a whole-file mismatch, fix what differs instead of
+        fetching the file again.
 
         Args:
             data: What was downloaded (same length as the device file)

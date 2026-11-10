@@ -40,7 +40,7 @@ CFLAGS += -DFL_NUTTX_BUF_SIZE=$(CONFIG_FPBINJECT_BUF_SIZE) \
           -DFL_FILE_USE_POSIX=1
 
 # FPB feature switches (mapped from Kconfig)
-# The options are off when their dependencies are not met (no FPB on the target)
+# The options are off on a target without an FPB
 ifndef CONFIG_FPBINJECT_ENABLE_FPB
 CFLAGS += -DFL_NO_FPB
 endif

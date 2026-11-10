@@ -2,16 +2,10 @@
  * MIT License
  * Copyright (c) 2026 VIFEX
  *
- * Unit tests for the spawn flavour of the NuttX exec back-end
- * (fl_port_nuttx.c built with CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY)
- *
- * Same approach as test_fl_port_nuttx.c, which covers the system() flavour:
- * the port source is #included so nuttx_exec_cb() can be called directly and
- * main() driven with a scripted stdin. task_spawn(), waitpid(),
- * sched_getparam() and posix_spawnattr_setstacksize() are replaced by mocks, so
- * no task is ever created. The target is compiled with -D__NuttX__
- * -DCONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=1 -DCONFIG_NSH_LIBRARY=1 and, on purpose,
- * without CONFIG_SYSTEM_SYSTEM.
+ * Tests for the task_spawn flavour of the NuttX exec back-end
+ * (CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY, built without SYSTEM_SYSTEM).
+ * Like test_fl_port_nuttx.c, the port source is #included; the spawn, wait and
+ * scheduler calls are mocks, so no task is created.
  */
 #include "test_framework.h"
 #include "mock_hardware.h"

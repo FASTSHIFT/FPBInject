@@ -816,9 +816,7 @@ def api_transfer_download():
                             }
                         )
                     elif dev_crc != local_crc:
-                        # Chunk CRCs only prove that a chunk arrived intact, not
-                        # that it came from the right place: fix what differs
-                        # instead of making the caller download everything again.
+                        # fix what differs instead of a full second download
                         fixed, repaired, why = ft.repair_download(file_data)
                         if not fixed:
                             ft.fclose()

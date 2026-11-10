@@ -208,10 +208,8 @@ target_compile_definitions(
                                  FL_NUTTX_BUF_SIZE=1024)
 target_link_libraries(test_runner_nuttx_port m)
 
-# Same port, other exec back-end: CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY
-# (task_spawn(nsh_system) at the priority of the fl task) instead of system().
-# Its dependencies CONFIG_NSH_LIBRARY and CONFIG_SCHED_WAITPID are defined,
-# CONFIG_SYSTEM_SYSTEM is left out on purpose.
+# Same port, task_spawn exec back-end (EXEC_INHERIT_PRIORITY) instead of
+# system(); SYSTEM_SYSTEM is left out on purpose
 add_executable(
   test_runner_nuttx_port_spawn
   ${SUT_SOURCES_COMMON} ${MOCK_SOURCES} ${TEST_FRAMEWORK_SOURCES}

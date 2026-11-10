@@ -2,15 +2,11 @@
 # Copyright (c) 2025 - 2026 _VIFEXTech
 """Request/reply barrier for the fl serial protocol.
 
-The protocol has no request id: a reply is whatever shows up next. When a
-command times out (the device is stalled, or the line was lost), its reply may
-still arrive later and would then be taken for the answer to the *next*
-command. Every later reply is off by one from then on, so a failure is booked
-on the wrong command and a chunk that never made it is never sent again.
-
-The shell executes lines in order, so a barrier fixes this: send ``echo`` with
-a random payload and read until its own reply (length and CRC of the payload)
-comes by. Everything before that is stale; it is logged, not interpreted.
+The protocol has no request id. After a timeout the late reply is taken for
+the answer to the next command and every later reply is off by one, so a
+failure is booked on the wrong command. The shell runs lines in order: send
+``echo`` with a random payload and read until its own reply comes by;
+everything before it is stale (logged, not interpreted).
 """
 
 import logging
@@ -53,8 +49,7 @@ def resync_barrier(proto, total_timeout, log_tx, log_rx) -> bool:
             else:
                 time.sleep(0.0005)
         if found:
-            # take the prompt that follows the reply as well, so it cannot
-            # leak into the next command's reply
+            # also take the prompt that follows the reply
             buf += proto._drain_serial(ser, idle=0.03, max_wait=0.2)
         proto._log_raw(log_rx, buf)
         if found:

@@ -400,7 +400,7 @@ class FPBProtocol:
                 tool_log(
                     self.device,
                     "WARN",
-                    f"No reply within {timeout:g}s" f"{', resending' if again else ''}",
+                    f"No reply within {timeout:g}s{', resending' if again else ''}",
                 )
                 continue
 
@@ -411,9 +411,7 @@ class FPBProtocol:
     def resync(self, total_timeout: float = 10.0) -> bool:
         """Drop late replies of earlier commands with an ``echo`` barrier.
 
-        The protocol has no request id, so after a command timed out its late
-        reply would be taken for the answer to the next command. See
-        ``core/serial_resync.py``. False if the device never answers.
+        See ``core/serial_resync.py``. False if the device never answers.
         """
         from fpbinject.core.serial_resync import resync_barrier
 

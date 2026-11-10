@@ -32,8 +32,7 @@ if(CONFIG_FPBINJECT)
   # Collect FPB sources
   file(GLOB FPB_SOURCES ${CMAKE_CURRENT_LIST_DIR}/../Source/*.c)
 
-  # Build FPB compile definitions from Kconfig options (the options are off when
-  # their dependencies are not met, e.g. no FPB on the target)
+  # FPB compile definitions (the options are off on a target without an FPB)
   set(FPB_COMPILE_DEFINITIONS "")
   if(NOT CONFIG_FPBINJECT_ENABLE_FPB)
     list(APPEND FPB_COMPILE_DEFINITIONS FL_NO_FPB)

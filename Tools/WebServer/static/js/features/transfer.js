@@ -164,9 +164,8 @@ async function renameDeviceFile(oldPath, newPath) {
 }
 
 /**
- * Read a refusal: the server answers a transfer request it will not run (for
- * example 409 while another transfer or the file list holds the device) with a
- * plain JSON body instead of an event stream.
+ * Read a refusal: a transfer the server will not run (e.g. 409 while the
+ * device is busy) is answered with plain JSON instead of an event stream.
  * @param {Response} response
  * @returns {Promise<{success: boolean, error: string, busy: boolean}>}
  */
@@ -2171,8 +2170,7 @@ async function uploadDroppedFile(file) {
         : '';
       const statsStr = formatTransferStats(result.stats);
       log.success(`Upload complete: ${remotePath}${speedStr}${statsStr}`);
-      // Wait for the list: it holds the device, and the next file of a batch
-      // would be refused (409) if its upload started while the list runs.
+      // Wait for the list: it holds the device, the next upload would get a 409
       await refreshDeviceFiles();
     } else {
       log.error(`Upload failed: ${result.error}`);

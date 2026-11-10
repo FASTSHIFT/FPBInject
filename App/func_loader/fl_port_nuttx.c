@@ -47,18 +47,12 @@
  *   nsh> fl --cmd info
  *   nsh> fl   # interactive mode
  *
- * Exec back-end (the "exec" command runs a shell command line), chosen at
- * build time. With neither available exec_cb stays NULL ("No exec_cb").
- *   CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=y (Kconfig default)
- *                            task_spawn(nsh_system) with the priority of the
- *                            fl task. Needs CONFIG_NSH_LIBRARY, CONFIG_SCHED_WAITPID
- *                            and a build that is not CONFIG_BUILD_KERNEL
- *                            (task_spawn); the Kconfig option depends on all of
- *                            them. Not CONFIG_SYSTEM_SYSTEM.
- *   CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=n
- *                            system(): needs CONFIG_SYSTEM_SYSTEM. Its shell
- *                            task runs at CONFIG_SYSTEM_SYSTEM_PRIORITY.
- * Neither back-end enforces timeout_ms.
+ * Exec back-end, chosen by CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY:
+ *   y: task_spawn(nsh_system) at the priority of the fl task
+ *      (needs NSH_LIBRARY, SCHED_WAITPID, !BUILD_KERNEL)
+ *   n: system() (needs SYSTEM_SYSTEM), its shell task runs at
+ *      SYSTEM_SYSTEM_PRIORITY
+ * With neither, exec_cb stays NULL. Neither enforces timeout_ms.
  */
 
 #ifdef __NuttX__
@@ -73,8 +67,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-/* Exec back-end switch (Kconfig FPBINJECT_EXEC_INHERIT_PRIORITY). The macros can
- * also be given on the command line, which is what the host tests do. */
+/* Back-end switch; the host tests set the macros on the command line */
 #ifndef FL_NUTTX_EXEC_INHERIT_PRIORITY
 #ifdef CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY
 #define FL_NUTTX_EXEC_INHERIT_PRIORITY 1
@@ -84,8 +77,7 @@
 #endif
 
 #if FL_NUTTX_EXEC_INHERIT_PRIORITY
-/* What this back-end calls. Kconfig takes care of it; the check keeps a
- * hand-written configuration from ending in a link error. */
+/* Hand-written configurations fail here, not at link time */
 #ifndef CONFIG_NSH_LIBRARY
 #error "FPBINJECT_EXEC_INHERIT_PRIORITY needs CONFIG_NSH_LIBRARY (nsh_system)"
 #endif
@@ -97,8 +89,7 @@
 #include <spawn.h>
 #include <sys/wait.h>
 
-/* Stack of the nsh_system task. The own Kconfig value, so that the back-end
- * does not depend on CONFIG_SYSTEM_SYSTEM_STACKSIZE. */
+/* Stack of the shell task; not tied to SYSTEM_SYSTEM_STACKSIZE */
 #ifndef FL_NUTTX_EXEC_STACKSIZE
 #ifdef CONFIG_FPBINJECT_EXEC_STACKSIZE
 #define FL_NUTTX_EXEC_STACKSIZE CONFIG_FPBINJECT_EXEC_STACKSIZE
@@ -148,10 +139,9 @@ static void nuttx_invalidate_icache_cb(uintptr_t start, uintptr_t end) {
 /**
  * @brief Exec callback: like system(), but the shell task runs at the priority of this (fl) task
  *
- * system() gives its shell task the fixed CONFIG_SYSTEM_SYSTEM_PRIORITY, so a
- * busy task between that and fl's own (higher) priority can starve the
- * command while fl sits in waitpid(). A program that the shell starts keeps
- * the priority registered for it, as with any NSH command.
+ * system() runs its shell task at a fixed priority, so a busy task in between
+ * can starve the command while fl waits in waitpid(). Programs the shell
+ * starts keep their registered priority.
  *
  * @param user       Unused
  * @param cmdline    Command line, run by nsh_system() as "-c <cmdline>"
@@ -203,8 +193,7 @@ static int nuttx_exec_cb(void* user, const char* cmdline, uint32_t timeout_ms) {
 /**
  * @brief Exec callback: run the command line through NSH via system()
  *
- * system() blocks (waitpid) until the command exits and has no timeout
- * support, so do not run commands that block for a long time.
+ * system() blocks until the command exits: do not run commands that block.
  *
  * @param user       Unused
  * @param cmdline    Command line to run
@@ -336,8 +325,7 @@ int main(int argc, char** argv) {
         ctx.platform_desc = "NuttX";
 
 #if FL_NUTTX_HAVE_EXEC
-        /* exec needs an exec back-end (see the top of this file); without
-         * one exec_cb stays NULL and the command reports "No exec_cb". */
+        /* without a back-end exec_cb stays NULL ("No exec_cb") */
         ctx.exec_cb = nuttx_exec_cb;
 #endif
 

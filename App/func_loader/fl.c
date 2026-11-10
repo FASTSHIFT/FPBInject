@@ -206,9 +206,7 @@ fl_error_t fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
     };
 
     struct argparse ap;
-    /* A command line damaged on the wire ("-a 20480 -r 0xE791" arriving as
-     * "-a 20xE791") must not run with the value that was read before the
-     * damage. */
+    /* A request damaged on the wire must not run with a partly read value */
     fl_argparse_init(&ap, opts, NULL, ARGPARSE_STRICT_VALUES);
     if (fl_argparse_parse(&ap, argc, argv) > 0) {
         fl_response(false, "Invalid arguments");

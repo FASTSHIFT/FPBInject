@@ -993,10 +993,9 @@ if __name__ == "__main__":
 
 
 class _EchoingSerial:
-    """Serial stand-in: after a ``fl -c echo`` line it answers like the firmware.
+    """Serial stand-in that answers ``fl -c echo`` like the firmware.
 
-    ``stale`` is device output that was already on its way (late replies of
-    earlier commands) and arrives first.
+    ``stale`` is device output already on its way (late replies); it arrives first.
     """
 
     def __init__(self, stale="", answer=True):
