@@ -85,22 +85,40 @@ function generateId() {
    ESCAPE HANDLING
    =========================== */
 
+// Supported: \n \r \t \\ and \xHH (any byte, e.g. \x03 for Ctrl-C).
+// Single pass, so an escaped backslash never combines with what follows.
 function unescapeCommand(str) {
-  return str
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r')
-    .replace(/\\t/g, '\t')
-    .replace(/\\x1b/g, '\x1b')
-    .replace(/\\\\/g, '\\');
+  return str.replace(/\\(x[0-9a-fA-F]{2}|[nrt\\])/g, (m, e) => {
+    switch (e) {
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      case '\\':
+        return '\\';
+      default:
+        return String.fromCharCode(parseInt(e.slice(1), 16));
+    }
+  });
 }
 
 function escapeCommandForDisplay(str) {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t')
-    .replace(/\x1b/g, '\\x1b');
+  return str.replace(/[\\\x00-\x1f\x7f]/g, (c) => {
+    switch (c) {
+      case '\\':
+        return '\\\\';
+      case '\n':
+        return '\\n';
+      case '\r':
+        return '\\r';
+      case '\t':
+        return '\\t';
+      default:
+        return '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0');
+    }
+  });
 }
 
 /* ===========================

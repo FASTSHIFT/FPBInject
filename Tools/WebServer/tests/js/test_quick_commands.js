@@ -108,6 +108,27 @@ module.exports = function (w) {
     it('unescapeCommand converts \\x1b to ESC', () => {
       assertEqual(w.unescapeCommand('\\x1b[0m'), '\x1b[0m');
     });
+    it('unescapeCommand converts \\x03 to Ctrl-C', () => {
+      assertEqual(w.unescapeCommand('\\x03'), '\x03');
+    });
+    it('unescapeCommand accepts uppercase hex digits', () => {
+      assertEqual(w.unescapeCommand('\\x1B\\x7F'), '\x1b\x7f');
+    });
+    it('unescapeCommand keeps incomplete \\x as text', () => {
+      assertEqual(w.unescapeCommand('\\x3'), '\\x3');
+    });
+    it('unescapeCommand does not re-escape an escaped backslash', () => {
+      assertEqual(w.unescapeCommand('\\\\n'), '\\n');
+    });
+    it('escapeCommandForDisplay converts control chars to \\xHH', () => {
+      assertEqual(w.escapeCommandForDisplay('\x03\x1b'), '\\x03\\x1b');
+    });
+    it('escapeCommandForDisplay round-trips \\x03', () => {
+      assertEqual(
+        w.escapeCommandForDisplay(w.unescapeCommand('\\x03\\x03')),
+        '\\x03\\x03',
+      );
+    });
     it('unescapeCommand converts \\\\ to backslash', () => {
       assertEqual(w.unescapeCommand('path\\\\file'), 'path\\file');
     });

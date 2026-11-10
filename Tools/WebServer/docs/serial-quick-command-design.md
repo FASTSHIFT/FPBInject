@@ -115,7 +115,7 @@ header 区域按钮：
 关键交互细节：
 
 - **Name** 自动从 Command 内容推导，用户可覆盖
-- **Command** 输入框支持 `\n`、`\r`、`\t`、`\x1b` 等转义字符的可视化显示
+- **Command** 输入框支持 `\n`、`\r`、`\t`、`\xHH` 等转义字符的可视化显示
 - **Append newline** 默认勾选，大多数命令需要回车结尾
 - **Group** 下拉框列出已有分组 + "New Group..." 选项
 - **Shortcut** 点击后进入录制模式，按下组合键即绑定（如 `Ctrl+1`）
@@ -340,7 +340,7 @@ document.addEventListener('keydown', (e) => {
 | `\n` | `0x0A` | 换行 |
 | `\r` | `0x0D` | 回车 |
 | `\t` | `0x09` | Tab |
-| `\x1b` | `0x1B` | ESC |
+| `\xHH` | `0xHH` | 任意字节，如 `\x1b` ESC、`\x03` Ctrl-C（两位十六进制） |
 | `\\` | `\` | 反斜杠本身 |
 
 在编辑框中以标签形式可视化显示：`ps -A` `↵`
