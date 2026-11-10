@@ -208,7 +208,7 @@ error: option `-l` expects an integer value
 
 | 建议 | 做法 | 位置 |
 |------|------|------|
-| 6.1 第 1 条 | `fread`/`fwrite` 重试前的 `fseek` 改为 `_seek_for_retry`：回复必须是 `FSEEK <偏移>` 且偏移相符，否则重发 `fseek`，最多 3 次。仍未确认就放弃这一次尝试，不再读写，转入下一次重试（用完重试次数则报 `Cannot reposition to offset N`）。原来的“继续读”不再存在。 | `core/file_transfer.py` |
+| 6.1 第 1 条 | `fread`/`fwrite` 重试前的 `fseek` 改为 `_seek_for_retry`：回复必须是 `FSEEK <偏移>` 且偏移相符，否则放弃这一次尝试，不再读写，转入下一次重试，下一次先重发 `fseek`。重试次数就是 `transfer_max_retries`，没有单独的 `fseek` 次数；用完则报 `Cannot reposition to offset N`。原来的“继续读”不再存在。 | `core/file_transfer.py` |
 | 6.1 第 2 条 | 新增 `repair_download`：整文件 CRC 不一致后，用 `fcrc -a/-l` 按 32 KB 段与本地数据比较，不一致的段再按 2 KB 片比较，只把不一致的片重新 `fseek`+`fread`，最多 3 轮。`download()`（CLI、SDK、同步接口）和流式下载接口 `/api/transfer/download` 都会在报错前先修复。 | `core/file_transfer.py`、`app/routes/transfer.py` |
 | 6.1 第 3 条 | 确认不了位置时，日志和错误信息带上期望偏移和设备最后一次回复；下载失败的信息带上修复失败的原因。 | 同上 |
 | 附带 | 整文件校验时，连续两次看到同一个错误的大小和 CRC，就不再重复校验（设备上的内容没有变，再问没有用），直接进入修复。以前要做 `transfer_max_retries + 1` 次。 | `_verify_crc_with_retry` |

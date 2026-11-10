@@ -25,9 +25,6 @@ from fpbinject.utils.crc import crc16, crc16_update
 
 logger = logging.getLogger(__name__)
 
-# Tries to confirm a seek before a resend is given up
-SEEK_ATTEMPTS = 3
-
 # Download repair: compare per segment, then per piece of a differing segment,
 # and read again only the pieces that differ
 REPAIR_SEGMENT = 32 * 1024
@@ -235,22 +232,22 @@ class FileTransfer:
         cmd = f"fl -c fopen --path {_format_path_arg(path)} -m {mode} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
-    def _seek_for_retry(self, offset: int, op: str) -> bool:
+    def _seek_for_retry(self, offset: int, op: str, attempts: int = 1) -> bool:
         """Put the device's file position back to ``offset`` before a resend.
 
         A seek that did not land must not be ignored: the resend would read or
         write at the wrong place and still pass its chunk CRC. Seeking is
-        idempotent, so it is repeated; False if still unconfirmed after
-        ``SEEK_ATTEMPTS`` tries.
+        idempotent. The callers' retry loop (``max_retries``) repeats a failed
+        seek; ``attempts`` is for callers without such a loop.
         """
         reply = ""
-        for n in range(1, SEEK_ATTEMPTS + 1):
+        for n in range(1, attempts + 1):
             ok, reply = self.fseek(offset, 0)
             if ok:
                 return True
             self._log(
                 f"[WARN] {op}: fseek to {offset} not confirmed "
-                f"({n}/{SEEK_ATTEMPTS}): {reply[-100:]!r}"
+                f"({n}/{attempts}): {reply[-100:]!r}"
             )
         logger.error(f"{op}: cannot reposition to {offset}: {reply[-100:]!r}")
         return False
@@ -906,7 +903,7 @@ class FileTransfer:
 
     def _reread(self, buf: bytearray, offset: int, length: int) -> bool:
         """Read ``[offset, offset+length)`` of the open device file into ``buf``."""
-        if not self._seek_for_retry(offset, "repair"):
+        if not self._seek_for_retry(offset, "repair", self.max_retries + 1):
             return False
         pos, end = offset, offset + length
         while pos < end:

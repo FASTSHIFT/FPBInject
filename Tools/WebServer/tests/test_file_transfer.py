@@ -2367,10 +2367,32 @@ class TestUnconfirmedSeek(unittest.TestCase):
         content = bytes(range(200))
         dev = FileDevice(content, silent_freads={1}, bad_seeks=2)
         ft = FileTransfer(dev, download_chunk_size=50)
-        ok, data, msg = ft.fread(50, max_retries=1, current_offset=100)
+        ok, data, msg = ft.fread(50, max_retries=3, current_offset=100)
         self.assertTrue(ok, msg)
         self.assertEqual(data, content[100:150])
         self.assertEqual(dev.seeks, [100, 100, 100])
+
+    def test_seek_tries_follow_the_retry_setting(self):
+        content = bytes(range(200))
+        for retries in (2, 5):
+            with self.subTest(max_retries=retries):
+                dev = FileDevice(content, silent_freads={1}, bad_seeks=99)
+                ft = FileTransfer(dev, download_chunk_size=50)
+                ok, _, _ = ft.fread(50, max_retries=retries, current_offset=100)
+                self.assertFalse(ok)
+                self.assertEqual(len(dev.seeks), retries)
+
+    def test_repair_seek_uses_the_retry_setting_too(self):
+        dev = FileDevice(bytes(range(200)), bad_seeks=2)
+        ft = FileTransfer(dev, download_chunk_size=50)
+        ft.max_retries = 2
+        buf = bytearray(200)
+        self.assertTrue(ft._reread(buf, 100, 50))
+        self.assertEqual(bytes(buf[100:150]), bytes(range(100, 150)))
+        dev = FileDevice(bytes(range(200)), bad_seeks=3)
+        ft = FileTransfer(dev, download_chunk_size=50)
+        ft.max_retries = 2
+        self.assertFalse(ft._reread(bytearray(200), 100, 50))
 
     def test_fwrite_does_not_write_after_a_seek_that_missed(self):
         mock = Mock()
