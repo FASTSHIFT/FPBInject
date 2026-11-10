@@ -189,6 +189,20 @@ int fpb_debugmon_init(void) {
 
     /* Initialize FPB and DWT hardware */
     arm_enable_dbgmonitor();
+
+#ifndef FPB_HOST_TESTING_NUTTX
+    /* DEMCR.MON_EN must stick, otherwise a breakpoint hit escalates to HardFault.
+     * Non-secure code cannot set it when the secure side owns the monitor
+     * (DEMCR.SDME=1). Skip the check if a debugger is attached (C_DEBUGEN). */
+    {
+        const uint32_t dhcsr = *(volatile uint32_t*)0xE000EDF0UL;
+        const uint32_t demcr = *(volatile uint32_t*)0xE000EDFCUL;
+        if ((dhcsr & 0x1UL) == 0 && (demcr & (1UL << 16)) == 0) {
+            DBGMON_ERR("DEMCR.MON_EN not set (DEMCR=0x%08lX), DebugMonitor unavailable\n", (unsigned long)demcr);
+            return -1;
+        }
+    }
+#endif
     DBGMON_INFO("Attached NuttX arm_dbgmonitor handler\n");
 #else
     DBGMON_ERR("CONFIG_ARCH_HAVE_DEBUG not enabled!\n");

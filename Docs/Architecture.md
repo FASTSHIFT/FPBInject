@@ -581,6 +581,45 @@ Replace vendor's PANIC handler with NuttX's handler:
 irq_attach(NVIC_IRQ_DBGMONITOR, arm_dbgmonitor, NULL);
 ```
 
+### DebugMonitor unavailable on TrustZone targets
+
+On an ARMv8-M part running a Non-secure image, `dpatch` fails with
+`DebugMonitor init failed` and the log shows
+`DEMCR.MON_EN not set ... DebugMonitor unavailable`.
+
+**Cause.** When the secure side enables secure invasive debug, `DEMCR.SDME`
+(bit 20) reads 1 and the DebugMonitor belongs to the Secure state. A Non-secure
+write to `DEMCR.MON_EN` is then ignored. An FPB breakpoint hit cannot be taken
+as a DebugMonitor exception and escalates to a HardFault (`HFSR.FORCED`,
+`DFSR.BKPT`, `CFSR=0`), so this is not an MPU/XN execute restriction.
+
+Secure invasive debug is controlled by `DAUTHCTRL.SPIDENSEL` (0xE000EE04). A
+secure image that calls `up_secure_irq(NVIC_IRQ_DBGMONITOR, true)` (for
+example when a JTAG/SWD debug option is enabled) clears it, so authorization
+follows the hardware debug signals. `DHCSR.S_SDE` (bit 20) shows the same state.
+
+**Detection.** `fpb_debugmon_init()` reads `DEMCR` after `arm_enable_dbgmonitor()`
+and fails when `MON_EN` did not stick and no debugger is attached
+(`DHCSR.C_DEBUGEN == 0`). `dpatch` then returns an error instead of arming a
+breakpoint that would crash the device.
+
+**Fix.** Preferably build the secure image without secure invasive debug, or
+call `up_secure_irq(NVIC_IRQ_DBGMONITOR, false)` there so the Non-secure side
+owns the DebugMonitor.
+
+**Temporary workaround (until the next reset).** From the secure-side shell:
+
+```
+mw e000ee04=00000001 4     # SPIDENSEL=1, INTSPIDEN=0: secure invasive debug off
+mw e000edfc 4              # expect 0x01010000 (SDME=0, MON_EN=1)
+```
+
+`DEMCR.SDME` is read-only and cannot be cleared by a direct write. The change
+is lost on reset. The sequence (enter the secure shell, `mw`, leave it with
+two Ctrl-C) can be stored as a Quick Command macro. The step text accepts
+`\xHH` escapes, so a Ctrl-C step is written as `\x03` with "Append newline"
+turned off.
+
 ## References
 
 - [ARM Cortex-M3 TRM](https://developer.arm.com/documentation/ddi0337)
