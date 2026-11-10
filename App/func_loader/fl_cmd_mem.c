@@ -29,6 +29,65 @@
 #include "fl_cmd.h"
 #include <string.h>
 
+size_t fl_mem_access_width(uintptr_t addr, size_t len) {
+    const uintptr_t bits = addr | len;
+    if ((bits & 3) == 0) {
+        return 4;
+    }
+    return (bits & 1) == 0 ? 2 : 1;
+}
+
+/* One reader and writer per access width. The buffer side is a fixed-size
+ * memcpy() (plain moves of a local), only the device side is volatile. */
+#define FL_DEFINE_COPY(type, suffix)                                                  \
+    static void mem_read_##suffix(uint8_t* dst, uintptr_t src, size_t count) {        \
+        volatile const type* p = (volatile const type*)src;                           \
+        for (size_t i = 0; i < count; i++) {                                          \
+            type v = p[i];                                                            \
+            memcpy(dst + i * sizeof(type), &v, sizeof(type));                         \
+        }                                                                             \
+    }                                                                                 \
+    static void mem_write_##suffix(uintptr_t dst, const uint8_t* src, size_t count) { \
+        volatile type* p = (volatile type*)dst;                                       \
+        for (size_t i = 0; i < count; i++) {                                          \
+            type v;                                                                   \
+            memcpy(&v, src + i * sizeof(type), sizeof(type));                         \
+            p[i] = v;                                                                 \
+        }                                                                             \
+    }
+
+FL_DEFINE_COPY(uint32_t, w)
+FL_DEFINE_COPY(uint16_t, h)
+FL_DEFINE_COPY(uint8_t, b)
+
+void fl_mem_read(void* dst, uintptr_t src, size_t len) {
+    switch (fl_mem_access_width(src, len)) {
+    case 4:
+        mem_read_w(dst, src, len / 4);
+        break;
+    case 2:
+        mem_read_h(dst, src, len / 2);
+        break;
+    default:
+        mem_read_b(dst, src, len);
+        break;
+    }
+}
+
+void fl_mem_write(uintptr_t dst, const void* src, size_t len) {
+    switch (fl_mem_access_width(dst, len)) {
+    case 4:
+        mem_write_w(dst, src, len / 4);
+        break;
+    case 2:
+        mem_write_h(dst, src, len / 2);
+        break;
+    default:
+        mem_write_b(dst, src, len);
+        break;
+    }
+}
+
 fl_error_t fl_cmd_alloc(fl_context_t* ctx, const cmd_args_t* args) {
     if (args->size == 0) {
         fl_response(false, "Missing --size");
@@ -155,8 +214,7 @@ fl_error_t fl_cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
     }
 
     /* Read memory at the given address */
-    const uint8_t* src = (const uint8_t*)args->addr;
-    memcpy(buf, src, len);
+    fl_mem_read(buf, args->addr, (size_t)len);
 
     /* Base64 encode */
     if (fl_base64_encode(buf, len, b64_buf, FL_B64_BUF_SIZE) < 0) {
@@ -212,7 +270,7 @@ fl_error_t fl_cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
     }
     /* Write to the specified address */
     uint8_t* dest = (uint8_t*)args->addr;
-    memcpy(dest, buf, n);
+    fl_mem_write(args->addr, buf, (size_t)n);
 
     /* Flush data cache */
     fl_flush_dcache(ctx, dest, n);

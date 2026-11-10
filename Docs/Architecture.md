@@ -492,6 +492,8 @@ BSS is included in the binary (zeroed) via a sentinel `.fpb_end` section, ensuri
 | `fmkdir` | `--path PATH --crc CRC` | Create directory |
 | `frename` | `--path SRC --newpath DST --crc CRC` | Rename file |
 
+`read` and `write` access device memory with plain loads and stores of one width, the widest that the address and the length are a multiple of (32, 16 or 8 bit, like NSH `mw`/`mh`/`mb`), never with `memcpy`. A device register such as the DWT cycle counter is read with a 4-byte aligned request of 4 bytes.
+
 The request CRC (`-r` / `--crc`) is required on every command above that lists it: a request without one is refused with `CRC required`, so a line that lost its tail cannot run on what is left. `unpatch --all` and `enable --all` have no `comp` to protect and carry none. `fread`, `fcrc`, `fclose`, `ping`, `echo`, `echoback`, `info` and `hello` have no request CRC; for `fcrc` the `-r` option is the running CRC of the previous chunk. A malformed option value fails the whole request (`Invalid arguments`).
 
 ### Response Format

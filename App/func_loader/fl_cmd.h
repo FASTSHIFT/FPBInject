@@ -90,6 +90,22 @@ void fl_invalidate_icache(fl_context_t* ctx, const void* addr, size_t len);
  */
 bool fl_check_addr_range(uintptr_t addr, size_t len);
 
+/**
+ * @brief  Width in bytes (4, 2 or 1) of the accesses used for [addr, addr+len)
+ *
+ * The widest one both addr and len are a multiple of, like NSH's mw/mh/mb.
+ */
+size_t fl_mem_access_width(uintptr_t addr, size_t len);
+
+/**
+ * @brief  Copy device memory with plain loads/stores of one width
+ *
+ * memcpy() may use byte, vector or multi-register transfers; device registers
+ * (DWT CYCCNT, ...) only take their natural access and fault otherwise.
+ */
+void fl_mem_read(void* dst, uintptr_t src, size_t len);
+void fl_mem_write(uintptr_t dst, const void* src, size_t len);
+
 /* ===========================
    Command handler declarations
    =========================== */

@@ -13,6 +13,7 @@
 #include "mock_hardware.h"
 #include "fpb_mock_regs.h"
 #include "fl.h"
+#include "fl_cmd.h"
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -1236,6 +1237,47 @@ void test_loader_cmd_read_overflow_addr(void) {
     TEST_ASSERT(mock_output_contains("Invalid address range"));
 }
 
+/* Device memory is accessed with plain loads/stores of one width (like NSH mw/mh/mb) */
+void test_mem_access_width_follows_address_and_length(void) {
+    TEST_ASSERT_EQUAL(4, (int)fl_mem_access_width(0xE0001004, 4));
+    TEST_ASSERT_EQUAL(4, (int)fl_mem_access_width(0x20000000, 64));
+    TEST_ASSERT_EQUAL(2, (int)fl_mem_access_width(0x20000002, 4));
+    TEST_ASSERT_EQUAL(2, (int)fl_mem_access_width(0x20000000, 2));
+    TEST_ASSERT_EQUAL(1, (int)fl_mem_access_width(0x20000000, 3));
+    TEST_ASSERT_EQUAL(1, (int)fl_mem_access_width(0x20000001, 4));
+}
+void test_mem_read_write_copy_every_alignment(void) {
+    static uint8_t mem[64];
+    uint8_t src[40];
+    uint8_t out[40];
+    for (size_t i = 0; i < sizeof(src); i++) {
+        src[i] = (uint8_t)(i * 7 + 1);
+    }
+    for (size_t off = 0; off < 4; off++) {
+        for (size_t len = 1; len <= 33; len++) {
+            memset(mem, 0xEE, sizeof(mem));
+            memset(out, 0, sizeof(out));
+            fl_mem_write((uintptr_t)&mem[8 + off], src, len);
+            TEST_ASSERT(memcmp(&mem[8 + off], src, len) == 0);
+            TEST_ASSERT_EQUAL(0xEE, mem[8 + off + len]); /* nothing written past the end */
+            TEST_ASSERT_EQUAL(0xEE, mem[7 + off]);       /* ... or before it */
+            fl_mem_read(out, (uintptr_t)&mem[8 + off], len);
+            TEST_ASSERT(memcmp(out, src, len) == 0);
+        }
+    }
+}
+void test_read_command_returns_a_register_sized_value(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+    static volatile uint32_t reg = 0x11223344; /* stands in for a device register */
+    char addr[32];
+    snprintf(addr, sizeof(addr), "0x%lX", (unsigned long)(uintptr_t)&reg);
+    const char* argv[] = {"fl", "-c", "read", "-a", addr, "-l", "4"};
+    mock_output_reset();
+    TEST_ASSERT_EQUAL(FL_OK, fl_exec_cmd(&test_ctx, 7, argv));
+    TEST_ASSERT(mock_output_contains("READ 4 bytes"));
+    TEST_ASSERT(mock_output_contains("RDMiEQ==")); /* 44 33 22 11 */
+}
 void test_force_option_is_gone(void) {
     setup_loader();
     fl_init(&test_ctx);
@@ -2946,6 +2988,9 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_write_crc_mismatch);
     RUN_TEST(test_loader_cmd_write_no_data);
     RUN_TEST(test_loader_cmd_write_zero_addr);
+    RUN_TEST(test_mem_access_width_follows_address_and_length);
+    RUN_TEST(test_mem_read_write_copy_every_alignment);
+    RUN_TEST(test_read_command_returns_a_register_sized_value);
     RUN_TEST(test_force_option_is_gone);
     RUN_TEST(test_commands_with_a_request_crc_refuse_to_run_without_it);
     RUN_TEST(test_all_variants_need_no_crc);
