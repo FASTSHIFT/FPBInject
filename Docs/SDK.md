@@ -125,9 +125,10 @@ API and CLI JSON output. For example:
 
 ```python
 info = client.info()
-# {"success": True, "info": {"num_comparators": 6, ...}}
+# {"success": True, "info": {"fpb_version": 2, "total_slots": 8,
+#                            "active_slots": 0, "slots": [...], ...}, ...}
 if info["success"]:
-    print(info["info"]["num_comparators"])
+    print(info["info"]["fpb_detail"], info["info"]["active_slots"])
 ```
 
 Errors raise exceptions:
@@ -187,8 +188,9 @@ client.unpatch(all=True)           # remove all patches
 ## Memory
 
 ```python
-client.mem_read(0x20000000, 16)             # {"data": "..."} (hex by default)
-client.mem_read(0x20000000, 16, fmt="u32")  # 32-bit words
+client.mem_read(0x20000000, 16)             # fmt="hex": "hex_dump" (proxy) / "data" (direct)
+client.mem_read(0x20000000, 16, fmt="raw")  # "data": hex string
+client.mem_read(0x20000000, 16, fmt="u32")  # "words": ["0x...", ...]
 client.mem_write(0x20000000, "deadbeef")    # hex bytes
 client.mem_dump(0x20000000, 4096, "dump.bin")  # region -> local file
 ```
@@ -414,12 +416,13 @@ for _ in range(50):                          # bounded loop
 | `mem_dump(addr, length, out_path)` | proxy, direct | Dump region to file |
 | `exec_cmd(cmd, *, timeout=None, ack_timeout=1.0, max_retries=None)` | proxy, direct | Run a shell command on the device |
 | `serial_send(data)` | proxy, direct | Send serial data |
-| `serial_read(since=0)` | proxy, direct | Read serial log |
+| `serial_read(since=0, *, timeout=1.0)` | proxy, direct | Read serial log (`raw_data` / `raw_next`) |
+| `serial_read_window(since=0, *, max_bytes=4096, tail=0, drop=False)` | proxy | Bounded, cursor-paged serial read |
 | `wake()` | proxy, direct | Wake a sleeping device |
 | `file_list(path="/")` | proxy, direct | List directory |
 | `file_stat(path)` | proxy, direct | File info |
-| `file_download(remote, local)` | proxy, direct | Download file |
-| `file_upload(local, remote)` | proxy, direct | Upload file |
+| `file_download(remote, local, progress=None)` | proxy, direct | Download file |
+| `file_upload(local, remote, progress=None)` | proxy, direct | Upload file |
 | `file_remove(path)` | proxy, direct | Delete file |
 | `file_mkdir(path)` | proxy, direct | Create directory |
 | `file_rename(old, new)` | proxy, direct | Rename |

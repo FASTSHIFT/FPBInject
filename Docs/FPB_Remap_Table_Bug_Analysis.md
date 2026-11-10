@@ -3,6 +3,7 @@
 **日期**: 2026-02-07  
 **修复者**: GitHub Copilot  
 **影响版本**: fpb_inject.c 修复前版本
+**状态**: 已修复并合入；本文是历史分析记录，下面的代码片段为修复时的简化示意，当前实现见 `Source/fpb_inject.c`（返回值类型已改为 `fpb_result_t`）。
 
 ---
 
@@ -114,7 +115,7 @@ static uint32_t g_fpb_remap_table[FPB_REMAP_TABLE_SIZE];
 
 ```c
 // ✅ 修复后
-int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) {
+fpb_result_t fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) {
     uint32_t jump_instr = generate_b_w_instruction(original_addr, patch_addr);
     
     /* Store jump instruction at correct index for this comparator */
@@ -130,7 +131,7 @@ int fpb_set_patch(uint8_t comp_id, uint32_t original_addr, uint32_t patch_addr) 
 
 ```c
 // ✅ 修复后
-int fpb_clear_patch(uint8_t comp_id) {
+fpb_result_t fpb_clear_patch(uint8_t comp_id) {
     FPB_COMP(comp_id) = 0;
     g_fpb_remap_table[comp_id] = 0;  // 直接使用 comp_id
     ...
@@ -180,9 +181,9 @@ int fpb_clear_patch(uint8_t comp_id) {
 
 ### 调试技巧
 
-1. 使用 PDF 解析脚本 (`Tools/extract_fpb_section.py`) 快速检索 ARM 手册中的相关章节
+1. 用 PDF 解析脚本 (`Tools/pdf_parser.py`) 从 `Docs/DDI0403E_e_armv7m_arm.pdf` 快速检索相关章节（C1.11）
 2. 对照硬件手册逐行验证寄存器配置
-3. 使用 `fpb_cli.py info` 命令检查 FPB 状态
+3. 使用 `fpbinject info` 命令检查 FPB 状态（`fpb_detail`、各 slot 的 COMP 值）
 
 ---
 
@@ -191,7 +192,7 @@ int fpb_clear_patch(uint8_t comp_id) {
 - `Source/fpb_inject.c` - FPB 驱动实现
 - `Source/fpb_inject.h` - FPB 驱动头文件
 - `Docs/DDI0403E_e_armv7m_arm.pdf` - ARM ARMv7-M 架构参考手册
-- `Tools/extract_fpb_section.py` - PDF 章节提取工具
+- `Tools/pdf_parser.py` - PDF 章节提取工具
 
 ---
 

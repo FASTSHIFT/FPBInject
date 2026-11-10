@@ -1,5 +1,11 @@
 # FPBInject 函数注入机制整改方案
 
+> **状态：已实现。** 本文保留为设计记录，描述的"当前实现"是整改前的旧方式（函数被重命名）。现行行为：
+> - 用 `/* FPB_INJECT */` 标记函数，函数名保持不变，工具自动补 `__attribute__((section(".fpb.text"), used))`（已写了该属性则不重复添加）。
+> - 链接脚本只对 `.fpb.text` 使用 `KEEP`；`.fpb.data` / `.fpb.rodata` 没有采用，补丁用到的数据由普通的 `.rodata` / `.data` / `.bss` 段放在代码之后。
+> - 链接时 `--allow-multiple-definition` 加 `--just-symbols=<firmware.elf>`，补丁里的同名定义优先于固件符号。
+> - 用法见 [CLI](CLI.md) 和 [WebServer](WebServer.md)；实现见 `Tools/WebServer/core/patch_generator.py` 和 `core/compiler.py`。
+
 ## 1. 问题分析
 
 ### 1.1 当前实现方式
@@ -162,9 +168,9 @@ def find_patch_functions(self, source_content: str) -> list:
 
 | Section | 用途 |
 |---------|------|
-| `.fpb.text` | 注入的代码 |
-| `.fpb.data` | 注入代码使用的数据 |
-| `.fpb.rodata` | 只读数据 |
+| `.fpb.text` | 注入的代码（已采用） |
+| `.fpb.data` | 注入代码使用的数据（未采用，数据走 `.data`） |
+| `.fpb.rodata` | 只读数据（未采用，走 `.rodata`） |
 
 ---
 
@@ -192,7 +198,7 @@ def find_patch_functions(self, source_content: str) -> list:
 
 1. 更新 README.md
 2. 更新 Docs/CLI.md
-3. 更新 Docs/WebServer.md
+3. 更新 Docs/WebServer.md（均已完成）
 
 ---
 

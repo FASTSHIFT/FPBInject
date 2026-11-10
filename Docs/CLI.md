@@ -4,7 +4,7 @@ A lightweight command-line interface for ARM binary patching designed for AI age
 
 ## Overview
 
-`fpb_cli.py` is a pure CLI tool located at `Tools/WebServer/fpb_cli.py`. All commands output JSON for easy parsing by AI assistants or scripts.
+`fpbinject` is a pure CLI tool installed with the `fpbinject` Python package (entry point `fpbinject.cli.fpb_cli:main`, source in `Tools/WebServer/cli/`). All commands output JSON for easy parsing by AI assistants or scripts.
 
 Key design principles:
 - **Offline ELF analysis** (analyze/disasm/search/compile) works without any device or server.
@@ -15,31 +15,52 @@ Key design principles:
 
 - Python 3.8+
 - ARM GCC toolchain (`arm-none-eabi-gcc`) — for offline compilation
-- pyserial (`pip install pyserial`) — for device communication
 - Optional: [Ghidra](https://ghidra-sre.org/) — for decompilation
 
 ## Installation
 
 ```bash
-cd Tools/WebServer
-pip install pyserial
+pip install fpbinject          # or: pip install --pre fpbinject
 ```
+
+This installs two commands: `fpbinject` (this CLI) and `fpbinject-server` (the WebServer). Python dependencies such as `pyserial` come with the package. From a source checkout, run `pip install .` in the repository root.
 
 ## Global Options
 
 ```
-fpb_cli.py [OPTIONS] <command> [args...]
+fpbinject [OPTIONS] <command> [args...]
 
-Options:
+General:
   -v, --verbose              Enable verbose output
+  --quiet                    Suppress stderr transfer notices/progress
+                             (stdout JSON only)
   --version                  Show version
-  --port, -p <device>        Serial port (optional in proxy mode, see below)
-  --baudrate, -b <rate>      Serial baudrate (default: 115200)
   --elf <path>               Path to ELF file
   --compile-commands <path>  Path to compile_commands.json
-  --tx-chunk-size <bytes>    TX fragment size (0=disabled, default: 0)
-  --tx-chunk-delay <secs>    Delay between TX fragments (default: 0.005)
-  --max-retries <num>        Max retry attempts for file transfer (default: 10)
+
+Connection (only needed to open a port when no device is connected yet):
+  --port, -p <device>        Serial port (optional in proxy mode, see below)
+  --baudrate, -b <rate>      Serial baudrate (default: 115200)
+  --auto-connect             Connect to the port on startup
+  --data-bits <5|6|7|8>      Data bits (default: 8)
+  --parity <none|even|odd|mark|space>   (default: none)
+  --stop-bits <1|1.5|2>      Stop bits (default: 1)
+  --flow-control <none|rtscts|dsrdtr|xonxoff>   (default: none)
+  --dtr-on-connect           Initial DTR state on connect
+  --rts-on-connect           Initial RTS state on connect
+
+Transfer tuning (run `doctor` to get suggested values):
+  --upload-chunk-size <bytes>     PC -> device block size (16-512, default: 64)
+  --download-chunk-size <bytes>   Device -> PC block size (128-8192, default: 512)
+  --serial-tx-fragment-size <bytes>   TX fragment size (0=disabled, 0-256,
+                                      default: 0; alias --tx-chunk-size)
+  --serial-tx-fragment-delay <seconds>   Delay between TX fragments (0.001-0.1,
+                                        default: 0.002; alias --tx-chunk-delay)
+  --transfer-max-retries <num>   Retries for file transfer and exec when a
+                                 request is damaged or lost (0-20, default: 10;
+                                 alias --max-retries)
+
+Server selection:
   --direct                   Force direct serial (skip proxy detection)
   -s, --server <handle>      Pick a server by discovery handle, hostname,
                              or full URL. Examples:
@@ -123,24 +144,24 @@ The resolver runs through this list and stops at the first match:
 
 ```bash
 # On the machine with the device (B): start WebServer
-./main.py --host 0.0.0.0 --http-port 5500
+fpbinject-server --host 0.0.0.0 --http-port 5500
 #   🔑 Token: dd88d5df
 
 # On the controlling machine (A) — pick the server by hostname or handle:
 export FPB_TOKEN=dd88d5df
 export FPB_SERVER=B-host:5500           # use this server for the whole shell
-fpb_cli.py info
-fpb_cli.py mem-read 0x20000000 64
-fpb_cli.py serial-send "ps"
+fpbinject info
+fpbinject mem-read 0x20000000 64
+fpbinject serial-send "ps"
 
 # Or per-command:
-fpb_cli.py -s B-host:5500 info
+fpbinject -s B-host:5500 info
 
 # If the remote server has no device connected yet:
-fpb_cli.py -s B-host:5500 --port /dev/ttyACM0 connect
+fpbinject -s B-host:5500 --port /dev/ttyACM0 connect
 
 # URL still works when DNS-style names aren't available:
-fpb_cli.py -s http://192.168.1.20:5500 info
+fpbinject -s http://192.168.1.20:5500 info
 ```
 
 Notes:
@@ -160,7 +181,7 @@ The discovery step browses `_fpbinject._tcp.local.`. Three behaviours worth know
 ### `discover` — list visible servers
 
 ```bash
-fpb_cli.py discover [--timeout 3.0] [--json]
+fpbinject discover [--timeout 3.0] [--json]
 ```
 
 Default output is a human-friendly table:
@@ -174,7 +195,7 @@ bench:5500    http://192.168.1.20:5500 token  sensor  1.6.6
 
 `--json` returns a machine-readable list (used to be the default).
 
-For the full protocol contract see [Tools/WebServer/Docs/Discovery.md](../Tools/WebServer/Docs/Discovery.md).
+For the full protocol contract see [Tools/WebServer/docs/mdns_discovery_protocol.md](../Tools/WebServer/docs/mdns_discovery_protocol.md).
 
 ## Commands
 
@@ -183,7 +204,7 @@ For the full protocol contract see [Tools/WebServer/Docs/Discovery.md](../Tools/
 #### `analyze` - Analyze a function
 
 ```bash
-fpb_cli.py analyze <elf_path> <func_name>
+fpbinject analyze <elf_path> <func_name>
 ```
 
 Returns address, signature, and assembly line count.
@@ -191,13 +212,13 @@ Returns address, signature, and assembly line count.
 #### `disasm` - Get disassembly
 
 ```bash
-fpb_cli.py disasm <elf_path> <func_name>
+fpbinject disasm <elf_path> <func_name>
 ```
 
 #### `decompile` - Decompile to pseudo-C
 
 ```bash
-fpb_cli.py decompile <elf_path> <func_name>
+fpbinject decompile <elf_path> <func_name>
 ```
 
 Requires Ghidra. Set `ghidra_path` in config or ensure `analyzeHeadless` is in PATH.
@@ -205,13 +226,13 @@ Requires Ghidra. Set `ghidra_path` in config or ensure `analyzeHeadless` is in P
 #### `signature` - Get function signature
 
 ```bash
-fpb_cli.py signature <elf_path> <func_name>
+fpbinject signature <elf_path> <func_name>
 ```
 
 #### `search` - Search for functions
 
 ```bash
-fpb_cli.py search <elf_path> <pattern>
+fpbinject search <elf_path> <pattern>
 ```
 
 Returns up to 20 matching symbols with addresses.
@@ -219,7 +240,7 @@ Returns up to 20 matching symbols with addresses.
 #### `get-symbols` - Get all symbols from ELF
 
 ```bash
-fpb_cli.py get-symbols <elf_path> [--filter <pattern>] [--limit <num>]
+fpbinject get-symbols <elf_path> [--filter <pattern>] [--limit <num>]
 ```
 
 More comprehensive than `search` — returns all symbol types via `nm`.
@@ -227,7 +248,7 @@ More comprehensive than `search` — returns all symbol types via `nm`.
 #### `compile` - Compile patch (offline validation)
 
 ```bash
-fpb_cli.py compile <source_file> --elf <elf> --compile-commands <path> [--addr <base>]
+fpbinject compile <source_file> --elf <elf> --compile-commands <path> [--addr <base>]
 ```
 
 Verifies the patch compiles correctly without needing a device.
@@ -237,19 +258,19 @@ Verifies the patch compiles correctly without needing a device.
 #### `connect` - Connect to device
 
 ```bash
-fpb_cli.py --port /dev/ttyACM0 connect
+fpbinject --port /dev/ttyACM0 connect
 ```
 
 #### `disconnect` - Disconnect from device
 
 ```bash
-fpb_cli.py disconnect
+fpbinject disconnect
 ```
 
 #### `server-stop` - Stop CLI-launched WebServer
 
 ```bash
-fpb_cli.py server-stop [--server-port <port>]
+fpbinject server-stop [--server-port <port>]
 ```
 
 ### Device Commands (Requires Device)
@@ -257,7 +278,7 @@ fpb_cli.py server-stop [--server-port <port>]
 #### `info` - Get device FPB info
 
 ```bash
-fpb_cli.py info
+fpbinject info
 ```
 
 Returns FPB version, slot count, active patches, and build time.
@@ -265,7 +286,7 @@ Returns FPB version, slot count, active patches, and build time.
 #### `inject` - Inject patch to device
 
 ```bash
-fpb_cli.py inject <target_func> <source_file> [options]
+fpbinject inject <target_func> <source_file> [options]
 
 Options:
   --mode <mode>   Patch mode: trampoline|debugmon|direct (default: trampoline)
@@ -275,31 +296,40 @@ Options:
 
 **Example:**
 ```bash
-fpb_cli.py --elf firmware.elf --compile-commands build/compile_commands.json \
+fpbinject --elf firmware.elf --compile-commands build/compile_commands.json \
     inject digitalWrite patch.c
 ```
 
 #### `unpatch` - Remove patch
 
 ```bash
-fpb_cli.py unpatch --comp <slot>
-fpb_cli.py unpatch --all
+fpbinject unpatch --comp <slot>
+fpbinject unpatch --all
 ```
 
 #### `test-serial` - Test serial throughput
 
 ```bash
-fpb_cli.py test-serial [--start-size 16] [--max-size 4096] [--timeout 2.0]
+fpbinject test-serial [--start-size 16] [--max-size 4096] [--timeout 2.0] \
+    [--trials 8] [--min-success-rate 1.0]
 ```
 
-3-phase probing to find optimal transfer parameters.
+3-phase probing to find the largest block size the link carries reliably. Each size is sampled `--trials` times and accepted only if the success fraction reaches `--min-success-rate`.
+
+#### `doctor` - Diagnose serial reliability
+
+```bash
+fpbinject doctor [--start-size 16] [--max-size 512] [--timeout 2.0] [--trials 8]
+```
+
+Probes the link and prints copy-paste tuning flags (`--upload-chunk-size`, `--serial-tx-fragment-size`, ...). Run it when transfers fail with CRC errors or timeouts.
 
 ### Serial I/O Commands
 
 #### `serial-send` - Send data to device
 
 ```bash
-fpb_cli.py serial-send <data> [--no-read] [--timeout 1.0]
+fpbinject serial-send <data> [--no-read] [--timeout 1.0]
 ```
 
 > WARNING: Avoid sending `fl` commands directly — use `inject`/`unpatch`/`info` instead.
@@ -307,29 +337,34 @@ fpb_cli.py serial-send <data> [--no-read] [--timeout 1.0]
 #### `serial-read` - Read serial output
 
 ```bash
-fpb_cli.py serial-read [--timeout 1.0] [--lines 50] [--since <cursor>]
+fpbinject serial-read [--timeout 1.0] [--lines 50] [--since <cursor>] \
+    [--max-bytes 4096] [--tail <n>] [--drop] [--grep <regex>]
 ```
 
-`--since` enables incremental reads: pass the `raw_next` value from the previous response to get only new data.
+- `--since` enables incremental reads: pass the `next` value from the previous response to get only new data.
+- `--max-bytes` caps the returned data (default 4096).
+- `--tail <n>` returns only the newest `n` bytes and ignores `--since`.
+- `--drop` skips the buffered backlog and only advances the cursor.
+- `--grep <regex>` filters on the server (`re.search`); only matching entries count against `--tail` / `--max-bytes`. An invalid regex returns `success: false` with `invalid_grep: true`.
 
 ### Memory Access Commands
 
 #### `mem-read` - Read device memory
 
 ```bash
-fpb_cli.py mem-read <addr> <length> [--fmt hex|raw|u32]
+fpbinject mem-read <addr> <length> [--fmt hex|raw|u32]
 ```
 
 #### `mem-write` - Write to device memory
 
 ```bash
-fpb_cli.py mem-write <addr> <hex_data>
+fpbinject mem-write <addr> <hex_data>
 ```
 
 #### `mem-dump` - Dump memory to file
 
 ```bash
-fpb_cli.py mem-dump <addr> <length> <output_file>
+fpbinject mem-dump <addr> <length> <output_file>
 ```
 
 ### Command Execution
@@ -337,7 +372,7 @@ fpb_cli.py mem-dump <addr> <length> <output_file>
 #### `exec` - Run a shell command on the device
 
 ```bash
-fpb_cli.py exec "<command line>" [--timeout 10]
+fpbinject exec "<command line>" [--timeout 10]
 ```
 
 The command line is sent Base64-encoded with a CRC, so quotes, spaces and shell metacharacters reach the device unchanged. A request that is damaged or lost is resent (the retry budget is the same `--transfer-max-retries` used by file transfer); once the device has started the command it is never sent again, so non-idempotent commands (`rm`, `reboot`, ...) do not run twice.
@@ -362,70 +397,82 @@ The command line is sent Base64-encoded with a CRC, so quotes, spaces and shell 
 - The host does not check the command length (same as the `--path` commands); the limit is the device line buffer (1024 characters on the NuttX port). Upload a script with `file-upload` and run it instead of passing long commands.
 - The device firmware needs exec support (NuttX: `CONFIG_FPBINJECT_EXEC_INHERIT_PRIORITY=y`, the default, starts commands at the priority of the fl task; with it off, `CONFIG_SYSTEM_SYSTEM=y` is needed and `system()` runs them at `CONFIG_SYSTEM_SYSTEM_PRIORITY`); `info` reports `Exec: enabled|disabled`, and so does the device-info popup of the web UI. There is no separate switch on the WebServer: whoever can reach it can already type into the device shell with `serial-send`, so `exec` adds reliability (CRC, no double execution, exit status), not new access.
 
+### Virtual Serial Passthrough
+
+Expose the server's serial port as a PTY so other tools (`cat`, `minicom`, `tail`) can read the log while the server owns the device.
+
+```bash
+fpbinject vserial-start [--symlink <path>]
+fpbinject vserial-status
+fpbinject vserial-stop
+```
+
+Without `--symlink` the server config decides the path (`auto` derives it from the port name, e.g. `/dev/ttyACM0` -> `/tmp/fpb-ttyACM0`). These commands need a running server.
+
 ### File Transfer Commands
 
 #### `file-list` - List device directory
 
 ```bash
-fpb_cli.py file-list [path]
+fpbinject file-list [path]
 ```
 
 #### `file-stat` - Get file info
 
 ```bash
-fpb_cli.py file-stat <path>
+fpbinject file-stat <path>
 ```
 
 #### `file-download` - Download file from device
 
 ```bash
-fpb_cli.py file-download <remote_path> <local_path>
+fpbinject file-download <remote_path> <local_path>
 ```
 
 #### `file-upload` - Upload file to device
 
 ```bash
-fpb_cli.py file-upload <local_path> <remote_path>
+fpbinject file-upload <local_path> <remote_path>
 ```
 
 #### `file-remove` - Remove file on device
 
 ```bash
-fpb_cli.py file-remove <path>
+fpbinject file-remove <path>
 ```
 
 #### `file-mkdir` - Create directory on device
 
 ```bash
-fpb_cli.py file-mkdir <path>
+fpbinject file-mkdir <path>
 ```
 
 #### `file-rename` - Rename file/directory on device
 
 ```bash
-fpb_cli.py file-rename <old_path> <new_path>
+fpbinject file-rename <old_path> <new_path>
 ```
 
 ## Typical Workflow
 
 ```bash
 # Step 1: Search for target functions (offline)
-fpb_cli.py search firmware.elf "write"
+fpbinject search firmware.elf "write"
 
 # Step 2: Analyze the target function
-fpb_cli.py analyze firmware.elf digitalWrite
+fpbinject analyze firmware.elf digitalWrite
 
 # Step 3: Compile and validate patch offline
-fpb_cli.py compile patch.c --elf firmware.elf --compile-commands build/compile_commands.json
+fpbinject compile patch.c --elf firmware.elf --compile-commands build/compile_commands.json
 
 # Step 4: Inject to device
-fpb_cli.py --port /dev/ttyACM0 --elf firmware.elf \
+fpbinject --port /dev/ttyACM0 --elf firmware.elf \
     --compile-commands build/compile_commands.json \
     inject digitalWrite patch.c
 
 # Step 5: Verify or rollback
-fpb_cli.py info
-fpb_cli.py unpatch --comp 0
+fpbinject info
+fpbinject unpatch --comp 0
 ```
 
 ## Writing Patch Code
@@ -457,6 +504,8 @@ The function name must match the target function you want to replace in the firm
 
 FPB v2 devices auto-switch to `debugmon` mode regardless of the requested mode.
 
+On ARMv8-M parts with TrustZone, `debugmon` needs the Non-secure side to own the DebugMonitor. If `inject` fails with `DebugMonitor init failed`, see [DebugMonitor unavailable on TrustZone targets](Architecture.md#debugmonitor-unavailable-on-trustzone-targets).
+
 ## Output Format
 
 All commands return JSON to stdout:
@@ -471,11 +520,11 @@ Verbose logging goes to stderr (`-v` flag).
 ## Tips for AI Agents
 
 1. Check the `success` field before processing results.
-2. Use `jq` for filtering: `fpb_cli.py search firmware.elf gpio | jq '.symbols[].name'`
+2. Use `jq` for filtering: `fpbinject search firmware.elf gpio | jq '.symbols[].name'`
 3. **`--port` is optional** when a WebServer is already running with a connected device.
 4. FPB slot count varies by device (typically 6 for v1, 8 for v2).
 5. Patch functions MUST include `/* FPB_INJECT */` marker comment.
-6. For remote devices, set `FPB_TOKEN` env and use `--server-url`.
+6. For remote devices, set the `FPB_TOKEN` env var and use `-s <handle|URL>`.
 7. Paths in `inject` via proxy refer to the **server's** filesystem.
 
 ## Related Documentation

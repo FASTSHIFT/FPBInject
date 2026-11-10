@@ -48,8 +48,8 @@ graph TB
         R_PATCH["patch.py<br/>/patch/source"]
         R_SYM["symbols.py"]
         R_TRANS["transfer.py"]
-        R_GDB["gdb.py"]
-        R_WATCH["watch.py"]
+        R_WATCH["watch.py · watch_expr.py"]
+        R_LOGS["logs.py<br/>/serial /logs"]
     end
 
     subgraph Core["Core Modules"]
@@ -77,7 +77,7 @@ graph TB
     R_PATCH --> PGEN
     R_SYM --> GS
     R_TRANS --> FT
-    R_GDB --> GM
+    R_CONN -->|"start on connect"| GM
 
     FPI --> PROTO
     FPI --> COMP
@@ -138,7 +138,7 @@ sequenceDiagram
     participant FW as FileWatcher
     participant FPI as FPBInject
     participant PG as PatchGenerator
-    participant GDB as GDBSession
+    participant GDB as Symbols (nm, GDB fallback)
     participant CC as Compiler
     participant Proto as FPBProtocol
     participant DW as DeviceWorker
@@ -150,7 +150,7 @@ sequenceDiagram
     FW->>FPI: inject(target_func, source)
 
     Note over FPI: 1. Symbol Resolution
-    FPI->>GDB: lookup_symbol(target_func)
+    FPI->>GDB: lookup(target_func)
     GDB-->>FPI: orig_addr = 0x08001234
 
     Note over FPI: 2. First Compile (placeholder addr)
@@ -158,9 +158,9 @@ sequenceDiagram
     CC-->>FPI: code_size = 256 bytes
 
     Note over FPI: 3. Device Memory Allocation
-    FPI->>Proto: send_cmd("alloc --size 264")
+    FPI->>Proto: send_cmd("alloc --size 264 --crc CRC")
     Proto->>DW: Submit to worker thread
-    DW->>Dev: fl --cmd alloc --size 264
+    DW->>Dev: fl --cmd alloc --size 264 --crc CRC
     Dev-->>DW: [FLOK] Allocated 264 at 0x20001000
     DW-->>Proto: Parse response
     Proto-->>FPI: alloc_addr = 0x20001000
@@ -170,7 +170,7 @@ sequenceDiagram
     CC-->>FPI: binary + symbols
 
     Note over FPI: 5. Chunked Upload
-    loop Every 512 bytes
+    loop Every chunk (upload_chunk_size, default 64 B)
         FPI->>Proto: upload(offset, chunk, crc)
         Proto->>DW: Submit to worker thread
         DW->>Dev: fl --cmd upload --addr OFFSET --data BASE64 --crc CRC
@@ -178,9 +178,9 @@ sequenceDiagram
     end
 
     Note over FPI: 6. Activate Patch
-    FPI->>Proto: send_cmd("tpatch --comp 0 --orig 0x08001234 --target 0x20001000")
+    FPI->>Proto: send_cmd("tpatch --comp 0 --orig 0x08001234 --target 0x20001000 --crc CRC")
     Proto->>DW: Submit to worker thread
-    DW->>Dev: fl --cmd tpatch ...
+    DW->>Dev: fl --cmd tpatch ...  (dpatch on FPB v2)
     Dev->>Dev: FPB REMAP → Trampoline → RAM
     Dev-->>DW: [FLOK] Trampoline 0: 0x08001234 → 0x20001000
 
@@ -209,8 +209,8 @@ graph LR
 
     subgraph L2["Transport Layer"]
         UART["UART (pyserial ↔ fl_stream)"]
-        CHUNK["Chunked TX (tx_chunk_size)"]
-        RETRY["Auto Retry (max_retries)"]
+        CHUNK["Fragmented TX (serial_tx_fragment_size)"]
+        RETRY["Auto Retry (transfer_max_retries)"]
     end
 
     subgraph L1["Physical Layer"]
@@ -237,7 +237,7 @@ graph TB
         GM["GDBManager"]
         GS["GDBSession<br/>(pygdbmi)"]
         GB_INT["Internal RSP Bridge<br/>(Auto-assigned Port)"]
-        GB_EXT["External RSP Bridge<br/>(Fixed Port 3333)"]
+        GB_EXT["External RSP Bridge<br/>(external_gdb_port, default 3333)"]
         PROTO2["FPBProtocol"]
         DW2["DeviceWorker"]
     end
@@ -269,16 +269,16 @@ graph TB
     style DWARF2 fill:#ffd,stroke:#aa0
 ```
 
-The core value of GDB in FPBInject is not debugging, but serving as a **DWARF parsing engine**:
+The core value of GDB in FPBInject is not debugging, but serving as a **DWARF parsing engine**. It is started in the background when a device connects. Function addresses are normally resolved from a cached `nm` listing of the ELF; GDB is only asked when `nm` does not know the symbol.
 
 | Purpose | GDB Command | Caller |
 |---------|-------------|--------|
-| Symbol address resolution | `info address func_name` | `FPBInject._resolve_symbol_addr()` |
+| Symbol address resolution (fallback) | `info address func_name` | `FPBInject._resolve_symbol_addr()` |
 | Type information query | `ptype struct_name` | Frontend Watch expressions |
 | Struct layout | `print sizeof(struct)` | Frontend symbol search |
 | Function signature extraction | `whatis func_name` | CLI `signature` command |
 
-The internal RSP Bridge forwards GDB memory read/write requests (`m`/`M` packets) to device serial commands (`fl --cmd read/write`), enabling GDB to transparently access device memory. The external RSP Bridge (port 3333) allows IDEs to connect directly.
+The internal RSP Bridge forwards GDB memory read/write requests (`m`/`M` packets) to device serial commands (`fl --cmd read/write`), enabling GDB to transparently access device memory. The external RSP Bridge allows IDEs to connect directly; its port is the `external_gdb_port` setting (default 3333, `0` disables it).
 
 ## FPB Unit
 
@@ -381,7 +381,7 @@ For special cases with direct RAM REMAP support.
 
 ## Memory Allocation
 
-FPBInject supports two allocation modes, selected at build time via `FL_ALLOC_MODE`.
+FPBInject supports two allocation modes. CMake builds select one with `FL_ALLOC_MODE` (`STATIC` is the default); the NuttX port selects it with `CONFIG_FPBINJECT_BUF_SIZE` (see [NuttX Integration](#nuttx-integration)).
 
 ### Static Mode (Default, `FL_ALLOC_STATIC`)
 
@@ -504,6 +504,7 @@ The request CRC (`-r` / `--crc`) is required on every command above that lists i
 
 [FLOK] ... data=BASE64    # Success with binary payload
 [FLEND]                   # End of multi-line response
+[FLEXIT]                  # The interactive fl loop was left (NuttX port)
 ```
 
 CRC-16 covers `addr(4B) + len(4B) + payload` for upload/read/write commands, and `comp(4B) + orig(4B) + target(4B)` for patch commands.
@@ -580,6 +581,22 @@ Replace vendor's PANIC handler with NuttX's handler:
 ```c
 irq_attach(NVIC_IRQ_DBGMONITOR, arm_dbgmonitor, NULL);
 ```
+
+### Kconfig options
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `FPBINJECT` | n | Build the `fl` application |
+| `FPBINJECT_PRIORITY` / `FPBINJECT_STACKSIZE` | 110 / 8192 | Task priority and stack size of `fl` |
+| `FPBINJECT_BUF_SIZE` | -1 | Code buffer size. `-1`: allocate patches with libc `malloc`/`free` (dynamic). `> 0`: use a static buffer of that size |
+| `FPBINJECT_LINE_SIZE` | 1024 | Command line buffer of the interactive loop |
+| `FPBINJECT_EXEC_INHERIT_PRIORITY` | y | `exec` runs the command in a task at the priority of `fl`; when off, `exec` uses `system()` (needs `SYSTEM_SYSTEM`) |
+| `FPBINJECT_EXEC_STACKSIZE` | 4096 | Stack of that exec task |
+| `FPBINJECT_ENABLE_FPB` | y on Cortex-M3/M4/M7/M33/M55 | Use the FPB. Off on other targets (patch commands return `FL_ERR_DISABLED`) |
+| `FPBINJECT_ENABLE_TRAMPOLINE` | y | Trampoline mode (`tpatch`) |
+| `FPBINJECT_ENABLE_DEBUGMON` | y | DebugMonitor mode (`dpatch`) |
+
+Turning an option off defines `FL_NO_FPB`, `FPB_NO_TRAMPOLINE` or `FPB_NO_DEBUGMON` for the build.
 
 ### DebugMonitor unavailable on TrustZone targets
 
