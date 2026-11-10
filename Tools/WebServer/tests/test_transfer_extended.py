@@ -669,6 +669,7 @@ class TestDownloadRoute(TransferTestBase):
             (True, b"", "EOF"),
         ]
         mock_ft.fcrc.return_value = (True, 10, 0xBEEF)  # Wrong CRC
+        mock_ft.repair_download.return_value = (False, b"", "still differs")
         mock_ft.fclose.return_value = (True, "OK")
         mock_ft.get_stats.return_value = {"packet_loss_rate": "0.0"}
         mock_ft.fpb = self.mock_fpb
@@ -685,6 +686,41 @@ class TestDownloadRoute(TransferTestBase):
         results = [e for e in events if e.get("type") == "result"]
         self.assertFalse(results[-1]["success"])
         self.assertIn("CRC mismatch", results[-1]["error"])
+        self.assertIn("repair failed: still differs", results[-1]["error"])
+
+    @patch("fpbinject.app.routes.transfer._get_file_transfer")
+    def test_download_crc_mismatch_is_repaired(self, mock_get_ft):
+        """A CRC mismatch that repair_download fixes ends in a success."""
+        import base64
+
+        fixed = b"0123456789"
+        mock_ft = Mock()
+        mock_ft.upload_chunk_size = 64
+        mock_ft.download_chunk_size = 64
+        mock_ft.fstat.return_value = (True, {"size": 10, "type": "file"})
+        mock_ft.fopen.return_value = (True, "OK")
+        mock_ft.fread.side_effect = [
+            (True, b"01234x6789", ""),  # one byte from the wrong place
+            (True, b"", "EOF"),
+        ]
+        mock_ft.fcrc.return_value = (True, 10, 0xBEEF)  # differs from the local CRC
+        mock_ft.repair_download.return_value = (True, fixed, "repaired in 1 round(s)")
+        mock_ft.fclose.return_value = (True, "OK")
+        mock_ft.get_stats.return_value = {"packet_loss_rate": "0.0"}
+        mock_ft.fpb = self.mock_fpb
+        mock_ft.reset_stats = Mock()
+        mock_get_ft.return_value = mock_ft
+
+        response = self.client.post(
+            "/api/transfer/download",
+            json={"remote_path": "/data/test.txt"},
+            content_type="application/json",
+        )
+
+        events = self._parse_sse_events(response)
+        results = [e for e in events if e.get("type") == "result"]
+        self.assertTrue(results[-1]["success"])
+        self.assertEqual(base64.b64decode(results[-1]["data"]), fixed)
 
     @patch("fpbinject.app.routes.transfer._get_file_transfer")
     def test_download_cancel(self, mock_get_ft):

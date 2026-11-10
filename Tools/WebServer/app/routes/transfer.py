@@ -816,15 +816,25 @@ def api_transfer_download():
                             }
                         )
                     elif dev_crc != local_crc:
-                        ft.fclose()
-                        error_msg = f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}"
-                        result_holder["result"] = {
-                            "type": "result",
-                            "success": False,
-                            "error": error_msg,
-                            "crc_error": True,
-                        }
-                        return
+                        # Chunk CRCs only prove that a chunk arrived intact, not
+                        # that it came from the right place: fix what differs
+                        # instead of making the caller download everything again.
+                        fixed, repaired, why = ft.repair_download(file_data)
+                        if not fixed:
+                            ft.fclose()
+                            error_msg = (
+                                f"CRC mismatch: local 0x{local_crc:04X}, "
+                                f"device 0x{dev_crc:04X} (repair failed: {why})"
+                            )
+                            result_holder["result"] = {
+                                "type": "result",
+                                "success": False,
+                                "error": error_msg,
+                                "crc_error": True,
+                            }
+                            return
+                        file_data = repaired
+                        log_info(f"CRC mismatch repaired: {why}")
                     else:
                         log_info(f"CRC verified: 0x{dev_crc:04X}")
 

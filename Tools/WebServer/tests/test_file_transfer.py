@@ -562,11 +562,11 @@ class TestFileTransferUpload(unittest.TestCase):
         self.mock_fpb.send_fl_cmd.side_effect = [
             (True, "[FLOK] FOPEN /test.txt mode=w"),
             (False, "[FLERR] Disk full"),  # fwrite attempt 1
-            (True, "[FLOK] FSEEK"),  # fseek before retry 1
+            (True, "[FLOK] FSEEK 0"),  # fseek before retry 1
             (False, "[FLERR] Disk full"),  # fwrite retry 1
-            (True, "[FLOK] FSEEK"),  # fseek before retry 2
+            (True, "[FLOK] FSEEK 0"),  # fseek before retry 2
             (False, "[FLERR] Disk full"),  # fwrite retry 2
-            (True, "[FLOK] FSEEK"),  # fseek before retry 3
+            (True, "[FLOK] FSEEK 0"),  # fseek before retry 3
             (False, "[FLERR] Disk full"),  # fwrite retry 3
             (True, "[FLOK] FCLOSE"),
         ]
@@ -740,30 +740,15 @@ class TestFileTransferDownload(unittest.TestCase):
         self.assertEqual(data, test_data)
 
     def test_download_crc_mismatch(self):
-        """Test download fails on CRC mismatch."""
-        test_data = b"hello world"
-        b64_data = base64.b64encode(test_data).decode("ascii")
-        crc = crc16(test_data)
-        wrong_crc = 0x1234
-
-        # max_retries=0 so whole-file verification runs exactly once.
-        self.ft.max_retries = 0
-        self.mock_fpb.send_fl_cmd.side_effect = [
-            (True, f"[FLOK] FSTAT /test.txt size={len(test_data)} mtime=123 type=file"),
-            (True, "[FLOK] FOPEN /test.txt mode=r"),
-            (
-                True,
-                f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
-            ),
-            (True, "[FLOK] FREAD 0 bytes EOF"),
-            (True, "[FLOK] FCLOSE"),
-            (True, "[FLOK] FOPEN /test.txt mode=r"),
-            (True, f"[FLOK] FCRC offset=0 size={len(test_data)} crc=0x{wrong_crc:04X}"),
-            (True, "[FLOK] FCLOSE"),
-        ]
-        success, data, msg = self.ft.download("/test.txt")
+        """A download whose content cannot be repaired fails on the CRC."""
+        content = bytes(range(256)) * 8
+        dev = FileDevice(content, always_wrong_at={512})
+        ft = FileTransfer(dev, download_chunk_size=128)
+        ft.max_retries = 1
+        success, data, msg = ft.download("/test.txt")
         self.assertFalse(success)
         self.assertIn("CRC mismatch", msg)
+        self.assertIn("repair failed", msg)
 
     def test_download_stat_failure(self):
         """Test download with stat failure."""
@@ -800,11 +785,11 @@ class TestFileTransferDownload(unittest.TestCase):
             (True, "[FLOK] FSTAT /test.txt size=100 mtime=123 type=file"),
             (True, "[FLOK] FOPEN /test.txt mode=r"),
             (False, "[FLERR] Read error"),  # fread attempt 1
-            (True, "[FLOK] FSEEK"),  # fseek before retry 1
+            (True, "[FLOK] FSEEK 0"),  # fseek before retry 1
             (False, "[FLERR] Read error"),  # fread retry 1
-            (True, "[FLOK] FSEEK"),  # fseek before retry 2
+            (True, "[FLOK] FSEEK 0"),  # fseek before retry 2
             (False, "[FLERR] Read error"),  # fread retry 2
-            (True, "[FLOK] FSEEK"),  # fseek before retry 3
+            (True, "[FLOK] FSEEK 0"),  # fseek before retry 3
             (False, "[FLERR] Read error"),  # fread retry 3
             (True, "[FLOK] FCLOSE"),
         ]
@@ -1336,7 +1321,7 @@ class TestFileTransferSeek(unittest.TestCase):
         """Test fwrite seeks to correct position on retry."""
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] CRC mismatch"),  # First attempt fails
-            (True, "[FLOK] FSEEK"),  # Seek on retry
+            (True, "[FLOK] FSEEK 100"),  # Seek on retry
             (True, "[FLOK] FWRITE 10 bytes"),  # Retry succeeds
         ]
         success, msg = self.ft.fwrite(b"test data!", current_offset=100)
@@ -1355,7 +1340,7 @@ class TestFileTransferSeek(unittest.TestCase):
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] Timeout"),  # First attempt fails
-            (True, "[FLOK] FSEEK"),  # Seek on retry
+            (True, "[FLOK] FSEEK 200"),  # Seek on retry
             (
                 True,
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
@@ -1479,7 +1464,7 @@ class TestFileTransferLogCallback(unittest.TestCase):
         ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] CRC mismatch"),
-            (True, "[FLOK] FSEEK"),  # fseek on retry
+            (True, "[FLOK] FSEEK 100"),  # fseek on retry
             (True, "[FLOK] FWRITE 10 bytes"),
         ]
         ft.fwrite(b"test data!", current_offset=100)
@@ -1502,7 +1487,7 @@ class TestFileTransferLogCallback(unittest.TestCase):
                 True,
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{wrong_crc:04X} data={b64_data}",
             ),
-            (True, "[FLOK] FSEEK"),  # fseek on retry
+            (True, "[FLOK] FSEEK 200"),  # fseek on retry
             (
                 True,
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
@@ -1520,7 +1505,7 @@ class TestFileTransferLogCallback(unittest.TestCase):
         ft = FileTransfer(self.mock_fpb, log_callback=callback, max_retries=2)
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] CRC mismatch"),
-            (True, "[FLOK] FSEEK"),  # fseek on retry
+            (True, "[FLOK] FSEEK 512"),  # fseek on retry
             (True, "[FLOK] FWRITE 10 bytes"),
         ]
         ft.fwrite(b"test data!", current_offset=512)
@@ -1538,7 +1523,7 @@ class TestFileTransferLogCallback(unittest.TestCase):
 
         self.mock_fpb.send_fl_cmd.side_effect = [
             (False, "[FLERR] Timeout"),
-            (True, "[FLOK] FSEEK"),  # fseek on retry
+            (True, "[FLOK] FSEEK 100"),  # fseek on retry
             (
                 True,
                 f"[FLOK] FREAD {len(test_data)} bytes crc=0x{crc:04X} data={b64_data}",
@@ -2241,3 +2226,168 @@ class TestUploadWithLateReplies(unittest.TestCase):
         ft = FileTransfer(mock)
         ok, _ = ft.fwrite(b"abc", max_retries=0)
         self.assertFalse(ok)
+
+
+class FileDevice:
+    """Firmware model of a readable file.
+
+    ``wrong_at`` is a set of fread call numbers that return the bytes of the
+    wrong place in the file (as after a damaged fseek): the chunk CRC fits the
+    bytes, only their position is wrong. ``always_wrong_at`` is a set of file
+    offsets that are wrong on every read. ``bad_seeks`` is the number of fseek
+    commands that land on offset 20 and say so.
+    """
+
+    def __init__(
+        self, content, wrong_at=(), always_wrong_at=(), bad_seeks=0, silent_freads=()
+    ):
+        self.content = content
+        self.silent_freads = set(silent_freads)
+        self.wrong_at = set(wrong_at)
+        self.always_wrong_at = set(always_wrong_at)
+        self.bad_seeks = bad_seeks
+        self.pos = 0
+        self.freads = 0
+        self.fcrcs = 0
+        self.seeks = []
+
+    def send_fl_cmd(self, cmd, timeout=2.0, max_retries=3):
+        name = re.search(r"-c (\w+)", cmd).group(1)
+        if name == "fstat":
+            return True, f"[FLOK] FSTAT /f size={len(self.content)} mtime=1 type=file"
+        if name in ("fopen", "fclose"):
+            self.pos = 0
+            return True, f"[FLOK] {name.upper()}"
+        if name == "fseek":
+            want = int(re.search(r"-a (\d+)", cmd).group(1))
+            if self.bad_seeks > 0:
+                self.bad_seeks -= 1
+                self.pos = 20
+            else:
+                self.pos = want
+            self.seeks.append(want)
+            return True, f"[FLOK] FSEEK {self.pos}"
+        if name == "fread":
+            self.freads += 1
+            if self.freads in self.silent_freads:
+                return True, ""  # no reply within the timeout
+            n = int(re.search(r"-l (\d+)", cmd).group(1))
+            start = self.pos
+            seg = self.content[start : start + n]
+            if self.freads in self.wrong_at or start in self.always_wrong_at:
+                seg = self.content[start + 37 : start + 37 + n]
+            self.pos = start + len(seg)
+            if not seg:
+                return True, "[FLOK] FREAD 0 bytes EOF"
+            b64 = base64.b64encode(seg).decode("ascii")
+            return (
+                True,
+                f"[FLOK] FREAD {len(seg)} bytes crc=0x{crc16(seg):04X} data={b64}",
+            )
+        if name == "fcrc":
+            self.fcrcs += 1
+            from fpbinject.utils.crc import crc16_update
+
+            off = int(re.search(r"-a (\d+)", cmd).group(1))
+            length = int(re.search(r"-l (\d+)", cmd).group(1))
+            init = re.search(r"-r (0x[0-9A-Fa-f]+)", cmd)
+            seg = self.content[off : off + length]
+            crc = crc16_update(int(init.group(1), 16) if init else 0xFFFF, seg)
+            return True, f"[FLOK] FCRC offset={off} size={len(seg)} crc=0x{crc:04X}"
+        raise AssertionError(f"unexpected command {cmd}")
+
+
+class TestDownloadRepair(unittest.TestCase):
+    """A chunk read from the wrong place is fixed without a second download."""
+
+    CONTENT = bytes((i * 31 + 7) % 251 for i in range(100_000))
+
+    def _download(self, dev, chunk=500):
+        ft = FileTransfer(dev, download_chunk_size=chunk)
+        ft.max_retries = 2
+        return ft.download("/f"), ft
+
+    def test_clean_download_needs_no_repair(self):
+        dev = FileDevice(self.CONTENT)
+        (ok, data, msg), _ = self._download(dev)
+        self.assertTrue(ok, msg)
+        self.assertEqual(data, self.CONTENT)
+
+    def test_a_chunk_from_the_wrong_place_is_repaired(self):
+        for call in (1, 7, 60, 150, 199):
+            with self.subTest(wrong_read=call):
+                dev = FileDevice(self.CONTENT, wrong_at={call})
+                (ok, data, msg), _ = self._download(dev)
+                self.assertTrue(ok, msg)
+                self.assertEqual(data, self.CONTENT)
+
+    def test_several_wrong_chunks_far_apart(self):
+        dev = FileDevice(self.CONTENT, wrong_at={3, 80, 190})
+        (ok, data, msg), _ = self._download(dev)
+        self.assertTrue(ok, msg)
+        self.assertEqual(data, self.CONTENT)
+
+    def test_only_the_differing_pieces_are_read_again(self):
+        dev = FileDevice(self.CONTENT, wrong_at={120})
+        (ok, data, _), _ = self._download(dev)
+        self.assertTrue(ok)
+        total_chunks = len(self.CONTENT) // 500 + 1
+        # a second full download would double this
+        self.assertLess(dev.freads, total_chunks + 12)
+
+    def test_find_bad_ranges_names_the_piece(self):
+        dev = FileDevice(self.CONTENT)
+        ft = FileTransfer(dev)
+        data = bytearray(self.CONTENT)
+        data[70_000] ^= 0xFF
+        self.assertEqual(ft.find_bad_ranges(bytes(data)), [(69_632, 2048)])
+        self.assertEqual(ft.find_bad_ranges(self.CONTENT), [])
+
+    def test_stable_mismatch_stops_the_repeated_verify(self):
+        dev = FileDevice(self.CONTENT, wrong_at={5})
+        ft = FileTransfer(dev, download_chunk_size=500)
+        ft.max_retries = 10
+        ok, _, _ = ft.download("/f")
+        self.assertTrue(ok)
+        # 3 verify rounds would be 3 x 4 whole-file fcrc calls; the early stop
+        # and the repair together stay far below the eleven rounds of before
+        self.assertLess(dev.fcrcs, 40)
+
+
+class TestUnconfirmedSeek(unittest.TestCase):
+    """A resend never goes ahead from a position the device did not confirm."""
+
+    def test_fread_does_not_read_after_a_seek_that_missed(self):
+        content = bytes(range(200))
+        dev = FileDevice(content, silent_freads={1}, bad_seeks=99)
+        ft = FileTransfer(dev, download_chunk_size=50)
+        ok, data, msg = ft.fread(50, max_retries=1, current_offset=100)
+        self.assertFalse(ok)
+        self.assertIn("reposition", msg)
+        self.assertEqual(dev.freads, 1)  # the silent first read, nothing after
+
+    def test_fread_repeats_the_seek_until_it_lands(self):
+        content = bytes(range(200))
+        dev = FileDevice(content, silent_freads={1}, bad_seeks=2)
+        ft = FileTransfer(dev, download_chunk_size=50)
+        ok, data, msg = ft.fread(50, max_retries=1, current_offset=100)
+        self.assertTrue(ok, msg)
+        self.assertEqual(data, content[100:150])
+        self.assertEqual(dev.seeks, [100, 100, 100])
+
+    def test_fwrite_does_not_write_after_a_seek_that_missed(self):
+        mock = Mock()
+        sent = []
+
+        def reply(cmd, **kwargs):
+            sent.append(cmd)
+            if "-c fseek" in cmd:
+                return True, "[FLOK] FSEEK 20"
+            return False, "[FLERR] CRC mismatch: 0x1 != 0x2"
+
+        mock.send_fl_cmd = Mock(side_effect=reply)
+        ft = FileTransfer(mock)
+        ok, msg = ft.fwrite(b"abcdef", max_retries=1, current_offset=600)
+        self.assertFalse(ok)
+        self.assertIn("reposition", msg)
+        self.assertEqual(sum("-c fwrite" in c for c in sent), 1)

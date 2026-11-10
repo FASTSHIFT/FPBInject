@@ -25,6 +25,16 @@ from fpbinject.utils.crc import crc16, crc16_update
 
 logger = logging.getLogger(__name__)
 
+# Tries to confirm a seek before a resend is given up
+SEEK_ATTEMPTS = 3
+
+# Download repair: the device is compared with the local copy in segments of
+# REPAIR_SEGMENT bytes, and a differing segment again in pieces of REPAIR_PIECE
+# bytes, so only the pieces that really differ are read again.
+REPAIR_SEGMENT = 32 * 1024
+REPAIR_PIECE = 2 * 1024
+REPAIR_ROUNDS = 3
+
 
 def _sanitize_path(path: str) -> str:
     """Validate a path for the fl command line.
@@ -232,6 +242,29 @@ class FileTransfer:
         cmd = f"fl -c fopen --path {_format_path_arg(path)} -m {mode} -r 0x{crc:04X}"
         return self._send_cmd(cmd)
 
+    def _seek_for_retry(self, offset: int, op: str) -> bool:
+        """Put the device's file position back to ``offset`` before a resend.
+
+        A seek that did not land (the line was damaged on the wire, or the reply
+        does not confirm the offset) must not be ignored: the resend would then
+        read or write at the wrong position and still look fine, its own chunk
+        CRC being correct. The seek is idempotent, so it is simply repeated.
+
+        Returns False if the position is still unconfirmed after
+        ``SEEK_ATTEMPTS`` tries.
+        """
+        reply = ""
+        for n in range(1, SEEK_ATTEMPTS + 1):
+            ok, reply = self.fseek(offset, 0)
+            if ok:
+                return True
+            self._log(
+                f"[WARN] {op}: fseek to {offset} not confirmed "
+                f"({n}/{SEEK_ATTEMPTS}): {reply[-100:]!r}"
+            )
+        logger.error(f"{op}: cannot reposition to {offset}: {reply[-100:]!r}")
+        return False
+
     def fwrite(
         self, data: bytes, max_retries: int = None, current_offset: int = None
     ) -> Tuple[bool, str]:
@@ -265,10 +298,12 @@ class FileTransfer:
                     logger.warning(
                         f"fwrite retry {attempt}/{max_retries}, seeking to offset {current_offset}"
                     )
-                    seek_success, seek_msg = self.fseek(current_offset, 0)
-                    if not seek_success:
-                        logger.error(f"fseek failed during retry: {seek_msg}")
-                        # Continue anyway, maybe the write will work
+                    if not self._seek_for_retry(current_offset, "fwrite"):
+                        # writing at an unknown position would corrupt the file
+                        self.stats["other_errors"] += 1
+                        if attempt < max_retries:
+                            continue
+                        return False, f"Cannot reposition to offset {current_offset}"
 
             success, response = self._send_cmd(
                 cmd,
@@ -328,10 +363,17 @@ class FileTransfer:
                     logger.warning(
                         f"fread retry {attempt}/{max_retries}, seeking to offset {current_offset}"
                     )
-                    seek_success, seek_msg = self.fseek(current_offset, 0)
-                    if not seek_success:
-                        logger.error(f"fseek failed during retry: {seek_msg}")
-                        # Continue anyway, maybe the read will work
+                    if not self._seek_for_retry(current_offset, "fread"):
+                        # reading from an unknown position returns good-looking
+                        # data (its chunk CRC is right) from the wrong place
+                        self.stats["other_errors"] += 1
+                        if attempt < max_retries:
+                            continue
+                        return (
+                            False,
+                            b"",
+                            f"Cannot reposition to offset {current_offset}",
+                        )
 
             success, response = self._send_cmd(cmd, no_protocol_retry=True)
 
@@ -686,7 +728,11 @@ class FileTransfer:
         return self._send_cmd(cmd)
 
     def _verify_crc_with_retry(
-        self, remote_path: str, expected_crc: int, expected_size: int
+        self,
+        remote_path: str,
+        expected_crc: int,
+        expected_size: int,
+        stop_when_stable: bool = False,
     ) -> Tuple[bool, int, int, str]:
         """
         Verify the whole-file CRC on device, retrying the entire exchange.
@@ -703,6 +749,9 @@ class FileTransfer:
             remote_path: File path on device to verify
             expected_crc: Locally computed CRC-16 of the data
             expected_size: Expected byte count
+            stop_when_stable: Give up as soon as two attempts in a row see the
+                same wrong size/CRC. The device content is then not changing,
+                so asking again cannot help (a download goes on to repair).
 
         Returns:
             Tuple of (ok, dev_size, dev_crc, reason). On failure, reason is
@@ -733,9 +782,13 @@ class FileTransfer:
                     continue
                 return False, 0, 0, "unavailable"
 
+            stable = (dev_size, dev_crc) == (last_size, last_crc) and attempt > 0
             last_size, last_crc = dev_size, dev_crc
             if dev_size == expected_size and dev_crc == expected_crc:
                 return True, dev_size, dev_crc, ""
+            if stop_when_stable and stable:
+                self._log("[WARN] verify: same mismatch twice, the device file differs")
+                break
 
             # Data is already known good chunk-by-chunk, so a whole-file
             # mismatch most likely means the verification exchange itself was
@@ -831,6 +884,95 @@ class FileTransfer:
                 logger.error(f"Error closing file after exception: {close_err}")
             return False, f"Upload error: {e}"
 
+    def _piece_matches(self, data: bytes, offset: int, length: int) -> Optional[bool]:
+        """Does the device's CRC of ``[offset, offset+length)`` equal the local one?
+
+        None if the device could not be asked.
+        """
+        end = min(offset + length, len(data))
+        ok, _echoed, size, crc = self._fcrc_call(offset, end - offset, None)
+        if not ok:
+            return None
+        return size == end - offset and crc == crc16(data[offset:end])
+
+    def find_bad_ranges(self, data: bytes) -> Optional[List[Tuple[int, int]]]:
+        """Ranges of the open device file that differ from ``data``.
+
+        Uses ``fcrc -a/-l`` on segments, then on pieces of the segments that
+        differ. None if the device could not be asked.
+        """
+        bad: List[Tuple[int, int]] = []
+        for seg in range(0, len(data), REPAIR_SEGMENT):
+            match = self._piece_matches(data, seg, REPAIR_SEGMENT)
+            if match is None:
+                return None
+            if match:
+                continue
+            for piece in range(seg, min(seg + REPAIR_SEGMENT, len(data)), REPAIR_PIECE):
+                match = self._piece_matches(data, piece, REPAIR_PIECE)
+                if match is None:
+                    return None
+                if not match:
+                    bad.append((piece, min(REPAIR_PIECE, len(data) - piece)))
+        return bad
+
+    def _reread(self, buf: bytearray, offset: int, length: int) -> bool:
+        """Read ``[offset, offset+length)`` of the open device file into ``buf``."""
+        if not self._seek_for_retry(offset, "repair"):
+            return False
+        pos, end = offset, offset + length
+        while pos < end:
+            want = min(self.download_chunk_size, end - pos)
+            ok, chunk, _msg = self.fread(want, current_offset=pos)
+            if not ok or not chunk or len(chunk) > want:
+                return False
+            buf[pos : pos + len(chunk)] = chunk
+            pos += len(chunk)
+        return True
+
+    def repair_download(
+        self, data: bytes, remote_path: Optional[str] = None
+    ) -> Tuple[bool, bytes, str]:
+        """Read again only the parts of a download that differ from the device.
+
+        Chunk CRCs only prove that a chunk arrived intact, not that it came from
+        the right place in the file. When the whole-file CRC then disagrees,
+        the file does not have to be fetched again: compare per segment with
+        the device and fix what differs.
+
+        Args:
+            data: What was downloaded (same length as the device file)
+            remote_path: Opened (and closed) here; None if the file is open
+
+        Returns:
+            Tuple of (ok, data, message)
+        """
+        buf = bytearray(data)
+        if remote_path is not None:
+            ok, msg = self.fopen(remote_path, "r")
+            if not ok:
+                return False, data, f"Failed to reopen for repair: {msg}"
+        try:
+            for rnd in range(1, REPAIR_ROUNDS + 1):
+                bad = self.find_bad_ranges(bytes(buf))
+                if bad is None:
+                    return False, data, "device did not answer the segment CRCs"
+                if not bad:
+                    return True, bytes(buf), f"repaired in {rnd - 1} round(s)"
+                self._log(
+                    f"[WARN] repair: {len(bad)} range(s) differ from the device "
+                    f"(first at {bad[0][0]}), reading them again, round {rnd}"
+                )
+                for offset, length in bad:
+                    if not self._reread(buf, offset, length):
+                        return False, data, f"could not re-read offset {offset}"
+            if self.find_bad_ranges(bytes(buf)) == []:
+                return True, bytes(buf), f"repaired in {REPAIR_ROUNDS} round(s)"
+            return False, data, "ranges still differ after repair"
+        finally:
+            if remote_path is not None:
+                self.fclose()
+
     def download(
         self,
         remote_path: str,
@@ -904,7 +1046,7 @@ class FileTransfer:
             if len(data) > 0:
                 local_crc = crc16(data)
                 ok, dev_size, dev_crc, reason = self._verify_crc_with_retry(
-                    remote_path, local_crc, len(data)
+                    remote_path, local_crc, len(data), stop_when_stable=True
                 )
 
                 if reason == "unavailable":
@@ -913,11 +1055,16 @@ class FileTransfer:
                     )
                     logger.warning("Failed to get device CRC for verification")
                 elif not ok:
-                    return (
-                        False,
-                        b"",
-                        f"CRC mismatch: local 0x{local_crc:04X}, device 0x{dev_crc:04X}",
-                    )
+                    fixed, repaired, why = self.repair_download(data, remote_path)
+                    if not fixed:
+                        return (
+                            False,
+                            b"",
+                            f"CRC mismatch: local 0x{local_crc:04X}, "
+                            f"device 0x{dev_crc:04X} (repair failed: {why})",
+                        )
+                    data = repaired
+                    self._log(f"[SUCCESS] download: repaired, {why}")
                 else:
                     self._log(f"[SUCCESS] download: CRC verified: 0x{dev_crc:04X}")
                     logger.info(f"Download CRC verified: 0x{dev_crc:04X}")
