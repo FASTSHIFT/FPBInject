@@ -181,7 +181,7 @@ fpb_result_t fpb_clear_patch(uint8_t comp_id) {
 
 ### 调试技巧
 
-1. 用 PDF 解析脚本 (`Tools/pdf_parser.py`) 从 `Docs/DDI0403E_e_armv7m_arm.pdf` 快速检索相关章节（C1.11）
+1. 从 Arm 官网下载手册 (DDI 0403E)，用 PDF 解析脚本 (`Tools/pdf_parser.py`) 快速检索相关章节（C1.11）
 2. 对照硬件手册逐行验证寄存器配置
 3. 使用 `fpbinject info` 命令检查 FPB 状态（`fpb_detail`、各 slot 的 COMP 值）
 
@@ -191,14 +191,13 @@ fpb_result_t fpb_clear_patch(uint8_t comp_id) {
 
 - `Source/fpb_inject.c` - FPB 驱动实现
 - `Source/fpb_inject.h` - FPB 驱动头文件
-- `Docs/DDI0403E_e_armv7m_arm.pdf` - ARM ARMv7-M 架构参考手册
 - `Tools/pdf_parser.py` - PDF 章节提取工具
 
 ---
 
 ## 7. 参考资料
 
-- ARM DDI 0403E.e - ARMv7-M Architecture Reference Manual
+- [ARM DDI 0403E.e - ARMv7-M Architecture Reference Manual](https://developer.arm.com/documentation/ddi0403/latest)（版权归 Arm 所有，请从官网下载，仓库不再附带）
   - C1.11 Flash Patch and Breakpoint unit (C1-755 ~ C1-761)
   - C1.11.4 Flash Patch Remap register, FP_REMAP (C1-758)
   - C1.11.5 Flash Patch Comparator register, FP_COMPn (C1-758)
