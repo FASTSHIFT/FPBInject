@@ -122,11 +122,12 @@ class TestResolverCacheIntegration(unittest.TestCase):
 
             from fpbinject.cli.fpb_cli import _resolve_handle_to_url
 
-            with patch(
-                "fpbinject.cli.connection_resolver.discover_sync_by_handle"
-            ) as mock_disc, patch(
-                "fpbinject.cli.handle_cache.spawn_refresh"
-            ) as mock_spawn:
+            with (
+                patch(
+                    "fpbinject.cli.connection_resolver.discover_sync_by_handle"
+                ) as mock_disc,
+                patch("fpbinject.cli.handle_cache.spawn_refresh") as mock_spawn,
+            ):
                 url = _resolve_handle_to_url("bench:5500", source="-s flag")
 
             self.assertEqual(url, "http://127.0.0.1:5500")

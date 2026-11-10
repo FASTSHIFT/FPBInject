@@ -111,8 +111,9 @@ class TestDiscoverAsync(unittest.TestCase):
         discover, _, _ = _import_discover()
         Browser = _fake_async_browser_factory([])
         Info = _fake_async_service_info_factory({})
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
         ):
             servers = asyncio.run(discover(timeout=0.05))
         self.assertEqual(servers, [])
@@ -137,8 +138,9 @@ class TestDiscoverAsync(unittest.TestCase):
                 }
             }
         )
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
         ):
             servers = asyncio.run(discover(timeout=0.1))
         self.assertEqual(len(servers), 1)
@@ -171,8 +173,9 @@ class TestDiscoverAsync(unittest.TestCase):
                 for i, n in enumerate(names)
             }
         )
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
         ):
             servers = asyncio.run(discover(timeout=0.1))
         self.assertEqual(len(servers), 3)

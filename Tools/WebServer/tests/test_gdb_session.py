@@ -378,8 +378,9 @@ class TestGDBSessionLifecycle(unittest.TestCase):
 
         session = GDBSession("/fake/elf")
         # _write_mi returns None → file command fails → start returns False
-        with patch.object(session, "_write_mi", return_value=None), patch(
-            "fpbinject.core.gdb_session.IoManager"
+        with (
+            patch.object(session, "_write_mi", return_value=None),
+            patch("fpbinject.core.gdb_session.IoManager"),
         ):
             result = session.start(rsp_port=3333)
         self.assertFalse(result)

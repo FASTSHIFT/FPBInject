@@ -4,7 +4,7 @@
 # the "fpbinject." prefix, so `python -m build` produces working wheels/sdists.
 
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,16 +12,16 @@ name = "fpbinject"
 dynamic = ["version"]
 description = "Runtime code injection for ARM Cortex-M via the FPB (Flash Patch and Breakpoint) hardware unit"
 readme = "README.md"
-requires-python = ">=3.8"
-license = { text = "MIT" }
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "VIFEX", email = "vifextech@foxmail.com" }]
 keywords = ["arm", "cortex-m", "fpb", "firmware", "code-injection", "debugging"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "Topic :: Software Development :: Embedded Systems",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",

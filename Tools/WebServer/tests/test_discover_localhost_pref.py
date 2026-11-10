@@ -128,8 +128,9 @@ class TestDiscoverLocalhostNormalization(unittest.TestCase):
                 }
             }
         )
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
         ):
             servers = asyncio.run(discover(timeout=0.05))
         self.assertEqual(len(servers), 1)
@@ -149,11 +150,13 @@ class TestDiscoverLocalhostNormalization(unittest.TestCase):
                 }
             }
         )
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
-        ), patch(
-            "fpbinject.cli.discover._local_interface_ips",
-            return_value=frozenset({"127.0.0.1", "10.0.0.5"}),
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
+            patch(
+                "fpbinject.cli.discover._local_interface_ips",
+                return_value=frozenset({"127.0.0.1", "10.0.0.5"}),
+            ),
         ):
             servers = asyncio.run(discover(timeout=0.05))
         self.assertEqual(len(servers), 1)
@@ -171,11 +174,13 @@ class TestDiscoverLocalhostNormalization(unittest.TestCase):
                 }
             }
         )
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
-        ), patch(
-            "fpbinject.cli.discover._local_interface_ips",
-            return_value=frozenset({"127.0.0.1", "10.0.0.5"}),
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
+            patch(
+                "fpbinject.cli.discover._local_interface_ips",
+                return_value=frozenset({"127.0.0.1", "10.0.0.5"}),
+            ),
         ):
             servers = asyncio.run(discover(timeout=0.05))
         self.assertEqual(len(servers), 1)

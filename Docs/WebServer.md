@@ -19,7 +19,7 @@ serial port, serves a browser UI, and exposes a REST API that the
 
 ## Installation
 
-Requirements: Python 3.8+ and an ARM GCC toolchain (`arm-none-eabi-gcc`) for compiling patches.
+Requirements: Python 3.9+ and an ARM GCC toolchain (`arm-none-eabi-gcc`) for compiling patches.
 
 ```bash
 pip install fpbinject          # or: pip install --pre fpbinject

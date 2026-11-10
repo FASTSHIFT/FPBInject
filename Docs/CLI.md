@@ -13,7 +13,7 @@ Key design principles:
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+
 - ARM GCC toolchain (`arm-none-eabi-gcc`) — for offline compilation
 - Optional: [Ghidra](https://ghidra-sre.org/) — for decompilation
 

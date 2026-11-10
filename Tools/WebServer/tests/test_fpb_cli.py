@@ -241,9 +241,11 @@ class TestFPBCLIAnalyze(unittest.TestCase):
 
     def test_analyze_success(self):
         """Test successful analyze"""
-        with patch.object(self.cli._fpb, "get_symbols") as mock_symbols, patch.object(
-            self.cli._fpb, "disassemble_function"
-        ) as mock_disasm, patch.object(self.cli._fpb, "get_signature") as mock_sig:
+        with (
+            patch.object(self.cli._fpb, "get_symbols") as mock_symbols,
+            patch.object(self.cli._fpb, "disassemble_function") as mock_disasm,
+            patch.object(self.cli._fpb, "get_signature") as mock_sig,
+        ):
             mock_symbols.return_value = {
                 "main": {"addr": 0x08001000, "sym_type": "function"}
             }

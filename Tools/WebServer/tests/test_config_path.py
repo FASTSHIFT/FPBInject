@@ -26,9 +26,10 @@ class TestResolveConfigPath(unittest.TestCase):
         self.assertEqual(got, os.path.abspath(os.path.expanduser("~/some/cfg.json")))
 
     def test_non_interactive_returns_none(self):
-        with patch(
-            "fpbinject.main._discover_existing_config", return_value=None
-        ), patch("sys.stdin.isatty", return_value=False):
+        with (
+            patch("fpbinject.main._discover_existing_config", return_value=None),
+            patch("sys.stdin.isatty", return_value=False),
+        ):
             self.assertIsNone(main.resolve_config_path(None))
 
     def test_discovered_config_reused_without_prompt(self):
@@ -37,57 +38,60 @@ class TestResolveConfigPath(unittest.TestCase):
             existing = os.path.join(d, "config.json")
             with open(existing, "w") as f:
                 f.write("{}")
-            with patch(
-                "fpbinject.main._discover_existing_config", return_value=existing
-            ), patch("sys.stdin.isatty", return_value=False):
+            with (
+                patch(
+                    "fpbinject.main._discover_existing_config", return_value=existing
+                ),
+                patch("sys.stdin.isatty", return_value=False),
+            ):
                 self.assertEqual(main.resolve_config_path(None), existing)
 
     def test_interactive_yes_creates_local_path(self):
         with tempfile.TemporaryDirectory() as d:
-            with patch(
-                "fpbinject.main._discover_existing_config", return_value=None
-            ), patch("sys.stdin.isatty", return_value=True), patch(
-                "os.getcwd", return_value=d
-            ), patch(
-                "builtins.input", return_value="y"
+            with (
+                patch("fpbinject.main._discover_existing_config", return_value=None),
+                patch("sys.stdin.isatty", return_value=True),
+                patch("os.getcwd", return_value=d),
+                patch("builtins.input", return_value="y"),
             ):
                 got = main.resolve_config_path(None)
             self.assertEqual(got, os.path.join(d, main._LOCAL_CONFIG_NAME))
 
     def test_interactive_default_enter_creates_local(self):
         with tempfile.TemporaryDirectory() as d:
-            with patch(
-                "fpbinject.main._discover_existing_config", return_value=None
-            ), patch("sys.stdin.isatty", return_value=True), patch(
-                "os.getcwd", return_value=d
-            ), patch(
-                "builtins.input", return_value=""
+            with (
+                patch("fpbinject.main._discover_existing_config", return_value=None),
+                patch("sys.stdin.isatty", return_value=True),
+                patch("os.getcwd", return_value=d),
+                patch("builtins.input", return_value=""),
             ):
                 got = main.resolve_config_path(None)
             self.assertEqual(got, os.path.join(d, main._LOCAL_CONFIG_NAME))
 
     def test_interactive_no_returns_none(self):
-        with patch(
-            "fpbinject.main._discover_existing_config", return_value=None
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", return_value="n"
+        with (
+            patch("fpbinject.main._discover_existing_config", return_value=None),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="n"),
         ):
             self.assertIsNone(main.resolve_config_path(None))
 
     def test_interactive_eof_treated_as_no(self):
-        with patch(
-            "fpbinject.main._discover_existing_config", return_value=None
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", side_effect=EOFError
+        with (
+            patch("fpbinject.main._discover_existing_config", return_value=None),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", side_effect=EOFError),
         ):
             self.assertIsNone(main.resolve_config_path(None))
 
     def test_skip_prompt_returns_none_without_input(self):
         """skip_prompt=True: connection flags given -> in-memory, no prompt."""
-        with patch(
-            "fpbinject.main._discover_existing_config", return_value=None
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", side_effect=AssertionError("input must not be called")
+        with (
+            patch("fpbinject.main._discover_existing_config", return_value=None),
+            patch("sys.stdin.isatty", return_value=True),
+            patch(
+                "builtins.input", side_effect=AssertionError("input must not be called")
+            ),
         ):
             self.assertIsNone(main.resolve_config_path(None, skip_prompt=True))
 
@@ -102,10 +106,14 @@ class TestResolveConfigPath(unittest.TestCase):
             existing = os.path.join(d, "config.json")
             with open(existing, "w") as f:
                 f.write("{}")
-            with patch(
-                "fpbinject.main._discover_existing_config", return_value=existing
-            ), patch("sys.stdin.isatty", return_value=True), patch(
-                "builtins.input", side_effect=AssertionError("no prompt expected")
+            with (
+                patch(
+                    "fpbinject.main._discover_existing_config", return_value=existing
+                ),
+                patch("sys.stdin.isatty", return_value=True),
+                patch(
+                    "builtins.input", side_effect=AssertionError("no prompt expected")
+                ),
             ):
                 self.assertEqual(
                     main.resolve_config_path(None, skip_prompt=True), existing
@@ -135,15 +143,17 @@ class TestDiscoverExistingConfig(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             legacy = os.path.join(d, main._LEGACY_CONFIG_NAME)
             open(legacy, "w").close()
-            with patch("os.getcwd", return_value=d), patch.object(
-                main, "SCRIPT_DIR", d
+            with (
+                patch("os.getcwd", return_value=d),
+                patch.object(main, "SCRIPT_DIR", d),
             ):
                 self.assertEqual(self._discover(), legacy)
 
     def test_none_when_absent(self):
         with tempfile.TemporaryDirectory() as d:
-            with patch("os.getcwd", return_value=d), patch.object(
-                main, "SCRIPT_DIR", d
+            with (
+                patch("os.getcwd", return_value=d),
+                patch.object(main, "SCRIPT_DIR", d),
             ):
                 self.assertIsNone(self._discover())
 

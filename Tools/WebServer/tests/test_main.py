@@ -600,9 +600,12 @@ class TestMain(unittest.TestCase):
 
             # Interactive TTY, but input() must never be called because the
             # user opted out of JSON config by passing connection flags.
-            with patch("sys.stdin.isatty", return_value=True), patch(
-                "builtins.input",
-                side_effect=AssertionError("config prompt must be skipped"),
+            with (
+                patch("sys.stdin.isatty", return_value=True),
+                patch(
+                    "builtins.input",
+                    side_effect=AssertionError("config prompt must be skipped"),
+                ),
             ):
                 main.main()
 
@@ -824,8 +827,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_sock = Mock()
         mock_sock.getsockname.return_value = ("192.168.1.100", 0)
 
-        with patch("builtins.print") as mock_print, patch(
-            "fpbinject.main.socket.socket", return_value=mock_sock
+        with (
+            patch("builtins.print") as mock_print,
+            patch("fpbinject.main.socket.socket", return_value=mock_sock),
         ):
             main.main()
 
@@ -858,8 +862,9 @@ class TestAutoOpenBrowser(unittest.TestCase):
         mock_sock = Mock()
         mock_sock.connect.side_effect = OSError("Network unreachable")
 
-        with patch("builtins.print") as mock_print, patch(
-            "fpbinject.main.socket.socket", return_value=mock_sock
+        with (
+            patch("builtins.print") as mock_print,
+            patch("fpbinject.main.socket.socket", return_value=mock_sock),
         ):
             main.main()
 
@@ -944,9 +949,10 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_non_interactive(self):
         """Missing packages in non-interactive mode: returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin:
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+        ):
             mock_stdin.isatty.return_value = False
             result = main.check_requirements()
         self.assertTrue(result)
@@ -954,9 +960,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_skips(self):
         """User chooses 'n' to skip install."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin, patch("builtins.input", return_value="n"):
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", return_value="n"),
+        ):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -964,9 +972,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_quits(self):
         """User chooses 'q' to quit."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin, patch("builtins.input", return_value="q"):
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", return_value="q"),
+        ):
             mock_stdin.isatty.return_value = True
             with self.assertRaises(SystemExit):
                 main.check_requirements()
@@ -974,11 +984,12 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_installs(self):
         """User chooses 'y' to install."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin, patch("builtins.input", return_value="y"), patch(
-            "subprocess.call", return_value=0
-        ) as mock_call:
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", return_value="y"),
+            patch("subprocess.call", return_value=0) as mock_call,
+        ):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -989,11 +1000,12 @@ class TestCheckRequirements(unittest.TestCase):
     def test_missing_package_user_default_enter(self):
         """User presses Enter (default = install)."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin, patch("builtins.input", return_value=""), patch(
-            "subprocess.call", return_value=0
-        ) as mock_call:
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", return_value=""),
+            patch("subprocess.call", return_value=0) as mock_call,
+        ):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -1002,10 +1014,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_install_failure_continues(self):
         """pip install failure still returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin, patch("builtins.input", return_value="y"), patch(
-            "subprocess.call", return_value=1
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", return_value="y"),
+            patch("subprocess.call", return_value=1),
         ):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
@@ -1014,9 +1027,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_eof_on_input(self):
         """EOFError on input returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin, patch("builtins.input", side_effect=EOFError):
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", side_effect=EOFError),
+        ):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -1024,9 +1039,11 @@ class TestCheckRequirements(unittest.TestCase):
     def test_keyboard_interrupt_on_input(self):
         """KeyboardInterrupt on input returns True."""
         subdir = self._make_req_file("nonexistent_pkg_xyz_12345\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "sys.stdin"
-        ) as mock_stdin, patch("builtins.input", side_effect=KeyboardInterrupt):
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", side_effect=KeyboardInterrupt),
+        ):
             mock_stdin.isatty.return_value = True
             result = main.check_requirements()
         self.assertTrue(result)
@@ -1034,9 +1051,10 @@ class TestCheckRequirements(unittest.TestCase):
     def test_pyserial_detected_via_metadata(self):
         """pyserial (pip name != import name) detected via importlib.metadata."""
         subdir = self._make_req_file("pyserial\n")
-        with patch("fpbinject.main.SCRIPT_DIR", subdir), patch(
-            "importlib.metadata.distribution"
-        ) as mock_dist:
+        with (
+            patch("fpbinject.main.SCRIPT_DIR", subdir),
+            patch("importlib.metadata.distribution") as mock_dist,
+        ):
             mock_dist.return_value = Mock()
             result = main.check_requirements()
         self.assertTrue(result)
@@ -1095,17 +1113,15 @@ class TestMainPortConflict(unittest.TestCase):
         mock_args.return_value = self._mock_args()
         mock_app = Mock()
         mock_create.return_value = mock_app
-        with patch(
-            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
-        ), patch(
-            "fpbinject.cli.server_proxy.stop_cli_server",
-            return_value={"success": True, "message": "done"},
-        ), patch(
-            "builtins.input", return_value="Y"
-        ), patch(
-            "time.sleep"
-        ), patch(
-            "fpbinject.main.threading.Timer"
+        with (
+            patch("fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200),
+            patch(
+                "fpbinject.cli.server_proxy.stop_cli_server",
+                return_value={"success": True, "message": "done"},
+            ),
+            patch("builtins.input", return_value="Y"),
+            patch("time.sleep"),
+            patch("fpbinject.main.threading.Timer"),
         ):
             # Should NOT exit — continues to start server
             main.main()
@@ -1128,9 +1144,10 @@ class TestMainPortConflict(unittest.TestCase):
     ):
         """Port occupied by CLI server, user answers n → abort."""
         mock_args.return_value = self._mock_args()
-        with patch(
-            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
-        ), patch("builtins.input", return_value="n"):
+        with (
+            patch("fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200),
+            patch("builtins.input", return_value="n"),
+        ):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 0)
@@ -1153,13 +1170,13 @@ class TestMainPortConflict(unittest.TestCase):
     ):
         """Port occupied by CLI server, user answers Y but stop fails → exit 1."""
         mock_args.return_value = self._mock_args()
-        with patch(
-            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
-        ), patch(
-            "fpbinject.cli.server_proxy.stop_cli_server",
-            return_value={"success": False, "error": "fail"},
-        ), patch(
-            "builtins.input", return_value="Y"
+        with (
+            patch("fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200),
+            patch(
+                "fpbinject.cli.server_proxy.stop_cli_server",
+                return_value={"success": False, "error": "fail"},
+            ),
+            patch("builtins.input", return_value="Y"),
         ):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
@@ -1182,9 +1199,10 @@ class TestMainPortConflict(unittest.TestCase):
     ):
         """Port occupied by CLI server, EOFError on input → abort."""
         mock_args.return_value = self._mock_args()
-        with patch(
-            "fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200
-        ), patch("builtins.input", side_effect=EOFError):
+        with (
+            patch("fpbinject.cli.server_proxy.get_cli_server_pid", return_value=200),
+            patch("builtins.input", side_effect=EOFError),
+        ):
             with self.assertRaises(SystemExit) as cm:
                 main.main()
             self.assertEqual(cm.exception.code, 0)

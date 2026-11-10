@@ -360,8 +360,9 @@ class TestServerProxyLaunchServer(unittest.TestCase):
         from unittest.mock import patch
 
         proxy = ServerProxy(base_url="http://127.0.0.1:19876")
-        with patch("os.path.exists", return_value=True), patch(
-            "subprocess.Popen", side_effect=OSError("fail")
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("subprocess.Popen", side_effect=OSError("fail")),
         ):
             self.assertFalse(proxy.launch_server())
 
@@ -374,8 +375,9 @@ class TestServerProxyLaunchServer(unittest.TestCase):
         mock_proc.poll.return_value = 1  # Process exited with code 1
         mock_proc.returncode = 1
 
-        with patch("os.path.exists", return_value=True), patch(
-            "subprocess.Popen", return_value=mock_proc
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("subprocess.Popen", return_value=mock_proc),
         ):
             self.assertFalse(proxy.launch_server())
         self.assertIsNone(proxy._server_process)
@@ -393,8 +395,9 @@ class TestServerProxyLaunchServer(unittest.TestCase):
         sp_mod._LAUNCH_TIMEOUT = 0.1  # Very short timeout
         sp_mod._LAUNCH_POLL_INTERVAL = 0.05
         try:
-            with patch("os.path.exists", return_value=True), patch(
-                "subprocess.Popen", return_value=mock_proc
+            with (
+                patch("os.path.exists", return_value=True),
+                patch("subprocess.Popen", return_value=mock_proc),
             ):
                 self.assertFalse(proxy.launch_server())
             mock_proc.terminate.assert_called_once()
@@ -416,9 +419,11 @@ class TestServerProxyLaunchServer(unittest.TestCase):
             call_count[0] += 1
             return call_count[0] >= 2  # Succeed on second poll
 
-        with patch("os.path.exists", return_value=True), patch(
-            "subprocess.Popen", return_value=mock_proc
-        ), patch.object(proxy, "is_server_running", side_effect=fake_is_running):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch.object(proxy, "is_server_running", side_effect=fake_is_running),
+        ):
             self.assertTrue(proxy.launch_server())
 
     def test_launch_server_uses_http_port_flag(self):
@@ -430,9 +435,11 @@ class TestServerProxyLaunchServer(unittest.TestCase):
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
 
-        with patch("os.path.exists", return_value=True), patch(
-            "subprocess.Popen", return_value=mock_proc
-        ) as mock_popen, patch.object(proxy, "is_server_running", return_value=True):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
+            patch.object(proxy, "is_server_running", return_value=True),
+        ):
             proxy.launch_server()
 
         cmd = mock_popen.call_args[0][0]
@@ -454,9 +461,10 @@ class TestServerProxyLaunchServer(unittest.TestCase):
         from unittest.mock import patch
 
         proxy = ServerProxy(base_url="http://127.0.0.1:19876")
-        with patch.object(proxy, "is_server_running", return_value=False), patch.object(
-            proxy, "launch_server", return_value=True
-        ) as mock_launch:
+        with (
+            patch.object(proxy, "is_server_running", return_value=False),
+            patch.object(proxy, "launch_server", return_value=True) as mock_launch,
+        ):
             self.assertTrue(proxy.ensure_server())
             mock_launch.assert_called_once()
 

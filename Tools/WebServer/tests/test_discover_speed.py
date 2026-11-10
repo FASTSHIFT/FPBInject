@@ -118,8 +118,9 @@ class TestEarlyReturnByHandle(unittest.TestCase):
                 }
             }
         )
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
         ):
             t0 = time.monotonic()
             servers = discover_sync_by_handle("bench:5500", timeout=3.0)
@@ -147,8 +148,9 @@ class TestEarlyReturnByHandle(unittest.TestCase):
                 }
             }
         )
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
         ):
             t0 = time.monotonic()
             servers = discover_sync_by_handle("nope:9999", timeout=0.3)
@@ -177,8 +179,9 @@ class TestEarlyMatchPredicate(unittest.TestCase):
         def is_first(s):
             return s.handle == "srv0:5500"
 
-        with patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser), patch(
-            "fpbinject.cli.discover.AsyncServiceInfo", Info
+        with (
+            patch("fpbinject.cli.discover.AsyncServiceBrowser", Browser),
+            patch("fpbinject.cli.discover.AsyncServiceInfo", Info),
         ):
             t0 = time.monotonic()
             servers = asyncio.run(discover(timeout=3.0, early_match=is_first))
