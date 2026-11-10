@@ -17,6 +17,7 @@
 #include "fl.h"
 #include "fl_cmd.h"
 #include "fl_error.h"
+#include "fl_codec.h"
 #include <string.h>
 
 /* ============================================================================
@@ -127,8 +128,11 @@ static void test_no_fpb_echo_still_works(void) {
 
 static void test_no_fpb_alloc_still_works(void) {
     setup_no_fpb();
-    const char* argv[] = {"fl", "--cmd", "alloc", "-s", "256"};
-    fl_error_t ret = fl_exec_cmd(&test_ctx, 5, argv);
+    uint32_t size32 = 256;
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", (unsigned)fl_crc16(&size32, sizeof(size32)));
+    const char* argv[] = {"fl", "--cmd", "alloc", "-s", "256", "-r", crc_str};
+    fl_error_t ret = fl_exec_cmd(&test_ctx, 7, argv);
     TEST_ASSERT_EQUAL(FL_OK, ret);
     TEST_ASSERT_TRUE(mock_output_contains("[FLOK]"));
 }

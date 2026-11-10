@@ -117,9 +117,8 @@ fl_error_t fl_cmd_exec(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_STATE;
     }
 
-    /* A tampered command is far more harmful than tampered data: CRC is
-     * mandatory unless the operator explicitly waives it (--force). */
-    if (args->crc < 0 && !args->force) {
+    /* A tampered command is far more harmful than tampered data */
+    if (args->crc < 0) {
         fl_response(false, "Missing --crc");
         return FL_ERR_ARGS;
     }

@@ -47,7 +47,7 @@ fl_error_t fl_cmd_fopen(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers path + mode strings */
+    /* Verify CRC: covers path + mode strings */
     {
         uint16_t calc = 0xFFFF;
         calc = fl_crc16_base_str(calc, args->path);
@@ -84,7 +84,7 @@ fl_error_t fl_cmd_fwrite(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ENCODE;
     }
 
-    /* Verify CRC if provided */
+    /* Verify CRC */
     if (!fl_verify_crc(args->crc, fl_crc16(ctx->buf, n))) {
         return FL_ERR_CRC;
     }
@@ -210,7 +210,7 @@ fl_error_t fl_cmd_fseek(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_STATE;
     }
 
-    /* Verify CRC if provided: covers addr(4B) */
+    /* Verify CRC: covers addr(4B) */
     {
         int32_t addr32 = (int32_t)args->addr;
         if (!fl_verify_crc(args->crc, fl_crc16(&addr32, sizeof(addr32)))) {
@@ -239,7 +239,7 @@ fl_error_t fl_cmd_fstat(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers path string */
+    /* Verify CRC: covers path string */
     if (!fl_verify_crc(args->crc, fl_crc16_str(args->path))) {
         return FL_ERR_CRC;
     }
@@ -286,7 +286,7 @@ fl_error_t fl_cmd_flist(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers path string */
+    /* Verify CRC: covers path string */
     if (!fl_verify_crc(args->crc, fl_crc16_str(args->path))) {
         return FL_ERR_CRC;
     }
@@ -314,7 +314,7 @@ fl_error_t fl_cmd_fremove(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers path string */
+    /* Verify CRC: covers path string */
     if (!fl_verify_crc(args->crc, fl_crc16_str(args->path))) {
         return FL_ERR_CRC;
     }
@@ -339,7 +339,7 @@ fl_error_t fl_cmd_fmkdir(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers path string */
+    /* Verify CRC: covers path string */
     if (!fl_verify_crc(args->crc, fl_crc16_str(args->path))) {
         return FL_ERR_CRC;
     }
@@ -369,7 +369,7 @@ fl_error_t fl_cmd_frename(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers path + newpath strings */
+    /* Verify CRC: covers path + newpath strings */
     {
         uint16_t calc = 0xFFFF;
         calc = fl_crc16_base_str(calc, args->path);

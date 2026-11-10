@@ -10,6 +10,7 @@
 #include "fpb_mock_regs.h"
 #include "fl.h"
 #include "fl_stream.h"
+#include "fl_codec.h"
 
 /* Test context and stream */
 static fl_context_t test_ctx;
@@ -110,7 +111,9 @@ void test_stream_exec_info(void) {
 
 void test_stream_exec_with_args(void) {
     setup_stream();
-    char line[] = "fl --cmd unpatch --comp 0";
+    uint32_t comp32 = 0;
+    char line[64];
+    snprintf(line, sizeof(line), "fl --cmd unpatch --comp 0 --crc 0x%04X", (unsigned)fl_crc16(&comp32, sizeof(comp32)));
     fl_error_t result = fl_stream_exec_line(&test_stream, line);
     TEST_ASSERT_EQUAL(FL_OK, result);
 }

@@ -35,7 +35,7 @@ fl_error_t fl_cmd_alloc(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers size(4B) */
+    /* Verify CRC: covers size(4B) */
     {
         uint32_t size32 = (uint32_t)args->size;
         if (!fl_verify_crc(args->crc, fl_crc16(&size32, sizeof(size32)))) {
@@ -74,7 +74,6 @@ fl_error_t fl_cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
     }
 
     uint8_t* buf = ctx->buf;
-    bool verify = args->crc >= 0;
 
     ssize_t n = fl_base64_decode(args->data, buf, FL_BUF_SIZE);
     if (n < 0) {
@@ -82,7 +81,7 @@ fl_error_t fl_cmd_upload(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ENCODE;
     }
 
-    if (verify) {
+    {
         /* CRC covers: offset(4B) + len(4B) + data payload */
         uint32_t offset32 = (uint32_t)args->addr;
         uint32_t len32 = (uint32_t)n;
@@ -138,7 +137,7 @@ fl_error_t fl_cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_RANGE;
     }
 
-    /* Verify request CRC if provided: covers addr(4B) + len(4B) */
+    /* Verify request CRC: covers addr(4B) + len(4B) */
     {
         uint32_t addr32 = (uint32_t)args->addr;
         uint32_t len32 = (uint32_t)len;
@@ -150,9 +149,8 @@ fl_error_t fl_cmd_read(fl_context_t* ctx, const cmd_args_t* args) {
         }
     }
 
-    if (!args->force && !fl_check_addr_range(args->addr, len)) {
-        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)args->addr,
-                    len);
+    if (!fl_check_addr_range(args->addr, len)) {
+        fl_response(false, "Invalid address range 0x%08lX+%d", (unsigned long)args->addr, len);
         return FL_ERR_RANGE;
     }
 
@@ -188,7 +186,6 @@ fl_error_t fl_cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
     }
 
     uint8_t* buf = ctx->buf;
-    bool verify = args->crc >= 0;
 
     ssize_t n = fl_base64_decode(args->data, buf, FL_BUF_SIZE);
     if (n < 0) {
@@ -196,12 +193,7 @@ fl_error_t fl_cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ENCODE;
     }
 
-    if (!args->force && !fl_check_addr_range(args->addr, n)) {
-        fl_response(false, "Invalid address range 0x%08lX+%d (use --force to override)", (unsigned long)args->addr, n);
-        return FL_ERR_RANGE;
-    }
-
-    if (verify) {
+    {
         /* CRC covers: addr(4B) + len(4B) + data payload */
         uint32_t addr32 = (uint32_t)args->addr;
         uint32_t len32 = (uint32_t)n;
@@ -214,6 +206,10 @@ fl_error_t fl_cmd_write(fl_context_t* ctx, const cmd_args_t* args) {
         }
     }
 
+    if (!fl_check_addr_range(args->addr, n)) {
+        fl_response(false, "Invalid address range 0x%08lX+%d", (unsigned long)args->addr, n);
+        return FL_ERR_RANGE;
+    }
     /* Write to the specified address */
     uint8_t* dest = (uint8_t*)args->addr;
     memcpy(dest, buf, n);

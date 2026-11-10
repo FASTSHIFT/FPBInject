@@ -53,7 +53,6 @@ typedef struct {
     int comp;
     int all;
     int enable; /* -1 = not specified, 0 = disable, 1 = enable */
-    int force;
     const char* path;
     const char* newpath;
     const char* mode;

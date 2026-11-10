@@ -320,7 +320,18 @@ void test_port_exit_marker_on_eof(void) {
 void test_port_alloc_and_upload_use_cache_callbacks(void) {
     reset_system_mock();
 
-    run_lines("fl -c alloc -s 64\nfl -c upload -a 0 -d AQIDBA==\nquit\n");
+    /* both requests carry their CRC (alloc: size; upload: offset, length, data) */
+    uint32_t size32 = 64;
+    uint32_t offset32 = 0;
+    uint32_t len32 = 4;
+    const uint8_t data[4] = {1, 2, 3, 4};
+    uint16_t up_crc = fl_crc16_base(0xFFFF, &offset32, sizeof(offset32));
+    up_crc = fl_crc16_base(up_crc, &len32, sizeof(len32));
+    up_crc = fl_crc16_base(up_crc, data, sizeof(data));
+    char lines[160];
+    snprintf(lines, sizeof(lines), "fl -c alloc -s 64 -r 0x%04X\nfl -c upload -a 0 -d AQIDBA== -r 0x%04X\nquit\n",
+             (unsigned)fl_crc16(&size32, sizeof(size32)), (unsigned)up_crc);
+    run_lines(lines);
 
     TEST_ASSERT(captured("Allocated 64"));
     TEST_ASSERT(captured("Uploaded 4 bytes"));

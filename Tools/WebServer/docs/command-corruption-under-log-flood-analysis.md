@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |------|------|
-| 状态 | 第 9 节所列修复已实现，单元测试通过；设备上的复测结果见第 9.4 节 |
+| 状态 | 第 9 节所列修复已实现，单元测试通过；设备上的复测结果见第 9.4 节（强制 CRC 还没有在设备上跑过） |
 | 范围 | 下位机 `App/func_loader`（`fl.c`、`argparse/`、`fl_cmd_file.c`）、上位机 `Tools/WebServer/core`（`file_transfer.py`、`serial_protocol.py`） |
 | 数据来源 | 一次约 3.2 小时的自动化测试中，上位机完整记录的设备串口原始日志（921600 baud），以及同一次测试的调用方日志 |
 | 抓取时的上位机版本 | `1.6.12a3` |
@@ -71,7 +71,7 @@ error: option `-l` expects an integer value
 
 ## 3. 为什么残缺命令能执行成功
 
-### 3.1 CRC 是可选的
+### 3.1 CRC 是可选的（第 9.2 节之后，上位机会发 CRC 的命令已改为强制）
 
 `App/func_loader/fl.c`：
 
@@ -218,8 +218,8 @@ error: option `-l` expects an integer value
 ### 9.2 下位机（`App/func_loader`）
 
 - 6.2 第 1 条：`argparse` 增加 `ARGPARSE_STRICT_VALUES` 标志。带标志时，任何选项值的错误（`-a 20xE791`、缺少值、超出范围）都会让整个解析失败，`fl_exec_cmd` 回复 `[FLERR] Invalid arguments`，命令不执行。`fl_exec_cmd` 使用该标志，别的使用者不受影响。两条粘在一起的命令（例 B 中的 `-l 5fl -c fseek …`）也因为 `-l 5fl` 不是合法整数而被拒绝。
+- 6.2 第 2 条：上位机会发请求 CRC 的 17 个命令（`alloc`、`upload`、`read`、`write`、`patch`、`tpatch`、`dpatch`、`unpatch`、`enable`、`fopen`、`fwrite`、`fseek`、`fstat`、`flist`、`fremove`、`fmkdir`、`frename`）加上 `exec`，固件现在都强制要求 `-r`，缺少时回复 `[FLERR] CRC required`。`unpatch --all` 和 `enable --all` 上位机本来就不带 CRC，保持不变。上位机从来不用 `--force`，选项一并去掉（原来它还能跳过 `read`/`write` 的地址范围检查和 `exec` 的 CRC）。所有操作都经上位机代理，所以不再需要手工免 CRC 的口子。
 - 没有做：
-  - 6.2 第 2 条（会改变状态的命令必须带 CRC）：手工在终端里敲命令会立刻失败，需要先确定要不要保留这种用法。
   - 6.2 第 3、4 条（`fread` 回复带偏移、`fread -l` 和 `fcrc` 加参数校验）：要改回复格式，需要先评估老版本上位机的兼容性。第 9.1 的位置确认和修复已经覆盖了错位的后果。
 
 ### 9.3 测试

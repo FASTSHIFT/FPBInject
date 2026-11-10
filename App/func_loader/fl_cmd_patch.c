@@ -91,11 +91,9 @@ void fl_cmd_print_fpb_info(fl_context_t* ctx) {
 
 /**
  * @brief  Verify CRC for patch commands: covers comp(4B) + orig(4B) + target(4B)
- * @return true if CRC matches or no CRC provided (crc < 0)
+ * @return true if CRC matches; false if it is missing or wrong
  */
 bool fl_verify_patch_crc(int crc, uint32_t comp, uintptr_t orig, uintptr_t target) {
-    if (crc < 0)
-        return true;
     uint32_t comp32 = comp;
     uint32_t orig32 = (uint32_t)orig;
     uint32_t target32 = (uint32_t)target;
@@ -242,8 +240,8 @@ fl_error_t fl_cmd_unpatch(fl_context_t* ctx, const cmd_args_t* args) {
     uint32_t comp = (uint32_t)args->comp;
     bool all = args->all;
 
-    /* Verify CRC if provided: covers comp(4B) */
-    {
+    /* Verify CRC: covers comp(4B). --all carries none (it has no comp). */
+    if (!all || args->crc >= 0) {
         uint32_t comp32 = comp;
         if (!fl_verify_crc(args->crc, fl_crc16(&comp32, sizeof(comp32)))) {
             return FL_ERR_CRC;
@@ -300,8 +298,8 @@ fl_error_t fl_cmd_enable(fl_context_t* ctx, const cmd_args_t* args) {
         return FL_ERR_ARGS;
     }
 
-    /* Verify CRC if provided: covers comp(4B) + enable(4B) */
-    {
+    /* Verify CRC: covers comp(4B) + enable(4B). --all carries none. */
+    if (!args->all || args->crc >= 0) {
         uint32_t comp32 = (uint32_t)args->comp;
         uint32_t enable32 = (uint32_t)args->enable;
         uint16_t calc = 0xFFFF;

@@ -106,13 +106,14 @@ bool fl_check_addr_range(uintptr_t addr, size_t len) {
 
 /**
  * @brief  Verify args->crc against a pre-computed CRC value
- * @param  crc   args->crc (-1 = skip verification)
+ * @param  crc   args->crc (-1 = not given)
  * @param  calc  Expected CRC computed by caller
- * @return true if CRC matches or not provided; false on mismatch (error response sent)
+ * @return true if CRC matches; false if it is missing or wrong (error response sent)
  */
 bool fl_verify_crc(int crc, uint16_t calc) {
     if (crc < 0) {
-        return true;
+        fl_response(false, "CRC required");
+        return false;
     }
 
     if (calc != (uint16_t)crc) {
@@ -196,7 +197,6 @@ fl_error_t fl_exec_cmd(fl_context_t* ctx, int argc, const char** argv) {
         OPT_POINTER(0, "target", &args.target, "Target addr", NULL, 0, 0),
         OPT_BOOLEAN(0, "all", &args.all, "Clear all", NULL, 0, 0),
         OPT_INTEGER(0, "enable", &args.enable, "Enable(1) or disable(0) patch", NULL, 0, 0),
-        OPT_BOOLEAN(0, "force", &args.force, "Skip address range check", NULL, 0, 0),
         OPT_STRING(0, "path", &args.path, "File path", NULL, 0, 0),
         OPT_STRING(0, "newpath", &args.newpath, "New file path", NULL, 0, 0),
         OPT_STRING('m', "mode", &args.mode, "File mode (r/w/a)", NULL, 0, 0),

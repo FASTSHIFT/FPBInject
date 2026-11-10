@@ -25,6 +25,82 @@ static fl_context_t test_ctx;
 
 #include "fl_codec.h"
 
+/* Commands whose request CRC is mandatory. Most tests are about what a command
+ * does, not about its CRC: fl_exec_cmd() below adds the CRC the firmware
+ * expects (read from its "CRC mismatch" reply) to a call that has none. Tests
+ * of the CRC rules call the real function as (fl_exec_cmd)(). */
+static const char* const k_crc_cmds[]
+    = {"alloc", "upload", "read",  "write", "patch", "tpatch",  "dpatch", "unpatch", "enable",
+       "fopen", "fwrite", "fseek", "fstat", "flist", "fremove", "fmkdir", "frename"};
+
+static fl_error_t exec_with_crc(fl_context_t* ctx, int argc, const char** argv) {
+    const char* cmd = NULL;
+    bool has_crc = false;
+    bool all = false;
+    for (int i = 1; i < argc; i++) {
+        if ((strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--cmd") == 0) && i + 1 < argc) {
+            cmd = argv[i + 1];
+        } else if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--crc") == 0) {
+            has_crc = true;
+        } else if (strcmp(argv[i], "--all") == 0) {
+            all = true;
+        }
+    }
+    bool needs = false;
+    for (size_t i = 0; cmd && i < sizeof(k_crc_cmds) / sizeof(k_crc_cmds[0]); i++) {
+        needs = needs || strcmp(cmd, k_crc_cmds[i]) == 0;
+    }
+    if (!needs || has_crc || all || argc > 30) {
+        return (fl_exec_cmd)(ctx, argc, argv);
+    }
+    char upload_crc[16];
+    if (strcmp(cmd, "upload") == 0) {
+        /* a mismatch frees the allocation (cleanup), so the probe would break the call */
+        uint32_t offset32 = 0;
+        const char* data = "";
+        for (int i = 1; i + 1 < argc; i++) {
+            if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--addr") == 0) {
+                offset32 = (uint32_t)strtoul(argv[i + 1], NULL, 0);
+            } else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--data") == 0) {
+                data = argv[i + 1];
+            }
+        }
+        uint8_t raw[256];
+        int n = fl_base64_decode(data, raw, sizeof(raw));
+        if (n < 0) {
+            return (fl_exec_cmd)(ctx, argc, argv);
+        }
+        uint32_t len32 = (uint32_t)n;
+        uint16_t crc = fl_crc16_base(0xFFFF, &offset32, sizeof(offset32));
+        crc = fl_crc16_base(crc, &len32, sizeof(len32));
+        crc = fl_crc16_base(crc, raw, (size_t)n);
+        snprintf(upload_crc, sizeof(upload_crc), "0x%04X", crc);
+        const char* with_crc[32];
+        memcpy(with_crc, argv, (size_t)argc * sizeof(argv[0]));
+        with_crc[argc] = "--crc";
+        with_crc[argc + 1] = upload_crc;
+        return (fl_exec_cmd)(ctx, argc + 2, with_crc);
+    }
+    const char* probe[32];
+    memcpy(probe, argv, (size_t)argc * sizeof(argv[0]));
+    probe[argc] = "--crc";
+    probe[argc + 1] = "65537"; /* wrong on purpose: the reply names the right one */
+    mock_output_reset();
+    fl_error_t result = (fl_exec_cmd)(ctx, argc + 2, probe);
+    unsigned given = 0;
+    unsigned want = 0;
+    const char* at = strstr(mock_output_get(), "CRC mismatch: ");
+    if (!at || sscanf(at, "CRC mismatch: 0x%x != 0x%x", &given, &want) != 2) {
+        return result; /* rejected earlier (or ran, if 65537 happened to be right) */
+    }
+    char crc_str[16];
+    snprintf(crc_str, sizeof(crc_str), "0x%04X", want);
+    probe[argc + 1] = crc_str;
+    mock_output_reset();
+    return (fl_exec_cmd)(ctx, argc + 2, probe);
+}
+#define fl_exec_cmd(ctx, argc, argv) exec_with_crc((ctx), (argc), (argv))
+
 #define test_crc16(data, len) fl_crc16(data, len)
 #define test_crc16_update(crc, data, len) fl_crc16_base(crc, data, len)
 
@@ -1136,54 +1212,6 @@ void test_loader_cmd_read_zero_addr(void) {
     TEST_ASSERT(mock_output_contains("Invalid address range"));
 }
 
-void test_loader_cmd_read_zero_addr_force(void) {
-    setup_loader();
-    fl_init(&test_ctx);
-
-    /* Read from address 0 with --force should bypass the check.
-     * Note: actual memcpy from 0x0 may segfault on host, so we use
-     * a valid address but verify the --force flag is accepted.
-     */
-    static uint8_t local_buf[4] = {0x11, 0x22, 0x33, 0x44};
-    char addr_str[32];
-    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)(uintptr_t)local_buf);
-
-    /* First verify it works without --force */
-    const char* argv1[] = {"fl", "--cmd", "read", "--addr", addr_str, "--len", "4"};
-    fl_exec_cmd(&test_ctx, 7, argv1);
-    TEST_ASSERT(mock_output_contains("FLOK"));
-
-    mock_output_reset();
-
-    /* Now with --force, should also work */
-    const char* argv2[] = {"fl", "--cmd", "read", "--addr", addr_str, "--len", "4", "--force"};
-    fl_exec_cmd(&test_ctx, 8, argv2);
-    TEST_ASSERT(mock_output_contains("FLOK"));
-    TEST_ASSERT(mock_output_contains("READ 4 bytes"));
-}
-
-void test_loader_cmd_write_zero_addr_force(void) {
-    setup_loader();
-    fl_init(&test_ctx);
-
-    /* Allocate a buffer and use --force to write */
-    const char* alloc_argv[] = {"fl", "--cmd", "alloc", "--size", "64"};
-    fl_exec_cmd(&test_ctx, 5, alloc_argv);
-
-    uintptr_t alloc_addr = test_ctx.last_alloc;
-    char addr_str[32];
-    snprintf(addr_str, sizeof(addr_str), "0x%lX", (unsigned long)alloc_addr);
-
-    mock_output_reset();
-
-    /* Write with --force should succeed */
-    const char* argv[] = {"fl", "--cmd", "write", "--addr", addr_str, "--data", "AQIDBA==", "--force"};
-    fl_exec_cmd(&test_ctx, 8, argv);
-
-    TEST_ASSERT(mock_output_contains("FLOK"));
-    TEST_ASSERT(mock_output_contains("WRITE 4 bytes"));
-}
-
 void test_loader_cmd_write_overflow_addr(void) {
     setup_loader();
     fl_init(&test_ctx);
@@ -1208,17 +1236,84 @@ void test_loader_cmd_read_overflow_addr(void) {
     TEST_ASSERT(mock_output_contains("Invalid address range"));
 }
 
-void test_loader_cmd_write_force_hint_in_error(void) {
+void test_force_option_is_gone(void) {
     setup_loader();
     fl_init(&test_ctx);
-
-    /* Error message should hint about --force */
-    const char* argv[] = {"fl", "--cmd", "write", "--addr", "0x0", "--data", "AQIDBA=="};
-    fl_exec_cmd(&test_ctx, 7, argv);
-
-    TEST_ASSERT(mock_output_contains("--force"));
+    const char* argv[] = {"fl", "--cmd", "read", "--addr", "0x0", "--len", "4", "--force"};
+    fl_error_t result = (fl_exec_cmd)(&test_ctx, 8, argv);
+    TEST_ASSERT_EQUAL(FL_ERR_PARSE, result);
+    TEST_ASSERT(!mock_output_contains("READ"));
 }
-
+/* Every command whose request the host protects with a CRC refuses to run without one */
+void test_commands_with_a_request_crc_refuse_to_run_without_it(void) {
+    setup_loader_with_file();
+    /* a file to work on and a buffer to read: with a CRC (added by the
+     * fl_exec_cmd wrapper) the requests below would really run */
+    char test_file[128];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_crc_required_%d.txt", getpid());
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fputs("data", f);
+        fclose(f);
+    }
+    const char* open_argv[] = {"fl", "-c", "fopen", "--path", test_file, "-m", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+    const char* alloc_argv[] = {"fl", "-c", "alloc", "-s", "64"};
+    fl_exec_cmd(&test_ctx, 5, alloc_argv);
+    static uint8_t buf[8];
+    char addr[32];
+    snprintf(addr, sizeof(addr), "0x%lX", (unsigned long)(uintptr_t)buf);
+    char other[160];
+    snprintf(other, sizeof(other), "%s.other", test_file);
+    const char* const reqs[][12] = {
+        {"fl", "-c", "alloc", "-s", "16"},
+        {"fl", "-c", "upload", "-a", "0", "-d", "AQID"},
+        {"fl", "-c", "read", "-a", addr, "-l", "4"},
+        {"fl", "-c", "write", "-a", addr, "-d", "AQID"},
+        {"fl", "-c", "patch", "--comp", "0", "--orig", addr, "--target", addr},
+        {"fl", "-c", "tpatch", "--comp", "0", "--orig", addr, "--target", addr},
+        {"fl", "-c", "dpatch", "--comp", "0", "--orig", addr, "--target", addr},
+        {"fl", "-c", "unpatch", "--comp", "0"},
+        {"fl", "-c", "enable", "--comp", "0", "--enable", "1"},
+        {"fl", "-c", "fopen", "--path", test_file, "-m", "r"},
+        {"fl", "-c", "fwrite", "-d", "AQID"},
+        {"fl", "-c", "fseek", "-a", "0"},
+        {"fl", "-c", "fstat", "--path", test_file},
+        {"fl", "-c", "flist", "--path", "/tmp"},
+        {"fl", "-c", "fremove", "--path", other},
+        {"fl", "-c", "fmkdir", "--path", other},
+        {"fl", "-c", "frename", "--path", test_file, "--newpath", other},
+    };
+    const int counts[] = {5, 7, 7, 7, 9, 9, 9, 5, 7, 7, 5, 5, 5, 5, 5, 5, 7};
+    for (size_t i = 0; i < sizeof(counts) / sizeof(counts[0]); i++) {
+        mock_output_reset();
+        fl_error_t result = (fl_exec_cmd)(&test_ctx, counts[i], (const char**)reqs[i]);
+        TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
+        TEST_ASSERT(mock_output_contains("CRC required"));
+    }
+    const char* close_argv[] = {"fl", "-c", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+    unlink(test_file);
+}
+/* unpatch/enable --all have no comp to protect: the host sends them without a CRC */
+void test_all_variants_need_no_crc(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+    mock_output_reset();
+    const char* unpatch_argv[] = {"fl", "-c", "unpatch", "--all"};
+    TEST_ASSERT_EQUAL(FL_OK, (fl_exec_cmd)(&test_ctx, 4, unpatch_argv));
+    const char* enable_argv[] = {"fl", "-c", "enable", "--enable", "1", "--all"};
+    TEST_ASSERT_EQUAL(FL_OK, (fl_exec_cmd)(&test_ctx, 6, enable_argv));
+}
+void test_missing_crc_reply_says_so(void) {
+    setup_loader();
+    fl_init(&test_ctx);
+    mock_output_reset();
+    const char* argv[] = {"fl", "-c", "alloc", "-s", "16"};
+    fl_error_t result = (fl_exec_cmd)(&test_ctx, 5, argv);
+    TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
+    TEST_ASSERT(mock_output_contains("CRC required"));
+}
 void test_loader_cmd_read_write_roundtrip(void) {
     setup_loader();
     fl_init(&test_ctx);
@@ -2322,7 +2417,7 @@ static uint16_t exec_result_crc(int32_t seq, int32_t ret) {
 }
 
 /* Send an exec request; any NULL argument is omitted from the command line */
-static fl_error_t exec_send(const char* b64, const char* seq, const char* timeout, const char* crc, bool force) {
+static fl_error_t exec_send(const char* b64, const char* seq, const char* timeout, const char* crc) {
     const char* argv[16];
     int argc = 0;
 
@@ -2345,9 +2440,6 @@ static fl_error_t exec_send(const char* b64, const char* seq, const char* timeou
         argv[argc++] = "--crc";
         argv[argc++] = crc;
     }
-    if (force) {
-        argv[argc++] = "--force";
-    }
     return fl_exec_cmd(&test_ctx, argc, argv);
 }
 
@@ -2363,7 +2455,7 @@ static fl_error_t exec_run_full(const uint8_t* data, size_t len, int seq, int ti
     const uint16_t crc = (uint16_t)(exec_req_crc(crc_seq, (uint32_t)crc_timeout, data, (uint32_t)len) + crc_delta);
     snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)crc);
 
-    return exec_send(b64, seq_s, to_s, crc_s, false);
+    return exec_send(b64, seq_s, to_s, crc_s);
 }
 
 static fl_error_t exec_run(const char* cmd, int seq, int timeout) {
@@ -2376,7 +2468,7 @@ static fl_error_t exec_query_run(int seq, int crc_delta) {
     snprintf(seq_s, sizeof(seq_s), "%d", seq);
     const uint16_t crc = (uint16_t)(exec_req_crc(seq, 0, NULL, 0) + crc_delta);
     snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)crc);
-    return exec_send(NULL, seq_s, NULL, crc_s, false);
+    return exec_send(NULL, seq_s, NULL, crc_s);
 }
 
 static bool exec_output_has_result(int seq, int ret, bool replay) {
@@ -2508,27 +2600,17 @@ void test_exec_spawn_failure(void) {
 void test_exec_missing_crc(void) {
     setup_exec();
 
-    fl_error_t result = exec_send("bHM=", "1", "0", NULL, false);
+    fl_error_t result = exec_send("bHM=", "1", "0", NULL);
 
     TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
     TEST_ASSERT(mock_output_contains("Missing --crc"));
     TEST_ASSERT_EQUAL(0, g_exec_calls);
 }
 
-void test_exec_force_waives_crc(void) {
-    setup_exec();
-
-    fl_error_t result = exec_send("bHM=", "1", "0", NULL, true);
-
-    TEST_ASSERT_EQUAL(FL_OK, result);
-    TEST_ASSERT_EQUAL(1, g_exec_calls);
-    TEST_ASSERT_STR_EQUAL("ls", g_exec_cmd);
-}
-
 void test_exec_invalid_base64(void) {
     setup_exec();
 
-    fl_error_t result = exec_send("!!!!", "1", "0", "0x0000", false);
+    fl_error_t result = exec_send("!!!!", "1", "0", "0x0000");
 
     TEST_ASSERT_EQUAL(FL_ERR_ENCODE, result);
     TEST_ASSERT(mock_output_contains("Invalid base64"));
@@ -2574,7 +2656,7 @@ void test_exec_crc_covers_payload(void) {
     fl_base64_encode(bad, 5, b64, sizeof(b64));
     snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)exec_req_crc(1, 0, good, 5));
 
-    fl_error_t result = exec_send(b64, "1", "0", crc_s, false);
+    fl_error_t result = exec_send(b64, "1", "0", crc_s);
 
     TEST_ASSERT_EQUAL(FL_ERR_CRC, result);
     TEST_ASSERT_EQUAL(0, g_exec_calls);
@@ -2631,7 +2713,7 @@ void test_exec_timeout_passthrough(void) {
     /* omitted --timeout reaches the callback as 0 */
     char crc_s[16];
     snprintf(crc_s, sizeof(crc_s), "0x%04X", (unsigned)exec_req_crc(2, 0, "ls", 2));
-    fl_error_t result = exec_send("bHM=", "2", NULL, crc_s, false);
+    fl_error_t result = exec_send("bHM=", "2", NULL, crc_s);
     TEST_ASSERT_EQUAL(FL_OK, result);
     TEST_ASSERT_EQUAL(0, g_exec_timeout);
 }
@@ -2736,7 +2818,7 @@ void test_exec_query_bad_crc(void) {
 void test_exec_query_requires_seq(void) {
     setup_exec();
 
-    fl_error_t result = exec_send(NULL, NULL, NULL, "0x0000", false);
+    fl_error_t result = exec_send(NULL, NULL, NULL, "0x0000");
 
     TEST_ASSERT_EQUAL(FL_ERR_ARGS, result);
     TEST_ASSERT(mock_output_contains("Missing --data"));
@@ -2864,16 +2946,17 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_write_crc_mismatch);
     RUN_TEST(test_loader_cmd_write_no_data);
     RUN_TEST(test_loader_cmd_write_zero_addr);
+    RUN_TEST(test_force_option_is_gone);
+    RUN_TEST(test_commands_with_a_request_crc_refuse_to_run_without_it);
+    RUN_TEST(test_all_variants_need_no_crc);
+    RUN_TEST(test_missing_crc_reply_says_so);
     RUN_TEST(test_loader_cmd_read_write_roundtrip);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader - Address Range Check");
     RUN_TEST(test_loader_cmd_read_zero_addr);
-    RUN_TEST(test_loader_cmd_read_zero_addr_force);
-    RUN_TEST(test_loader_cmd_write_zero_addr_force);
     RUN_TEST(test_loader_cmd_write_overflow_addr);
     RUN_TEST(test_loader_cmd_read_overflow_addr);
-    RUN_TEST(test_loader_cmd_write_force_hint_in_error);
     TEST_SUITE_END();
 
     TEST_SUITE_BEGIN("func_loader - Enable Command");
@@ -2943,7 +3026,6 @@ void run_loader_tests(void) {
     RUN_TEST(test_exec_nonzero_ret);
     RUN_TEST(test_exec_spawn_failure);
     RUN_TEST(test_exec_missing_crc);
-    RUN_TEST(test_exec_force_waives_crc);
     RUN_TEST(test_exec_invalid_base64);
     RUN_TEST(test_exec_crc_mismatch);
     RUN_TEST(test_exec_crc_covers_seq);

@@ -169,9 +169,8 @@ fl -c exec --seq 0x<id16> -r 0x<crc16>
 | `--seq` | 整数 | 否 | 请求 ID，缺省 -1 表示不去重。上位机总是携带，取 0 到 65535 的随机数并按 `0x%04X` 发送（设备端以 `strtol` base 0 解析，十进制也能识别） |
 | `--timeout` | 整数 | 否 | 毫秒，缺省 0。**用户没指定就不发。**原样透传给 `exec_cb`，v1 的 NuttX port 不处理。负数被拒绝 |
 | `-r` | CRC-16 | 是 | 见 4.1。查询时 `len` 取 0，`timeout` 取解析到的值（上位机不带，即 0） |
-| `--force` | 布尔 | 否 | 仅供手工调试，允许省略 `-r` |
 
-CRC 在 exec 上**强制要求**，与 `write` 等“可选 CRC”的命令不同：执行一条被篡改的命令，后果远比写入一段被篡改的数据严重。
+CRC 在 exec 上**强制要求**（现在所有带请求 CRC 的命令都是强制的，`--force` 已经去掉）：执行一条被篡改的命令，后果远比写入一段被篡改的数据严重。
 
 Base64 字符集（`A-Z a-z 0-9 + / =`）不含空格和引号，不会触发 `fl_stream_parse_line` 的分词与引号处理，也不会被 argparse 误认为选项，这正是它能绕开转义问题的原因。
 
@@ -301,7 +300,7 @@ typedef int (*fl_exec_cb_t)(void* user, const char* cmdline, uint32_t timeout_ms
 flowchart TD
     A["fl_cmd_exec 入口"] --> C{"exec_cb<br/>已挂载?"}
     C -- 否 --> E2["FLERR No exec_cb<br/>FL_ERR_STATE"]
-    C -- 是 --> D{"带 -r?<br/>force 可省略"}
+    C -- 是 --> D{"带 -r?"}
     D -- 否 --> E3["FLERR Missing crc<br/>FL_ERR_ARGS"]
     D -- 是 --> Q{"带 -d?"}
     Q -- 否 --> Q1{"seq 大于等于 0?"}

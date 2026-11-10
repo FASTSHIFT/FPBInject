@@ -467,30 +467,32 @@ BSS is included in the binary (zeroed) via a sentinel `.fpb_end` section, ensuri
 |---------|---------------|-------------|
 | `ping` | — | Connection test, responds `PONG` |
 | `info` | — | Query FPB status, slot states, version |
-| `alloc` | `--size N` | Allocate RAM buffer, returns address |
-| `upload` | `--addr OFFSET --data BASE64 [--crc CRC]` | Write binary chunk to last allocation |
-| `read` | `--addr ADDR --len N [--crc CRC] [--force]` | Read device memory, returns Base64 |
-| `write` | `--addr ADDR --data BASE64 [--crc CRC] [--force]` | Write to arbitrary address |
-| `patch` | `--comp N --orig ADDR --target ADDR [--crc CRC]` | Set FPB patch directly (no trampoline) |
-| `tpatch` | `--comp N --orig ADDR --target ADDR [--crc CRC]` | Set patch via Flash trampoline (Cortex-M3/M4) |
-| `dpatch` | `--comp N --orig ADDR --target ADDR [--crc CRC]` | Set patch via DebugMonitor (ARMv8-M) |
-| `unpatch` | `--comp N` / `--all` | Clear one or all patches, frees memory |
-| `enable` | `--comp N --enable 0\|1` / `--all` | Enable or disable patch slot(s) |
+| `alloc` | `--size N --crc CRC` | Allocate RAM buffer, returns address |
+| `upload` | `--addr OFFSET --data BASE64 --crc CRC` | Write binary chunk to last allocation |
+| `read` | `--addr ADDR --len N --crc CRC` | Read device memory, returns Base64 |
+| `write` | `--addr ADDR --data BASE64 --crc CRC` | Write to arbitrary address |
+| `patch` | `--comp N --orig ADDR --target ADDR --crc CRC` | Set FPB patch directly (no trampoline) |
+| `tpatch` | `--comp N --orig ADDR --target ADDR --crc CRC` | Set patch via Flash trampoline (Cortex-M3/M4) |
+| `dpatch` | `--comp N --orig ADDR --target ADDR --crc CRC` | Set patch via DebugMonitor (ARMv8-M) |
+| `unpatch` | `--comp N --crc CRC` / `--all` | Clear one or all patches, frees memory |
+| `enable` | `--comp N --enable 0\|1 --crc CRC` / `--all` | Enable or disable patch slot(s) |
 | `echo` | `--data HEX` | Throughput test: echoes length and CRC |
 | `echoback` | `--len N` | Throughput test: sends N bytes back as Base64 |
 | `hello` | — | Call `fl_hello()` to verify injection |
 | `exec` | `--data BASE64 --seq ID [--timeout MS] --crc CRC` / `--seq ID --crc CRC` (query) | Run a shell command through the port's `exec_cb` (NuttX: `system()`); see below |
-| `fopen` | `--path PATH [--mode r\|w\|a]` | Open file on device filesystem |
-| `fwrite` | `--data BASE64 [--crc CRC]` | Write to open file |
+| `fopen` | `--path PATH [--mode r\|w\|a] --crc CRC` | Open file on device filesystem |
+| `fwrite` | `--data BASE64 --crc CRC` | Write to open file |
 | `fread` | `--len N` | Read from open file, returns Base64 |
 | `fclose` | — | Close open file |
 | `fcrc` | `--len N` | CRC-16 of open file |
-| `fseek` | `--addr OFFSET` | Seek open file |
-| `fstat` | `--path PATH` | File metadata |
-| `flist` | `--path PATH` | List directory |
-| `fremove` | `--path PATH` | Delete file |
-| `fmkdir` | `--path PATH` | Create directory |
-| `frename` | `--path SRC --newpath DST` | Rename file |
+| `fseek` | `--addr OFFSET --crc CRC` | Seek open file |
+| `fstat` | `--path PATH --crc CRC` | File metadata |
+| `flist` | `--path PATH --crc CRC` | List directory |
+| `fremove` | `--path PATH --crc CRC` | Delete file |
+| `fmkdir` | `--path PATH --crc CRC` | Create directory |
+| `frename` | `--path SRC --newpath DST --crc CRC` | Rename file |
+
+The request CRC (`-r` / `--crc`) is required on every command above that lists it: a request without one is refused with `CRC required`, so a line that lost its tail cannot run on what is left. `unpatch --all` and `enable --all` have no `comp` to protect and carry none. `fread`, `fcrc`, `fclose`, `ping`, `echo`, `echoback`, `info` and `hello` have no request CRC; for `fcrc` the `-r` option is the running CRC of the previous chunk. A malformed option value fails the whole request (`Invalid arguments`).
 
 ### Response Format
 
