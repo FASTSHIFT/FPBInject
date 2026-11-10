@@ -1883,6 +1883,50 @@ void test_loader_cmd_fseek_crc_mismatch(void) {
     unlink(test_file);
 }
 
+/* A command line damaged on the wire must not run with the part of a value that
+ * survived: "-a 20480 -r 0xE791" arriving as "-a 20xE791" used to seek to 20. */
+void test_loader_cmd_fseek_damaged_value_is_rejected(void) {
+    setup_loader_with_file();
+    char test_file[256];
+    snprintf(test_file, sizeof(test_file), "/tmp/fl_test_fseek_damaged_%d.txt", getpid());
+    FILE* f = fopen(test_file, "w");
+    if (f) {
+        fprintf(f, "HelloWorld");
+        fclose(f);
+    }
+    const char* open_argv[] = {"fl", "--cmd", "fopen", "--path", test_file, "--mode", "r"};
+    fl_exec_cmd(&test_ctx, 7, open_argv);
+    mock_output_reset();
+    const char* seek_argv[] = {"fl", "-c", "fseek", "-a", "20xE791"};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 5, seek_argv);
+    TEST_ASSERT_EQUAL(FL_ERR_PARSE, result);
+    TEST_ASSERT(mock_output_contains("Invalid arguments"));
+    TEST_ASSERT(!mock_output_contains("FSEEK"));
+    /* two requests glued together (the end of the first one was lost) */
+    mock_output_reset();
+    const char* glued_argv[] = {"fl", "-c", "fread", "-l", "5fl", "-c", "fseek", "-a", "3"};
+    result = fl_exec_cmd(&test_ctx, 9, glued_argv);
+    TEST_ASSERT_EQUAL(FL_ERR_PARSE, result);
+    TEST_ASSERT(!mock_output_contains("FREAD"));
+    TEST_ASSERT(!mock_output_contains("FSEEK"));
+    /* a well-formed request still runs */
+    mock_output_reset();
+    const char* ok_argv[] = {"fl", "-c", "fseek", "-a", "3"};
+    result = fl_exec_cmd(&test_ctx, 5, ok_argv);
+    TEST_ASSERT_EQUAL(FL_OK, result);
+    TEST_ASSERT(mock_output_contains("FSEEK 3"));
+    const char* close_argv[] = {"fl", "--cmd", "fclose"};
+    fl_exec_cmd(&test_ctx, 3, close_argv);
+    unlink(test_file);
+}
+void test_option_without_value_fails_the_parse(void) {
+    setup_loader_with_file();
+    mock_output_reset();
+    const char* argv[] = {"fl", "-c", "fread", "-l"};
+    fl_error_t result = fl_exec_cmd(&test_ctx, 4, argv);
+    TEST_ASSERT_EQUAL(FL_ERR_PARSE, result);
+    TEST_ASSERT(mock_output_contains("Invalid arguments"));
+}
 void test_loader_cmd_fstat_with_crc(void) {
     setup_loader_with_file();
 
@@ -2354,7 +2398,8 @@ void test_exec_option_without_value_is_rejected(void) {
     const int counts[] = {8, 8, 6, 6};
     for (size_t i = 0; i < sizeof(counts) / sizeof(counts[0]); i++) {
         setup_exec();
-        (void)fl_exec_cmd(&test_ctx, counts[i], tails[i]);
+        fl_error_t result = fl_exec_cmd(&test_ctx, counts[i], tails[i]);
+        TEST_ASSERT_EQUAL(FL_ERR_PARSE, result);
         TEST_ASSERT_EQUAL(0, g_exec_calls);
     }
 }
@@ -2866,6 +2911,8 @@ void run_loader_tests(void) {
     RUN_TEST(test_loader_cmd_fcrc_offset_response_format);
     RUN_TEST(test_loader_cmd_fseek_with_crc);
     RUN_TEST(test_loader_cmd_fseek_crc_mismatch);
+    RUN_TEST(test_loader_cmd_fseek_damaged_value_is_rejected);
+    RUN_TEST(test_option_without_value_fails_the_parse);
     RUN_TEST(test_loader_cmd_fstat_with_crc);
     RUN_TEST(test_loader_cmd_fstat_crc_mismatch);
     RUN_TEST(test_loader_cmd_fmkdir_with_crc);

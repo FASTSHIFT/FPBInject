@@ -29,7 +29,7 @@ static int prefix_cmp(const char* str, const char* prefix) {
 }
 
 static void argparse_error(struct argparse* self, const struct argparse_option* opt, const char* reason, int flags) {
-    (void)self;
+    self->errors++;
     if (flags & OPT_LONG) {
         fprintf(stderr, "error: option `--%s` %s\n", opt->long_name, reason);
     } else {
@@ -270,6 +270,9 @@ int fl_argparse_parse(struct argparse* self, int argc, const char** argv) {
     }
 
 end:
+    if ((self->flags & ARGPARSE_STRICT_VALUES) && self->errors > 0) {
+        return (EXIT_FAILURE);
+    }
     memmove(self->out + self->cpidx, self->argv, self->argc * sizeof(*self->out));
     self->out[self->cpidx + self->argc] = NULL;
 

@@ -23,6 +23,10 @@ typedef int argparse_callback(struct argparse* self, const struct argparse_optio
 enum argparse_flag {
     ARGPARSE_STOP_AT_NON_OPTION = 1 << 0,
     ARGPARSE_IGNORE_UNKNOWN_ARGS = 1 << 1,
+    /* A malformed option value ("-a 20xE791", a missing value, out of range)
+     * fails the whole parse. Without it the error is only printed and the value
+     * that was read so far is kept, so a damaged command line still runs. */
+    ARGPARSE_STRICT_VALUES = 1 << 2,
 };
 
 enum argparse_option_type {
@@ -99,6 +103,7 @@ struct argparse {
     const char** out;
     int cpidx;
     const char* optvalue; // current option value
+    int errors;           // malformed option values seen so far
 };
 
 // built-in callbacks
