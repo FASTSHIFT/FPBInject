@@ -339,7 +339,11 @@ def compile_inject(
     if effective_ext and effective_ext.lower() in (".cpp", ".cc", ".cxx"):
         compiler_base = os.path.basename(compiler)
         if "g++" not in compiler_base and "gcc" in compiler_base:
-            new_compiler = compiler.replace("gcc", "g++", 1)
+            # Only touch the file name: a directory such as prebuilts/gcc/ also
+            # contains "gcc".
+            new_compiler = os.path.join(
+                os.path.dirname(compiler), compiler_base.replace("gcc", "g++", 1)
+            )
             logger.info(
                 f"C++ source detected, switching compiler: {compiler} -> {new_compiler}"
             )

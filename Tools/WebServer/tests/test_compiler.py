@@ -1340,6 +1340,31 @@ class TestCppSupport(unittest.TestCase):
             self.assertNotIn("gcc", called_cmd[0])
 
     @patch("fpbinject.core.compiler.parse_compile_commands")
+    def test_auto_switch_keeps_gcc_in_directory_name(self, mock_parse):
+        """Only the file name is switched; a 'gcc' directory must stay intact."""
+        mock_parse.return_value = {
+            "compiler": "/opt/prebuilts/gcc/linux-x86_64/bin/arm-none-eabi-gcc",
+            "objcopy": "arm-none-eabi-objcopy",
+            "includes": [],
+            "defines": [],
+            "cflags": ["-mcpu=cortex-m4"],
+            "ldflags": [],
+            "raw_command": None,
+        }
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stderr="error")
+            compiler.compile_inject(
+                "/* FPB_INJECT */\nvoid test_func() {}",
+                0x20000000,
+                compile_commands_path="/tmp/cc.json",
+                source_ext=".cpp",
+            )
+            called_cmd = mock_run.call_args[0][0]
+            self.assertEqual(
+                called_cmd[0], "/opt/prebuilts/gcc/linux-x86_64/bin/arm-none-eabi-g++"
+            )
+
+    @patch("fpbinject.core.compiler.parse_compile_commands")
     def test_no_switch_for_c_source(self, mock_parse):
         """Compiler should stay gcc for .c files."""
         mock_parse.return_value = {
